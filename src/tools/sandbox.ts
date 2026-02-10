@@ -104,6 +104,23 @@ export interface SandboxConfig {
   showSandboxErrors: boolean;
   /** 允许用户绕过沙箱 */
   allowBypass: boolean;
+  /**
+   * v2.1.34: 当沙箱启用时自动允许 Bash 命令
+   * 默认 true（对齐官方）
+   */
+  autoAllowBashIfSandboxed?: boolean;
+  /**
+   * v2.1.34: 允许非沙箱命令（通过 dangerouslyDisableSandbox 参数）
+   * 当设为 false 时，dangerouslyDisableSandbox 参数被完全忽略
+   * 默认 true
+   */
+  allowUnsandboxedCommands?: boolean;
+  /**
+   * v2.1.34: 排除命令列表
+   * 匹配的命令不会被沙箱包裹
+   * 支持精确匹配、前缀匹配（"npm:*"）和通配符匹配
+   */
+  excludedCommands?: string[];
 }
 
 // ============ 全局配置 ============
@@ -780,45 +797,91 @@ async function executeDirectly(
 // ============ 主执行函数 ============
 
 /**
+ * v2.1.34: 检查命令是否在排除列表中（对齐官方 L5z / isCommandExcluded）
+ *
+ * 支持三种匹配模式：
+ * - 精确匹配: "npm test" 只匹配完全相同的命令
+ * - 前缀匹配: "npm:*" 匹配以 "npm" 开头的命令
+ * - 通配符匹配: "npm run test:*" 使用 * 通配符
+ */
+export function isCommandExcluded(command: string): boolean {
+  const excludedCommands = sandboxConfig.excludedCommands ?? [];
+  if (excludedCommands.length === 0) return false;
+
+  const trimmed = command.trim();
+
+  for (const pattern of excludedCommands) {
+    // 尝试前缀匹配 "xxx:*"
+    const prefixMatch = pattern.match(/^(.+):\*$/);
+    if (prefixMatch) {
+      const prefix = prefixMatch[1];
+      if (trimmed === prefix || trimmed.startsWith(prefix + ' ')) {
+        return true;
+      }
+      continue;
+    }
+
+    // 通配符匹配
+    if (pattern.includes('*')) {
+      const regex = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$');
+      if (regex.test(trimmed)) {
+        return true;
+      }
+      continue;
+    }
+
+    // 精确匹配
+    if (trimmed === pattern) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
  * 根据权限模式判断是否应该使用沙箱
  *
- * 与官方实现对齐：
- * 1. 检查 disableSandbox 标志
- * 2. 检查 MCP 命令（mcp-cli 必须禁用沙箱）
- * 3. 检查全局沙箱配置
- * 4. 检查沙箱是否可用
+ * v2.1.34 对齐官方 wc() 函数：
+ * 1. 沙箱未启用 → 不用沙箱
+ * 2. dangerouslyDisableSandbox + allowUnsandboxedCommands → 不用沙箱
+ * 3. 命令为空 → 不用沙箱
+ * 4. 命令在 excludedCommands 列表中 → 不用沙箱
+ * 5. 其他 → 使用沙箱
+ *
+ * 关键修复: 不再无条件地因为 disableSandbox=true 就跳过沙箱，
+ * 现在需要 allowUnsandboxedCommands 也为 true 才可以
  */
 function shouldUseSandbox(
   command: string,
   options: SandboxOptions,
   permissionContext?: ToolPermissionContext
 ): boolean {
-  // 1. 如果明确禁用沙箱
-  if (options.disableSandbox) {
-    console.warn('[Sandbox] Sandbox disabled by dangerouslyDisableSandbox flag');
-    return false;
-  }
-
-  // 2. MCP 工具的特殊处理：mcp-cli 命令必须禁用沙箱
-  // 这是官方实现的关键逻辑，mcp-cli 在沙箱中无法正常工作
-  if (command.includes('mcp-cli')) {
-    console.warn('[Sandbox] MCP commands must run without sandbox');
-    return false;
-  }
-
-  // 3. 如果沙箱全局禁用
+  // 1. 如果沙箱全局禁用
   if (!sandboxConfig.enabled) {
     return false;
   }
 
-  // 4. 检查沙箱是否可用
-  if (!isSandboxAvailable()) {
+  // 2. v2.1.34: dangerouslyDisableSandbox 只有在 allowUnsandboxedCommands=true 时才生效
+  // 修复: 之前 disableSandbox=true 就直接返回 false，现在需要额外检查 allowUnsandboxedCommands
+  if (options.disableSandbox && (sandboxConfig.allowUnsandboxedCommands !== false)) {
     return false;
   }
 
-  // 5. 检查权限上下文（如果需要的话）
-  // 这里预留接口，未来可以根据权限模式进一步控制
-  const context = permissionContext || getGlobalAppState()?.toolPermissionContext;
+  // 3. 没有命令 → 不用沙箱
+  if (!command || !command.trim()) {
+    return false;
+  }
+
+  // 4. v2.1.34: 命令在 excludedCommands 列表中 → 不用沙箱
+  if (isCommandExcluded(command)) {
+    return false;
+  }
+
+  // 5. 检查沙箱是否可用
+  if (!isSandboxAvailable()) {
+    return false;
+  }
 
   // 默认使用沙箱
   return true;
@@ -1048,4 +1111,66 @@ export async function executeWithSandboxFallback(
     ...options,
     command, // 传递命令用于 MCP 检测和特殊处理
   });
+}
+
+// ============================================================================
+// v2.1.34: Sandbox 公共 API（对齐官方 x8 对象）
+// ============================================================================
+
+/**
+ * 判断沙箱是否启用（对齐官方 X46()）
+ */
+export function isSandboxingEnabled(): boolean {
+  return sandboxConfig.enabled && isSandboxAvailable();
+}
+
+/**
+ * 判断 autoAllowBashIfSandboxed 是否启用（对齐官方 tM5()）
+ * 默认为 true
+ */
+export function isAutoAllowBashIfSandboxedEnabled(): boolean {
+  return sandboxConfig.autoAllowBashIfSandboxed !== false;
+}
+
+/**
+ * 判断是否允许非沙箱命令（对齐官方 eM5()）
+ * 默认为 true
+ */
+export function areUnsandboxedCommandsAllowed(): boolean {
+  return sandboxConfig.allowUnsandboxedCommands !== false;
+}
+
+/**
+ * v2.1.34: 判断一个命令是否会实际在沙箱中运行
+ *
+ * 这个函数被 bash 权限检查使用，用于确定：
+ * - 当命令确实在沙箱中运行时，可以享受 autoAllowBashIfSandboxed 的自动允许
+ * - 当命令因为 excludedCommands 或 dangerouslyDisableSandbox 绕过沙箱时，
+ *   不能享受自动允许，必须经过正常的权限检查
+ *
+ * 这是 v2.1.34 的关键修复：
+ * 之前 excludedCommands 中的命令和 dangerouslyDisableSandbox=true 的命令
+ * 在 autoAllowBashIfSandboxed 启用时也被自动允许了，这是一个安全漏洞
+ */
+export function willCommandRunInSandbox(
+  command: string,
+  dangerouslyDisableSandbox?: boolean,
+): boolean {
+  // 沙箱未启用
+  if (!sandboxConfig.enabled) return false;
+
+  // 沙箱不可用
+  if (!isSandboxAvailable()) return false;
+
+  // dangerouslyDisableSandbox 且允许非沙箱命令
+  if (dangerouslyDisableSandbox && sandboxConfig.allowUnsandboxedCommands !== false) {
+    return false;
+  }
+
+  // 命令在排除列表中
+  if (isCommandExcluded(command)) {
+    return false;
+  }
+
+  return true;
 }

@@ -42,6 +42,9 @@ export type {
 export type {
   Message,
   ContentBlock,
+  // v2.1.33: Extended Thinking block types
+  ThinkingBlock,
+  RedactedThinkingBlock,
   // Server Tool 类型 (Anthropic API built-in tools)
   ServerToolUseBlock,
   WebSearchResultBlock,

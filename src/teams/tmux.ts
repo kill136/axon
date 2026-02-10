@@ -4,15 +4,65 @@
  *
  * 负责为 teammate agents 创建和管理 tmux 窗格（pane）
  * 对应官方 KvA 类
+ *
+ * v2.1.33 修复:
+ * - 修复 teammate sessions 的消息发送/接收
+ * - 改进 createTeammatePaneWithLeader 布局（leader 30%, teammates 70%）
+ * - 添加 sendCommandToPane 异步方法
+ * - 添加窗格标题和颜色支持
  */
 
-import { execSync, exec } from 'child_process';
-import * as path from 'path';
+import { execSync, exec as execCb } from 'child_process';
+import { promisify } from 'util';
 import type { TeamMember } from './types.js';
+
+const execAsync = promisify(execCb);
 
 // ============================================================================
 // Tmux 工具函数
 // ============================================================================
+
+/**
+ * 执行 tmux 命令（异步），返回 stdout
+ * 对应官方 dh() 函数
+ */
+async function tmuxExec(args: string[]): Promise<{ stdout: string; stderr: string; code: number }> {
+  try {
+    const cmd = 'tmux ' + args.map(a => {
+      // 只在包含空格或特殊字符时加引号
+      if (a.includes(' ') || a.includes('"') || a.includes("'")) {
+        return `"${a.replace(/"/g, '\\"')}"`;
+      }
+      return a;
+    }).join(' ');
+    const { stdout, stderr } = await execAsync(cmd);
+    return { stdout: stdout.trim(), stderr: stderr.trim(), code: 0 };
+  } catch (error: any) {
+    return {
+      stdout: error.stdout?.trim() ?? '',
+      stderr: error.stderr?.trim() ?? '',
+      code: error.code ?? 1,
+    };
+  }
+}
+
+/**
+ * 执行 tmux 命令（同步）
+ * 对应官方 bj() 函数
+ */
+function tmuxExecSync(args: string[]): { stdout: string; stderr: string; code: number } {
+  try {
+    const cmd = 'tmux ' + args.join(' ');
+    const stdout = execSync(cmd, { stdio: 'pipe' }).toString().trim();
+    return { stdout, stderr: '', code: 0 };
+  } catch (error: any) {
+    return {
+      stdout: error.stdout?.toString().trim() ?? '',
+      stderr: error.stderr?.toString().trim() ?? '',
+      code: error.status ?? 1,
+    };
+  }
+}
 
 /**
  * 检查 tmux 是否可用
@@ -28,6 +78,7 @@ export function isTmuxAvailable(): boolean {
 
 /**
  * 检查当前是否在 tmux 会话中
+ * 对应官方 ph() 函数
  */
 export function isInsideTmux(): boolean {
   return !!process.env.TMUX;
@@ -62,16 +113,48 @@ export function getCurrentPaneId(): string | null {
 }
 
 // ============================================================================
+// 颜色映射（tmux 256-color）
+// ============================================================================
+
+/**
+ * 将十六进制颜色转换为最接近的 tmux 颜色名称
+ * 对应官方 Wx4() 函数
+ */
+function hexToTmuxColor(hex: string): string {
+  const colorMap: Record<string, string> = {
+    '#FF6B6B': 'red',
+    '#4ECDC4': 'cyan',
+    '#45B7D1': 'blue',
+    '#96CEB4': 'green',
+    '#FFEAA7': 'yellow',
+    '#DDA0DD': 'magenta',
+    '#98D8C8': 'cyan',
+    '#F7DC6F': 'yellow',
+    '#BB8FCE': 'magenta',
+    '#85C1E9': 'blue',
+    '#82E0AA': 'green',
+    '#F8C471': 'yellow',
+  };
+  return colorMap[hex] || 'default';
+}
+
+// ============================================================================
 // TmuxBackend 类
 // ============================================================================
 
 /**
  * Tmux 后端
  * 管理 teammate agents 的 tmux 窗格
+ *
+ * v2.1.33: 改进了消息发送/接收和窗格管理
+ * - sendCommandToPane: 异步发送命令到指定窗格
+ * - createTeammatePaneWithLeader: leader 30% + teammates 70% 布局
+ * - 窗格标题和边框颜色支持
  */
 export class TmuxBackend {
   private sessionName: string;
   private panes: Map<string, string> = new Map(); // memberName -> paneId
+  private leaderPaneId: string | null = null;
   private isExternal: boolean = false;
 
   constructor(sessionName: string) {
@@ -88,12 +171,10 @@ export class TmuxBackend {
     }
 
     try {
-      // 创建新的 detached tmux session
       execSync(`tmux new-session -d -s "${this.sessionName}" -x 200 -y 50`, { stdio: 'pipe' });
       this.isExternal = true;
       return true;
     } catch (error) {
-      // session 可能已存在
       if (String(error).includes('duplicate session')) {
         this.isExternal = true;
         return true;
@@ -111,13 +192,124 @@ export class TmuxBackend {
     }
 
     this.sessionName = getCurrentTmuxSession() || this.sessionName;
+    this.leaderPaneId = getCurrentPaneId();
     this.isExternal = false;
     return true;
   }
 
   /**
+   * v2.1.33: 向指定窗格发送命令
+   * 对应官方 sendCommandToPane(A, q, K) 方法
+   */
+  async sendCommandToPane(paneId: string, command: string, sync: boolean = false): Promise<void> {
+    const args = ['send-keys', '-t', paneId, command, 'Enter'];
+    const result = sync ? tmuxExecSync(args) : await tmuxExec(args);
+    if (result.code !== 0) {
+      throw new Error(`Failed to send command to pane ${paneId}: ${result.stderr}`);
+    }
+  }
+
+  /**
+   * v2.1.33: 创建 teammate 窗格（带 leader 布局）
+   * 对应官方 createTeammatePaneWithLeader(A, q) 方法
+   *
+   * 第一个 teammate: leader 30% + teammate 70% (水平分割)
+   * 后续 teammates: 在右侧纵向分割
+   */
+  async createTeammatePaneWithLeader(
+    command: string,
+    workingDir: string,
+  ): Promise<{ paneId: string; isFirstTeammate: boolean }> {
+    if (!this.leaderPaneId) {
+      this.leaderPaneId = getCurrentPaneId();
+    }
+
+    if (!this.leaderPaneId) {
+      throw new Error('Could not determine current tmux pane/window');
+    }
+
+    const currentWindowTarget = await this.getCurrentWindowTarget();
+    if (!currentWindowTarget) {
+      throw new Error('Could not determine current tmux window');
+    }
+
+    const paneCount = await this.getCurrentWindowPaneCount(currentWindowTarget);
+    if (paneCount === null) {
+      throw new Error('Could not determine pane count for current window');
+    }
+
+    const isFirstTeammate = paneCount === 1;
+    let newPaneId: string;
+
+    if (isFirstTeammate) {
+      const result = await tmuxExec([
+        'split-window', '-t', this.leaderPaneId, '-h', '-l', '70%',
+        '-P', '-F', '#{pane_id}', '-c', workingDir,
+      ]);
+      if (result.code !== 0) {
+        throw new Error(`Failed to create first teammate pane: ${result.stderr}`);
+      }
+      newPaneId = result.stdout.trim();
+    } else {
+      const lastTeammatePaneId = this.getLastTeammatePaneId();
+      const targetPane = lastTeammatePaneId || this.leaderPaneId;
+
+      const result = await tmuxExec([
+        'split-window', '-t', targetPane, '-v',
+        '-P', '-F', '#{pane_id}', '-c', workingDir,
+      ]);
+      if (result.code !== 0) {
+        throw new Error(`Failed to create teammate pane: ${result.stderr}`);
+      }
+      newPaneId = result.stdout.trim();
+    }
+
+    if (command) {
+      await this.sendCommandToPane(newPaneId, command);
+    }
+
+    return { paneId: newPaneId, isFirstTeammate };
+  }
+
+  private getLastTeammatePaneId(): string | null {
+    const paneIds = Array.from(this.panes.values());
+    return paneIds.length > 0 ? paneIds[paneIds.length - 1] : null;
+  }
+
+  private async getCurrentWindowTarget(): Promise<string | null> {
+    const result = await tmuxExec(['display-message', '-p', '#{window_id}']);
+    if (result.code !== 0) return null;
+    return result.stdout.trim() || null;
+  }
+
+  private async getCurrentWindowPaneCount(windowTarget: string): Promise<number | null> {
+    const result = await tmuxExec(['list-panes', '-t', windowTarget, '-F', '#{pane_id}']);
+    if (result.code !== 0) return null;
+    const panes = result.stdout.split('\n').filter(Boolean);
+    return panes.length;
+  }
+
+  /**
+   * v2.1.33: 设置窗格边框颜色
+   * 对应官方 setPaneBorderColor(A, q, K) 方法
+   */
+  async setPaneBorderColor(paneId: string, color: string): Promise<void> {
+    const tmuxColor = hexToTmuxColor(color);
+    await tmuxExec(['select-pane', '-t', paneId, '-P', `bg=default,fg=${tmuxColor}`]);
+    await tmuxExec(['set-option', '-p', '-t', paneId, 'pane-border-style', `fg=${tmuxColor}`]);
+    await tmuxExec(['set-option', '-p', '-t', paneId, 'pane-active-border-style', `fg=${tmuxColor}`]);
+  }
+
+  /**
+   * v2.1.33: 设置窗格标题
+   */
+  async setPaneTitle(paneId: string, title: string): Promise<void> {
+    await tmuxExec(['select-pane', '-t', paneId, '-T', title]);
+  }
+
+  /**
    * 为 teammate 创建新的 tmux pane
-   * 返回 pane ID
+   * v2.1.33: 内部使用 createTeammatePaneWithLeader
    */
   async spawnTeammate(
     memberName: string,
@@ -129,23 +321,11 @@ export class TmuxBackend {
     }
 
     try {
-      // 在指定 session 中分割窗格
-      const splitCmd = this.isExternal
-        ? `tmux split-window -t "${this.sessionName}" -h -c "${workingDir}" "${command}"`
-        : `tmux split-window -h -c "${workingDir}" "${command}"`;
-
-      execSync(splitCmd, { stdio: 'pipe' });
-
-      // 获取新创建的 pane ID
-      const paneId = execSync(
-        `tmux display-message -p "#{pane_id}"`,
-        { stdio: 'pipe' },
-      ).toString().trim();
-
+      const { paneId } = await this.createTeammatePaneWithLeader(command, workingDir);
       this.panes.set(memberName, paneId);
 
-      // 重新平衡布局
-      this.rebalancePanes();
+      await this.setPaneTitle(paneId, memberName);
+      await this.rebalancePanesWithLeader();
 
       return paneId;
     } catch (error) {
@@ -154,34 +334,43 @@ export class TmuxBackend {
   }
 
   /**
-   * 重新平衡窗格布局
-   * 对应官方 rebalancePanesVertical
+   * v2.1.33: 重新平衡窗格布局（带 leader）
+   * 对应官方 rebalancePanesWithLeader(A) 方法
+   *
+   * leader 在左侧 30%，teammates 在右侧平均分布
    */
-  rebalancePanes(): void {
-    try {
-      const target = this.isExternal
-        ? `-t "${this.sessionName}"`
-        : '';
+  async rebalancePanesWithLeader(): Promise<void> {
+    const currentWindowTarget = await this.getCurrentWindowTarget();
+    if (!currentWindowTarget) return;
 
-      // 使用 tiled 布局实现均匀分布
-      const layout = this.panes.size <= 2 ? 'main-vertical' : 'tiled';
-      execSync(`tmux select-layout ${target} ${layout}`, { stdio: 'pipe' });
-    } catch {
-      // 布局调整失败不影响功能
+    const result = await tmuxExec(['list-panes', '-t', currentWindowTarget, '-F', '#{pane_id}']);
+    if (result.code !== 0) return;
+
+    const allPanes = result.stdout.split('\n').filter(Boolean);
+    if (allPanes.length <= 2) return;
+
+    await tmuxExec(['select-layout', '-t', currentWindowTarget, 'main-vertical']);
+
+    if (this.leaderPaneId) {
+      await tmuxExec(['resize-pane', '-t', this.leaderPaneId, '-x', '30%']);
     }
   }
 
   /**
-   * 关闭指定 teammate 的 pane
+   * 重新平衡窗格布局（兼容旧接口）
    */
+  rebalancePanes(): void {
+    this.rebalancePanesWithLeader().catch(() => {});
+  }
+
   async killTeammate(memberName: string): Promise<boolean> {
     const paneId = this.panes.get(memberName);
     if (!paneId) return false;
 
     try {
-      execSync(`tmux kill-pane -t "${paneId}"`, { stdio: 'pipe' });
+      await tmuxExec(['kill-pane', '-t', paneId]);
       this.panes.delete(memberName);
-      this.rebalancePanes();
+      await this.rebalancePanesWithLeader();
       return true;
     } catch {
       this.panes.delete(memberName);
@@ -189,49 +378,36 @@ export class TmuxBackend {
     }
   }
 
-  /**
-   * 关闭所有 teammate panes
-   */
   async killAllTeammates(): Promise<void> {
     for (const [name] of this.panes) {
       await this.killTeammate(name);
     }
   }
 
-  /**
-   * 销毁整个 swarm session
-   */
   async destroySession(): Promise<boolean> {
     try {
       await this.killAllTeammates();
-
       if (this.isExternal) {
-        execSync(`tmux kill-session -t "${this.sessionName}"`, { stdio: 'pipe' });
+        await tmuxExec(['kill-session', '-t', this.sessionName]);
       }
-
       return true;
     } catch {
       return false;
     }
   }
 
-  /**
-   * 获取 session 名称
-   */
   getSessionName(): string {
     return this.sessionName;
   }
 
-  /**
-   * 获取所有 pane 映射
-   */
+  getLeaderPaneId(): string | null {
+    return this.leaderPaneId;
+  }
+
   getPanes(): Map<string, string> {
     return new Map(this.panes);
   }
 
-  /**
-   * 列出 session 中的所有 pane
-   */
   listPanes(): Array<{ paneId: string; memberName: string }> {
     const result: Array<{ paneId: string; memberName: string }> = [];
     for (const [memberName, paneId] of this.panes) {
@@ -240,21 +416,10 @@ export class TmuxBackend {
     return result;
   }
 
-  /**
-   * 向指定 pane 发送按键
-   */
   sendKeys(paneId: string, keys: string): void {
-    try {
-      execSync(`tmux send-keys -t "${paneId}" "${keys}" Enter`, { stdio: 'pipe' });
-    } catch {
-      // 忽略发送失败
-    }
+    this.sendCommandToPane(paneId, keys, true).catch(() => {});
   }
 
-  /**
-   * 构建 teammate CLI 启动命令
-   * 生成 claude-code 以 teammate 模式启动的命令行
-   */
   static buildTeammateCommand(options: {
     teamName: string;
     memberName: string;
@@ -265,7 +430,6 @@ export class TmuxBackend {
   }): string {
     const args: string[] = ['npx', 'claude-code'];
 
-    // 设置环境变量
     const env: string[] = [
       `CLAUDE_CODE_TEAM_NAME="${options.teamName}"`,
       `CLAUDE_CODE_AGENT_NAME="${options.memberName}"`,
@@ -292,9 +456,6 @@ export class TmuxBackend {
 
 let activeTmuxBackend: TmuxBackend | null = null;
 
-/**
- * 获取或创建 TmuxBackend 实例
- */
 export function getTmuxBackend(sessionName?: string): TmuxBackend {
   if (!activeTmuxBackend && sessionName) {
     activeTmuxBackend = new TmuxBackend(sessionName);
@@ -305,17 +466,11 @@ export function getTmuxBackend(sessionName?: string): TmuxBackend {
   return activeTmuxBackend;
 }
 
-/**
- * 创建新的 TmuxBackend
- */
 export function createTmuxBackend(sessionName: string): TmuxBackend {
   activeTmuxBackend = new TmuxBackend(sessionName);
   return activeTmuxBackend;
 }
 
-/**
- * 销毁当前 TmuxBackend
- */
 export async function destroyTmuxBackend(): Promise<void> {
   if (activeTmuxBackend) {
     await activeTmuxBackend.destroySession();

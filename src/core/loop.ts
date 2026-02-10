@@ -2518,7 +2518,12 @@ Guidelines:
             yield { type: 'text', content: event.text };
             assistantContent.push({ type: 'text', text: event.text });
           } else if (event.type === 'thinking') {
-            // Extended Thinking content - can be yielded or logged
+            // v2.1.33: Extended Thinking content
+            // 将 thinking block 加入 assistantContent，确保中断时能正确保存
+            // normalizeAssistantContent 会在需要时移除尾部孤立的 thinking block
+            if (event.thinking) {
+              assistantContent.push({ type: 'thinking', thinking: event.thinking });
+            }
             if (this.options.thinking?.showThinking || this.options.verbose) {
               yield { type: 'text', content: `[Thinking: ${event.thinking}]` };
             }

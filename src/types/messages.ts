@@ -306,10 +306,28 @@ export interface ToolResultBlockParam {
 }
 
 /**
+ * v2.1.33: Thinking block from Extended Thinking / Interleaved Thinking API.
+ * Contains the model's reasoning process during extended thinking mode.
+ */
+export interface ThinkingBlock {
+  type: 'thinking';
+  thinking: string;
+}
+
+/**
+ * v2.1.33: Redacted thinking block (content filtered by safety systems).
+ */
+export interface RedactedThinkingBlock {
+  type: 'redacted_thinking';
+  data: string;
+}
+
+/**
  * Union type of all possible content blocks in assistant responses.
  * Includes both client tools (tool_use) and server tools (server_tool_use, web_search_tool_result).
+ * v2.1.33: Added ThinkingBlock and RedactedThinkingBlock for extended thinking support.
  */
-export type ContentBlock = TextBlock | ToolUseBlock | ServerToolUseBlock | WebSearchToolResultBlock;
+export type ContentBlock = TextBlock | ToolUseBlock | ServerToolUseBlock | WebSearchToolResultBlock | ThinkingBlock | RedactedThinkingBlock;
 
 /**
  * Union type of all possible content blocks in user/input messages.
@@ -331,7 +349,7 @@ export interface ToolReferenceBlock {
  * This includes both response blocks and request blocks.
  * Use this for internal message processing and storage.
  */
-export type AnyContentBlock = TextBlock | ToolUseBlock | ServerToolUseBlock | WebSearchToolResultBlock | ImageBlockParam | DocumentBlockParam | ToolResultBlockParam | ToolReferenceBlock;
+export type AnyContentBlock = TextBlock | ToolUseBlock | ServerToolUseBlock | WebSearchToolResultBlock | ThinkingBlock | RedactedThinkingBlock | ImageBlockParam | DocumentBlockParam | ToolResultBlockParam | ToolReferenceBlock;
 
 // ============ Message Types ============
 

@@ -124,12 +124,39 @@ export function registerCoreTools(): void {
   toolRegistry.register(new ListMcpResourcesTool());
   toolRegistry.register(new ReadMcpResourceTool());
 
-  // 11. Agent Teams (条件注册，需 CLAUDE_CODE_ENABLE_AGENT_TEAMS=true)
-  if (isAgentTeamsEnabled()) {
-    toolRegistry.register(new TeamCreateTool());
-    toolRegistry.register(new TeamDeleteTool());
-    toolRegistry.register(new TeamSendMessageTool());
-    toolRegistry.register(new TeammateTool());
+  // 18. Agent Teams v2.1.33 工具 (3个) - TeamCreate/TeamDelete/TeamSendMessage
+  // v2.1.34: 添加 try-catch 保护，防止 agent teams 设置变化时崩溃
+  try {
+    if (isAgentTeamsEnabled()) {
+      toolRegistry.register(new TeamCreateTool());
+      toolRegistry.register(new TeamDeleteTool());
+      toolRegistry.register(new TeamSendMessageTool());
+    }
+  } catch (err) {
+    // v2.1.34: 静默处理 agent teams 注册错误，防止影响整体工具系统
+    if (process.env.CLAUDE_DEBUG) {
+      console.warn('[Tools] Failed to register agent teams tools:', err);
+    }
+  }
+
+  // MCP 工具通过动态注册机制添加
+  // MCPSearchTool 作为 MCP 桥接工具保留
+  toolRegistry.register(new MCPSearchTool());
+
+  // 12. MCP 资源工具 (2个) - v2.1.6 新增
+  toolRegistry.register(new ListMcpResourcesTool());
+  toolRegistry.register(new ReadMcpResourceTool());
+
+  // 19. Agent Teams 工具 (1个) - v2.1.32 TeammateTool
+  // v2.1.34: 添加 try-catch 保护
+  try {
+    if (isAgentTeamsEnabled()) {
+      toolRegistry.register(new TeammateTool());
+    }
+  } catch (err) {
+    if (process.env.CLAUDE_DEBUG) {
+      console.warn('[Tools] Failed to register TeammateTool:', err);
+    }
   }
 
   // 12. 项目扩展工具 (非官方，但 CLI 模式也用)

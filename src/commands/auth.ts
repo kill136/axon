@@ -8,6 +8,7 @@ import { commandRegistry } from './registry.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { forcePrefetchPenguinMode } from '../fast-mode/index.js';
 import {
   startOAuthLogin,
   logout as authLogout,
@@ -537,6 +538,11 @@ Please use the official Claude Code CLI or web interface.`
 }`;
 
         ctx.ui.addMessage('assistant', enableInfo);
+
+        // v2.1.37: 启用 extra-usage 后立即触发 penguin mode 预检查
+        // 修复 /fast 在启用 /extra-usage 后不能立即可用的问题
+        forcePrefetchPenguinMode().catch(() => {});
+
         return { success: true };
       }
 

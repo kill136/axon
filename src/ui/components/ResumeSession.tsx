@@ -68,8 +68,14 @@ function parseSessionFile(filePath: string): SessionData | null {
     const modified = new Date(metadata.updatedAt || metadata.modified || stat.mtime);
 
     const firstUserMsg = messages.find((m: any) => m.role === 'user');
-    const firstPrompt = metadata.firstPrompt || metadata.summary ||
+    let rawFirstPrompt = metadata.firstPrompt || metadata.summary ||
       (typeof firstUserMsg?.content === 'string' ? firstUserMsg.content : null);
+
+    // v2.1.33: 剥离 XML 标记，修复以 slash command 启动的会话显示原始 XML 的问题
+    if (rawFirstPrompt) {
+      rawFirstPrompt = rawFirstPrompt.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+    }
+    const firstPrompt = rawFirstPrompt || null;
 
     const summary = customTitle || firstPrompt?.slice(0, 60) || 'No messages';
 

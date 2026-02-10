@@ -27,6 +27,15 @@ import type { PermissionMode, OutputFormat, InputFormat } from './types/index.js
 import { VERSION_FULL } from './version.js';
 import { resetTerminalTitle } from './utils/platform.js';
 import { disconnectAllMcpServers } from './tools/mcp.js';
+import {
+  isPenguinEnabled,
+  isFastModeAvailable,
+  getUnavailableReason,
+  toggleFastMode,
+  isInFastMode,
+  FAST_MODE_DISPLAY_NAME,
+  forcePrefetchPenguinMode,
+} from './fast-mode/index.js';
 
 // 工作目录列表
 const additionalDirectories: string[] = [];
@@ -287,6 +296,18 @@ program
     // Solo 模式 - 禁用后台进程和并行执行
     if (options.solo) {
       process.env.CLAUDE_SOLO_MODE = 'true';
+    }
+
+    // v2.1.33: 将 settings.json 中配置的环境变量应用到 process.env
+    // 修复: 通过 settings.json environment 配置的代理设置不会应用到 WebFetch 和其他 HTTP 请求
+    // 官方实现: 在启动早期阶段将 settings.json 的 env 字段注入 process.env
+    const settingsConfig = configManager.getAll();
+    if (settingsConfig.env && typeof settingsConfig.env === 'object') {
+      for (const [key, value] of Object.entries(settingsConfig.env)) {
+        if (value !== undefined && value !== null && !process.env[key]) {
+          process.env[key] = String(value);
+        }
+      }
     }
 
     // v2.1.32: 将 --add-dir 传递给 Skill 模块以自动加载额外目录的 skills
@@ -2638,6 +2659,7 @@ async function handleSlashCommand(input: string, loop: ConversationLoop): Promis
       console.log();
       console.log(chalk.cyan('Configuration:'));
       console.log('  /model        - Show or change current model');
+      console.log('  /fast         - Toggle fast mode (' + FAST_MODE_DISPLAY_NAME + ' only)');
       console.log('  /config       - Show current configuration');
       console.log('  /permissions  - Show permission settings');
       console.log('  /tools        - List available tools');
@@ -2727,6 +2749,46 @@ async function handleSlashCommand(input: string, loop: ConversationLoop): Promis
         await showChromeSettings();
       })();
       break;
+
+    case 'fast': {
+      // v2.1.36: /fast 命令 - 切换 fast mode
+      if (!isPenguinEnabled()) {
+        console.log(chalk.red('\nFast mode is not available.\n'));
+        break;
+      }
+
+      const unavailableReason = getUnavailableReason();
+      if (unavailableReason) {
+        console.log(chalk.red(`\n${unavailableReason}\n`));
+        break;
+      }
+
+      const fastArg = args[0]?.toLowerCase();
+      // 维护一个简单的 fast mode 状态
+      const currentFastMode = (loop as any)._fastMode ?? false;
+
+      if (fastArg === 'on' || fastArg === 'off') {
+        const enable = fastArg === 'on';
+        const msg = toggleFastMode(
+          enable,
+          () => (loop as any)._currentModel ?? null,
+          (model: string) => { (loop as any)._currentModel = model; },
+          (enabled: boolean) => { (loop as any)._fastMode = enabled; },
+        );
+        console.log(chalk.green(`\n${msg}\n`));
+      } else {
+        // 切换模式
+        const enable = !currentFastMode;
+        const msg = toggleFastMode(
+          enable,
+          () => (loop as any)._currentModel ?? null,
+          (model: string) => { (loop as any)._currentModel = model; },
+          (enabled: boolean) => { (loop as any)._fastMode = enabled; },
+        );
+        console.log(chalk.green(`\n${msg}\n`));
+      }
+      break;
+    }
 
     case 'exit':
     case 'quit':

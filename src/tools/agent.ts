@@ -509,7 +509,7 @@ Since the user is greeting, use the greeting-responder agent to respond with a f
 assistant: "I'm going to use the Task tool to launch the greeting-responder agent"
 </example>
 
-Note: The "Agent Teams" feature (TeammateTool, SendMessage, spawnTeam) is not available on this plan. Only mention this if the user explicitly asks for "agent teams" by name, or asks for agents to send messages to each other (peer-to-peer messaging). Do NOT mention this limitation when users ask for parallel subagents, coordinating agents, launching a "team" of agents, or having agents work together — those are all normal Task tool usage and you should proceed normally.`;
+${!isAgentTeamsEnabled() ? `\nNote: The "Agent Teams" feature (TeammateTool, SendMessage, spawnTeam) is not available on this plan. Only mention this if the user explicitly asks for "agent teams" by name, or asks for agents to send messages to each other (peer-to-peer messaging). Do NOT mention this limitation when users ask for parallel subagents, coordinating agents, launching a "team" of agents, or having agents work together — those are all normal Task tool usage and you should proceed normally.` : ''}`;
 
   // 父对话上下文（用于 forkContext）
   private parentMessages: Message[] = [];

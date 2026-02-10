@@ -12,7 +12,13 @@ import * as path from 'path';
 import * as os from 'os';
 import { v4 as uuidv4 } from 'uuid';
 import { BaseTool } from './base.js';
-import { executeInSandbox, isBubblewrapAvailable } from './sandbox.js';
+import {
+  executeInSandbox,
+  isBubblewrapAvailable,
+  isSandboxingEnabled,
+  isAutoAllowBashIfSandboxedEnabled,
+  willCommandRunInSandbox,
+} from './sandbox.js';
 import { runPreToolUseHooks, runPostToolUseHooks } from '../hooks/index.js';
 import { processGitCommitCommand } from '../utils/git-helper.js';
 import { configManager } from '../config/index.js';
@@ -730,6 +736,47 @@ Important:
         },
       },
       required: ['command'],
+    };
+  }
+
+  /**
+   * v2.1.34: Bash 工具权限检查 - 实现 autoAllowBashIfSandboxed 逻辑
+   *
+   * 对齐官方 EuA / E5z 函数：
+   * - 当沙箱启用 + autoAllowBashIfSandboxed=true + 命令确实在沙箱中运行时 → 自动允许
+   * - 当命令被 excludedCommands 排除或使用 dangerouslyDisableSandbox 时 → 需要正常权限检查（ask）
+   *
+   * 关键修复: 之前 excludedCommands 和 dangerouslyDisableSandbox 的命令
+   * 在 autoAllowBashIfSandboxed 启用时也被自动允许了（绕过了 ask 权限），这是安全漏洞
+   */
+  async checkPermissions(input: BashInput): Promise<import('./base.js').PermissionCheckResult<BashInput>> {
+    const command = input.command;
+    const disableSandbox = input.dangerouslyDisableSandbox ?? false;
+
+    // 检查是否满足 autoAllowBashIfSandboxed 条件
+    if (isSandboxingEnabled() && isAutoAllowBashIfSandboxedEnabled()) {
+      // 关键: 只有命令确实会在沙箱中运行时，才自动允许
+      if (willCommandRunInSandbox(command, disableSandbox)) {
+        // 命令会在沙箱中运行 → 自动允许（默认安全）
+        return {
+          behavior: 'allow',
+          updatedInput: input,
+        };
+      } else {
+        // v2.1.34 修复: 命令不会在沙箱中运行（被 excludedCommands 排除或 dangerouslyDisableSandbox）
+        // 此时不能享受 autoAllow，必须走正常的 ask 流程
+        return {
+          behavior: 'ask',
+          message: `Command "${command.substring(0, 80)}${command.length > 80 ? '...' : ''}" will run outside the sandbox. Allow?`,
+          updatedInput: input,
+        };
+      }
+    }
+
+    // 未启用 autoAllowBashIfSandboxed 或沙箱未启用 → 默认行为（allow，由 loop 层决定是否 ask）
+    return {
+      behavior: 'allow',
+      updatedInput: input,
     };
   }
 
