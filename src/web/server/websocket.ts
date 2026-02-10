@@ -1689,6 +1689,10 @@ export function setupWebSocket(
 function sendMessage(ws: WebSocket, message: ServerMessage): void {
   if (ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(message));
+  } else {
+    // 记录丢弃的消息类型，便于排查消息丢失问题
+    const sessionId = (message.payload as any)?.sessionId || '';
+    console.warn(`[WebSocket] 消息被丢弃 (ws.readyState=${ws.readyState}): type=${message.type}, session=${sessionId}`);
   }
 }
 
@@ -2751,10 +2755,30 @@ async function handleSessionSwitch(
         payload: { messages: history },
       });
 
+      // 同步权限配置到客户端（刷新后客户端 permissionMode 会重置为 'default'，需要从服务端恢复）
+      const permConfig = conversationManager.getPermissionConfig(sessionId);
+      if (permConfig) {
+        sendMessage(ws, {
+          type: 'permission_config_update',
+          payload: {
+            mode: permConfig.mode,
+            bypassTools: permConfig.bypassTools,
+            alwaysAllow: permConfig.alwaysAllow,
+            alwaysDeny: permConfig.alwaysDeny,
+          },
+        } as any);
+      }
+
       // 如果会话正在处理中（如页面刷新），通知客户端当前状态
-      // 客户端会显示加载指示器，处理完成后会收到 history 重发
+      // 关键修复：补发 message_start，让客户端建立 currentMessageRef
+      // 否则后续的流式事件 (text_delta, tool_use_start 等) 因为 currentMessageRef 为 null 而被丢弃
       const isProcessing = conversationManager.isSessionProcessing(sessionId);
       if (isProcessing) {
+        // 补发 message_start，客户端收到后会创建 currentMessageRef
+        sendMessage(ws, {
+          type: 'message_start',
+          payload: { messageId: `resume-${Date.now()}`, sessionId },
+        });
         sendMessage(ws, {
           type: 'status',
           payload: { status: 'streaming', message: '对话处理中...', sessionId },

@@ -21,6 +21,14 @@ export class NotebookWriteTool extends BaseTool<NotebookWriteInput, ToolResult> 
   name = 'NotebookWrite';
   description = `Manage your personal notebooks to persist memories and work experience across conversations.
 
+## MANDATORY AUTO-TRIGGER RULES
+You MUST call this tool IMMEDIATELY (in the same response, before any text reply) when:
+1. User shares personal info (name, role, preferences, contact) → write to experience
+2. User explicitly asks you to remember something → write to experience or project
+3. You discover a project gotcha not covered in CLAUDE.md → write to project
+
+Saying "I'll remember" without calling this tool is a LIE — conversation memory is ephemeral. Only notebook writes persist.
+
 ## Two Notebooks
 - **experience**: Cross-project knowledge — user info, work patterns, lessons learned. (~4K tokens max)
 - **project**: Things YOU discovered about this project that are NOT in CLAUDE.md — gotchas, hidden dependencies, operational tips. (~8K tokens max)
@@ -31,11 +39,6 @@ Only write things you discovered during work that CLAUDE.md does not cover:
 - "改 types.ts 后要同步改 attachments.ts"
 - "session.sessionId 是 getter 不是方法，别用 getId()"
 - "compress() 有逻辑 bug，CORE 分支不可达"
-
-## When to Write
-- User shares personal info (name, role, preferences) → experience
-- You discover something about the project not in CLAUDE.md → project
-- User explicitly asks you to remember something → experience or project
 
 ## Guidelines
 - Write in markdown, keep it concise

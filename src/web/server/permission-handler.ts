@@ -681,12 +681,32 @@ export class PermissionHandler {
 
   /**
    * 更新配置
+   * 当切换到 bypassPermissions 模式时，自动批准所有待处理的权限请求
    */
   updateConfig(config: Partial<PermissionConfig>): void {
     this.config = {
       ...this.config,
       ...config,
     };
+
+    // 切换到 bypassPermissions 模式时，自动批准所有待处理的权限请求
+    // 避免对话循环阻塞在等待用户响应的 Promise 上
+    if (config.mode === 'bypassPermissions') {
+      this.approveAllPending();
+    }
+  }
+
+  /**
+   * 自动批准所有待处理的权限请求
+   */
+  private approveAllPending(): void {
+    if (this.pendingRequests.size === 0) return;
+    console.log(`[PermissionHandler] bypassPermissions 模式激活，自动批准 ${this.pendingRequests.size} 个待处理请求`);
+    this.pendingRequests.forEach((pending, requestId) => {
+      clearTimeout(pending.timeout);
+      pending.resolve(true);
+      this.pendingRequests.delete(requestId);
+    });
   }
 
   /**

@@ -1,7 +1,7 @@
 // 消息类型
 export interface ChatMessage {
   id: string;
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'system';
   timestamp: number;
   content: ChatContent[];
   model?: string;
@@ -13,6 +13,12 @@ export interface ChatMessage {
     name: string;
     type: string;
   }>;
+  /** 对齐官方 compact_boundary：标记此消息为压缩边界（UI 渲染分隔线） */
+  isCompactBoundary?: boolean;
+  /** 对齐官方 isCompactSummary：标记此消息为压缩摘要内容 */
+  isCompactSummary?: boolean;
+  /** 对齐官方 isVisibleInTranscriptOnly：仅在 transcript 模式下可见 */
+  isVisibleInTranscriptOnly?: boolean;
 }
 
 export type ChatContent =

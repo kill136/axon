@@ -6,7 +6,7 @@
 import { ClaudeClient } from '../../core/client.js';
 import { Session } from '../../core/session.js';
 import { runWithCwd } from '../../core/cwd-context.js';
-import { shouldAutoCompact, calculateAutoCompactThreshold, getContextWindowSize, generateSummaryPrompt, formatCompactSummaryContent } from '../../core/loop.js';
+import { shouldAutoCompact, calculateAutoCompactThreshold, getContextWindowSize, generateSummaryPrompt, formatCompactSummaryContent, validateToolResults } from '../../core/loop.js';
 import { toolRegistry, registerBlueprintTools } from '../../tools/index.js';
 import { systemPromptBuilder, type PromptContext } from '../../prompt/index.js';
 import { modelConfig } from '../../models/index.js';
@@ -20,6 +20,7 @@ import { runPreToolUseHooks, runPostToolUseHooks, runPostToolUseFailureHooks, ge
 import type { WebSocket } from 'ws';
 import { WebSessionManager, type WebSessionData } from './session-manager.js';
 import type { SessionMetadata, SessionListOptions } from '../../session/index.js';
+import { walAppend, walCheckpoint } from '../../session/index.js';
 import { TaskManager } from './task-manager.js';
 import { McpConfigManager } from '../../mcp/config.js';
 import type { ExtendedMcpServerConfig } from '../../mcp/config.js';
@@ -38,6 +39,7 @@ import {
   getSummaryPath,
   isSessionMemoryEnabled,
 } from '../../context/session-memory.js';
+import { initNotebookManager, getNotebookManager } from '../../memory/notebook.js';
 
 // ============================================================================
 // 网络错误重试相关常量
@@ -271,6 +273,8 @@ interface SessionState {
   lastCompactedUuid?: string;
   /** 标记：处理中 WebSocket 被刷新替换，完成后需要重发 history */
   needsHistoryResend?: boolean;
+  /** 用于取消正在执行的工具（如 Bash 命令）的 AbortController */
+  currentAbortController?: AbortController;
 }
 
 /**
@@ -499,6 +503,14 @@ export class ConversationManager {
       }
     }
 
+    // 初始化 Agent 笔记本系统（与 CLI loop.ts 保持一致）
+    try {
+      initNotebookManager(workingDir);
+      console.log(`[ConversationManager] 初始化 NotebookManager: ${workingDir}`);
+    } catch (error) {
+      console.warn('[ConversationManager] 初始化 NotebookManager 失败:', error);
+    }
+
     return state;
   }
 
@@ -550,6 +562,8 @@ export class ConversationManager {
     const state = this.sessions.get(sessionId);
     if (state) {
       state.cancelled = true;
+      // 中断正在执行的工具（如 Bash 命令），让 conversationLoop 的 Promise.race 立即返回
+      state.currentAbortController?.abort();
       // 取消所有待处理的用户问题
       state.userInteractionHandler?.cancelAll();
       // 取消所有待处理的权限请求
@@ -559,21 +573,21 @@ export class ConversationManager {
 
   /**
    * 设置会话的 WebSocket 连接
-   * 当会话正在处理中且旧 WebSocket 仍然存活时（另一个标签页切换场景），不覆盖 ws 引用防止串扰
-   * 但如果旧 WebSocket 已关闭（如页面刷新场景），允许更新以确保流式消息能发送到新连接
+   * 始终允许更新：页面刷新时旧 WebSocket 的 close 事件可能延迟到达，
+   * 导致 readyState 仍为 OPEN，不能因此拒绝更新，否则新客户端收不到任何消息。
+   * 多标签页场景下，最后连接的客户端获得会话输出（与主流 Web 应用行为一致）。
    */
   setWebSocket(sessionId: string, ws: WebSocket): void {
     const state = this.sessions.get(sessionId);
     if (state) {
-      if (state.isProcessing && state.ws && state.ws.readyState === 1 /* OPEN */) {
-        console.warn(`[ConversationManager] 会话 ${sessionId} 正在处理中且旧连接仍存活，不更新 WebSocket 引用（防止会话串扰）`);
-        return;
+      if (state.isProcessing && state.ws && state.ws !== ws && state.ws.readyState === 1 /* OPEN */) {
+        console.warn(`[ConversationManager] 会话 ${sessionId} 正在处理中，WebSocket 被新连接替换（可能是页面刷新或多标签页）`);
       }
-      // 如果会话正在处理中，说明是页面刷新导致的 ws 替换
-      // 标记需要在处理完成后重发 history，因为刷新后客户端没有 currentMessageRef
+      // 如果会话正在处理中，标记需要在处理完成后重发 history
+      // 因为刷新后客户端没有 currentMessageRef
       if (state.isProcessing) {
         state.needsHistoryResend = true;
-        console.log(`[ConversationManager] 会话 ${sessionId} 处理中 ws 被替换（页面刷新），标记完成后重发 history`);
+        console.log(`[ConversationManager] 会话 ${sessionId} 处理中 ws 被替换，标记完成后重发 history`);
       }
       state.ws = ws;
       state.userInteractionHandler.setWebSocket(ws);
@@ -680,10 +694,23 @@ export class ConversationManager {
   ): Promise<void> {
     const state = await this.getOrCreateSession(sessionId, model, projectPath, permissionMode);
 
-    // 防止同一会话并发处理：如果会话正在处理中，拒绝新的聊天请求
+    // 插话模式：如果会话正在处理中，取消当前操作并等待其完成
     if (state.isProcessing) {
-      callbacks.onError?.(new Error('会话正在处理中，请等待当前对话完成'));
-      return;
+      state.cancelled = true;
+      state.currentAbortController?.abort();
+      state.userInteractionHandler?.cancelAll();
+      state.permissionHandler?.cancelAll();
+
+      // 等待当前处理完成（带超时）
+      const waitStart = Date.now();
+      while (state.isProcessing && Date.now() - waitStart < 10000) {
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+
+      if (state.isProcessing) {
+        callbacks.onError?.(new Error('取消当前操作超时，请重试'));
+        return;
+      }
     }
 
     state.cancelled = false;
@@ -722,13 +749,34 @@ export class ConversationManager {
 
       state.messages.push(userMessage);
 
-      // 添加到聊天历史
-      state.chatHistory.push({
+      // 添加到聊天历史（包含图片附件以便刷新后回显）
+      const chatContentItems: ChatContent[] = [];
+      if (mediaAttachments && mediaAttachments.length > 0) {
+        for (const attachment of mediaAttachments) {
+          chatContentItems.push({
+            type: 'image' as const,
+            source: {
+              type: 'base64',
+              media_type: attachment.mimeType,
+              data: attachment.data,
+            },
+          });
+        }
+      }
+      chatContentItems.push({ type: 'text' as const, text: content });
+      const chatEntry: ChatMessage = {
         id: `user-${Date.now()}`,
-        role: 'user',
+        role: 'user' as const,
         timestamp: Date.now(),
-        content: [{ type: 'text', text: content }],
-      });
+        content: chatContentItems,
+      };
+      state.chatHistory.push(chatEntry);
+
+      // WAL：立即追加用户消息（同步 appendFileSync，微秒级）
+      if (sessionId) {
+        walAppend(sessionId, 'msg', userMessage);
+        walAppend(sessionId, 'chat', chatEntry);
+      }
 
       // 使用工作目录上下文包裹对话循环（与 CLI loop.ts 保持一致）
       // 确保所有工具执行都在正确的工作目录上下文中
@@ -757,6 +805,9 @@ export class ConversationManager {
     let networkRetryCount = 0;
     /** 是否刚执行过因 "prompt too long" 而触发的强制压缩（防止无限循环） */
     let justForceCompacted = false;
+
+    // 创建 AbortController，用于在取消时中断正在执行的工具
+    state.currentAbortController = new AbortController();
 
     while (continueLoop && !state.cancelled) {
       // 标记本次迭代是否已有内容流式输出到前端
@@ -801,9 +852,36 @@ export class ConversationManager {
             if (compactResult.boundaryUuid) {
               state.lastCompactedUuid = compactResult.boundaryUuid;
             }
+            // 对齐官方 compact_boundary：在 chatHistory 追加分隔标记（只增不减）
+            // 官方 CLI 的 mutableMessages 永远不会删除，压缩时追加 boundary + summary
+            const compactBoundaryEntry: import('../shared/types.js').ChatMessage = {
+              id: `compact-boundary-${Date.now()}`,
+              role: 'system',
+              timestamp: Date.now(),
+              content: [{ type: 'text' as const, text: `对话已压缩，节省约 ${(compactResult.savedTokens || 0).toLocaleString()} tokens` }],
+              isCompactBoundary: true,
+            };
+            state.chatHistory.push(compactBoundaryEntry);
+            // 对齐官方：追加 summary 消息（isCompactSummary + isVisibleInTranscriptOnly）
+            // 官方 CLI 中 summary 消息在 prompt 模式下隐藏，transcript 模式下才显示
+            if (compactResult.summaryText) {
+              const summaryEntry: import('../shared/types.js').ChatMessage = {
+                id: `compact-summary-${Date.now()}`,
+                role: 'user',
+                timestamp: Date.now(),
+                content: [{ type: 'text' as const, text: compactResult.summaryText }],
+                isCompactSummary: true,
+                isVisibleInTranscriptOnly: true,
+              };
+              state.chatHistory.push(summaryEntry);
+            }
             console.log(`[AutoCompact] 上下文已压缩`);
-            // 通知前端：压缩完成
-            callbacks.onContextCompact?.('end', { threshold, savedTokens: compactResult.savedTokens || 0 });
+            // 通知前端：压缩完成（包含 summaryText 以便前端追加 summary 消息）
+            callbacks.onContextCompact?.('end', {
+              threshold,
+              savedTokens: compactResult.savedTokens || 0,
+              summaryText: compactResult.summaryText,
+            });
           }
         } catch (err) {
           console.warn('[AutoCompact] 压缩失败，使用原消息继续:', err);
@@ -813,6 +891,7 @@ export class ConversationManager {
 
       try {
         // 调用 Claude API（使用 createMessageStream，默认开启 Extended Thinking）
+        // 传递 abort signal，取消时可直接中止 HTTP 流（对齐官方 CLI）
         const stream = state.client.createMessageStream(
           cleanedMessages,
           tools,
@@ -820,6 +899,7 @@ export class ConversationManager {
           {
             enableThinking: true,
             thinkingBudget: 10000,
+            signal: state.currentAbortController?.signal,
           }
         );
 
@@ -947,11 +1027,13 @@ export class ConversationManager {
         }
 
         // 保存助手响应
-        if (assistantContent.length > 0) {
-          state.messages.push({
-            role: 'assistant',
-            content: assistantContent,
-          });
+        const assistantMsg: Message | null = assistantContent.length > 0
+          ? { role: 'assistant', content: assistantContent }
+          : null;
+        if (assistantMsg) {
+          state.messages.push(assistantMsg);
+          // WAL：追加助手消息
+          if (sessionId) walAppend(sessionId, 'msg', assistantMsg);
         }
 
         // 处理工具调用
@@ -968,7 +1050,11 @@ export class ConversationManager {
           for (const toolUse of toolUseBlocks) {
             if (state.cancelled) break;
 
-            const result = await this.executeTool(toolUse, state, callbacks);
+            // 用 Promise.race 包裹，使 cancel 时 AbortController.abort() 能立即打断阻塞的工具执行
+            const result = await this.executeToolWithCancellation(toolUse, state, callbacks);
+
+            // 取消后不再处理后续结果
+            if (state.cancelled) break;
 
             // 使用格式化函数处理工具结果（与 CLI 完全一致）
             const formattedContent = formatToolResult(toolUse.name, result);
@@ -987,14 +1073,19 @@ export class ConversationManager {
 
           // 添加工具结果到消息
           if (toolResults.length > 0) {
-            state.messages.push({
+            const toolResultMsg: Message = {
               role: 'user',
               content: toolResults,
-            });
+            };
+            state.messages.push(toolResultMsg);
+            // WAL：追加工具结果消息
+            if (sessionId) walAppend(sessionId, 'msg', toolResultMsg);
 
             // 添加 newMessages（对齐官网实现：skill 内容作为独立的 user 消息）
             for (const newMsg of allNewMessages) {
               state.messages.push(newMsg);
+              // WAL：追加 newMessages
+              if (sessionId) walAppend(sessionId, 'msg', newMsg);
             }
           }
 
@@ -1021,9 +1112,9 @@ export class ConversationManager {
             return { type: 'text', text: '' };
           });
 
-          state.chatHistory.push({
+          const assistantChatEntry = {
             id: `assistant-${Date.now()}`,
-            role: 'assistant',
+            role: 'assistant' as const,
             timestamp: Date.now(),
             content: chatContent,
             model: state.model,
@@ -1031,7 +1122,13 @@ export class ConversationManager {
               inputTokens: totalInputTokens,
               outputTokens: totalOutputTokens,
             },
-          });
+          };
+          state.chatHistory.push(assistantChatEntry);
+
+          // WAL：追加聊天历史条目
+          if (sessionId) {
+            walAppend(sessionId, 'chat', assistantChatEntry);
+          }
 
           callbacks.onComplete?.(stopReason, {
             inputTokens: totalInputTokens,
@@ -1041,6 +1138,18 @@ export class ConversationManager {
 
       } catch (error) {
         const errMsg = error instanceof Error ? error.message : String(error);
+
+        // 对齐官方 CLI：中断/取消导致的错误（AbortError）不重试、不报错，直接退出循环
+        if (
+          state.cancelled ||
+          (error instanceof Error && error.name === 'AbortError') ||
+          errMsg.includes('aborted') ||
+          errMsg.includes('Request aborted by user')
+        ) {
+          console.log('[ConversationManager] 请求已被用户取消');
+          continueLoop = false;
+          continue;
+        }
 
         // 检查是否为 "prompt is too long" 错误 —— 触发强制压缩并重试
         if (
@@ -1060,8 +1169,31 @@ export class ConversationManager {
               if (compactResult.boundaryUuid) {
                 state.lastCompactedUuid = compactResult.boundaryUuid;
               }
+              // 对齐官方 compact_boundary：在 chatHistory 追加分隔标记 + summary
+              const forceBoundaryEntry: import('../shared/types.js').ChatMessage = {
+                id: `compact-boundary-${Date.now()}`,
+                role: 'system',
+                timestamp: Date.now(),
+                content: [{ type: 'text' as const, text: `对话已压缩，节省约 ${(compactResult.savedTokens || 0).toLocaleString()} tokens` }],
+                isCompactBoundary: true,
+              };
+              state.chatHistory.push(forceBoundaryEntry);
+              if (compactResult.summaryText) {
+                const summaryEntry: import('../shared/types.js').ChatMessage = {
+                  id: `compact-summary-${Date.now()}`,
+                  role: 'user',
+                  timestamp: Date.now(),
+                  content: [{ type: 'text' as const, text: compactResult.summaryText }],
+                  isCompactSummary: true,
+                  isVisibleInTranscriptOnly: true,
+                };
+                state.chatHistory.push(summaryEntry);
+              }
               console.log(`[AutoCompact] 强制压缩成功，重试 API 调用`);
-              callbacks.onContextCompact?.('end', { savedTokens: compactResult.savedTokens || 0 });
+              callbacks.onContextCompact?.('end', {
+                savedTokens: compactResult.savedTokens || 0,
+                summaryText: compactResult.summaryText,
+              });
               continue; // 重新进入循环
             }
           } catch (compactErr) {
@@ -1097,6 +1229,13 @@ export class ConversationManager {
       }
     }
 
+    // 对齐官方 CLI：修复孤立的 tool_use 块
+    // 取消/中断时 assistant 消息可能已包含 tool_use 块，但缺少对应的 tool_result
+    // 这会导致下次 API 调用报错，需要补充 error tool_result
+    if (state.cancelled) {
+      state.messages = validateToolResults(state.messages);
+    }
+
     // 更新使用统计（与 CLI 完全一致）
     if (totalInputTokens > 0 || totalOutputTokens > 0) {
       const resolvedModel = modelConfig.resolveAlias(state.model);
@@ -1129,9 +1268,24 @@ export class ConversationManager {
     // 自动保存会话（与 CLI 完全一致）
     this.autoSaveSession(state);
 
-    // 持久化 chatHistory 到磁盘（autoSaveSession 只保存 CLI Session，不含 chatHistory）
+    // WAL checkpoint：全量保存主 JSON 并清空 WAL
+    // 此时所有消息已在 WAL 中有增量记录，checkpoint 做一次完整落盘后删除 WAL 文件
     if (sessionId) {
-      await this.persistSession(sessionId);
+      const sessionData = this.sessionManager.loadSessionById(sessionId);
+      if (sessionData) {
+        // 同步最新状态到 sessionData
+        sessionData.messages = state.messages;
+        sessionData.chatHistory = state.chatHistory;
+        sessionData.currentModel = state.model;
+        (sessionData as any).toolFilterConfig = state.toolFilterConfig;
+        (sessionData as any).systemPromptConfig = state.systemPromptConfig;
+        sessionData.metadata.messageCount = state.messages.length;
+        sessionData.metadata.updatedAt = Date.now();
+        walCheckpoint(sessionData);
+      } else {
+        // fallback：sessionData 不存在时走老路径
+        await this.persistSession(sessionId);
+      }
     }
 
     // 记录对话到记忆系统（WebUI 独有功能）
@@ -1376,8 +1530,18 @@ export class ConversationManager {
   /**
    * 同步 chatHistory 与 messages
    * 修复中断时 chatHistory 未更新导致恢复会话无法显示历史的问题
+   *
+   * 关键保护：如果 chatHistory 中已有 compact_boundary 标记，说明经历过压缩，
+   * 此时 messages 只包含压缩后的摘要消息，不能用 messages 重建 chatHistory，
+   * 否则会丢失压缩前的完整对话历史。
    */
   private syncChatHistoryFromMessages(state: SessionState): void {
+    // 保护：chatHistory 含有 compact_boundary → 已经历压缩，messages 不完整，不能重建
+    const hasCompactBoundary = state.chatHistory.some(m => m.isCompactBoundary);
+    if (hasCompactBoundary) {
+      return;
+    }
+
     // 统计 messages 中的 assistant 消息数量
     const assistantMsgCount = state.messages.filter(m => m.role === 'assistant').length;
     // 统计 chatHistory 中的 assistant 消息数量
@@ -1404,8 +1568,44 @@ export class ConversationManager {
   }
 
   /**
-   * 执行工具
+   * 可取消的工具执行包装器
+   * 使用 Promise.race 让 AbortController.abort() 能立即打断阻塞的工具执行（如 Bash 命令）
+   * 避免取消后会话卡在 isProcessing=true 状态导致后续消息无法处理
    */
+  private async executeToolWithCancellation(
+    toolUse: ToolUseBlock,
+    state: SessionState,
+    callbacks: StreamCallbacks
+  ): Promise<{ success: boolean; output?: string; error?: string; data?: ToolResultData; newMessages?: Array<{ role: 'user'; content: any[] }> }> {
+    const signal = state.currentAbortController?.signal;
+
+    // 已经被取消
+    if (signal?.aborted) {
+      return { success: false, error: 'Operation cancelled by user' };
+    }
+
+    // 如果没有 AbortController（不应该发生），直接执行
+    if (!signal) {
+      return this.executeTool(toolUse, state, callbacks);
+    }
+
+    // Promise.race: 工具执行 vs 取消信号
+    const abortPromise = new Promise<{ success: boolean; error: string }>((resolve) => {
+      if (signal.aborted) {
+        resolve({ success: false, error: 'Operation cancelled by user' });
+        return;
+      }
+      signal.addEventListener('abort', () => {
+        resolve({ success: false, error: 'Operation cancelled by user' });
+      }, { once: true });
+    });
+
+    return Promise.race([
+      this.executeTool(toolUse, state, callbacks),
+      abortPromise,
+    ]);
+  }
+
   private async executeTool(
     toolUse: ToolUseBlock,
     state: SessionState,
@@ -1822,7 +2022,7 @@ export class ConversationManager {
     messages: Message[],
     model: string,
     state: SessionState
-  ): Promise<{ wasCompacted: boolean; messages: Message[]; savedTokens?: number; boundaryUuid?: string }> {
+  ): Promise<{ wasCompacted: boolean; messages: Message[]; savedTokens?: number; boundaryUuid?: string; summaryText?: string }> {
     const threshold = calculateAutoCompactThreshold(model);
 
     // 1. 尝试 Session Memory 压缩 (TJ1)
@@ -1852,7 +2052,7 @@ export class ConversationManager {
 
             const savedTokens = Math.max(0, (state.lastActualInputTokens || threshold) - summaryTokens);
             console.log(`[AutoCompact/TJ1] Session Memory 压缩成功，节省约 ${savedTokens.toLocaleString()} tokens`);
-            return { wasCompacted: true, messages: [boundaryMarker, summaryMessage], savedTokens, boundaryUuid };
+            return { wasCompacted: true, messages: [boundaryMarker, summaryMessage], savedTokens, boundaryUuid, summaryText: formattedContent };
           }
         }
       } catch (err) {
@@ -1906,7 +2106,7 @@ export class ConversationManager {
         const summaryTokens = Math.ceil(formattedContent.length / 4);
         const savedTokens = Math.max(0, (state.lastActualInputTokens || threshold) - summaryTokens);
         console.log(`[AutoCompact/NJ1] 对话摘要压缩成功，节省约 ${savedTokens.toLocaleString()} tokens`);
-        return { wasCompacted: true, messages: [boundaryMarker, summaryMessage], savedTokens, boundaryUuid };
+        return { wasCompacted: true, messages: [boundaryMarker, summaryMessage], savedTokens, boundaryUuid, summaryText: formattedContent };
       }
     } catch (err) {
       console.warn('[AutoCompact/NJ1] 对话摘要压缩失败:', err);
@@ -2128,6 +2328,17 @@ export class ConversationManager {
       // 检查是否为 Git 仓库
       const isGitRepo = this.checkIsGitRepo(state.session.cwd);
 
+      // Agent 笔记本：每轮刷新笔记本内容（与 CLI loop.ts 保持一致）
+      let notebookSummary: string | undefined;
+      try {
+        const nbMgr = getNotebookManager();
+        if (nbMgr) {
+          notebookSummary = nbMgr.getNotebookSummaryForPrompt() || undefined;
+        }
+      } catch {
+        // 笔记本加载失败不影响主流程
+      }
+
       // 构建提示上下文（与 CLI loop.ts 保持一致）
       const promptContext = {
         workingDir: state.session.cwd,
@@ -2142,6 +2353,8 @@ export class ConversationManager {
         debug: false,
         // v2.1.0+: 语言配置 - 与 CLI 保持一致
         language: configManager.get('language'),
+        // Agent 笔记本内容
+        notebookSummary,
       };
 
       // 使用官方的 SystemPromptBuilder
@@ -2455,6 +2668,28 @@ Guidelines:
   }
 
   /**
+   * 持久化所有活跃会话（graceful shutdown 时调用）
+   */
+  async persistAllSessions(): Promise<void> {
+    const ids = Array.from(this.sessions.keys());
+    if (ids.length === 0) return;
+    console.log(`[ConversationManager] 正在持久化 ${ids.length} 个活跃会话...`);
+    for (const id of ids) {
+      try {
+        const state = this.sessions.get(id);
+        if (state) {
+          this.syncChatHistoryFromMessages(state);
+          this.autoSaveSession(state);
+        }
+        await this.persistSession(id);
+      } catch (err) {
+        console.error(`[ConversationManager] 持久化会话 ${id} 失败:`, err);
+      }
+    }
+    console.log(`[ConversationManager] 所有会话已持久化`);
+  }
+
+  /**
    * 恢复会话
    * @param permissionMode 可选，从客户端继承的权限模式
    */
@@ -2544,6 +2779,14 @@ Guidelines:
         for (const block of msg.content) {
           if (block.type === 'text') {
             chatMsg.content.push({ type: 'text', text: (block as TextBlock).text });
+          } else if (block.type === 'image') {
+            // 保留图片内容以便刷新后回显
+            const imgBlock = block as any;
+            chatMsg.content.push({
+              type: 'image',
+              source: imgBlock.source,
+              fileName: imgBlock.fileName,
+            });
           } else if (block.type === 'tool_use') {
             const toolBlock = block as ToolUseBlock;
             chatMsg.content.push({

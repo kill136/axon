@@ -3,6 +3,7 @@ import type { WSMessage } from '../types';
 
 export interface UseWebSocketReturn {
   connected: boolean;
+  sessionReady: boolean;
   sessionId: string | null;
   model: string;
   setModel: (model: string) => void;
@@ -17,6 +18,7 @@ const SESSION_ID_STORAGE_KEY = 'claude-code-current-session-id';
 
 export function useWebSocket(url: string): UseWebSocketReturn {
   const [connected, setConnected] = useState(false);
+  const [sessionReady, setSessionReady] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [model, setModel] = useState('opus');
   const wsRef = useRef<WebSocket | null>(null);

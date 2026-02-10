@@ -18,9 +18,11 @@ interface MessageProps {
   onDevAction?: (action: string, data?: any) => void; // 通用开发动作回调
   /** 消息是否正在流式传输中 */
   isStreaming?: boolean;
+  /** 对齐官方 transcript 模式 */
+  isTranscriptMode?: boolean;
 }
 
-export function Message({ message, onNavigateToBlueprint, onNavigateToSwarm, onNavigateToCode, onDevAction, isStreaming = false }: MessageProps) {
+export function Message({ message, onNavigateToBlueprint, onNavigateToSwarm, onNavigateToCode, onDevAction, isStreaming = false, isTranscriptMode = false }: MessageProps) {
   const { role, content } = message;
 
   // 获取内容数组
@@ -211,6 +213,42 @@ export function Message({ message, onNavigateToBlueprint, onNavigateToSwarm, onN
     }
     return null;
   };
+
+  // 对齐官方 Hh4 组件：渲染 compact_boundary 分隔线
+  // 官方 CLI: "✻ Conversation compacted (ctrl+o for history)"
+  if (message.isCompactBoundary) {
+    return (
+      <div className="compact-boundary">
+        <div className="compact-boundary__line" />
+        <span className="compact-boundary__label">
+          ✻ Conversation compacted
+          {!isTranscriptMode && <span className="compact-boundary__hint"> (Ctrl+O for history)</span>}
+        </span>
+        <div className="compact-boundary__line" />
+      </div>
+    );
+  }
+
+  // 对齐官方 Mh4 组件：渲染 compact summary（仅在 transcript 模式下可见）
+  if (message.isCompactSummary) {
+    const summaryText = contentArray.find(c => c.type === 'text')?.text || '';
+    return (
+      <div className="compact-summary">
+        <div className="compact-summary__header">
+          <span className="compact-summary__icon">✻</span>
+          <span className="compact-summary__title">Compact summary</span>
+          {!isTranscriptMode && (
+            <span className="compact-summary__hint"> (Ctrl+O to expand)</span>
+          )}
+        </div>
+        {isTranscriptMode && summaryText && (
+          <div className="compact-summary__content">
+            <MarkdownContent content={summaryText} />
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className={`message ${role}`}>

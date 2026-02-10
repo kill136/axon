@@ -2851,6 +2851,125 @@ Guidelines:
   }
 
   /**
+   * 自动记忆：对话结束时自动提取值得记住的信息写入 Notebook
+   *
+   * 设计原理：
+   * - Notebook 写入不能靠 Agent "自律"，必须在代码层面强制执行
+   * - 对话结束时（退出/SIGINT）调用一次轻量 API，提取本次对话收获
+   * - 使用 haiku 模型降低成本，只提取结构化信息
+   * - 静默失败，不影响退出流程
+   */
+  async autoMemorize(): Promise<void> {
+    try {
+      const nbMgr = getNotebookManager();
+      if (!nbMgr) return;
+
+      const messages = this.session.getMessages();
+      // 对话太短（少于4条消息 = 2轮对话），没什么可提取的
+      if (messages.length < 4) return;
+
+      // 读取当前笔记本内容
+      const currentExperience = nbMgr.read('experience');
+      const currentProject = nbMgr.read('project');
+
+      // 构造提取 prompt
+      const extractionPrompt = `你是一个记忆提取器。分析以下对话，提取值得跨会话记住的信息。
+
+当前 experience 笔记本内容：
+${currentExperience || '(空)'}
+
+当前 project 笔记本内容：
+${currentProject || '(空)'}
+
+规则：
+1. 只提取真正有长期价值的信息，忽略一次性的技术细节
+2. experience 笔记本记录：用户偏好、工作模式、个人信息、跨项目经验教训
+3. project 笔记本记录：项目特有的陷阱、隐藏依赖、重要架构决策、踩过的坑
+4. 如果没有新信息值得记录，返回 NO_UPDATE
+5. 如果有更新，返回完整的笔记本内容（不是增量，是完整替换）
+6. experience 不超过 4000 tokens，project 不超过 8000 tokens
+7. 保留原有内容，只追加或修改有变化的部分
+
+输出格式（严格遵守）：
+如果无需更新：
+NO_UPDATE
+
+如果需要更新 experience：
+===EXPERIENCE===
+(完整的 experience 笔记本内容)
+===END_EXPERIENCE===
+
+如果需要更新 project：
+===PROJECT===
+(完整的 project 笔记本内容)
+===END_PROJECT===
+
+可以同时更新两个，也可以只更新一个。`;
+
+      // 将对话消息精简为文本摘要（只取用户和助手的文本内容，忽略工具调用细节）
+      const conversationSummary = messages
+        .filter((m: Message) => m.role === 'user' || m.role === 'assistant')
+        .map((m: Message) => {
+          const role = m.role === 'user' ? '用户' : '助手';
+          if (typeof m.content === 'string') {
+            return `${role}: ${m.content.substring(0, 500)}`;
+          }
+          if (Array.isArray(m.content)) {
+            const textBlocks = m.content
+              .filter((b: any) => b.type === 'text' && b.text)
+              .map((b: any) => b.text.substring(0, 300));
+            if (textBlocks.length > 0) {
+              return `${role}: ${textBlocks.join(' ')}`;
+            }
+          }
+          return null;
+        })
+        .filter(Boolean)
+        .join('\n');
+
+      // 如果对话内容太少，跳过
+      if (conversationSummary.length < 100) return;
+
+      // 使用轻量模型调用 API
+      const response = await this.client.createMessage(
+        [
+          { role: 'user', content: `${extractionPrompt}\n\n===对话内容===\n${conversationSummary.substring(0, 8000)}` },
+        ],
+        [], // 不需要工具
+        '你是记忆提取器，只输出指定格式，不输出其他内容。',
+      );
+
+      // 解析响应
+      const responseText = response.content
+        .filter((b: ContentBlock) => b.type === 'text' && (b as any).text)
+        .map((b: ContentBlock) => (b as any).text)
+        .join('');
+
+      if (!responseText || responseText.includes('NO_UPDATE')) return;
+
+      // 提取并写入 experience
+      const expMatch = responseText.match(/===EXPERIENCE===\n([\s\S]*?)\n===END_EXPERIENCE===/);
+      if (expMatch && expMatch[1].trim()) {
+        const result = nbMgr.write('experience', expMatch[1].trim());
+        if (result.success) {
+          console.error(chalk.gray('[AutoMemory] experience 笔记本已更新'));
+        }
+      }
+
+      // 提取并写入 project
+      const projMatch = responseText.match(/===PROJECT===\n([\s\S]*?)\n===END_PROJECT===/);
+      if (projMatch && projMatch[1].trim()) {
+        const result = nbMgr.write('project', projMatch[1].trim());
+        if (result.success) {
+          console.error(chalk.gray('[AutoMemory] project 笔记本已更新'));
+        }
+      }
+    } catch {
+      // 静默失败，不影响退出流程
+    }
+  }
+
+  /**
    * v2.1.33: 规范化 assistant 消息内容
    *
    * 修复当 abort 中断流式响应时，whitespace 文本和 thinking block 组合

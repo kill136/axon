@@ -189,9 +189,19 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<vo
     console.log('');
   }
 
-  // 优雅关闭
-  process.on('SIGINT', async () => {
-    console.log('\n正在关闭服务器...');
+  // 优雅关闭 - 处理 SIGINT (Ctrl+C) 和 SIGTERM (tsx watch 重启)
+  let isShuttingDown = false;
+  const gracefulShutdown = async (signal: string) => {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+    console.log(`\n[${signal}] 正在关闭服务器...`);
+
+    // 先持久化所有活跃会话，防止热更新丢数据
+    try {
+      await conversationManager.persistAllSessions();
+    } catch (err) {
+      console.error('持久化会话失败:', err);
+    }
 
     // 关闭 ngrok 隧道
     if (ngrokListener) {
@@ -208,7 +218,13 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<vo
       console.log('服务器已关闭');
       process.exit(0);
     });
-  });
+
+    // 兜底：如果 server.close 卡住，3秒后强制退出
+    setTimeout(() => process.exit(0), 3000);
+  };
+
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 }
 
 function setupStaticFiles(app: express.Application, clientDistPath: string) {

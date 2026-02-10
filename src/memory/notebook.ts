@@ -210,23 +210,24 @@ export class NotebookManager {
 }
 
 // ============================================================================
-// 单例管理
+// 单例管理（挂到 globalThis 上，避免热重载后模块变量被重置为 null）
 // ============================================================================
 
-let defaultNotebook: NotebookManager | null = null;
+const GLOBAL_KEY = '__claude_notebook_manager__' as const;
 
 /** 初始化并获取 NotebookManager 实例 */
 export function initNotebookManager(projectPath: string): NotebookManager {
-  defaultNotebook = new NotebookManager(projectPath);
-  return defaultNotebook;
+  const manager = new NotebookManager(projectPath);
+  (globalThis as any)[GLOBAL_KEY] = manager;
+  return manager;
 }
 
 /** 获取 NotebookManager 实例（必须先调用 initNotebookManager） */
 export function getNotebookManager(): NotebookManager | null {
-  return defaultNotebook;
+  return (globalThis as any)[GLOBAL_KEY] || null;
 }
 
 /** 重置实例 */
 export function resetNotebookManager(): void {
-  defaultNotebook = null;
+  (globalThis as any)[GLOBAL_KEY] = null;
 }

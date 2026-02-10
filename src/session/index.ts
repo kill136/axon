@@ -347,6 +347,161 @@ function getSessionPath(sessionId: string): string {
   return path.join(getSessionDir(), `${sessionId}.json`);
 }
 
+// ============================================================================
+// WAL (Write-Ahead Log) 增量持久化
+//
+// 解决的问题：conversationLoop 中途被 tsx watch 杀进程时，内存中的新消息丢失。
+// 原方案：每轮全量 JSON.stringify + writeFile → I/O 膨胀，且仍有丢失窗口。
+// WAL 方案：每条消息只 appendFileSync 一行 JSONL（微秒级），加载时 replay。
+//
+// 文件布局：
+//   {sessionId}.json      — 主快照（一轮完整对话结束后全量写入）
+//   {sessionId}.wal.jsonl  — 增量日志（每条消息实时追加）
+//
+// 生命周期：
+//   对话中 → walAppend()  每条消息追加到 WAL
+//   一轮结束 → walCheckpoint()  全量保存主 JSON，清空 WAL
+//   加载时 → loadSession() 先读主 JSON，再 replay WAL 中比主 JSON 更新的条目
+// ============================================================================
+
+/** WAL 条目类型 */
+interface WalEntry {
+  /** 序号，单调递增，用于判断是否比主快照更新 */
+  seq: number;
+  /** 时间戳 */
+  ts: number;
+  /** 操作类型 */
+  op: 'msg' | 'chat' | 'meta';
+  /** 数据载荷 */
+  data: unknown;
+}
+
+/** 每个会话的 WAL 序号计数器（进程内维护） */
+const walSeqCounters = new Map<string, number>();
+
+/** 获取 WAL 文件路径 */
+function getWalPath(sessionId: string): string {
+  return path.join(getSessionDir(), `${sessionId}.wal.jsonl`);
+}
+
+/**
+ * 追加一条消息到 WAL（同步，微秒级）
+ * 供 conversation.ts 在每条消息 push 到 state 后立即调用
+ */
+export function walAppend(sessionId: string, op: WalEntry['op'], data: unknown): void {
+  if (!sessionId || sessionId === 'undefined') return;
+
+  const seq = (walSeqCounters.get(sessionId) ?? 0) + 1;
+  walSeqCounters.set(sessionId, seq);
+
+  const entry: WalEntry = { seq, ts: Date.now(), op, data };
+  const line = JSON.stringify(entry) + '\n';
+
+  try {
+    ensureSessionDir();
+    fs.appendFileSync(getWalPath(sessionId), line, { mode: 0o600 });
+  } catch (err) {
+    // WAL 写失败不阻塞主流程，降级为丢该条
+    console.warn(`[WAL] append 失败 (session=${sessionId}):`, err);
+  }
+}
+
+/**
+ * Checkpoint：全量保存主 JSON 并清空 WAL
+ * 在一轮完整对话结束后调用
+ */
+export function walCheckpoint(session: SessionData): void {
+  const sessionId = session.metadata.id;
+
+  // 先全量保存主 JSON
+  saveSession(session);
+
+  // 清空 WAL 文件
+  try {
+    const walPath = getWalPath(sessionId);
+    if (fs.existsSync(walPath)) {
+      fs.unlinkSync(walPath);
+    }
+  } catch {
+    // 忽略清理失败
+  }
+
+  // 重置序号计数器
+  walSeqCounters.delete(sessionId);
+}
+
+/**
+ * 从 WAL 文件读取所有条目
+ * 容错：跳过损坏的行（进程被杀可能导致最后一行不完整）
+ */
+function walRead(sessionId: string): WalEntry[] {
+  const walPath = getWalPath(sessionId);
+  if (!fs.existsSync(walPath)) return [];
+
+  try {
+    const content = fs.readFileSync(walPath, 'utf-8');
+    const entries: WalEntry[] = [];
+    for (const line of content.split('\n')) {
+      if (!line.trim()) continue;
+      try {
+        entries.push(JSON.parse(line));
+      } catch {
+        // 跳过损坏行（最后一行可能被截断）
+      }
+    }
+    return entries;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * 将 WAL 条目 replay 到 SessionData 上
+ * loadSession 加载主 JSON 后调用
+ */
+function walReplay(session: SessionData, entries: WalEntry[]): void {
+  if (entries.length === 0) return;
+
+  // 主 JSON 中已有的消息数量作为基线
+  // WAL 中 op='msg' 的条目 seq 从 1 开始递增
+  // 如果主 JSON 有 N 条 messages，那 seq <= N 的已经包含在主 JSON 中，跳过
+  // 但更稳妥的方式：按 WAL 的顺序，从主 JSON 已有数量之后开始追加
+  const baseMessageCount = session.messages.length;
+  const baseChatCount = (session as any).chatHistory?.length ?? 0;
+
+  let msgSeq = 0;
+  let chatSeq = 0;
+
+  for (const entry of entries) {
+    switch (entry.op) {
+      case 'msg':
+        msgSeq++;
+        if (msgSeq > baseMessageCount) {
+          session.messages.push(entry.data as Message);
+        }
+        break;
+      case 'chat':
+        chatSeq++;
+        if (chatSeq > baseChatCount) {
+          if (!(session as any).chatHistory) {
+            (session as any).chatHistory = [];
+          }
+          (session as any).chatHistory.push(entry.data);
+        }
+        break;
+      case 'meta':
+        // 元数据更新（model 切换等），直接 merge
+        Object.assign(session.metadata, entry.data);
+        break;
+    }
+  }
+
+  if (msgSeq > baseMessageCount || chatSeq > baseChatCount) {
+    session.metadata.messageCount = session.messages.length;
+    console.log(`[WAL] Replayed ${msgSeq - baseMessageCount} messages, ${chatSeq - baseChatCount} chat entries for session ${session.metadata.id}`);
+  }
+}
+
 /**
  * 保存会话
  *
@@ -412,12 +567,25 @@ export function loadSession(sessionId: string): SessionData | null {
     const content = fs.readFileSync(sessionPath, 'utf-8');
     const data = JSON.parse(content);
 
+    let session: SessionData;
+
     // 兼容官方 Claude Code 格式
     if (isOfficialFormat(data)) {
-      return convertOfficialToSessionData(data);
+      session = convertOfficialToSessionData(data);
+    } else {
+      session = data as SessionData;
     }
 
-    return data as SessionData;
+    // WAL replay：将未 checkpoint 的增量条目恢复到 session
+    const walEntries = walRead(sessionId);
+    if (walEntries.length > 0) {
+      walReplay(session, walEntries);
+      // replay 后的条目数写回计数器，以便后续 walAppend 序号连续
+      const maxSeq = walEntries[walEntries.length - 1].seq;
+      walSeqCounters.set(sessionId, maxSeq);
+    }
+
+    return session;
   } catch (err) {
     console.error(`Failed to load session ${sessionId}:`, err);
     return null;

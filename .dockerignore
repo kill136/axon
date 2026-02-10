@@ -1,0 +1,10 @@
+node_modules
+dist
+.git
+.claude
+*.md
+!README.md
+tests
+docs
+.env
+*.tgz

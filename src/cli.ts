@@ -40,6 +40,8 @@ let activeSessionId: string | null = null;
 let isInteractiveMode = false;
 // v2.1.31: 追踪是否禁用了 session 持久化
 let sessionPersistenceDisabled = false;
+// 全局 loop 引用，用于 SIGINT 时自动记忆
+let activeLoop: ConversationLoop | null = null;
 
 /**
  * 安全退出函数
@@ -127,6 +129,15 @@ process.on('beforeExit', async () => {
 
 // 注册 SIGINT 信号处理（Ctrl+C）
 process.on('SIGINT', async () => {
+  // 自动记忆：退出前保存对话记忆
+  if (activeLoop) {
+    try {
+      console.error(chalk.gray('\n[AutoMemory] 正在保存对话记忆...'));
+      await activeLoop.autoMemorize();
+    } catch {
+      // 静默失败
+    }
+  }
   await cleanupMcpServers();
   showSessionResumeHint();
   safeExit(0);
@@ -756,6 +767,9 @@ async function runTextInterface(
     debug: options.debug || config.debug,
   });
 
+  // 设置全局引用，供 SIGINT 退出时自动记忆
+  activeLoop = loop;
+
   // 恢复会话逻辑
   if (options.continue) {
     const sessions = listSessions({ limit: 1, sortBy: 'updatedAt', sortOrder: 'desc' });
@@ -958,7 +972,7 @@ async function runTextInterface(
 
       // 斜杠命令
       if (input.startsWith('/') && !options.disableSlashCommands) {
-        handleSlashCommand(input, loop);
+        await handleSlashCommand(input, loop);
         askQuestion();
         return;
       }
@@ -966,6 +980,9 @@ async function runTextInterface(
       // 退出命令
       if (input.toLowerCase() === 'exit' || input.toLowerCase() === 'quit') {
         console.log(chalk.yellow('\nGoodbye!'));
+        // 自动记忆：提取本次对话值得记住的信息
+        console.error(chalk.gray('[AutoMemory] 正在保存对话记忆...'));
+        await loop.autoMemorize();
         const stats = loop.getSession().getStats();
         console.log(chalk.gray(`Session stats: ${stats.messageCount} messages, ${stats.totalCost}`));
         showSessionResumeHint();
@@ -2599,7 +2616,7 @@ function getDisabledMcpServers(): string[] {
 }
 
 // 斜杠命令处理 (for text mode)
-function handleSlashCommand(input: string, loop: ConversationLoop): void {
+async function handleSlashCommand(input: string, loop: ConversationLoop): Promise<void> {
   const [cmd, ...args] = input.slice(1).split(' ');
   const memory = getMemoryManager();
 
@@ -2714,6 +2731,9 @@ function handleSlashCommand(input: string, loop: ConversationLoop): void {
     case 'exit':
     case 'quit':
       console.log(chalk.yellow('\nGoodbye!'));
+      // 自动记忆：提取本次对话值得记住的信息
+      console.error(chalk.gray('[AutoMemory] 正在保存对话记忆...'));
+      await loop.autoMemorize();
       const exitStats = loop.getSession().getStats();
       console.log(chalk.gray(`Session: ${exitStats.messageCount} messages, ${exitStats.totalCost}`));
       showSessionResumeHint();

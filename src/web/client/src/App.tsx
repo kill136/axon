@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useWebSocket } from './hooks/useWebSocket';
 import {
   Message,
@@ -101,6 +101,8 @@ function AppContent({
   const [permissionMode, setPermissionMode] = useState<PermissionMode>('default');
   const [showTerminal, setShowTerminal] = useState(false);
   const [terminalHeight, setTerminalHeight] = useState(280);
+  // 对齐官方 transcript 模式：false=prompt 模式（只显示最后一次压缩后的消息），true=transcript 模式（显示全部历史）
+  const [isTranscriptMode, setIsTranscriptMode] = useState(false);
 
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -171,17 +173,40 @@ function AppContent({
         return;
       }
 
+      // 兜底：如果收到流式事件但 currentMessageRef 为 null（如页面刷新后丢失 message_start），
+      // 自动创建消息上下文，确保后续流式事件不被静默丢弃
+      const streamingEventTypes = [
+        'text_delta', 'thinking_start', 'thinking_delta',
+        'tool_use_start', 'tool_use_delta', 'tool_result',
+      ];
+      if (streamingEventTypes.includes(msg.type) && !currentMessageRef.current) {
+        console.warn('[App] 收到孤立流式事件，自动创建消息上下文:', msg.type);
+        currentMessageRef.current = {
+          id: (payload.messageId as string) || `resume-${Date.now()}`,
+          role: 'assistant',
+          timestamp: Date.now(),
+          content: [],
+          model,
+        };
+        setStatus('streaming');
+      }
+
       switch (msg.type) {
-        case 'message_start':
-          currentMessageRef.current = {
+        case 'message_start': {
+          const newMsg: ChatMessage = {
             id: payload.messageId as string,
             role: 'assistant',
             timestamp: Date.now(),
             content: [],
             model,
           };
+          currentMessageRef.current = newMsg;
+          // 立即添加到 state，确保消息气泡立即可见
+          // 后续的 text_delta / tool_use_start 等事件会通过 filter+append 更新同一条消息
+          setMessages(prev => [...prev, newMsg]);
           setStatus('streaming');
           break;
+        }
 
         case 'text_delta':
           if (currentMessageRef.current) {
@@ -201,7 +226,13 @@ function AppContent({
 
         case 'thinking_start':
           if (currentMessageRef.current) {
-            currentMessageRef.current.content.push({ type: 'thinking', text: '' });
+            const currentMsg = currentMessageRef.current;
+            currentMsg.content.push({ type: 'thinking', text: '' });
+            // 立即更新 state，确保 thinking 指示器可见
+            setMessages(prev => {
+              const filtered = prev.filter(m => m.id !== currentMsg.id);
+              return [...filtered, { ...currentMsg }];
+            });
             setStatus('thinking');
           }
           break;
@@ -324,11 +355,37 @@ function AppContent({
           break;
 
         case 'context_compact': {
-          const compactPayload = payload as { phase: string; savedTokens?: number; message?: string };
+          const compactPayload = payload as { phase: string; savedTokens?: number; message?: string; summaryText?: string };
           if (compactPayload.phase === 'start') {
             setCompactState({ phase: 'compacting' });
           } else if (compactPayload.phase === 'end') {
             setCompactState({ phase: 'done', savedTokens: compactPayload.savedTokens });
+            // 对齐官方 compact_boundary + summary：在前端消息列表中追加
+            // 官方 CLI 的 mutableMessages 永远只增不减
+            const savedTokens = compactPayload.savedTokens || 0;
+            const now = Date.now();
+            const boundaryMsg: ChatMessage = {
+              id: `compact-boundary-${now}`,
+              role: 'system',
+              timestamp: now,
+              content: [{ type: 'text', text: `对话已压缩，节省约 ${savedTokens.toLocaleString()} tokens` }],
+              isCompactBoundary: true,
+            };
+            // 对齐官方：追加 summary 消息（isCompactSummary + isVisibleInTranscriptOnly）
+            // 在 prompt 模式下隐藏，transcript 模式下才显示
+            const newMsgs: ChatMessage[] = [boundaryMsg];
+            if (compactPayload.summaryText) {
+              const summaryMsg: ChatMessage = {
+                id: `compact-summary-${now}`,
+                role: 'user',
+                timestamp: now,
+                content: [{ type: 'text', text: compactPayload.summaryText }],
+                isCompactSummary: true,
+                isVisibleInTranscriptOnly: true,
+              };
+              newMsgs.push(summaryMsg);
+            }
+            setMessages(prev => [...prev, ...newMsgs]);
             // 4 秒后重置
             setTimeout(() => setCompactState({ phase: 'idle' }), 4500);
           } else if (compactPayload.phase === 'error') {
@@ -1046,9 +1103,23 @@ function AppContent({
     }
   };
 
-  // 发送消息
+  // 发送消息（支持插话：AI 回复中也能发送，自动取消当前回复）
   const handleSend = () => {
-    if ((!input.trim() && attachments.length === 0) || !connected || status !== 'idle') return;
+    if ((!input.trim() && attachments.length === 0) || !connected) return;
+
+    // 如果正在处理中，先取消当前回复（插话模式）
+    if (status !== 'idle') {
+      send({ type: 'cancel' });
+      // 立即提交当前的部分回复
+      if (currentMessageRef.current) {
+        const currentMsg = currentMessageRef.current;
+        setMessages(prev => {
+          const filtered = prev.filter(m => m.id !== currentMsg.id);
+          return [...filtered, { ...currentMsg }];
+        });
+        currentMessageRef.current = null;
+      }
+    }
 
     const contentItems: ChatContent[] = [];
 
@@ -1208,15 +1279,14 @@ function AppContent({
     setStatus('idle');
   }, [send]);
 
-  // 权限模式切换（仅在 idle 状态下允许）
+  // 权限模式切换（随时可切换，立即生效于后续工具调用）
   const handlePermissionModeChange = useCallback((mode: PermissionMode) => {
-    if (status !== 'idle') return; // 防御：模型回复中禁止切换
     setPermissionMode(mode);
     send({
       type: 'permission_config',
       payload: { mode },
     });
-  }, [send, status]);
+  }, [send]);
 
   // 输入处理
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -1236,17 +1306,51 @@ function AppContent({
     }
   };
 
-  // 全局快捷键：Ctrl+` 切换终端
+  // 全局快捷键：Ctrl+` 切换终端，Ctrl+O 切换 transcript 模式
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.key === '`') {
         e.preventDefault();
         setShowTerminal(prev => !prev);
       }
+      // 对齐官方 ctrl+o 切换 transcript 模式
+      if (e.ctrlKey && e.key === 'o') {
+        e.preventDefault();
+        setIsTranscriptMode(prev => !prev);
+      }
     };
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
   }, []);
+
+  // ========== 对齐官方渲染管线 ==========
+  // 官方 CLI: let W6 = H ? U : wN(U); // transcript 模式显示全部，prompt 模式只显示最后一次压缩后
+  // 官方 CLI: .filter(seY).filter(G6)  // seY 过滤 progress, G6 = N3q 过滤 isMeta/isVisibleInTranscriptOnly
+  const visibleMessages = useMemo(() => {
+    let filtered = messages;
+    if (!isTranscriptMode) {
+      // wN(): 找到最后一个 compact_boundary，只显示其后的消息
+      let lastBoundaryIndex = -1;
+      for (let i = filtered.length - 1; i >= 0; i--) {
+        if (filtered[i].isCompactBoundary) {
+          lastBoundaryIndex = i;
+          break;
+        }
+      }
+      if (lastBoundaryIndex !== -1) {
+        filtered = filtered.slice(lastBoundaryIndex);
+      }
+    }
+    // N3q(): 在 prompt 模式下隐藏 isVisibleInTranscriptOnly 的消息
+    filtered = filtered.filter(msg => {
+      if (msg.isVisibleInTranscriptOnly && !isTranscriptMode) return false;
+      return true;
+    });
+    return filtered;
+  }, [messages, isTranscriptMode]);
+
+  // 检查是否有压缩过（用于显示 transcript 切换按钮）
+  const hasCompactBoundary = useMemo(() => messages.some(m => m.isCompactBoundary), [messages]);
 
   return (
     <div style={{ display: 'flex', height: '100%', width: '100%', flex: 1 }}>
@@ -1266,10 +1370,10 @@ function AppContent({
         {/* 聊天面板 */}
         <div className={`chat-panel ${showCodePanel ? 'chat-panel-split' : ''}`} style={{ flex: 1, minHeight: 0 }}>
         <div className="chat-container" ref={chatContainerRef}>
-          {messages.length === 0 ? (
+          {visibleMessages.length === 0 && messages.length === 0 ? (
             <WelcomeScreen onBlueprintCreated={onNavigateToBlueprint} />
           ) : (
-            messages.map(msg => (
+            visibleMessages.map(msg => (
               <Message
                 key={msg.id}
                 message={msg}
@@ -1278,6 +1382,7 @@ function AppContent({
                 onNavigateToCode={onNavigateToCode}
                 onDevAction={handleDevAction}
                 isStreaming={currentMessageRef.current?.id === msg.id && status !== 'idle'}
+                isTranscriptMode={isTranscriptMode}
               />
             ))
           )}
@@ -1344,7 +1449,6 @@ function AppContent({
                   className={`permission-mode-selector mode-${permissionMode}`}
                   value={permissionMode}
                   onChange={(e) => handlePermissionModeChange(e.target.value as PermissionMode)}
-                  disabled={status !== 'idle'}
                   title="权限模式"
                 >
                   <option value="default">🔒 询问</option>
@@ -1363,6 +1467,18 @@ function AppContent({
                 >
                   🔍 <span className="debug-trigger-label">探针</span>
                 </button>
+                {hasCompactBoundary && (
+                  <button
+                    className={`transcript-toggle-btn ${isTranscriptMode ? 'active' : ''}`}
+                    onClick={() => setIsTranscriptMode(!isTranscriptMode)}
+                    title={isTranscriptMode ? '切换到精简视图' : '查看完整历史 (Ctrl+O)'}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                      <path d="M2 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2zm2-1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H4z"/>
+                      <path d="M5 4h6v1H5V4zm0 3h6v1H5V7zm0 3h4v1H5v-1z"/>
+                    </svg>
+                  </button>
+                )}
                 <button
                   className={`terminal-toggle-btn ${showTerminal ? 'active' : ''}`}
                   onClick={() => setShowTerminal(!showTerminal)}
@@ -1373,11 +1489,12 @@ function AppContent({
                   </svg>
                 </button>
               </div>
-              {status !== 'idle' ? (
-                <button className="stop-btn" onClick={handleCancel}>
-                  ■ 停止
-                </button>
-              ) : (
+              <div className="input-toolbar-right">
+                {status !== 'idle' && (
+                  <button className="stop-btn" onClick={handleCancel}>
+                    ■ 停止
+                  </button>
+                )}
                 <button
                   className="send-btn"
                   onClick={handleSend}
@@ -1385,7 +1502,7 @@ function AppContent({
                 >
                   发送
                 </button>
-              )}
+              </div>
             </div>
           </div>
         </div>
