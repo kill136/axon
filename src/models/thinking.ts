@@ -78,13 +78,13 @@ export class ThinkingManager {
   /**
    * 获取 API 请求的思考参数
    */
-  getThinkingParams(modelId: string): {
+  getThinkingParams(modelId: string, options?: { forceEnabled?: boolean }): {
     thinking?: {
       type: 'enabled';
       budget_tokens: number;
     };
   } | Record<string, never> {
-    if (!this.config.enabled) {
+    if (!this.config.enabled && !options?.forceEnabled) {
       return {};
     }
 

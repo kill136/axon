@@ -15,6 +15,7 @@ export type AttachmentType =
   | 'output_style'
   | 'diagnostics'
   | 'memory'
+  | 'notebook'
   | 'plan_mode'
   | 'delegate_mode'
   | 'git_status'
@@ -56,8 +57,10 @@ export interface PromptContext {
   ideOpenedFiles?: string[];
   /** 诊断信息 */
   diagnostics?: DiagnosticInfo[];
-  /** 记忆系统内容 */
+  /** 记忆系统内容（旧版） */
   memory?: Record<string, string>;
+  /** Agent 笔记本内容 */
+  notebookSummary?: string;
   /** 任务列表 */
   todoList?: TodoItem[];
   /** Git 状态 */
@@ -74,6 +77,18 @@ export interface PromptContext {
   isGitRepo?: boolean;
   /** 响应语言 (v2.1.0+) - 配置 Claude 的响应语言 */
   language?: string;
+  /** 可用工具名称集合（用于条件化提示词组装） */
+  toolNames?: Set<string>;
+  /** 自定义输出样式 */
+  outputStyle?: { name: string; prompt: string; keepCodingInstructions?: boolean } | null;
+  /** MCP 服务器信息 */
+  mcpServers?: Array<{ name: string; type: string; instructions?: string }>;
+  /** MCP 工具列表 */
+  mcpTools?: Array<{ name: string }>;
+  /** 是否有技能可用 */
+  hasSkills?: boolean;
+  /** 项目目录路径（用于 Past Sessions） */
+  projectsDir?: string;
 }
 
 /**
@@ -147,11 +162,29 @@ export interface PromptHashInfo {
 }
 
 /**
+ * 缓存作用域（对齐官方 cacheScope）
+ * - "global": 全局缓存，跨会话共享（静态系统提示词）
+ * - "org": 组织级缓存
+ * - null: 不缓存（动态内容）
+ */
+export type CacheScope = 'global' | 'org' | null;
+
+/**
+ * 系统提示词内容块（对齐官方 content block 结构）
+ */
+export interface PromptBlock {
+  text: string;
+  cacheScope: CacheScope;
+}
+
+/**
  * 提示词构建结果
  */
 export interface BuildResult {
-  /** 完整的系统提示词 */
+  /** 完整的系统提示词（向后兼容，所有 blocks 拼接后的字符串） */
   content: string;
+  /** 分块的系统提示词（对齐官方，用于 cache_control 优化） */
+  blocks: PromptBlock[];
   /** 哈希信息 */
   hashInfo: PromptHashInfo;
   /** 附件列表 */

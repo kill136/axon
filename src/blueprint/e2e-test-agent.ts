@@ -64,6 +64,8 @@ export interface E2ETestResult {
   designComparisonsFailed: number;
   fixAttempts: Array<{ round: number; description: string; success: boolean }>;
   summary: string;
+  /** v10.1: E2E Agent 的完整文本输出（对齐 TaskTool 模式） */
+  rawResponse?: string;
 }
 
 // AskUserQuestion 事件类型
@@ -189,20 +191,29 @@ export class E2ETestAgent extends EventEmitter {
       const taskPrompt = this.buildTaskPrompt(context);
 
       // 6. 执行 Agent（让它自己完成所有事情）
+      // v10.1: 收集 raw text（对齐 TaskTool 模式）
       this.log('🤖 启动 E2E 测试 Agent...');
+      let rawResponse = '';
       for await (const event of this.conversationLoop.processMessageStream(taskPrompt)) {
+        if (event.type === 'text' && event.content) {
+          rawResponse += event.content;
+        }
         this.handleStreamEvent(event);
       }
 
       // 7. 从工具调用获取结果
       const toolResult = SubmitE2EResultTool.getLastE2EResult();
       if (toolResult) {
-        return this.convertToE2ETestResult(toolResult, Date.now() - startTime);
+        const result = this.convertToE2ETestResult(toolResult, Date.now() - startTime);
+        result.rawResponse = rawResponse;
+        return result;
       }
 
       // Agent 没有调用 SubmitE2EResult，返回失败
       this.log('❌ Agent 未调用 SubmitE2EResult 工具');
-      return this.createFailedResult('Agent 未完成测试流程', Date.now() - startTime);
+      const failedResult = this.createFailedResult('Agent 未完成测试流程', Date.now() - startTime);
+      failedResult.rawResponse = rawResponse;
+      return failedResult;
 
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -656,6 +667,21 @@ ${context.blueprint.constraints.map(c => `- ${c}`).join('\n')}
       designComparisonsFailed: 0,
       fixAttempts: [],
       summary: `测试执行失败: ${error}`,
+    };
+  }
+
+  /**
+   * 获取调试信息（探针功能）
+   * 返回 E2E Agent 当前的系统提示词、消息体、工具列表等
+   */
+  getDebugInfo(): { systemPrompt: string; messages: unknown[]; tools: unknown[]; model: string; messageCount: number; agentType: string } | null {
+    if (!this.conversationLoop) {
+      return null;
+    }
+    const info = this.conversationLoop.getDebugInfo();
+    return {
+      ...info,
+      agentType: 'e2e',
     };
   }
 

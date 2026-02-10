@@ -122,6 +122,7 @@ export const activeWorkers = new Map<string, AutonomousWorkerExecutor>();
  */
 class BlueprintStore {
   private blueprints: Map<string, Blueprint> = new Map();
+  private cwd: string = process.cwd(); // 当前工作目录
 
   // v3.5: 写入队列机制，解决并发写入冲突问题
   private pendingWrites: Map<string, Blueprint> = new Map(); // 待写入的蓝图（按 ID 合并）
@@ -130,8 +131,11 @@ class BlueprintStore {
   private readonly MAX_WRITE_RETRIES = 3; // 最大重试次数
   private readonly WRITE_RETRY_DELAY = 100; // 重试延迟（毫秒）
 
-  constructor() {
-    // 延迟加载，等待 recentProjects 可用
+  /**
+   * 设置当前工作目录
+   */
+  setCwd(cwd: string): void {
+    this.cwd = cwd;
   }
 
   /**
@@ -288,28 +292,14 @@ class BlueprintStore {
 
   /**
    * 获取所有蓝图
+   * 只加载当前工作目录（或指定路径）下的蓝图，不扫描所有历史项目
    */
   getAll(projectPath?: string): Blueprint[] {
-    // 获取要扫描的项目路径列表
-    const projectPaths: string[] = [];
-
-    if (projectPath) {
-      projectPaths.push(projectPath);
-    } else {
-      // 扫描所有已知项目
-      const recentProjects = loadRecentProjects();
-      projectPaths.push(...recentProjects.map(p => p.path));
-    }
-
-    // 从每个项目加载蓝图
-    const allBlueprints: Blueprint[] = [];
-    for (const projPath of projectPaths) {
-      const blueprints = this.loadFromProject(projPath);
-      allBlueprints.push(...blueprints);
-    }
+    const targetPath = projectPath || this.cwd;
+    const blueprints = this.loadFromProject(targetPath);
 
     // 按更新时间倒序（处理日期可能是字符串的情况）
-    return allBlueprints.sort((a, b) => {
+    return blueprints.sort((a, b) => {
       const timeA = new Date(a.updatedAt).getTime();
       const timeB = new Date(b.updatedAt).getTime();
       return timeB - timeA;
@@ -325,21 +315,18 @@ class BlueprintStore {
       return this.blueprints.get(id) || null;
     }
 
-    // 缓存未命中，扫描所有项目
-    const recentProjects = loadRecentProjects();
-    for (const project of recentProjects) {
-      const blueprintDir = this.getBlueprintDir(project.path);
-      const filePath = path.join(blueprintDir, `${id}.json`);
+    // 缓存未命中，从当前工作目录加载
+    const blueprintDir = this.getBlueprintDir(this.cwd);
+    const filePath = path.join(blueprintDir, `${id}.json`);
 
-      if (fs.existsSync(filePath)) {
-        try {
-          const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-          const blueprint = this.deserializeBlueprint(data, project.path);
-          this.blueprints.set(id, blueprint);
-          return blueprint;
-        } catch (e) {
-          console.error(`[BlueprintStore] 读取蓝图失败: ${filePath}`, e);
-        }
+    if (fs.existsSync(filePath)) {
+      try {
+        const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+        const blueprint = this.deserializeBlueprint(data, this.cwd);
+        this.blueprints.set(id, blueprint);
+        return blueprint;
+      } catch (e) {
+        console.error(`[BlueprintStore] 读取蓝图失败: ${filePath}`, e);
       }
     }
 
@@ -494,6 +481,14 @@ class BlueprintStore {
 // 全局蓝图存储实例
 export const blueprintStore = new BlueprintStore();
 
+/**
+ * 初始化蓝图存储（设置当前工作目录）
+ * 应在服务启动时调用
+ */
+export function initBlueprintStore(cwd: string): void {
+  blueprintStore.setCwd(cwd);
+}
+
 // ============================================================================
 // 执行管理器 - v2.0 新架构（完整集成版）
 // ============================================================================
@@ -517,6 +512,8 @@ interface ExecutionSession {
     result?: VerificationResult;
     taskId?: string;  // 验收任务的 ID
   };
+  // v10.1: 执行 Promise（供 Planner Agent 阻塞等待）
+  executionPromise?: Promise<void>;
 }
 
 /**
@@ -749,30 +746,6 @@ class RealTaskExecutor implements TaskExecutor {
         emitWorkerLog('info', 'status', `✅ 任务完成: ${data.task?.name || task.name}`, { task: data.task });
       });
 
-      // v3.0: 监听 AI 主动汇报的任务状态变更（通过 UpdateTaskStatus 工具）
-      worker.on('task:status_change', (data: any) => {
-        // 转发到前端
-        executionEventEmitter.emit('task:status_change', {
-          blueprintId: this.blueprint.id,
-          workerId,
-          taskId: data.taskId,
-          status: data.status,
-          percent: data.percent,
-          currentAction: data.currentAction,
-          error: data.error,
-          notes: data.notes,
-          timestamp: data.timestamp,
-        });
-
-        // 同时发送日志
-        const statusEmoji = {
-          running: '🔄',
-          completed: '✅',
-          failed: '❌',
-          blocked: '⏸️',
-        }[data.status] || '📋';
-        emitWorkerLog('info', 'status', `${statusEmoji} AI 状态汇报: ${data.currentAction || data.status}${data.percent !== undefined ? ` (${data.percent}%)` : ''}`, data);
-      });
 
       // 错误处理
       worker.on('error:occurred', (data: any) => {
@@ -1455,6 +1428,86 @@ class ExecutionManager {
       });
     });
 
+    // ============================================================================
+    // v9.0: LeadAgent 事件转发（DispatchWorkerTool → LeadAgent → Coordinator → WebSocket）
+    // ============================================================================
+
+    // LeadAgent System Prompt（供前端查看提示词）
+    coordinator.on('lead:system_prompt', (data: any) => {
+      executionEventEmitter.emit('lead:system_prompt', {
+        blueprintId: blueprint.id,
+        systemPrompt: data.systemPrompt,
+      });
+    });
+
+    // LeadAgent 流式输出（文本、工具调用）
+    coordinator.on('lead:stream', (data: any) => {
+      executionEventEmitter.emit('lead:stream', {
+        blueprintId: blueprint.id,
+        streamType: data.type,
+        content: data.content,
+        toolName: data.toolName,
+        toolInput: data.toolInput,
+        toolResult: data.toolResult,
+        toolError: data.toolError,
+      });
+    });
+
+    // LeadAgent 阶段事件（started, exploring, planning, dispatch, reviewing, completed）
+    coordinator.on('lead:event', (data: any) => {
+      executionEventEmitter.emit('lead:event', {
+        blueprintId: blueprint.id,
+        eventType: data.type,
+        data: data.data,
+        timestamp: data.timestamp,
+      });
+    });
+
+    // v9.1: LeadAgent E2E 完成事件（LeadAgent ↔ E2E Agent 双向通信 → 通知 Planner）
+    coordinator.on('lead:e2e_completed', (data: any) => {
+      executionEventEmitter.emit('lead:e2e_completed', {
+        blueprintId: blueprint.id,
+        success: data.success,
+        summary: data.summary,
+      });
+    });
+
+    // Worker 流式日志（DispatchWorkerTool → LeadAgent → Coordinator → WebSocket）
+    coordinator.on('worker:stream', (data: any) => {
+      executionEventEmitter.emit('worker:stream', {
+        blueprintId: blueprint.id,
+        workerId: data.workerId,
+        taskId: data.taskId,
+        streamType: data.streamType,
+        content: data.content,
+        toolName: data.toolName,
+        toolInput: data.toolInput,
+        toolResult: data.toolResult,
+        toolError: data.toolError,
+        systemPrompt: data.systemPrompt,
+        agentType: data.agentType,
+      });
+    });
+
+    // LeadAgent 任务状态变更 → 转发到前端任务树
+    coordinator.on('task:status_changed', (data: any) => {
+      if (data.action === 'add') {
+        executionEventEmitter.emit('task:update', {
+          blueprintId: data.blueprintId || blueprint.id,
+          taskId: data.taskId,
+          action: 'add',
+          task: data.task,
+          updates: { status: 'pending' },
+        });
+      } else {
+        executionEventEmitter.emit('task:update', {
+          blueprintId: data.blueprintId || blueprint.id,
+          taskId: data.taskId,
+          updates: data.updates,
+        });
+      }
+    });
+
     // 创建会话
     const session: ExecutionSession = {
       id: plan.id,
@@ -1488,8 +1541,8 @@ class ExecutionManager {
 
     blueprintStore.save(blueprint);
 
-    // 异步执行
-    this.runExecution(session, blueprint, executor).catch(error => {
+    // 异步执行（存储 Promise 供 Planner Agent 阻塞等待）
+    session.executionPromise = this.runExecution(session, blueprint, executor).catch(error => {
       console.error('[ExecutionManager] 执行失败:', error);
       // v2.2: 确保外层异常也设置 completedAt，避免僵尸会话
       if (!session.completedAt) {
@@ -1508,11 +1561,12 @@ class ExecutionManager {
   private async runExecution(
     session: ExecutionSession,
     blueprint: Blueprint,
-    executor: RealTaskExecutor
+    executor: RealTaskExecutor,
+    options?: { isResume?: boolean }
   ): Promise<void> {
     try {
       // 传递 projectPath 以启用状态持久化
-      const result = await session.coordinator.start(session.plan, blueprint.projectPath);
+      const result = await session.coordinator.start(session.plan, blueprint.projectPath, { isResume: options?.isResume });
       session.result = result;
       session.completedAt = new Date();
 
@@ -1554,6 +1608,51 @@ class ExecutionManager {
   }
 
   /**
+   * 阻塞等待执行完成（v10.1: Planner Agent 双向通信）
+   * Planner 通过 StartLeadAgent 工具调用此方法，等待 LeadAgent 完整执行完成后获取结果
+   */
+  async waitForCompletion(executionId: string): Promise<ExecutionResult> {
+    const session = this.sessions.get(executionId);
+    if (!session) {
+      throw new Error(`执行会话 ${executionId} 不存在`);
+    }
+
+    // 如果已完成，直接返回
+    if (session.completedAt && session.result) {
+      return session.result;
+    }
+
+    // 等待 executionPromise 完成
+    if (session.executionPromise) {
+      await session.executionPromise;
+    }
+
+    // 执行完成后，构建结果
+    if (session.result) {
+      return session.result;
+    }
+
+    // executionPromise 完成但没有 result（异常情况）
+    const finalPlan = session.coordinator.getCurrentPlan();
+    const completedTasks = finalPlan?.tasks.filter(t => t.status === 'completed') || [];
+    const failedTasks = finalPlan?.tasks.filter(t => t.status === 'failed') || [];
+    const skippedTasks = finalPlan?.tasks.filter(t => t.status === 'skipped') || [];
+
+    return {
+      success: failedTasks.length === 0 && completedTasks.length > 0,
+      planId: session.plan.id,
+      blueprintId: session.blueprintId,
+      taskResults: new Map(),
+      totalDuration: Date.now() - session.startedAt.getTime(),
+      totalCost: 0,
+      completedCount: completedTasks.length,
+      failedCount: failedTasks.length,
+      skippedCount: skippedTasks.length,
+      issues: [],
+    };
+  }
+
+  /**
    * 获取执行状态
    */
   getStatus(executionId: string): ExecutionStatus | null {
@@ -1574,11 +1673,35 @@ class ExecutionManager {
 
   /**
    * 取消暂停，继续执行
+   * v9.1: LeadAgent 模式下，unpause 返回 true 表示需要以 isResume 模式重启执行
    */
   resume(executionId: string): boolean {
     const session = this.sessions.get(executionId);
     if (!session || session.completedAt) return false;
-    session.coordinator.unpause();
+
+    const needsRestart = session.coordinator.unpause();
+    if (needsRestart) {
+      // LeadAgent 模式：暂停时 LeadAgent 已被 abort，需要重启
+      const blueprint = blueprintStore.get(session.blueprintId);
+      if (blueprint) {
+        console.log(`[ExecutionManager] LeadAgent 暂停恢复：以 isResume 模式重启执行`);
+        const executor = new RealTaskExecutor(blueprint);
+        executor.setCoordinator(session.coordinator);
+        session.coordinator.setTaskExecutor(executor);
+
+        blueprint.status = 'executing';
+        blueprintStore.save(blueprint);
+
+        this.runExecution(session, blueprint, executor, { isResume: true }).catch(error => {
+          console.error('[ExecutionManager] 暂停恢复执行失败:', error);
+          if (!session.completedAt) {
+            session.completedAt = new Date();
+            blueprint.status = 'failed';
+            blueprintStore.save(blueprint);
+          }
+        });
+      }
+    }
     return true;
   }
 
@@ -1797,36 +1920,63 @@ class ExecutionManager {
       const result = await session.coordinator.retryTask(taskId);
       console.log(`[ExecutionManager] 协调器重试结果: ${result}`);
 
-      // 发送事件通知前端
-      executionEventEmitter.emit('task:update', {
-        blueprintId,
-        taskId,
-        updates: {
-          status: result ? 'completed' : 'failed',
-        },
-      });
+      if (result) {
+        // LeadAgent 正在运行且已收到重试指令
+        // 同步更新 blueprint.lastExecutionPlan
+        const blueprint = blueprintStore.get(blueprintId);
+        if (blueprint) {
+          const currentPlan = session.coordinator.getCurrentPlan();
+          if (currentPlan) {
+            blueprint.lastExecutionPlan = this.serializeExecutionPlan(currentPlan);
+            blueprintStore.save(blueprint);
+            console.log(`[ExecutionManager] 已同步更新 blueprint.lastExecutionPlan`);
+          }
+        }
+        return { success: true };
+      }
 
-      // v2.5: 重试成功后同步更新 blueprint.lastExecutionPlan
-      // 解决前端显示状态与文件不同步的问题
-      const blueprint = blueprintStore.get(blueprintId);
-      if (blueprint) {
+      // v9.1: LeadAgent 未在执行中，需要重启执行
+      // coordinator.retryTask() 已重置任务状态，现在需要启动新的 LeadAgent 恢复执行
+      if (!session.coordinator.isActive()) {
+        console.log(`[ExecutionManager] LeadAgent 未在执行中，启动恢复执行...`);
+
+        const blueprint = blueprintStore.get(blueprintId);
+        if (!blueprint) {
+          return { success: false, error: '找不到蓝图' };
+        }
+
+        // 清除会话的完成状态，使其可以重新执行
+        session.completedAt = undefined;
+        session.result = undefined;
+
+        // 创建新的任务执行器
+        const executor = new RealTaskExecutor(blueprint);
+        executor.setCoordinator(session.coordinator);
+        session.coordinator.setTaskExecutor(executor);
+
+        // 更新蓝图状态
+        blueprint.status = 'executing';
+        // 同步更新 lastExecutionPlan（任务状态已被 coordinator 重置）
         const currentPlan = session.coordinator.getCurrentPlan();
         if (currentPlan) {
           blueprint.lastExecutionPlan = this.serializeExecutionPlan(currentPlan);
-          // 如果所有任务都完成了，更新蓝图状态
-          const status = session.coordinator.getStatus();
-          if (status.completedTasks === status.totalTasks && status.totalTasks > 0) {
-            blueprint.status = 'completed';
-          } else if (status.failedTasks === 0 && status.runningTasks === 0) {
-            // 没有失败也没有运行中，可能是暂停状态
-            blueprint.status = 'paused';
-          }
-          blueprintStore.save(blueprint);
-          console.log(`[ExecutionManager] 已同步更新 blueprint.lastExecutionPlan`);
         }
+        blueprintStore.save(blueprint);
+
+        // 异步启动恢复执行（不阻塞当前请求）
+        this.runExecution(session, blueprint, executor, { isResume: true }).catch(error => {
+          console.error('[ExecutionManager] 重试恢复执行失败:', error);
+          if (!session.completedAt) {
+            session.completedAt = new Date();
+            blueprint.status = 'failed';
+            blueprintStore.save(blueprint);
+          }
+        });
+
+        return { success: true };
       }
 
-      return { success: result };
+      return { success: false, error: '协调器重试失败' };
     } catch (error: any) {
       console.error(`[ExecutionManager] 重试任务失败:`, error);
       return { success: false, error: error.message || '重试任务时发生错误' };
@@ -1890,6 +2040,9 @@ class ExecutionManager {
     executor.setCoordinator(coordinator);  // v8.4: 设置 Coordinator 引用（用于广播）
     coordinator.setTaskExecutor(executor);
 
+    // v9.0: 必须设置蓝图，否则 LeadAgent 启动时会抛错
+    coordinator.setBlueprint(blueprint);
+
     // 设置项目路径
     coordinator.setProjectPath(blueprint.projectPath);
 
@@ -1941,24 +2094,18 @@ class ExecutionManager {
 
       console.log(`[ExecutionManager] 会话恢复成功，包含 ${lastPlan.tasks.length} 个任务，从第 ${savedState.currentGroupIndex + 1} 组继续执行`);
 
-      // v3.0: 异步继续执行
-      coordinator.continueExecution().then(result => {
-        session.result = result;
-        session.completedAt = new Date();
+      // v9.0: 使用 runExecution（与正常启动流程一致），LeadAgent 模式不支持 continueExecution
+      // 传递 isResume: true，让 LeadAgent 知道这是恢复执行，不要重新生成任务树
+      blueprint.status = 'executing';
+      blueprintStore.save(blueprint);
 
-        // 更新蓝图状态
-        blueprint.status = result.success ? 'completed' : 'failed';
-        blueprintStore.save(blueprint);
-
-        // 清理 Worker 分支
-        executor.cleanup().catch(e => {
-          console.warn('[ExecutionManager] 清理分支失败:', e);
-        });
-      }).catch(error => {
-        console.error('[ExecutionManager] 继续执行失败:', error);
-        session.completedAt = new Date();
-        blueprint.status = 'failed';
-        blueprintStore.save(blueprint);
+      this.runExecution(session, blueprint, executor, { isResume: true }).catch(error => {
+        console.error('[ExecutionManager] 恢复执行失败:', error);
+        if (!session.completedAt) {
+          session.completedAt = new Date();
+          blueprint.status = 'failed';
+          blueprintStore.save(blueprint);
+        }
       });
 
       return session;
@@ -2083,6 +2230,14 @@ class ExecutionManager {
     // v9.0: LeadAgent 事件转发
     // ============================================================================
 
+    // LeadAgent System Prompt（供前端查看提示词）
+    coordinator.on('lead:system_prompt', (data: any) => {
+      executionEventEmitter.emit('lead:system_prompt', {
+        blueprintId: blueprint.id,
+        systemPrompt: data.systemPrompt,
+      });
+    });
+
     // LeadAgent 流式输出（文本、工具调用）
     coordinator.on('lead:stream', (data: any) => {
       executionEventEmitter.emit('lead:stream', {
@@ -2103,6 +2258,23 @@ class ExecutionManager {
         eventType: data.type,
         data: data.data,
         timestamp: data.timestamp,
+      });
+    });
+
+    // v9.0 fix: Worker 流式日志（DispatchWorkerTool → LeadAgent → Coordinator → WebSocket）
+    coordinator.on('worker:stream', (data: any) => {
+      executionEventEmitter.emit('worker:stream', {
+        blueprintId: blueprint.id,
+        workerId: data.workerId,
+        taskId: data.taskId,
+        streamType: data.streamType,
+        content: data.content,
+        toolName: data.toolName,
+        toolInput: data.toolInput,
+        toolResult: data.toolResult,
+        toolError: data.toolError,
+        systemPrompt: data.systemPrompt,
+        agentType: data.agentType,
       });
     });
 
@@ -2245,6 +2417,8 @@ router.get('/blueprints', (req: Request, res: Response) => {
       moduleCount: b.modules?.length || 0,
       processCount: b.businessProcesses?.length || 0,
       nfrCount: b.nfrs?.length || 0,
+      requirementCount: b.requirements?.length || 0,
+      constraintCount: b.constraints?.length || 0,
     }));
 
     res.json({
@@ -3175,8 +3349,9 @@ router.post('/coordinator/start', async (req: Request, res: Response) => {
 
         if (isActive) {
           // 会话还在运行中，取消暂停
+          // v9.1: 通过 ExecutionManager.resume() 统一处理（内含 LeadAgent 重启逻辑）
           console.log('[coordinator/start] 恢复活跃会话:', existingSession.id, '暂停状态:', existingSession.coordinator.paused);
-          existingSession.coordinator.unpause();
+          executionManager.resume(existingSession.id);
           return res.json({
             success: true,
             data: {
@@ -3234,7 +3409,7 @@ router.post('/coordinator/start', async (req: Request, res: Response) => {
       }
 
       // 检查蓝图状态（允许 executing 以便处理会话丢失的情况，允许 completed 以便重新执行）
-      const allowedStatuses = ['confirmed', 'draft', 'paused', 'failed', 'executing', 'completed'];
+      const allowedStatuses = ['confirmed', 'approved', 'draft', 'paused', 'failed', 'executing', 'completed'];
       if (!allowedStatuses.includes(blueprint.status)) {
         console.log('[coordinator/start] 蓝图状态不允许执行:', blueprint.status);
         return res.status(400).json({

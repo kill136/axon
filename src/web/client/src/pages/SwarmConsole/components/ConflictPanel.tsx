@@ -97,7 +97,7 @@ export const ConflictPanel: React.FC<ConflictPanelProps> = ({ conflicts, onResol
                   className={`${styles.fileTab} ${selectedFile?.path === file.path ? styles.active : ''}`}
                   onClick={() => setSelectedFile(file)}
                 >
-                  {file.path.split('/').pop()}
+                  {file.path.split(/[/\\]/).pop()}
                 </button>
               ))}
             </div>

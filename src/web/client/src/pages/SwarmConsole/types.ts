@@ -313,6 +313,13 @@ export type SwarmClientMessage =
   | { type: 'task:skip'; payload: { blueprintId: string; taskId: string } }
   // v4.2: AskUserQuestion 响应消息（支持 E2E Agent 和 Worker）
   | { type: 'swarm:ask_response'; payload: { blueprintId: string; requestId: string; answers: Record<string, string>; cancelled?: boolean; workerId?: string } }
+  // v4.4: 用户插嘴
+  | { type: 'task:interject'; payload: { blueprintId: string; taskId: string; message: string } }
+  // v9.2: LeadAgent 插嘴
+  | { type: 'lead:interject'; payload: { blueprintId: string; message: string } }
+  // Agent 探针调试（蜂群模式）
+  | { type: 'swarm:debug_agent'; payload: { blueprintId: string; agentType: 'lead' | 'worker' | 'e2e'; workerId?: string } }
+  | { type: 'swarm:debug_agent_list'; payload: { blueprintId: string } }
   | { type: 'ping' };
 
 // 服务端 → 客户端消息
@@ -338,6 +345,16 @@ export type SwarmServerMessage =
   // v9.0: LeadAgent 事件
   | { type: 'swarm:lead_stream'; payload: LeadStreamPayload }
   | { type: 'swarm:lead_event'; payload: LeadEventPayload }
+  // v9.0: LeadAgent System Prompt
+  | { type: 'swarm:lead_system_prompt'; payload: { systemPrompt: string } }
+  // v9.2: LeadAgent 插嘴响应
+  | { type: 'lead:interject_success'; payload: LeadInterjectSuccessPayload }
+  | { type: 'lead:interject_failed'; payload: LeadInterjectFailedPayload }
+  // Agent 探针调试响应
+  | { type: 'swarm:debug_agent_response'; payload: any }
+  | { type: 'swarm:debug_agent_list_response'; payload: { blueprintId: string; agents: Array<{ agentType: string; id: string; label: string; taskId?: string }> } }
+  // 连接确认
+  | { type: 'connected'; payload?: any }
   | { type: 'pong' };
 
 // ============= v4.5 新增：用户插嘴响应类型 =============
@@ -359,6 +376,22 @@ export interface InterjectSuccessPayload {
 export interface InterjectFailedPayload {
   blueprintId: string;
   taskId: string;
+  success: false;
+  error: string;
+  timestamp: string;
+}
+
+// ============= v9.2 新增：LeadAgent 插嘴响应类型 =============
+
+export interface LeadInterjectSuccessPayload {
+  blueprintId: string;
+  success: true;
+  message: string;
+  timestamp: string;
+}
+
+export interface LeadInterjectFailedPayload {
+  blueprintId: string;
   success: false;
   error: string;
   timestamp: string;
@@ -423,6 +456,15 @@ export interface SwarmStatePayload {
 
   // v2.0: 成本追踪
   costEstimate?: CostEstimate | null;
+
+  // v9.2: LeadAgent 状态（刷新浏览器后恢复）
+  leadAgent?: {
+    phase: LeadAgentPhase;
+    stream: LeadStreamBlock[];
+    events: Array<{ type: string; data: Record<string, unknown>; timestamp: string }>;
+    systemPrompt?: string;
+    lastUpdated: string;
+  } | null;
 }
 
 export interface TaskUpdatePayload {
@@ -530,6 +572,9 @@ export interface SwarmState {
 
   // v9.0: LeadAgent 持久大脑状态
   leadAgent: LeadAgentState;
+
+  // v9.2: LeadAgent 插嘴状态
+  leadInterjectStatus: LeadInterjectStatus | null;
 }
 
 /**
@@ -537,6 +582,15 @@ export interface SwarmState {
  */
 export interface InterjectStatus {
   taskId: string;
+  success: boolean;
+  message: string;
+  timestamp: string;
+}
+
+/**
+ * v9.2: LeadAgent 插嘴状态
+ */
+export interface LeadInterjectStatus {
   success: boolean;
   message: string;
   timestamp: string;
@@ -586,15 +640,18 @@ export interface UseSwarmWebSocketReturn {
   retryTask: (blueprintId: string, taskId: string) => void;
   // v3.8: 任务跳过
   skipTask: (blueprintId: string, taskId: string) => void;
-  // v4.2: AskUserQuestion 响应
+  // v4.2: AskUserQuestion 响应（支持 Worker）
   sendAskUserResponse: (
     blueprintId: string,
     requestId: string,
     answers: Record<string, string>,
-    cancelled?: boolean
+    cancelled?: boolean,
+    workerId?: string
   ) => void;
   // v4.4: 用户插嘴
   interjectTask: (blueprintId: string, taskId: string, message: string) => void;
+  // v9.2: LeadAgent 插嘴
+  interjectLead: (blueprintId: string, message: string) => void;
 }
 
 export interface UseSwarmStateReturn {
@@ -630,6 +687,8 @@ export interface UseSwarmStateReturn {
   sendAskUserResponse: (requestId: string, answers: Record<string, string>, cancelled?: boolean) => void;
   // v4.4: 用户插嘴
   interjectTask: (taskId: string, message: string) => void;
+  // v9.2: LeadAgent 插嘴
+  interjectLead: (message: string) => void;
 }
 
 // ============= v4.2 新增：AskUserQuestion 对话框类型 =============
@@ -710,6 +769,8 @@ export interface VerificationUpdatePayload {
   status: VerificationStatus;
   result?: VerificationState['result'];
   error?: string;
+  // v4.1: E2E 测试任务 ID（用于显示流式日志）
+  e2eTaskId?: string;
 }
 
 // ============= 🐝 冲突类型（v2.1 新增）=============
@@ -812,6 +873,8 @@ export interface LeadAgentState {
     data: Record<string, unknown>;
     timestamp: string;
   }>;
+  /** LeadAgent 的 System Prompt */
+  systemPrompt?: string;
   /** 最后更新时间 */
   lastUpdated: string;
 }

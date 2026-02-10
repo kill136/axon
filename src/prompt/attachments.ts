@@ -134,11 +134,20 @@ export class AttachmentManager {
       );
     }
 
-    // Memory
+    // Memory (旧版，保留兼容)
     if (context.memory && Object.keys(context.memory).length > 0) {
       attachmentPromises.push(
         this.computeAttachment('memory', () =>
           Promise.resolve(this.generateMemoryAttachment(context.memory!))
+        )
+      );
+    }
+
+    // Agent Notebooks (新版笔记本系统)
+    if (context.notebookSummary) {
+      attachmentPromises.push(
+        this.computeAttachment('notebook', () =>
+          Promise.resolve(this.generateNotebookAttachment(context.notebookSummary!))
         )
       );
     }
@@ -301,7 +310,25 @@ export class AttachmentManager {
   }
 
   /**
-   * 生成记忆附件
+   * 生成笔记本附件
+   */
+  private generateNotebookAttachment(notebookSummary: string): Attachment[] {
+    if (!notebookSummary.trim()) {
+      return [];
+    }
+
+    return [
+      {
+        type: 'notebook' as AttachmentType,
+        content: `<agent-notebooks>\n${notebookSummary}\n</agent-notebooks>`,
+        label: 'Agent Notebooks',
+        priority: 28, // 在 memory(30) 之前
+      },
+    ];
+  }
+
+  /**
+   * 生成记忆附件（旧版）
    */
   private generateMemoryAttachment(memory: Record<string, string>): Attachment[] {
     const content = getMemoryInfo(memory);

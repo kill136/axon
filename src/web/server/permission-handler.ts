@@ -81,7 +81,7 @@ export class PermissionHandler {
     'MultiEdit',
     'Bash',
     'NotebookEdit',
-    'KillShell',
+    'TaskStop',
   ]);
 
   // 危险的 Bash 命令模式
@@ -229,7 +229,7 @@ export class PermissionHandler {
       case 'NotebookEdit':
         return `编辑 Notebook: ${args.notebook_path}`;
 
-      case 'KillShell':
+      case 'TaskStop':
         return `终止进程: ${args.bash_id}`;
 
       default:
@@ -260,7 +260,7 @@ export class PermissionHandler {
     }
 
     // 文件删除类操作
-    if (tool === 'KillShell') {
+    if (tool === 'TaskStop') {
       return 'medium';
     }
 
@@ -572,8 +572,8 @@ export class PermissionHandler {
         return `MultiEdit(*)`;
       }
 
-      case 'KillShell': {
-        return `KillShell(*)`;
+      case 'TaskStop': {
+        return `TaskStop(*)`;
       }
 
       default:

@@ -1,0 +1,365 @@
+/* ============================================================================
+   AgentChatPanel — 统一 Agent 对话面板样式
+   所有 Agent (LeadAgent, Worker, E2E) 共用
+   ============================================================================ */
+
+.agentChatPanel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Agent Header */
+.agentHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-primary, rgba(255, 255, 255, 0.08));
+  flex-shrink: 0;
+}
+
+.agentTypeBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.agentTypeBadge.lead {
+  background: rgba(139, 92, 246, 0.2);
+  color: #a78bfa;
+  border: 1px solid rgba(139, 92, 246, 0.3);
+}
+
+.agentTypeBadge.worker {
+  background: rgba(59, 130, 246, 0.2);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.agentTypeBadge.e2e {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.agentLabel {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text-primary, #e2e8f0);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.statusDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.statusDot.running {
+  background: #4ade80;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.statusDot.pending {
+  background: #94a3b8;
+}
+
+.statusDot.completed {
+  background: #4ade80;
+}
+
+.statusDot.failed {
+  background: #f87171;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.modelTag {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-muted, #94a3b8);
+}
+
+.systemPromptToggle {
+  background: rgba(139, 92, 246, 0.15);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  color: #a78bfa;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.systemPromptToggle:hover {
+  background: rgba(139, 92, 246, 0.25);
+  border-color: rgba(139, 92, 246, 0.5);
+}
+
+/* System Prompt 展示区域 */
+.systemPromptContainer {
+  background: rgba(139, 92, 246, 0.08);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  border-radius: 8px;
+  margin: 8px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.systemPromptHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid rgba(139, 92, 246, 0.15);
+}
+
+.systemPromptTitle {
+  flex: 1;
+  font-size: 11px;
+  font-weight: 600;
+  color: #a78bfa;
+}
+
+.systemPromptClose {
+  background: none;
+  border: none;
+  color: var(--text-muted, #94a3b8);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+
+.systemPromptClose:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary, #e2e8f0);
+}
+
+.systemPromptContent {
+  padding: 10px;
+  font-size: 11px;
+  font-family: 'JetBrains Mono', 'Consolas', 'Monaco', monospace;
+  color: var(--text-secondary, #a1a1aa);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 300px;
+  overflow-y: auto;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.systemPromptContent::-webkit-scrollbar {
+  width: 5px;
+}
+
+.systemPromptContent::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.systemPromptContent::-webkit-scrollbar-thumb {
+  background: rgba(139, 92, 246, 0.3);
+  border-radius: 3px;
+}
+
+/* Chat Messages Area */
+.chatArea {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.chatArea::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chatArea::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.chatArea::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+.chatArea::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* 用户插嘴消息样式 */
+.userInterjectMessage {
+  align-self: flex-end;
+  max-width: 80%;
+  padding: 8px 12px;
+  border-radius: 12px 12px 4px 12px;
+  background: rgba(59, 130, 246, 0.2);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  color: #93c5fd;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 4px 0;
+}
+
+.userInterjectLabel {
+  font-size: 10px;
+  color: #60a5fa;
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
+/* Assistant 内容块 */
+.contentBlock {
+  margin: 2px 0;
+}
+
+/* Chat Header (message count + live indicator) */
+.chatHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: var(--text-muted, #94a3b8);
+  flex-shrink: 0;
+}
+
+.chatLogCount {
+  color: var(--text-muted, #94a3b8);
+}
+
+.chatLiveIndicator {
+  color: #ef4444;
+  font-size: 11px;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* Empty State */
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  color: var(--text-muted, #94a3b8);
+  text-align: center;
+  gap: 8px;
+}
+
+.emptyStateIcon {
+  font-size: 32px;
+  opacity: 0.5;
+}
+
+.emptyStateText {
+  font-size: 13px;
+}
+
+/* Interject Input Area */
+.interjectArea {
+  flex-shrink: 0;
+  padding: 8px;
+  border-top: 1px solid var(--border-primary, rgba(255, 255, 255, 0.08));
+}
+
+.interjectHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-size: 11px;
+  color: var(--text-muted, #94a3b8);
+}
+
+.interjectInputWrapper {
+  display: flex;
+  gap: 6px;
+}
+
+.interjectInput {
+  flex: 1;
+  background: var(--bg-secondary, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--border-primary, rgba(255, 255, 255, 0.1));
+  border-radius: 8px;
+  color: var(--text-primary, #e2e8f0);
+  padding: 8px 12px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: none;
+  line-height: 1.4;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.interjectInput:focus {
+  border-color: var(--accent-primary, #8b5cf6);
+}
+
+.interjectInput::placeholder {
+  color: var(--text-muted, #64748b);
+}
+
+.interjectButton {
+  padding: 8px 16px;
+  background: var(--accent-primary, #8b5cf6);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.2s;
+  align-self: flex-end;
+}
+
+.interjectButton:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.interjectButton:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.interjectFeedback {
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  margin-top: 4px;
+}
+
+.interjectFeedback.success {
+  color: #4ade80;
+  background: rgba(34, 197, 94, 0.1);
+}
+
+.interjectFeedback.error {
+  color: #f87171;
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.interjectHint {
+  font-size: 10px;
+  color: var(--text-muted, #64748b);
+  margin-top: 4px;
+}

@@ -252,14 +252,22 @@ function hasValidIdentity(systemPrompt?: string | Array<{type: string; text: str
  * - 对于 OAuth 模式：第一个 block 必须以 CLAUDE_CODE_IDENTITY 开头
  * - 对于非 OAuth 模式：直接缓存整个 System Prompt
  */
+/**
+ * PromptBlock 类型（与 prompt/types.ts 对齐，避免循环依赖）
+ */
+interface PromptBlock {
+  text: string;
+  cacheScope: 'global' | 'org' | null;
+}
+
 function formatSystemPrompt(
   systemPrompt: string | undefined,
-  isOAuth: boolean
+  isOAuth: boolean,
+  promptBlocks?: PromptBlock[]
 ): Array<{type: 'text'; text: string; cache_control?: {type: 'ephemeral'}}> | string | undefined {
   // 没有 system prompt 时
   if (!systemPrompt) {
     if (isOAuth) {
-      // OAuth 模式需要身份标识
       return [
         { type: 'text', text: CLAUDE_CODE_IDENTITY, cache_control: { type: 'ephemeral' } }
       ];
@@ -267,7 +275,23 @@ function formatSystemPrompt(
     return undefined;
   }
 
-  // 非 OAuth 模式：直接缓存整个 System Prompt
+  // v6.0: 使用 PromptBlock 分块缓存（对齐官方 CG1 分割逻辑）
+  // 静态 block (cacheScope: "global") → cache_control: ephemeral（可跨 turn 缓存）
+  // 动态 block (cacheScope: null) → 不设 cache_control（每 turn 重新计算）
+  if (promptBlocks && promptBlocks.length > 0) {
+    const apiBlocks: Array<{type: 'text'; text: string; cache_control?: {type: 'ephemeral'}}> = [];
+    for (const block of promptBlocks) {
+      if (!block.text) continue;
+      apiBlocks.push({
+        type: 'text',
+        text: block.text,
+        ...(block.cacheScope !== null ? { cache_control: { type: 'ephemeral' as const } } : {}),
+      });
+    }
+    return apiBlocks.length > 0 ? apiBlocks : undefined;
+  }
+
+  // 兼容旧路径：单字符串模式
   if (!isOAuth) {
     return [
       { type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }
@@ -288,14 +312,12 @@ function formatSystemPrompt(
     identityToUse = CLAUDE_AGENT_IDENTITY;
     remainingText = systemPrompt.slice(CLAUDE_AGENT_IDENTITY.length).trim();
   } else {
-    // 没有有效身份，添加 Claude Code 身份作为第一个 block
     return [
       { type: 'text', text: CLAUDE_CODE_IDENTITY, cache_control: { type: 'ephemeral' } },
       { type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }
     ];
   }
 
-  // 已经有正确的身份，转换为数组格式
   const blocks: Array<{type: 'text'; text: string; cache_control?: {type: 'ephemeral'}}> = [
     { type: 'text' as const, text: identityToUse, cache_control: { type: 'ephemeral' as const } }
   ];
@@ -872,6 +894,7 @@ export class ClaudeClient {
       enableThinking?: boolean;
       thinkingBudget?: number;
       toolChoice?: { type: 'auto' } | { type: 'any' } | { type: 'tool'; name: string };
+      promptBlocks?: PromptBlock[];
     }
   ): Promise<{
     content: ContentBlock[];
@@ -890,7 +913,7 @@ export class ClaudeClient {
 
     // 准备 Extended Thinking 参数
     const thinkingParams = options?.enableThinking
-      ? thinkingManager.getThinkingParams(this.model)
+      ? thinkingManager.getThinkingParams(this.model, { forceEnabled: true })
       : {};
 
     // 如果指定了思考预算，覆盖默认值
@@ -904,8 +927,8 @@ export class ClaudeClient {
         // 构建 betas 数组（模拟官方 qC 函数）
         const betas = buildBetas(currentModel, this.isOAuth);
 
-        // 格式化 system prompt（OAuth 模式需要特殊格式）
-        const formattedSystem = formatSystemPrompt(systemPrompt, this.isOAuth);
+        // 格式化 system prompt（优先使用 blocks 分块缓存）
+        const formattedSystem = formatSystemPrompt(systemPrompt, this.isOAuth, options?.promptBlocks);
 
         // 构建 API 工具列表（将 WebSearch 客户端工具替换为 Server Tool）
         const apiTools = buildApiTools(tools);
@@ -1014,6 +1037,7 @@ export class ClaudeClient {
       thinkingBudget?: number;
       signal?: AbortSignal;
       toolChoice?: { type: 'auto' } | { type: 'any' } | { type: 'tool'; name: string };
+      promptBlocks?: PromptBlock[];
     }
   ): AsyncGenerator<{
     type: 'text' | 'thinking' | 'tool_use_start' | 'tool_use_delta' | 'server_tool_use_start' | 'web_search_result' | 'stop' | 'usage' | 'error' | 'response_headers';
@@ -1051,7 +1075,7 @@ export class ClaudeClient {
 
       // 准备 Extended Thinking 参数
       const thinkingParams = options?.enableThinking
-        ? thinkingManager.getThinkingParams(this.model)
+        ? thinkingManager.getThinkingParams(this.model, { forceEnabled: true })
         : {};
 
       // 如果指定了思考预算，覆盖默认值
@@ -1062,15 +1086,15 @@ export class ClaudeClient {
       // 构建 betas 数组（模拟官方 qC 函数）
       const betas = buildBetas(this.model, this.isOAuth);
 
-      // 格式化 system prompt（OAuth 模式需要特殊格式）
-      const formattedSystem = formatSystemPrompt(systemPrompt, this.isOAuth);
+      // 格式化 system prompt（优先使用 blocks 分块缓存）
+      const formattedSystem = formatSystemPrompt(systemPrompt, this.isOAuth, options?.promptBlocks);
 
       // 构建 API 工具列表（将 WebSearch 客户端工具替换为 Server Tool）
       const apiTools = buildApiTools(tools);
 
       if (this.debug) {
         console.log('[ClaudeClient] Using beta.messages.stream with betas:', betas);
-        console.log('[ClaudeClient] System prompt format:', Array.isArray(formattedSystem) ? 'array' : 'string');
+        console.log('[ClaudeClient] System prompt format:', Array.isArray(formattedSystem) ? `array(${formattedSystem.length} blocks)` : 'string');
         if (apiTools?.some(t => t.type === 'web_search_20250305')) {
           console.log('[ClaudeClient] WebSearch Server Tool enabled');
         }

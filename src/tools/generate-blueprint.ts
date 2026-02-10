@@ -38,7 +38,7 @@ export class GenerateBlueprintTool extends BaseTool<GenerateBlueprintInput, Tool
   description = `将对话中收集的需求结构化为项目蓝图
 
 ## 使用时机
-当你与用户充分讨论了项目需求后，调用此工具生成结构化蓝图。
+一些比较大的需求改动才使用这工具，比如创建新的项目，普通的小改动，请使用PlanMode工具，当你与用户充分讨论了项目需求后，调用此工具生成结构化蓝图。
 
 ## 参数说明
 - name: 项目名称

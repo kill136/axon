@@ -3,7 +3,7 @@
   "name": "claude-code-open",
   "description": "claude-code-open 是一个基于 React 框架的TypeScript 项目。包含 32 个主要模块：src/agents、src/background、src/blueprint、src/chrome-mcp、src/commands、src/config、src/context、src/core、src/env、src/git、src/hooks、src/map、src/mcp、src/media、src/memory、src/models、src/network、src/parser、src/permissions、src/plugins、src/prompt、src/sandbox、src/security、src/session、src/streaming、src/teleport、src/tools、src/types、src/ui、src/utils、src/web/client、src/web/server。",
   "version": "1.0.0",
-  "status": "approved",
+  "status": "completed",
   "projectPath": "F:\\claude-code-open",
   "businessProcesses": [
     {
@@ -1181,7 +1181,7 @@
     }
   ],
   "createdAt": "2026-01-24T12:32:12.213Z",
-  "updatedAt": "2026-01-24T12:32:12.913Z",
+  "updatedAt": "2026-02-08T14:14:20.256Z",
   "changeHistory": [
     {
       "id": "7d2fc820-b6a5-4c53-b0df-6da43b39d809",
@@ -1466,5 +1466,30 @@
   ],
   "approvedAt": "2026-01-24T12:32:12.938Z",
   "approvedBy": "system",
-  "source": "codebase"
+  "source": "codebase",
+  "constraints": [],
+  "designImages": [],
+  "lastExecutionPlan": {
+    "id": "plan-1770559843727-e2txno",
+    "blueprintId": "95153ea4-aa71-42da-8736-4305c33930e9",
+    "tasks": [],
+    "parallelGroups": [],
+    "estimatedCost": 0,
+    "estimatedMinutes": 0,
+    "autoDecisions": [],
+    "status": "ready",
+    "createdAt": "2026-02-08T14:10:43.727Z"
+  },
+  "executionState": {
+    "currentGroupIndex": 0,
+    "completedTaskIds": [],
+    "failedTaskIds": [],
+    "skippedTaskIds": [],
+    "taskResults": [],
+    "currentCost": 0,
+    "startedAt": "2026-02-08T14:10:43.938Z",
+    "lastUpdatedAt": "2026-02-08T14:10:43.938Z",
+    "isPaused": false,
+    "isCancelled": false
+  }
 }

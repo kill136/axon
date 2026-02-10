@@ -66,15 +66,18 @@ export default function BlueprintPage({ initialBlueprintId, onNavigateToSwarm }:
   // ============================================================================
 
   /**
-   * 加载蓝图列表（全局视图，显示所有项目的蓝图）
+   * 加载蓝图列表（按当前项目过滤）
    */
   const loadBlueprints = useCallback(async () => {
     try {
       setIsLoading(true);
       setError(null);
 
-      // 不传项目过滤参数，获取所有蓝图（与蜂群页面一致）
-      const response = await fetch('/api/blueprint/blueprints');
+      // 传递当前项目路径，只加载该项目的蓝图
+      const url = currentProjectPath
+        ? `/api/blueprint/blueprints?projectPath=${encodeURIComponent(currentProjectPath)}`
+        : '/api/blueprint/blueprints';
+      const response = await fetch(url);
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -107,12 +110,17 @@ export default function BlueprintPage({ initialBlueprintId, onNavigateToSwarm }:
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [currentProjectPath]);
 
   // 初始加载
   useEffect(() => {
     loadBlueprints();
   }, [loadBlueprints]);
+
+  // 当项目切换时重置选中状态
+  useEffect(() => {
+    setSelectedId(null);
+  }, [currentProjectPath]);
 
   // 当 initialBlueprintId 变化时更新选中状态
   useEffect(() => {
@@ -360,9 +368,27 @@ export default function BlueprintPage({ initialBlueprintId, onNavigateToSwarm }:
                     {blueprint.description || '暂无描述'}
                   </p>
                   <div className={styles.cardMeta}>
-                    <span>📦 {blueprint.moduleCount} 模块</span>
-                    <span>🔄 {blueprint.processCount} 流程</span>
-                    <span>🎯 {blueprint.nfrCount} NFR</span>
+                    {blueprint.moduleCount > 0 && (
+                      <span>📦 {blueprint.moduleCount} 模块</span>
+                    )}
+                    {blueprint.processCount > 0 && (
+                      <span>🔄 {blueprint.processCount} 流程</span>
+                    )}
+                    {blueprint.nfrCount > 0 && (
+                      <span>🎯 {blueprint.nfrCount} NFR</span>
+                    )}
+                    {blueprint.requirementCount > 0 && (
+                      <span>📋 {blueprint.requirementCount} 需求</span>
+                    )}
+                    {blueprint.constraintCount > 0 && (
+                      <span>⚠️ {blueprint.constraintCount} 约束</span>
+                    )}
+                    {/* 如果所有统计都为0，显示占位 */}
+                    {blueprint.moduleCount === 0 && blueprint.processCount === 0 &&
+                     blueprint.nfrCount === 0 && blueprint.requirementCount === 0 &&
+                     blueprint.constraintCount === 0 && (
+                      <span className={styles.cardMetaEmpty}>暂无详细数据</span>
+                    )}
                   </div>
                   <div className={styles.cardFooter}>
                     <span className={styles.cardVersion}>v{blueprint.version}</span>

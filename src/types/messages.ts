@@ -464,6 +464,17 @@ export interface Message {
   type?: 'message';
   /** Optional usage stats (for assistant messages from API) */
   usage?: Usage;
+
+  // === 压缩相关元数据（对齐官方内部消息字段） ===
+
+  /** 消息唯一标识（用于压缩边界追踪，对齐官方 uuid 字段） */
+  uuid?: string;
+  /** 标记此消息为压缩摘要（对齐官方 isCompactSummary） */
+  isCompactSummary?: boolean;
+  /** 标记此消息仅在对话记录中可见，不参与 UI 显示（对齐官方 isVisibleInTranscriptOnly） */
+  isVisibleInTranscriptOnly?: boolean;
+  /** 标记此消息为元消息（如工具结果包装），不算作用户实际输入（对齐官方 isMeta） */
+  isMeta?: boolean;
 }
 
 /**

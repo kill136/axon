@@ -921,7 +921,7 @@ export function modelSupportsToolReference(model: string): boolean {
  * @returns 是否可用
  */
 export function isMcpSearchToolAvailable(tools: Array<{ name: string }>): boolean {
-  return tools.some((t) => t.name === 'MCPSearch');
+  return tools.some((t) => t.name === 'Mcp');
 }
 
 /**
@@ -976,10 +976,10 @@ export function isToolSearchEnabled(model: string, tools: Array<{ name: string }
     return false;
   }
 
-  // 2. 检查 MCPSearch 工具是否可用
+  // 2. 检查 Mcp 工具是否可用
   if (!isMcpSearchToolAvailable(tools)) {
     if (process.env.DEBUG) {
-      console.log('[MCP] Tool search disabled: MCPSearchTool is not available (may have been disallowed via disallowedTools).');
+      console.log('[MCP] Tool search disabled: Mcp tool is not available (may have been disallowed via disallowedTools).');
     }
     return false;
   }
@@ -1111,7 +1111,7 @@ ${toolList}`;
  * 这是官方强制要求的工具，必须在调用MCP工具前使用
  */
 export class MCPSearchTool extends BaseTool<MCPSearchInput, MCPSearchToolResult> {
-  name = 'MCPSearch';
+  name = 'Mcp';
 
   // 静态描述（不包含工具列表）
   private static baseDescription = `Search for or select MCP tools to make them available for use.
@@ -1416,7 +1416,7 @@ export function registerMcpToolsToRegistry(
  * 列出已配置 MCP 服务器中的可用资源
  */
 export class ListMcpResourcesTool extends BaseTool<ListMcpResourcesInput, ToolResult> {
-  name = 'listMcpResources';
+  name = 'ListMcpResources';
 
   description = `List available resources from configured MCP servers.
 Each resource object includes a 'server' field indicating which server it's from.
@@ -1543,7 +1543,7 @@ Parameters:
  * 从 MCP 服务器读取特定资源
  */
 export class ReadMcpResourceTool extends BaseTool<ReadMcpResourceInput, ToolResult> {
-  name = 'readMcpResource';
+  name = 'ReadMcpResource';
 
   description = `Reads a specific resource from an MCP server.
 - server: The name of the MCP server to read from

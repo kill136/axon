@@ -96,6 +96,13 @@ export type ChatContent =
     | {
       type: 'notebook_output';
       data: NotebookOutputData;
+    }
+    | {
+      type: 'design_image';
+      imageUrl: string;
+      projectName: string;
+      style: string;
+      generatedText?: string;
     };
 
 // ============ Jupyter Notebook 输出类型 ============
@@ -230,6 +237,14 @@ export interface Session {
   messageCount: number;
 }
 
+/** App 暴露给 Root 的会话操作接口 */
+export interface SessionActions {
+  selectSession: (id: string) => void;
+  deleteSession: (id: string) => void;
+  renameSession: (id: string, name: string) => void;
+  newSession: () => void;
+}
+
 // 斜杠命令
 export interface SlashCommand {
   name: string;
@@ -266,8 +281,9 @@ export interface QuestionOption {
   description?: string;
 }
 
-// 附件类型
-export type AttachmentType = 'image' | 'pdf' | 'docx' | 'xlsx' | 'pptx' | 'text';
+// 附件类型: image 直接传递给模型, file 保存为临时文件传路径
+// 保留 pdf/docx/xlsx/pptx/text 向后兼容
+export type AttachmentType = 'image' | 'file' | 'pdf' | 'docx' | 'xlsx' | 'pptx' | 'text';
 
 // 附件
 export interface Attachment {
@@ -326,6 +342,8 @@ export type WSMessageType =
   | 'continuous_dev:resumed'
   | 'continuous_dev:stopped'
   | 'continuous_dev:completed'
+  // 设计图生成
+  | 'design_image_generated'
   // 探针调试消息
   | 'debug_messages_response';
 

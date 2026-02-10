@@ -729,10 +729,12 @@ export function collectWorkerSummary(
 
       // 检测自我汇报
       if (event.toolName === 'UpdateTaskStatus') {
-        const input = event.toolInput as { status?: string; message?: string } | undefined;
+        const input = event.toolInput as { status?: string; summary?: string; error?: string } | undefined;
         if (input?.status === 'completed') {
           selfReportedCompleted = true;
-          selfReportedMessage = input.message;
+          selfReportedMessage = input.summary;
+        } else if (input?.status === 'failed') {
+          selfReportedMessage = input.error;
         }
       }
 

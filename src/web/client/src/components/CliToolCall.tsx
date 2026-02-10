@@ -152,7 +152,63 @@ function BashToolContent({ input, result }: { input: any; result?: any }) {
 }
 
 /**
- * 渲染 Edit 工具内容 - 显示差异，支持 Click to expand
+ * Side-by-side diff 行数据
+ */
+interface DiffRow {
+  left: { text: string; type: 'unchanged' | 'removed' } | null;
+  right: { text: string; type: 'unchanged' | 'added' } | null;
+}
+
+/**
+ * 基于 LCS 的 side-by-side diff 算法
+ * 将 old/new 行对齐为左右两列
+ */
+function computeSideBySideDiff(oldLines: string[], newLines: string[]): DiffRow[] {
+  const m = oldLines.length;
+  const n = newLines.length;
+
+  // 构建 LCS DP 表
+  const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (oldLines[i - 1] === newLines[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1] + 1;
+      } else {
+        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+      }
+    }
+  }
+
+  // 回溯构建 diff 行（倒序入栈）
+  const stack: DiffRow[] = [];
+  let i = m, j = n;
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && oldLines[i - 1] === newLines[j - 1]) {
+      stack.push({
+        left: { text: oldLines[i - 1], type: 'unchanged' },
+        right: { text: newLines[j - 1], type: 'unchanged' },
+      });
+      i--; j--;
+    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+      stack.push({
+        left: null,
+        right: { text: newLines[j - 1], type: 'added' },
+      });
+      j--;
+    } else {
+      stack.push({
+        left: { text: oldLines[i - 1], type: 'removed' },
+        right: null,
+      });
+      i--;
+    }
+  }
+
+  return stack.reverse();
+}
+
+/**
+ * 渲染 Edit 工具内容 - 左右对比 side-by-side diff，支持 Click to expand
  */
 function EditToolContent({ input, result }: { input: any; result?: any }) {
   const [expanded, setExpanded] = useState(false);
@@ -161,49 +217,76 @@ function EditToolContent({ input, result }: { input: any; result?: any }) {
 
   const oldLines = oldString ? oldString.split('\n') : [];
   const newLines = newString ? newString.split('\n') : [];
-  const totalLines = oldLines.length + newLines.length;
 
-  // 计算需要显示的行数
-  const maxLines = DEFAULT_MAX_LINES;
-  const displayOldLines = expanded ? oldLines : oldLines.slice(0, Math.ceil(maxLines / 2));
-  const displayNewLines = expanded ? newLines : newLines.slice(0, Math.floor(maxLines / 2));
+  const diffRows = useMemo(
+    () => computeSideBySideDiff(oldLines, newLines),
+    [oldString, newString]
+  );
+
+  const totalRows = diffRows.length;
+  const maxRows = DEFAULT_MAX_LINES;
+  const displayRows = expanded ? diffRows : diffRows.slice(0, maxRows);
+
+  // 统计增删行数
+  const removedCount = diffRows.filter(r => r.left && !r.right).length;
+  const addedCount = diffRows.filter(r => !r.left && r.right).length;
+
+  // 生成摘要文本
+  const summaryParts: string[] = [];
+  if (removedCount > 0) summaryParts.push(`Removed ${removedCount} line${removedCount > 1 ? 's' : ''}`);
+  if (addedCount > 0) summaryParts.push(`Added ${addedCount} line${addedCount > 1 ? 's' : ''}`);
+  const summary = summaryParts.length > 0 ? summaryParts.join(', ') : 'Modified';
 
   return (
     <div className="cli-edit-content">
       <div className="cli-edit-header">
-        <div className="cli-edit-status">Modified</div>
+        <div className="cli-edit-status">{summary}</div>
         <div className="cli-edit-stats">
-          {oldLines.length > 0 && <span className="cli-stat-removed">-{oldLines.length}</span>}
-          {newLines.length > 0 && <span className="cli-stat-added">+{newLines.length}</span>}
+          {removedCount > 0 && <span className="cli-stat-removed">-{removedCount}</span>}
+          {addedCount > 0 && <span className="cli-stat-added">+{addedCount}</span>}
         </div>
       </div>
       <ExpandableContent
-        totalLines={totalLines}
-        maxLines={maxLines}
+        totalLines={totalRows}
+        maxLines={maxRows}
         expanded={expanded}
         onToggle={() => setExpanded(!expanded)}
       >
-        <div className="cli-edit-diff">
-          {oldString && (
-            <div className="cli-diff-section cli-diff-removed">
-              {displayOldLines.map((line: string, i: number) => (
-                <div key={`old-${i}`} className="cli-diff-line">
-                  <span className="cli-diff-prefix">--</span>
-                  <span className="cli-diff-text">{line}</span>
-                </div>
-              ))}
+        <div className="cli-diff-sidebyside">
+          {displayRows.map((row, i) => (
+            <div key={i} className="cli-diff-row">
+              {/* 左列 - old */}
+              <div className={`cli-diff-cell ${
+                row.left
+                  ? (row.left.type === 'removed' ? 'cli-diff-cell--removed' : 'cli-diff-cell--unchanged')
+                  : 'cli-diff-cell--empty'
+              }`}>
+                {row.left && (
+                  <>
+                    <span className="cli-diff-cell-prefix">
+                      {row.left.type === 'removed' ? '\u2212' : '\u00A0'}
+                    </span>
+                    <span className="cli-diff-cell-text">{row.left.text || '\u00A0'}</span>
+                  </>
+                )}
+              </div>
+              {/* 右列 - new */}
+              <div className={`cli-diff-cell ${
+                row.right
+                  ? (row.right.type === 'added' ? 'cli-diff-cell--added' : 'cli-diff-cell--unchanged')
+                  : 'cli-diff-cell--empty'
+              }`}>
+                {row.right && (
+                  <>
+                    <span className="cli-diff-cell-prefix">
+                      {row.right.type === 'added' ? '+' : '\u00A0'}
+                    </span>
+                    <span className="cli-diff-cell-text">{row.right.text || '\u00A0'}</span>
+                  </>
+                )}
+              </div>
             </div>
-          )}
-          {newString && (
-            <div className="cli-diff-section cli-diff-added">
-              {displayNewLines.map((line: string, i: number) => (
-                <div key={`new-${i}`} className="cli-diff-line">
-                  <span className="cli-diff-prefix">+</span>
-                  <span className="cli-diff-text">{line}</span>
-                </div>
-              ))}
-            </div>
-          )}
+          ))}
         </div>
       </ExpandableContent>
     </div>

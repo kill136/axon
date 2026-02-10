@@ -11,12 +11,14 @@ import { getCurrentCwd } from '../core/cwd-context.js';
 export interface UpdateTaskStatusInput {
   taskId: string;
   status: 'completed' | 'failed';
+  summary?: string;
   error?: string;
 }
 
 export interface TaskProgress {
   taskId: string;
   status: string;
+  summary?: string;
   error?: string;
   updatedAt: string;
 }
@@ -69,6 +71,7 @@ export class UpdateTaskStatusTool extends BaseTool<UpdateTaskStatusInput, ToolRe
           enum: ['completed', 'failed'],
           description: '完成状态',
         },
+        summary: { type: 'string', description: '完成摘要（完成时必须提供）' },
         error: { type: 'string', description: '失败时的错误信息' },
       },
       required: ['taskId', 'status'],
@@ -76,7 +79,7 @@ export class UpdateTaskStatusTool extends BaseTool<UpdateTaskStatusInput, ToolRe
   }
 
   async execute(input: UpdateTaskStatusInput): Promise<ToolResult> {
-    const { taskId, status, error } = input;
+    const { taskId, status, summary, error } = input;
 
     if (status === 'failed' && !error) {
       return { success: false, error: 'status=failed 时必须提供 error' };
@@ -85,6 +88,7 @@ export class UpdateTaskStatusTool extends BaseTool<UpdateTaskStatusInput, ToolRe
     const progress: TaskProgress = {
       taskId,
       status,
+      summary,
       error,
       updatedAt: new Date().toISOString(),
     };

@@ -18,6 +18,7 @@ import type {
   TaskNode,
   WorkerAgent,
   LeadStreamPayload,
+  LeadStreamBlock,
   LeadEventPayload,
   LeadAgentPhase,
 } from '../types';
@@ -60,6 +61,8 @@ const initialState: SwarmState = {
     events: [],
     lastUpdated: '',
   },
+  // v9.2: LeadAgent 插嘴状态
+  leadInterjectStatus: null,
 };
 
 export interface UseSwarmStateOptions extends Omit<UseSwarmWebSocketOptions, 'onMessage' | 'onError'> {
@@ -114,6 +117,26 @@ export function useSwarmState(options: UseSwarmStateOptions): UseSwarmStateRetur
             };
           }
 
+          // v9.2: 恢复 LeadAgent 状态（刷新浏览器后恢复上下文）
+          let newLeadAgent = prev.leadAgent;
+          if ('leadAgent' in message.payload && message.payload.leadAgent) {
+            const la = message.payload.leadAgent as {
+              phase: string;
+              stream: LeadStreamBlock[];
+              events: Array<{ type: string; data: Record<string, unknown>; timestamp: string }>;
+              systemPrompt?: string;
+              lastUpdated: string;
+            };
+            console.log(`[SwarmState] 从服务器恢复 LeadAgent 状态: phase=${la.phase}, stream=${la.stream.length} blocks, events=${la.events.length}`);
+            newLeadAgent = {
+              phase: la.phase as LeadAgentPhase,
+              stream: la.stream,
+              events: la.events,
+              systemPrompt: la.systemPrompt,
+              lastUpdated: la.lastUpdated,
+            };
+          }
+
           return {
             ...prev,
             blueprint: message.payload.blueprint,
@@ -135,6 +158,8 @@ export function useSwarmState(options: UseSwarmStateOptions): UseSwarmStateRetur
             taskStreams: newTaskStreams,
             // v4.8: 恢复验收测试状态
             verification: newVerification,
+            // v9.2: 恢复 LeadAgent 状态
+            leadAgent: newLeadAgent,
           };
         });
         setIsLoading(false);
@@ -364,9 +389,14 @@ export function useSwarmState(options: UseSwarmStateOptions): UseSwarmStateRetur
 
       case 'swarm:worker_stream':
         // v2.1: Worker 流式输出（参考 App.tsx 的实现方式）
+        // v9.3: 添加调试日志，排查 Worker 流数据未渲染问题
+        console.log(`[SwarmState] 📡 worker_stream: taskId=${message.payload.taskId}, streamType=${message.payload.streamType}, hasContent=${!!message.payload.content}`);
         setState(prev => {
           const { taskId, streamType, content, toolName, toolInput, toolResult, toolError, timestamp } = message.payload;
-          if (!taskId) return prev;
+          if (!taskId) {
+            console.warn('[SwarmState] ⚠️ worker_stream 没有 taskId，消息被丢弃');
+            return prev;
+          }
 
           const existingStream = prev.taskStreams[taskId] || { content: [], lastUpdated: timestamp };
           const newContent = [...existingStream.content];
@@ -592,6 +622,49 @@ export function useSwarmState(options: UseSwarmStateOptions): UseSwarmStateRetur
         }, 5000);
         break;
 
+      case 'lead:interject_success':
+        // v9.2: LeadAgent 插嘴成功
+        console.log(`[SwarmState] ✅ LeadAgent 插嘴成功`);
+        setState(prev => ({
+          ...prev,
+          leadInterjectStatus: {
+            success: true,
+            message: message.payload.message,
+            timestamp: message.payload.timestamp,
+          },
+        }));
+        setTimeout(() => {
+          setState(prev => ({ ...prev, leadInterjectStatus: null }));
+        }, 3000);
+        break;
+
+      case 'lead:interject_failed':
+        // v9.2: LeadAgent 插嘴失败
+        console.log(`[SwarmState] ❌ LeadAgent 插嘴失败: ${message.payload.error}`);
+        setState(prev => ({
+          ...prev,
+          leadInterjectStatus: {
+            success: false,
+            message: message.payload.error,
+            timestamp: message.payload.timestamp,
+          },
+        }));
+        setTimeout(() => {
+          setState(prev => ({ ...prev, leadInterjectStatus: null }));
+        }, 5000);
+        break;
+
+      case 'swarm:lead_system_prompt':
+        // LeadAgent System Prompt（供前端查看提示词）
+        setState(prev => ({
+          ...prev,
+          leadAgent: {
+            ...prev.leadAgent,
+            systemPrompt: message.payload.systemPrompt,
+          },
+        }));
+        break;
+
       case 'swarm:lead_stream':
         // v9.0: LeadAgent 流式输出（文本、工具调用）
         setState(prev => {
@@ -710,6 +783,12 @@ export function useSwarmState(options: UseSwarmStateOptions): UseSwarmStateRetur
         });
         break;
 
+      case 'connected':
+        // 服务端连接确认消息，清除错误状态
+        setError(null);
+        setIsLoading(false);
+        break;
+
       default:
         // 未知消息类型
         console.warn('[SwarmState] Unknown message type:', (message as any).type);
@@ -731,9 +810,23 @@ export function useSwarmState(options: UseSwarmStateOptions): UseSwarmStateRetur
     onError: handleError,
   });
 
-  // 更新连接状态
+  // 没有 blueprintId 时，不需要加载（WebSocket 不会连接）
+  // blueprintId 变为有效值时，重新进入加载状态等待 WebSocket 响应
+  useEffect(() => {
+    if (!blueprintId) {
+      setIsLoading(false);
+    } else {
+      setIsLoading(true);
+    }
+  }, [blueprintId]);
+
+  // 更新连接状态，重连成功时清除错误
   useEffect(() => {
     setState(prev => ({ ...prev, status: ws.status }));
+    if (ws.status === 'connected') {
+      setError(null);
+      setState(prev => ({ ...prev, error: null }));
+    }
   }, [ws.status]);
 
   // 订阅蜂群状态
@@ -766,7 +859,7 @@ export function useSwarmState(options: UseSwarmStateOptions): UseSwarmStateRetur
     try {
       const response = await logsApi.getTaskLogs(taskId, { limit: 200 });
 
-      // 将历史日志合并到当前状态
+      // v5.0: 将历史日志合并到当前状态（支持所有 stream 类型）
       setState(prev => {
         // 转换 logs 为前端格式
         const historyLogs = response.logs.map(log => ({
@@ -778,26 +871,67 @@ export function useSwarmState(options: UseSwarmStateOptions): UseSwarmStateRetur
           details: log.details,
         }));
 
-        // 转换 streams 为前端内容格式
-        const historyContent: Array<{
-          type: 'tool';
-          id: string;
-          name: string;
-          input?: any;
-          status: 'completed' | 'error';
-          result?: string;
-          error?: string;
-        }> = response.streams
-          .filter(s => s.streamType === 'tool_end')
-          .map(s => ({
-            type: 'tool' as const,
-            id: s.id,
-            name: s.toolName || 'unknown',
-            input: s.toolInput,
-            status: s.toolError ? 'error' as const : 'completed' as const,
-            result: s.toolResult,
-            error: s.toolError,
-          }));
+        // v5.0: 从 SQLite streams 重建所有类型的内容块（thinking/text/tool）
+        // 按时间顺序遍历 streams，将连续的同类型内容合并
+        const historyContent: Array<
+          | { type: 'tool'; id: string; name: string; input?: any; status: 'completed' | 'error'; result?: string; error?: string }
+          | { type: 'thinking'; text: string }
+          | { type: 'text'; text: string }
+        > = [];
+
+        // 跟踪 tool_start 等待匹配的 tool_end
+        const pendingTools = new Map<string, { id: string; name: string; input?: any }>();
+
+        for (const s of response.streams) {
+          switch (s.streamType) {
+            case 'thinking':
+              if (s.content) {
+                // 合并连续的 thinking 块
+                const last = historyContent[historyContent.length - 1];
+                if (last?.type === 'thinking') {
+                  last.text += s.content;
+                } else {
+                  historyContent.push({ type: 'thinking', text: s.content });
+                }
+              }
+              break;
+
+            case 'text':
+              if (s.content) {
+                // 合并连续的 text 块
+                const last = historyContent[historyContent.length - 1];
+                if (last?.type === 'text') {
+                  last.text += s.content;
+                } else {
+                  historyContent.push({ type: 'text', text: s.content });
+                }
+              }
+              break;
+
+            case 'tool_start':
+              // 记录 pending tool，等待 tool_end 匹配
+              if (s.toolName) {
+                pendingTools.set(s.toolName, { id: s.id, name: s.toolName, input: s.toolInput });
+              }
+              break;
+
+            case 'tool_end':
+              // 匹配 tool_start，生成完整的 tool 块
+              pendingTools.delete(s.toolName || '');
+              historyContent.push({
+                type: 'tool' as const,
+                id: s.id,
+                name: s.toolName || 'unknown',
+                input: s.toolInput,
+                status: s.toolError ? 'error' as const : 'completed' as const,
+                result: s.toolResult,
+                error: s.toolError,
+              });
+              break;
+
+            // system_prompt 不添加到 content 流中
+          }
+        }
 
         // 获取现有日志，避免重复
         const existingLogs = prev.taskLogs[taskId] || [];
@@ -806,10 +940,16 @@ export function useSwarmState(options: UseSwarmStateOptions): UseSwarmStateRetur
 
         // 获取现有流内容
         const existingStream = prev.taskStreams[taskId] || { content: [], lastUpdated: new Date().toISOString() };
-        const existingContentIds = new Set(
-          existingStream.content.filter((c): c is { type: 'tool'; id: string } => c.type === 'tool').map(c => c.id)
-        );
-        const newContent = historyContent.filter(c => !existingContentIds.has(c.id));
+
+        // v5.0: 智能去重 - 如果已有实时数据，以实时数据为准；否则用历史数据
+        let mergedContent;
+        if (existingStream.content.length > 0) {
+          // 已有实时内容，不覆盖
+          mergedContent = existingStream.content;
+        } else {
+          // 没有实时内容，使用历史数据
+          mergedContent = historyContent;
+        }
 
         return {
           ...prev,
@@ -820,7 +960,7 @@ export function useSwarmState(options: UseSwarmStateOptions): UseSwarmStateRetur
           taskStreams: {
             ...prev.taskStreams,
             [taskId]: {
-              content: [...newContent, ...existingStream.content].slice(0, 200),
+              content: mergedContent.slice(0, 200) as any,
               lastUpdated: existingStream.lastUpdated,
             },
           },
@@ -890,6 +1030,13 @@ export function useSwarmState(options: UseSwarmStateOptions): UseSwarmStateRetur
     }
   }, [blueprintId, ws.interjectTask]);
 
+  // v9.2: LeadAgent 插嘴包装（自动注入 blueprintId）
+  const interjectLead = useCallback((message: string) => {
+    if (blueprintId) {
+      ws.interjectLead(blueprintId, message);
+    }
+  }, [blueprintId, ws.interjectLead]);
+
   return {
     state,
     isLoading,
@@ -908,6 +1055,11 @@ export function useSwarmState(options: UseSwarmStateOptions): UseSwarmStateRetur
     sendAskUserResponse,
     // v4.4: 用户插嘴
     interjectTask,
+    // v9.2: LeadAgent 插嘴
+    interjectLead,
+    // 探针功能：暴露底层 send 和 addMessageHandler
+    send: ws.send,
+    addMessageHandler: ws.addMessageHandler,
   };
 }
 

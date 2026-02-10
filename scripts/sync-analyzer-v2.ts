@@ -23,7 +23,7 @@ const TOOL_MAPPING: Record<string, { projectFile: string; exportName?: string; a
   'TodoWrite': { projectFile: 'src/tools/todo.ts', exportName: 'TodoWriteTool' },
   'NotebookEdit': { projectFile: 'src/tools/notebook.ts', exportName: 'NotebookEditTool' },
   'Mcp': { projectFile: 'src/tools/mcp.ts', exportName: 'McpTool' },
-  'KillShell': { projectFile: 'src/tools/bash.ts', exportName: 'KillShellTool', alternative: '可能在 tmux.ts 中' },
+  'TaskStop': { projectFile: 'src/tools/bash.ts', exportName: 'KillShellTool' },
   'ExitPlanMode': { projectFile: 'src/tools/planmode.ts', exportName: 'ExitPlanModeTool' },
   'EnterPlanMode': { projectFile: 'src/tools/planmode.ts', exportName: 'EnterPlanModeTool' },
   'AskUserQuestion': { projectFile: 'src/tools/ask.ts', exportName: 'AskUserQuestionTool' },

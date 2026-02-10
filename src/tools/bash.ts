@@ -1488,7 +1488,7 @@ Use TaskOutput tool with task_id="${taskId}" to retrieve the output.`;
 }
 
 export class KillShellTool extends BaseTool<{ shell_id: string }, BashResult> {
-  name = 'KillShell';
+  name = 'TaskStop';
   description = `
 - Kills a running background bash shell by its ID
 - Takes a shell_id parameter identifying the shell to kill

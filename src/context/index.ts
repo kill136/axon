@@ -246,8 +246,10 @@ function compressToolOutput(content: string, maxChars: number = TOOL_OUTPUT_MAX_
  * 检测文件路径引用
  */
 function extractFileReferences(text: string): string[] {
-  // 匹配绝对路径
-  const pathRegex = /(?:\/[\w\-_.]+)+\.\w+/g;
+  // 匹配绝对路径（Unix 和 Windows）
+  // Unix: /path/to/file.ext
+  // Windows: C:\path\to\file.ext 或 C:/path/to/file.ext
+  const pathRegex = /(?:(?:\/[\w\-_.]+)+\.\w+|[A-Za-z]:[\\/](?:[\w\-_.]+[\\/])*[\w\-_.]+\.\w+)/g;
   const matches = text.match(pathRegex);
 
   if (!matches) {

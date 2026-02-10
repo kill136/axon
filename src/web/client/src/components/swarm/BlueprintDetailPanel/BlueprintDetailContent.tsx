@@ -96,6 +96,10 @@ interface BlueprintDetailContentProps {
   onNavigateToSwarm?: () => void;
   onDeleted?: () => void;
   onRefresh?: () => void;
+  /** 新建聊天 Tab 的回调 */
+  onAddChatTab?: () => void;
+  /** 返回主聊天页的回调 */
+  onNavigateToChat?: () => void;
 }
 
 // 视图模式类型
@@ -124,6 +128,8 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
   onNavigateToSwarm,
   onDeleted,
   onRefresh,
+  onAddChatTab,
+  onNavigateToChat,
 }) => {
   // 目录树
   const [fileTree, setFileTree] = useState<FileTreeNode | null>(null);
@@ -4349,6 +4355,30 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
                 <span className={styles.tabStat}>
                   {taskTreeStats.completedTasks}/{taskTreeStats.totalTasks} 完成
                 </span>
+              </div>
+            )}
+
+            {/* 右侧操作按钮区域 */}
+            {(onAddChatTab || onNavigateToChat) && (
+              <div className={styles.tabBarActions}>
+                {onAddChatTab && (
+                  <button
+                    className={styles.tabBarActionBtn}
+                    onClick={onAddChatTab}
+                    title="新建 AI 聊天"
+                  >
+                    + 💬
+                  </button>
+                )}
+                {onNavigateToChat && (
+                  <button
+                    className={styles.tabBarActionBtn}
+                    onClick={onNavigateToChat}
+                    title="返回主聊天"
+                  >
+                    ← 返回主聊天
+                  </button>
+                )}
               </div>
             )}
           </div>

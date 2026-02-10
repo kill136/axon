@@ -1930,10 +1930,10 @@ export class ConversationLoop {
     const toolSearchEnabled = isToolSearchEnabled(resolvedModel, tools);
     if (toolSearchEnabled) {
       // 过滤掉所有 MCP 工具（以 mcp__ 开头的工具），只保留 MCPSearch
-      tools = tools.filter(t => !t.name.startsWith('mcp__') || t.name === 'MCPSearch');
+      tools = tools.filter(t => !t.name.startsWith('mcp__') || t.name === 'Mcp');
 
       if (options.verbose || options.debug) {
-        console.log(chalk.blue('[MCP] Tool search auto mode enabled: MCP tools will be loaded on-demand via MCPSearch'));
+        console.log(chalk.blue('[MCP] Tool search auto mode enabled: MCP tools will be loaded on-demand via Mcp'));
       }
     }
 
@@ -2124,6 +2124,7 @@ export class ConversationLoop {
 
     // 构建系统提示词
     let systemPrompt: string;
+    let promptBlocks: Array<{ text: string; cacheScope: 'global' | 'org' | null }> | undefined;
     if (this.options.systemPrompt) {
       // 如果提供了自定义系统提示词，直接使用
       systemPrompt = this.options.systemPrompt;
@@ -2132,6 +2133,7 @@ export class ConversationLoop {
       try {
         const buildResult = await this.promptBuilder.build(this.promptContext);
         systemPrompt = buildResult.content;
+        promptBlocks = buildResult.blocks;
 
         if (this.options.verbose) {
           console.log(chalk.gray(`[SystemPrompt] Built in ${buildResult.buildTimeMs}ms, ${buildResult.hashInfo.estimatedTokens} tokens`));
@@ -2190,6 +2192,7 @@ export class ConversationLoop {
           {
             enableThinking: this.options.thinking?.enabled,
             thinkingBudget: this.options.thinking?.budgetTokens,
+            promptBlocks,
           }
         );
       } catch (apiError: any) {
@@ -2432,6 +2435,8 @@ Guidelines:
 
     let turns = 0;
     const maxTurns = this.options.maxTurns || 50;
+    let streamRetryCount = 0;        // v9.1: 流式错误连续重试计数
+    const maxStreamRetries = 3;      // v9.1: 最大流式错误重试次数
 
     // 解析模型别名（在循环外部，避免重复解析）
     const resolvedModel = modelConfig.resolveAlias(this.options.model || 'sonnet');
@@ -2444,12 +2449,14 @@ Guidelines:
 
       // 每个 turn 重新构建系统提示词 - 支持运行时权限模式切换 (官方 v2.1.2 Shift+Tab)
       let systemPrompt: string;
+      let promptBlocks: Array<{ text: string; cacheScope: 'global' | 'org' | null }> | undefined;
       if (this.options.systemPrompt) {
         systemPrompt = this.options.systemPrompt;
       } else {
         try {
           const buildResult = await this.promptBuilder.build(this.promptContext);
           systemPrompt = buildResult.content;
+          promptBlocks = buildResult.blocks;
         } catch {
           systemPrompt = this.getDefaultSystemPrompt();
         }
@@ -2498,6 +2505,7 @@ Guidelines:
             enableThinking: this.options.thinking?.enabled,
             thinkingBudget: this.options.thinking?.budgetTokens,
             signal: this.abortController?.signal,
+            promptBlocks,
           }
         )) {
           // 检查是否已被中断
@@ -2560,6 +2568,28 @@ Guidelines:
           yield { type: 'interrupted', content: 'Request interrupted by user' };
           break;
         }
+
+        // v9.1: 判断是否为可重试的网络错误（暂时性故障）
+        const errMsg = streamError.message || '';
+        const errCode = streamError.code || streamError.type || '';
+        const isRetryableStreamError = [
+          'ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'ECONNREFUSED',
+          'network error', 'fetch failed', 'Connection error', 'connection error',
+          'overloaded_error', 'rate_limit_error', 'api_error', 'timeout',
+        ].some(e => errMsg.includes(e) || errCode.includes(e))
+          || [429, 500, 502, 503, 504, 529].includes(streamError.status || streamError.statusCode || 0);
+
+        if (isRetryableStreamError && streamRetryCount < maxStreamRetries) {
+          streamRetryCount++;
+          const delay = 1000 * Math.pow(2, streamRetryCount - 1); // 指数退避: 1s, 2s, 4s
+          console.warn(chalk.yellow(`[Loop] 流式请求失败 (${errCode || errMsg.substring(0, 50)}), ${delay}ms 后重试 (${streamRetryCount}/${maxStreamRetries})...`));
+          await new Promise(r => setTimeout(r, delay));
+          // 重新创建 AbortController（旧的可能已被污染）
+          this.abortController = new AbortController();
+          // 不增加 turns 计数，不 break，直接 continue 重试当前 turn
+          continue;
+        }
+
         console.error(chalk.red(`[Loop] Stream failed: ${streamError.message}`));
         if (this.options.debug) {
           console.error(chalk.red('[Loop] Full error:'), streamError);
@@ -2567,6 +2597,9 @@ Guidelines:
         yield { type: 'tool_end', toolError: streamError.message };
         break;
       }
+
+      // v9.1: 流式请求成功完成（无异常），重置重试计数器
+      streamRetryCount = 0;
 
       // 如果被中断，保存已收集的内容后跳出循环
       // 关键修复：中断时需要保存 assistantContent，否则恢复会话时无法显示
@@ -2775,6 +2808,20 @@ Guidelines:
    */
   getModel(): string {
     return this.client.getModel();
+  }
+
+  /**
+   * 获取调试信息（探针功能）
+   * 返回当前 ConversationLoop 的系统提示词、消息列表、工具列表和模型信息
+   */
+  getDebugInfo(): { systemPrompt: string; messages: unknown[]; tools: unknown[]; model: string; messageCount: number } {
+    return {
+      systemPrompt: this.options.systemPrompt || '(动态构建)',
+      messages: this.session.getMessages(),
+      tools: this.tools.map(t => ({ name: t.name, description: t.description, inputSchema: t.inputSchema })),
+      model: this.getModel(),
+      messageCount: this.session.getMessages().length,
+    };
   }
 
   /**

@@ -2,7 +2,6 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { BlueprintDetailContent } from '../../components/swarm/BlueprintDetailPanel/BlueprintDetailContent';
 import { useProject } from '../../contexts/ProjectContext';
 import { useWebSocket } from '../../hooks/useWebSocket';
-import type { CodePageContext } from '../../Root';
 import type { ChatMessage, ChatContent } from '../../types';
 import styles from './CodeBrowserPage.module.css';
 
@@ -17,7 +16,7 @@ interface Tab {
 
 interface CodeBrowserPageProps {
   /** 从聊天页传递的上下文 */
-  context?: CodePageContext | null;
+  context?: any;
   /** 返回聊天页的回调 */
   onNavigateToChat?: () => void;
 }
@@ -176,6 +175,11 @@ export default function CodeBrowserPage({ context, onNavigateToChat }: CodeBrows
     }
   }, [tabs, activeTabId]);
 
+  // 切换回欢迎视图
+  const switchToWelcome = useCallback(() => {
+    setActiveTabId('welcome');
+  }, []);
+
   // 渲染 Tab 内容
   const renderTabContent = () => {
     const activeTab = tabs.find(t => t.id === activeTabId);
@@ -189,6 +193,8 @@ export default function CodeBrowserPage({ context, onNavigateToChat }: CodeBrows
             onNavigateToSwarm={undefined}
             onDeleted={undefined}
             onRefresh={undefined}
+            onAddChatTab={addChatTab}
+            onNavigateToChat={onNavigateToChat}
           />
         );
 
@@ -196,6 +202,9 @@ export default function CodeBrowserPage({ context, onNavigateToChat }: CodeBrows
         return (
           <div className={styles.chatTabContent}>
             <div className={styles.chatTabHeader}>
+              <button className={styles.backToCodeButton} onClick={switchToWelcome} title="返回代码浏览">
+                ← 代码
+              </button>
               <span className={styles.chatTabTitle}>🤖 AI 助手</span>
               <span className={styles.chatTabStatus}>
                 {connected ? '🟢 已连接' : '🔴 断开'}
@@ -298,53 +307,7 @@ export default function CodeBrowserPage({ context, onNavigateToChat }: CodeBrows
 
   return (
     <div className={styles.codeBrowserPage}>
-      {/* Tab 栏 */}
-      <div className={styles.tabBar}>
-        <div className={styles.tabList}>
-          {tabs.map(tab => (
-            <div
-              key={tab.id}
-              className={`${styles.tab} ${activeTabId === tab.id ? styles.activeTab : ''}`}
-              onClick={() => setActiveTabId(tab.id)}
-            >
-              <span className={styles.tabIcon}>{tab.icon}</span>
-              <span className={styles.tabTitle}>{tab.title}</span>
-              {tab.closable && (
-                <button
-                  className={styles.tabCloseButton}
-                  onClick={(e) => closeTab(tab.id, e)}
-                >
-                  ×
-                </button>
-              )}
-            </div>
-          ))}
-          {/* 添加新 Tab 按钮 */}
-          <button
-            className={styles.addTabButton}
-            onClick={addChatTab}
-            title="新建 AI 聊天"
-          >
-            + 💬
-          </button>
-        </div>
-
-        {/* 返回聊天按钮 */}
-        {onNavigateToChat && (
-          <button
-            className={styles.backToChatButton}
-            onClick={onNavigateToChat}
-            title="返回主聊天"
-          >
-            ← 返回主聊天
-          </button>
-        )}
-      </div>
-
-      {/* Tab 内容区 */}
-      <div className={styles.tabContent}>
-        {renderTabContent()}
-      </div>
+      {renderTabContent()}
     </div>
   );
 }

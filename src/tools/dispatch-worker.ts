@@ -10,15 +10,12 @@
  * v9.0: 蜂群架构 LeadAgent 改造的核心工具
  */
 
-import { v4 as uuidv4 } from 'uuid';
 import { BaseTool } from './base.js';
 import type { ToolResult, ToolDefinition } from '../types/index.js';
 import type {
   Blueprint,
   SmartTask,
   TaskResult,
-  FileChange,
-  WorkerDecision,
   SwarmConfig,
   TechStack,
   DispatchWorkerInput,
@@ -163,15 +160,54 @@ Worker 执行的完整结果，包括：
       defaultModel: (model || 'sonnet') as any,
     });
 
-    // 转发 Worker 事件
-    worker.on('stream:text', (data) => {
-      ctx.onTaskEvent({ type: 'worker:stream', data: { ...data, taskId } });
+    // 转发 Worker 流式事件（格式需与 websocket.ts 的 worker:stream handler 匹配）
+    // v9.3: 添加调试日志
+    console.log(`[DispatchWorker] 🔗 设置 Worker 流式事件监听器, taskId=${taskId}, workerId=${worker.workerId}`);
+    worker.on('stream:thinking', (data: any) => {
+      ctx.onTaskEvent({ type: 'worker:stream', data: {
+        workerId: data.workerId,
+        taskId,
+        streamType: 'thinking',
+        content: data.content,
+      }});
     });
-    worker.on('stream:tool_start', (data) => {
-      ctx.onTaskEvent({ type: 'worker:stream', data: { ...data, taskId } });
+    worker.on('stream:text', (data: any) => {
+      console.log(`[DispatchWorker] 📡 stream:text taskId=${taskId}, contentLen=${data.content?.length || 0}`);
+      ctx.onTaskEvent({ type: 'worker:stream', data: {
+        workerId: data.workerId,
+        taskId,
+        streamType: 'text',
+        content: data.content,
+      }});
     });
-    worker.on('stream:tool_end', (data) => {
-      ctx.onTaskEvent({ type: 'worker:stream', data: { ...data, taskId } });
+    worker.on('stream:tool_start', (data: any) => {
+      ctx.onTaskEvent({ type: 'worker:stream', data: {
+        workerId: data.workerId,
+        taskId,
+        streamType: 'tool_start',
+        toolName: data.toolName,
+        toolInput: data.toolInput,
+      }});
+    });
+    worker.on('stream:tool_end', (data: any) => {
+      ctx.onTaskEvent({ type: 'worker:stream', data: {
+        workerId: data.workerId,
+        taskId,
+        streamType: 'tool_end',
+        toolName: data.toolName,
+        toolInput: data.toolInput,
+        toolResult: data.toolResult,
+        toolError: data.toolError,
+      }});
+    });
+    worker.on('stream:system_prompt', (data: any) => {
+      ctx.onTaskEvent({ type: 'worker:stream', data: {
+        workerId: data.workerId,
+        taskId,
+        streamType: 'system_prompt',
+        systemPrompt: data.systemPrompt,
+        agentType: data.agentType || 'worker',
+      }});
     });
     worker.on('task:completed', (data) => {
       ctx.onTaskEvent({ type: 'task:completed', data: { ...data, taskId } });
@@ -218,60 +254,34 @@ Worker 执行的完整结果，包括：
     });
 
     try {
-      // 执行 Worker
+      // v10.0: 对齐 TaskTool 模式 — 执行 Worker 并获取完整输出
       const result = await worker.execute(task, workerContext);
 
-      // 保存完整结果（不截断！）
+      // 保存结果（供前端展示）
       const fullResult: TaskResult = {
         ...result,
-        fullSummary: result.summary || '',
-        reviewedBy: 'none',  // LeadAgent 会在自己的上下文中审查
+        reviewedBy: 'none',
       };
-
-      // 通知 LeadAgent
       ctx.onTaskResult(taskId, fullResult);
 
-      // v9.0: 自动更新任务状态 → 前端任务树同步
+      // 更新前端任务树
       UpdateTaskPlanTool.getContext()?.onPlanUpdate({
         action: result.success ? 'complete_task' : 'fail_task',
         taskId,
-        summary: result.success ? (result.summary || '') : undefined,
+        summary: result.rawResponse?.substring(0, 500) || '',
         error: result.success ? undefined : (result.error || 'Worker 执行失败'),
       });
 
-      // 构建返回给 LeadAgent 的完整报告
-      const fileChangesList = result.changes
-        .map(c => `  - [${c.type}] ${c.filePath}`)
-        .join('\n');
+      // v10.1: 完全对齐 TaskTool — 直接返回 Worker 的 raw text
+      // 与 CLI TaskTool 的 executeAgentLoop 完全一致：
+      //   agent.result = { success: true, output: response }
+      // LeadAgent 拿到的就是 Worker AI 的原始文本输出，自行判断成功/失败
+      const rawResponse = result.rawResponse || '';
 
-      const decisionsStr = result.decisions
-        .map(d => `  - ${d.description}`)
-        .join('\n');
-
-      const output = `## Worker 执行结果: ${taskId}
-
-**状态**: ${result.success ? '✅ 成功' : '❌ 失败'}
-${result.error ? `**错误**: ${result.error}` : ''}
-
-### 文件变更
-${fileChangesList || '  （无文件变更）'}
-
-### 测试
-- 运行测试: ${result.testsRan ? '是' : '否'}
-${result.testsRan ? `- 测试通过: ${result.testsPassed ? '是' : '否'}` : ''}
-
-### Worker 摘要
-${result.summary || '（无摘要）'}
-
-### Worker 决策记录
-${decisionsStr || '  （无决策记录）'}
-
----
-请审查以上结果。如果有问题，你可以：
-1. 自己用 Read/Edit 工具直接修复
-2. 重新调用 DispatchWorker 并提供更详细的 brief`;
-
-      return { success: true, output };
+      return {
+        success: result.success,
+        output: rawResponse || `Worker ${taskId} 执行完成，无文本输出。`,
+      };
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
 
@@ -283,7 +293,7 @@ ${decisionsStr || '  （无决策记录）'}
         reviewedBy: 'none',
       });
 
-      // v9.0: 自动更新任务状态 → 前端任务树同步
+      // 更新前端任务树
       UpdateTaskPlanTool.getContext()?.onPlanUpdate({
         action: 'fail_task',
         taskId,
@@ -292,7 +302,7 @@ ${decisionsStr || '  （无决策记录）'}
 
       return {
         success: false,
-        output: `## Worker 执行失败: ${taskId}\n\n**错误**: ${errorMsg}\n\n请排查问题后决定是重新派发还是自己完成此任务。`,
+        output: `Worker 执行异常: ${taskId}\n\n错误: ${errorMsg}`,
       };
     }
   }

@@ -52,7 +52,7 @@ const OFFICIAL_TOOLS = [
   'TodoWrite',
   'NotebookEdit',
   'Mcp',
-  'KillShell',
+  'TaskStop',
   'ExitPlanMode',
   'AskUserQuestion',
   'BashOutput',

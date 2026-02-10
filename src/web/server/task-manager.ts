@@ -231,8 +231,9 @@ export class TaskManager {
     // 发送任务创建通知
     this.sendTaskStatus(task);
 
-    // 启动任务执行（异步，不阻塞）
-    if (options?.runInBackground !== false) {
+    // 仅当明确要求后台执行时才自动启动
+    // executeTaskSync 会传 runInBackground=false，自行控制执行
+    if (options?.runInBackground === true) {
       this.executeTaskInBackground(context);
     }
 

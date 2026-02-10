@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useWebSocket } from './hooks/useWebSocket';
 import {
   Message,
@@ -6,14 +6,14 @@ import {
   SlashCommandPalette,
   UserQuestionDialog,
   PermissionDialog,
-  SessionList,
   SettingsPanel,
+  DebugPanel,
 } from './components';
-import { AuthStatus } from './components/AuthStatus';
-import { AuthDialog } from './components/AuthDialog';
 import { ContextBar, type ContextUsage, type CompactState } from './components/ContextBar';
 import { useProject, useProjectChangeListener, type Project, type BlueprintInfo } from './contexts/ProjectContext';
-import ProjectSelector from './components/swarm/ProjectSelector/ProjectSelector';
+import { BlueprintDetailContent } from './components/swarm/BlueprintDetailPanel/BlueprintDetailContent';
+import { TerminalPanel } from './components/Terminal/TerminalPanel';
+import type { SessionActions } from './types';
 import type {
   ChatMessage,
   ChatContent,
@@ -26,6 +26,7 @@ import type {
 } from './types';
 
 type Status = 'idle' | 'thinking' | 'streaming' | 'tool_executing';
+type PermissionMode = 'default' | 'bypassPermissions' | 'acceptEdits' | 'plan';
 
 // 防抖函数
 function debounce<T extends (...args: any[]) => void>(fn: T, delay: number): T & { cancel: () => void } {
@@ -57,16 +58,35 @@ function getWebSocketUrl(): string {
 
 interface AppProps {
   onNavigateToBlueprint?: (blueprintId: string) => void;
-  onNavigateToSwarm?: (blueprintId?: string) => void;  // 跳转到蜂群页面的回调
-  onNavigateToCode?: (context?: any) => void;  // 跳转到代码页面的回调
+  onNavigateToSwarm?: (blueprintId?: string) => void;
+  onNavigateToCode?: (context?: any) => void;
+  /** 是否显示代码面板 */
+  showCodePanel?: boolean;
+  /** 切换代码面板的回调 */
+  onToggleCodePanel?: () => void;
+  /** 设置面板（从 Root 传入） */
+  showSettings?: boolean;
+  onCloseSettings?: () => void;
+  /** 会话数据上报给 Root */
+  onSessionsChange?: (sessions: any[]) => void;
+  onSessionIdChange?: (id: string | null) => void;
+  onConnectedChange?: (connected: boolean) => void;
+  /** 注册会话操作回调 */
+  registerSessionActions?: (actions: SessionActions) => void;
 }
 
 /**
  * App 内部组件 - 使用 ProjectContext
  */
-function AppContent({ onNavigateToBlueprint, onNavigateToSwarm, onNavigateToCode }: AppProps) {
+function AppContent({
+  onNavigateToBlueprint, onNavigateToSwarm, onNavigateToCode,
+  showCodePanel, onToggleCodePanel,
+  showSettings, onCloseSettings,
+  onSessionsChange, onSessionIdChange, onConnectedChange,
+  registerSessionActions,
+}: AppProps) {
   // 获取项目上下文
-  const { state: projectState, switchProject, openFolder, removeProject } = useProject();
+  const { state: projectState } = useProject();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [status, setStatus] = useState<Status>('idle');
@@ -75,11 +95,12 @@ function AppContent({ onNavigateToBlueprint, onNavigateToSwarm, onNavigateToCode
   const [permissionRequest, setPermissionRequest] = useState<PermissionRequest | null>(null);
   const [userQuestion, setUserQuestion] = useState<UserQuestion | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
-  const [showSettings, setShowSettings] = useState(false);
-  const [showAuthDialog, setShowAuthDialog] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [contextUsage, setContextUsage] = useState<ContextUsage | null>(null);
   const [compactState, setCompactState] = useState<CompactState>({ phase: 'idle' });
+  const [permissionMode, setPermissionMode] = useState<PermissionMode>('default');
+  const [showTerminal, setShowTerminal] = useState(false);
+  const [terminalHeight, setTerminalHeight] = useState(280);
 
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -188,7 +209,9 @@ function AppContent({ onNavigateToBlueprint, onNavigateToSwarm, onNavigateToCode
         case 'thinking_delta':
           if (currentMessageRef.current) {
             const currentMsg = currentMessageRef.current;
-            const thinkingContent = currentMsg.content.find(c => c.type === 'thinking');
+            // 使用最后一个 thinking block（支持 interleaved thinking）
+            const thinkingBlocks = currentMsg.content.filter(c => c.type === 'thinking');
+            const thinkingContent = thinkingBlocks[thinkingBlocks.length - 1];
             if (thinkingContent && thinkingContent.type === 'thinking') {
               thinkingContent.text += payload.text as string;
               setMessages(prev => {
@@ -764,6 +787,48 @@ function AppContent({ onNavigateToBlueprint, onNavigateToSwarm, onNavigateToCode
            console.log('[Dev] Server ACK:', (payload as any).message);
            break;
 
+        case 'permission_config_update':
+          if (payload.mode) {
+            setPermissionMode(payload.mode as PermissionMode);
+          }
+          break;
+
+        case 'design_image_generated': {
+          // GenerateDesign 工具生成的设计图
+          const designPayload = payload as { imageUrl: string; projectName: string; style: string; generatedText?: string };
+          if (designPayload.imageUrl) {
+            const designContent: ChatContent = {
+              type: 'design_image',
+              imageUrl: designPayload.imageUrl,
+              projectName: designPayload.projectName || '',
+              style: designPayload.style || 'modern',
+              generatedText: designPayload.generatedText,
+            };
+
+            if (currentMessageRef.current) {
+              // 如果有正在构建的 assistant 消息，直接追加到其 content 中
+              const currentMsg = currentMessageRef.current;
+              const newContent = [...currentMsg.content, designContent];
+              const updatedMsg = { ...currentMsg, content: newContent };
+              currentMessageRef.current = updatedMsg;
+              setMessages(prev => {
+                const filtered = prev.filter(m => m.id !== currentMsg.id);
+                return [...filtered, updatedMsg];
+              });
+            } else {
+              // 没有正在构建的消息，创建一个独立的 assistant 消息
+              const newMessage: ChatMessage = {
+                id: `design-${Date.now()}`,
+                role: 'assistant',
+                timestamp: Date.now(),
+                content: [designContent],
+              };
+              setMessages(prev => [...prev, newMessage]);
+            }
+          }
+          break;
+        }
+
         case 'navigate_to_swarm':
           // v10.0: LeadAgent 启动后自动跳转到 SwarmConsole
           console.log('[App] Navigate to swarm:', payload);
@@ -773,6 +838,16 @@ function AppContent({ onNavigateToBlueprint, onNavigateToSwarm, onNavigateToCode
         case 'blueprint_created':
           // v10.0: 蓝图创建通知
           console.log('[App] Blueprint created:', (payload as any).name);
+          break;
+
+        case 'execution:report':
+          // v9.1: LeadAgent 执行完成通知（Planner ← LeadAgent 双向通信闭环）
+          console.log('[App] Execution report:', (payload as any).status, (payload as any).summary?.substring(0, 100));
+          // 将执行报告作为 assistant 消息添加到聊天流中，通知用户
+          addMessageHandler?.({
+            role: 'assistant',
+            content: (payload as any).message || '执行完成',
+          });
           break;
       }
     });
@@ -786,6 +861,19 @@ function AppContent({ onNavigateToBlueprint, onNavigateToSwarm, onNavigateToCode
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
   }, [messages]);
+
+  // 上报会话数据给 Root（供 TopNavBar 使用）
+  useEffect(() => {
+    onSessionsChange?.(sessions);
+  }, [sessions, onSessionsChange]);
+
+  useEffect(() => {
+    onSessionIdChange?.(sessionId ?? null);
+  }, [sessionId, onSessionIdChange]);
+
+  useEffect(() => {
+    onConnectedChange?.(connected);
+  }, [connected, onConnectedChange]);
 
   // 连接成功后请求会话列表（传递 projectPath 过滤会话）
   useEffect(() => {
@@ -857,46 +945,33 @@ function AppContent({ onNavigateToBlueprint, onNavigateToSwarm, onNavigateToCode
     send({ type: 'session_new', payload: { model, projectPath: currentProjectPath } });
   }, [send, model, currentProjectPath]);
 
-  // 文件处理
+  // 注册会话操作回调给 Root（供 TopNavBar 使用）
+  useEffect(() => {
+    registerSessionActions?.({
+      selectSession: handleSessionSelect,
+      deleteSession: handleSessionDelete,
+      renameSession: handleSessionRename,
+      newSession: handleNewSession,
+    });
+  }, [handleSessionSelect, handleSessionDelete, handleSessionRename, handleNewSession, registerSessionActions]);
+
+  // 文件处理：支持任意格式，图片直接传递，其他类型转为文件路径
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    const MAX_PDF_SIZE = 32 * 1024 * 1024; // 32MB，与官方限制一致
-    const MAX_OFFICE_SIZE = 50 * 1024 * 1024; // 50MB Office 文档限制
+    const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB 通用限制
 
     files.forEach(file => {
+      // 文件大小检查
+      if (file.size > MAX_FILE_SIZE) {
+        alert(`文件过大: ${file.name} (${(file.size / 1024 / 1024).toFixed(1)}MB)，最大支持 100MB`);
+        return;
+      }
+
       const isImage = file.type.startsWith('image/');
-      const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-      // Office 文档类型检测（完全对齐官方支持）
-      const isDocx = file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-                     file.name.toLowerCase().endsWith('.docx');
-      const isXlsx = file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
-                     file.name.toLowerCase().endsWith('.xlsx');
-      const isPptx = file.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
-                     file.name.toLowerCase().endsWith('.pptx');
-      const isOffice = isDocx || isXlsx || isPptx;
-      const isText =
-        file.type.startsWith('text/') ||
-        /\.(txt|md|json|js|ts|tsx|jsx|py|java|c|cpp|h|css|html|xml|yaml|yml|sh|bat|sql|log)$/i.test(file.name);
-
-      if (!isImage && !isPdf && !isOffice && !isText) {
-        alert(`不支持的文件类型: ${file.name}`);
-        return;
-      }
-
-      // PDF 文件大小检查
-      if (isPdf && file.size > MAX_PDF_SIZE) {
-        alert(`PDF 文件过大: ${file.name} (${(file.size / 1024 / 1024).toFixed(1)}MB)，最大支持 32MB`);
-        return;
-      }
-
-      // Office 文件大小检查
-      if (isOffice && file.size > MAX_OFFICE_SIZE) {
-        alert(`Office 文件过大: ${file.name} (${(file.size / 1024 / 1024).toFixed(1)}MB)，最大支持 50MB`);
-        return;
-      }
 
       const reader = new FileReader();
       if (isImage) {
+        // 图片：读取为 base64 dataURL，直接传递给模型
         reader.onload = (event) => {
           setAttachments(prev => [
             ...prev,
@@ -910,56 +985,21 @@ function AppContent({ onNavigateToBlueprint, onNavigateToSwarm, onNavigateToCode
           ]);
         };
         reader.readAsDataURL(file);
-      } else if (isPdf) {
-        // PDF 文件：读取为 base64
-        reader.onload = (event) => {
-          setAttachments(prev => [
-            ...prev,
-            {
-              id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-              name: file.name,
-              type: 'pdf',
-              mimeType: 'application/pdf',
-              data: event.target?.result as string,
-            },
-          ]);
-        };
-        reader.readAsDataURL(file);
-      } else if (isOffice) {
-        // Office 文档：读取为 base64，通过 Skills 处理
-        const officeType = isDocx ? 'docx' : isXlsx ? 'xlsx' : 'pptx';
-        const mimeType = isDocx
-          ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-          : isXlsx
-          ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-          : 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
-        reader.onload = (event) => {
-          setAttachments(prev => [
-            ...prev,
-            {
-              id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-              name: file.name,
-              type: officeType as 'docx' | 'xlsx' | 'pptx',
-              mimeType: mimeType,
-              data: event.target?.result as string,
-            },
-          ]);
-        };
-        reader.readAsDataURL(file);
       } else {
+        // 所有非图片文件：读取为 base64，服务端保存为临时文件后传路径给模型
         reader.onload = (event) => {
           setAttachments(prev => [
             ...prev,
             {
               id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
               name: file.name,
-              type: 'text',
-              mimeType: file.type || 'text/plain',
+              type: 'file',
+              mimeType: file.type || 'application/octet-stream',
               data: event.target?.result as string,
             },
           ]);
         };
-        reader.readAsText(file);
+        reader.readAsDataURL(file);
       }
     });
 
@@ -1012,7 +1052,7 @@ function AppContent({ onNavigateToBlueprint, onNavigateToSwarm, onNavigateToCode
 
     const contentItems: ChatContent[] = [];
 
-    // 添加附件
+    // 添加附件：图片直接传递，其他文件由服务端保存后传路径
     attachments.forEach(att => {
       if (att.type === 'image') {
         contentItems.push({
@@ -1024,28 +1064,11 @@ function AppContent({ onNavigateToBlueprint, onNavigateToSwarm, onNavigateToCode
           },
           fileName: att.name,
         });
-      } else if (att.type === 'pdf') {
-        // PDF 使用 document 类型
-        contentItems.push({
-          type: 'document',
-          source: {
-            type: 'base64',
-            media_type: 'application/pdf',
-            data: att.data.split(',')[1],
-          },
-          fileName: att.name,
-        });
-      } else if (att.type === 'docx' || att.type === 'xlsx' || att.type === 'pptx') {
-        // Office 文档：通过 Skills 处理，这里只添加文件信息提示
-        const typeLabel = att.type === 'docx' ? 'Word' : att.type === 'xlsx' ? 'Excel' : 'PowerPoint';
+      } else {
+        // 非图片文件：前端只显示文件名占位，实际内容由服务端处理
         contentItems.push({
           type: 'text',
-          text: `[${typeLabel} 文档: ${att.name}] - 将通过 document-skills 处理`,
-        });
-      } else if (att.type === 'text') {
-        contentItems.push({
-          type: 'text',
-          text: `[文件: ${att.name}]\n\`\`\`\n${att.data}\n\`\`\``,
+          text: `[附件: ${att.name}]`,
         });
       }
     });
@@ -1072,11 +1095,10 @@ function AppContent({ onNavigateToBlueprint, onNavigateToSwarm, onNavigateToCode
           name: att.name,
           type: att.type,
           mimeType: att.mimeType,
-          // 所有二进制文件（图片、PDF、Office 文档）都需要去掉 data URL 前缀
-          // 只有 text 类型是纯文本，不需要处理
-          data: att.type !== 'text' ? att.data.split(',')[1] : att.data,
+          // 所有附件（图片和文件）都使用 readAsDataURL 读取，需要去掉 data URL 前缀
+          data: att.data.includes(',') ? att.data.split(',')[1] : att.data,
         })),
-        projectPath: currentProjectPath,  // 每次发消息都带上当前项目路径
+        projectPath: currentProjectPath,
       },
     });
 
@@ -1171,6 +1193,31 @@ function AppContent({ onNavigateToBlueprint, onNavigateToSwarm, onNavigateToCode
     }
   }, [send]);
 
+  // 取消/停止生成
+  const handleCancel = useCallback(() => {
+    send({ type: 'cancel' });
+    // 立即清理客户端状态
+    if (currentMessageRef.current) {
+      const currentMsg = currentMessageRef.current;
+      setMessages(prev => {
+        const filtered = prev.filter(m => m.id !== currentMsg.id);
+        return [...filtered, { ...currentMsg }];
+      });
+      currentMessageRef.current = null;
+    }
+    setStatus('idle');
+  }, [send]);
+
+  // 权限模式切换（仅在 idle 状态下允许）
+  const handlePermissionModeChange = useCallback((mode: PermissionMode) => {
+    if (status !== 'idle') return; // 防御：模型回复中禁止切换
+    setPermissionMode(mode);
+    send({
+      type: 'permission_config',
+      payload: { mode },
+    });
+  }, [send, status]);
+
   // 输入处理
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value;
@@ -1189,81 +1236,35 @@ function AppContent({ onNavigateToBlueprint, onNavigateToSwarm, onNavigateToCode
     }
   };
 
-  // ProjectSelector 的事件处理
-  const handleProjectSelectorChange = useCallback(async (project: { id: string; name: string; path: string; lastOpenedAt?: string }) => {
-    try {
-      await switchProject(project);
-    } catch (err) {
-      console.error('项目切换失败:', err);
-    }
-  }, [switchProject]);
-
-  const handleOpenFolderClick = useCallback(async () => {
-    try {
-      await openFolder();
-    } catch (err) {
-      console.error('打开文件夹失败:', err);
-    }
-  }, [openFolder]);
-
-  const handleProjectRemove = useCallback(async (project: { id: string; name: string; path: string; lastOpenedAt?: string }) => {
-    try {
-      await removeProject(project.id);
-    } catch (err) {
-      console.error('移除项目失败:', err);
-    }
-  }, [removeProject]);
+  // 全局快捷键：Ctrl+` 切换终端
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key === '`') {
+        e.preventDefault();
+        setShowTerminal(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, []);
 
   return (
     <div style={{ display: 'flex', height: '100%', width: '100%', flex: 1 }}>
-      {/* 侧边栏 */}
-      <div className={`sidebar ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
-        {/* 项目选择器 */}
-        <div className="sidebar-project-selector">
-          <ProjectSelector
-            currentProject={projectState.currentProject}
-            onProjectChange={handleProjectSelectorChange}
-            onOpenFolder={handleOpenFolderClick}
-            onProjectRemove={handleProjectRemove}
-          />
-        </div>
-
-        <div className="sidebar-header">
-          <h1>Claude Code</h1>
-          <button className="new-chat-btn" onClick={handleNewSession}>
-            + 新对话
-          </button>
-        </div>
-        <SessionList
-          sessions={sessions}
-          currentSessionId={sessionId}
-          onSessionSelect={handleSessionSelect}
-          onSessionDelete={handleSessionDelete}
-          onSessionRename={handleSessionRename}
-        />
-        <div className="sidebar-footer">
-          <AuthStatus onLoginClick={() => setShowAuthDialog(true)} />
-          <button className="settings-btn" onClick={() => setShowSettings(true)}>
-            ⚙️ 设置
-          </button>
-          <div className="status-indicator">
-            <span className={`status-dot ${status !== 'idle' ? 'thinking' : ''}`} />
-            {connected ? '已连接' : '连接中...'}
+      {/* 主内容区（侧边栏已迁移到 TopNavBar） */}
+      <div className="main-content" style={{ flex: 1, ...(showCodePanel ? { flexDirection: 'row' as const } : {}) }}>
+        {/* 代码面板（可切换） */}
+        {showCodePanel && (
+          <div className="code-panel">
+            <BlueprintDetailContent
+              blueprintId="code-browser-standalone"
+            />
           </div>
-        </div>
-      </div>
+        )}
 
-      {/* 侧边栏折叠按钮 - 放在侧边栏外部 */}
-      <button
-        className={`sidebar-toggle-btn ${sidebarCollapsed ? 'collapsed' : ''}`}
-        onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-        title={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
-      >
-        {sidebarCollapsed ? '▶' : '◀'}
-      </button>
-
-      {/* 主内容区 */}
-      <div className="main-content">
+        {/* 聊天+终端垂直布局容器 */}
+        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, minHeight: 0 }}>
+        {/* 聊天面板 */}
+        <div className={`chat-panel ${showCodePanel ? 'chat-panel-split' : ''}`} style={{ flex: 1, minHeight: 0 }}>
         <div className="chat-container" ref={chatContainerRef}>
           {messages.length === 0 ? (
             <WelcomeScreen onBlueprintCreated={onNavigateToBlueprint} />
@@ -1288,11 +1289,7 @@ function AppContent({ onNavigateToBlueprint, onNavigateToSwarm, onNavigateToCode
               {attachments.map(att => (
                 <div key={att.id} className="attachment-item">
                   <span className="file-icon">
-                    {att.type === 'image' ? '🖼️' :
-                     att.type === 'pdf' ? '📕' :
-                     att.type === 'docx' ? '📘' :
-                     att.type === 'xlsx' ? '📗' :
-                     att.type === 'pptx' ? '📙' : '📄'}
+                    {att.type === 'image' ? '🖼️' : '📎'}
                   </span>
                   <span className="file-name">{att.name}</span>
                   <button className="remove-btn" onClick={() => handleRemoveAttachment(att.id)}>
@@ -1308,7 +1305,6 @@ function AppContent({ onNavigateToBlueprint, onNavigateToSwarm, onNavigateToCode
               type="file"
               className="hidden-file-input"
               multiple
-              accept="image/*,.pdf,.docx,.xlsx,.pptx,.txt,.md,.json,.js,.ts,.tsx,.jsx,.py,.java,.c,.cpp,.h,.css,.html,.xml,.yaml,.yml,.sh,.bat,.sql,.log"
               onChange={handleFileSelect}
             />
             <div className="input-wrapper">
@@ -1344,20 +1340,69 @@ function AppContent({ onNavigateToBlueprint, onNavigateToSwarm, onNavigateToCode
                   <option value="sonnet">Sonnet</option>
                   <option value="haiku">Haiku</option>
                 </select>
+                <select
+                  className={`permission-mode-selector mode-${permissionMode}`}
+                  value={permissionMode}
+                  onChange={(e) => handlePermissionModeChange(e.target.value as PermissionMode)}
+                  disabled={status !== 'idle'}
+                  title="权限模式"
+                >
+                  <option value="default">🔒 询问</option>
+                  <option value="acceptEdits">📝 自动编辑</option>
+                  <option value="bypassPermissions">⚡ YOLO</option>
+                  <option value="plan">📋 计划</option>
+                </select>
+                <ContextBar usage={contextUsage} compactState={compactState} />
                 <button className="attach-btn" onClick={() => fileInputRef.current?.click()}>
                   📎
                 </button>
+                <button
+                  className="debug-trigger-btn"
+                  onClick={() => setShowDebugPanel(true)}
+                  title="API 探针 - 查看系统提示词和消息体"
+                >
+                  🔍 <span className="debug-trigger-label">探针</span>
+                </button>
+                <button
+                  className={`terminal-toggle-btn ${showTerminal ? 'active' : ''}`}
+                  onClick={() => setShowTerminal(!showTerminal)}
+                  title="Toggle Terminal (Ctrl+`)"
+                >
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M2 3a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H2zm6.5 7H13v1H8.5v-1zM4.146 5.146l2.5 2.5a.5.5 0 0 1 0 .708l-2.5 2.5-.708-.708L5.586 8 3.44 5.854l.707-.708z"/>
+                  </svg>
+                </button>
               </div>
-              <button
-                className="send-btn"
-                onClick={handleSend}
-                disabled={!connected || status !== 'idle' || (!input.trim() && attachments.length === 0)}
-              >
-                发送
-              </button>
+              {status !== 'idle' ? (
+                <button className="stop-btn" onClick={handleCancel}>
+                  ■ 停止
+                </button>
+              ) : (
+                <button
+                  className="send-btn"
+                  onClick={handleSend}
+                  disabled={!connected || (!input.trim() && attachments.length === 0)}
+                >
+                  发送
+                </button>
+              )}
             </div>
           </div>
         </div>
+        </div>{/* 关闭 chat-panel */}
+
+        {/* 终端面板 */}
+        <TerminalPanel
+          send={send}
+          addMessageHandler={addMessageHandler}
+          connected={connected}
+          visible={showTerminal}
+          height={terminalHeight}
+          onClose={() => setShowTerminal(false)}
+          onHeightChange={setTerminalHeight}
+          projectPath={currentProjectPath}
+        />
+        </div>{/* 关闭聊天+终端垂直布局容器 */}
       </div>
 
       {/* 对话框 */}
@@ -1374,18 +1419,16 @@ function AppContent({ onNavigateToBlueprint, onNavigateToSwarm, onNavigateToCode
         />
       )}
       <SettingsPanel
-        isOpen={showSettings}
-        onClose={() => setShowSettings(false)}
+        isOpen={!!showSettings}
+        onClose={() => onCloseSettings?.()}
         model={model}
         onModelChange={setModel}
       />
-      <AuthDialog
-        isOpen={showAuthDialog}
-        onClose={() => setShowAuthDialog(false)}
-        onSuccess={() => {
-          // 登录成功后可以触发一些操作，比如刷新会话列表
-          console.log('Login successful!');
-        }}
+      <DebugPanel
+        isOpen={showDebugPanel}
+        onClose={() => setShowDebugPanel(false)}
+        send={send}
+        addMessageHandler={addMessageHandler}
       />
     </div>
   );

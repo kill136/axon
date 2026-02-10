@@ -18,13 +18,12 @@ import {
   updateMemberStatus,
   sendToMailbox,
   broadcastToTeam,
-  readAndClearMailbox,
-  isAgentTeamsEnabled,
   isInTeamMode,
   getTeamContext,
   setTeamContext,
   generateMessageId,
 } from '../teams/storage.js';
+import { isAgentTeamsEnabled } from '../agents/teammate-context.js';
 import {
   createTmuxBackend,
   destroyTmuxBackend,

@@ -36,8 +36,10 @@ import type {
   TaskPlanUpdateInput,
   DEFAULT_SWARM_CONFIG,
 } from './types.js';
-import { DispatchWorkerTool } from '../tools/dispatch-worker.js';
+import { AGENT_TOOL_CONFIGS } from '../agents/tools.js';
 import { UpdateTaskPlanTool } from '../tools/update-task-plan.js';
+import { DispatchWorkerTool } from '../tools/dispatch-worker.js';
+import { TriggerE2ETestTool } from '../tools/trigger-e2e-test.js';
 
 // ============================================================================
 // LeadAgent 核心类
@@ -201,6 +203,15 @@ ${this.buildAPIContractPrompt()}
 - 运行构建和测试
 - 修复发现的集成问题
 
+### Phase 5: E2E 端到端测试
+集成检查通过后：
+1. 调用 \`TriggerE2ETest({ appUrl: "http://localhost:3000" })\` 启动 E2E 浏览器测试
+2. E2E Agent 会自动启动应用、打开浏览器、按业务流程验收、对比设计图
+3. 审查 E2E 测试结果：
+   - 如果通过 → 项目完成
+   - 如果失败 → 根据报告修复代码，然后再次调用 TriggerE2ETest 验证（最多 3 轮）
+4. 最终汇报执行结果
+
 ## UpdateTaskPlan 工具用法（任务状态管理）
 **重要**：每次开始/完成自己做的任务时，必须调用此工具同步状态到前端。
 \`\`\`
@@ -210,6 +221,24 @@ ${this.buildAPIContractPrompt()}
 跳过任务:   { "action": "skip_task",     "taskId": "xxx", "reason": "此功能已存在" }
 新增任务:   { "action": "add_task",      "taskId": "task_new_xxx", "name": "...", "description": "..." }
 \`\`\`
+
+## 失败重试策略（关键！）
+**你必须主动处理失败的任务，不要等待用户干预。**
+
+**自己执行的任务失败时**：
+1. 分析错误原因（Read 相关文件、检查日志）
+2. 修复问题后，重新 start_task → 执行 → complete_task
+3. 最多重试 ${this.swarmConfig.maxRetries || 3} 次，仍然失败才标记 fail_task
+
+**Worker 执行的任务失败时**：
+1. 审查 Worker 返回的错误信息
+2. 决定策略：
+   - 简单问题 → 自己用 Read/Edit 直接修复，然后 complete_task
+   - 需要重做 → 重新调用 DispatchWorker，提供更详细的 brief 和错误上下文
+   - 确实无法完成 → 才标记 fail_task
+3. **绝不直接放弃** - 先尝试至少一次修复或重试
+
+**注意**：fail_task 是最后手段，不是默认选项。遇到错误先分析、修复、重试。
 
 ## DispatchWorker 工具用法（派发给Worker）
 \`\`\`json
@@ -226,6 +255,16 @@ ${this.buildAPIContractPrompt()}
 - ✅ "数据库schema在schema.prisma，User模型有id/email/name字段。路由入口在src/routes/index.ts，按authRoutes的模式添加。"
 - ❌ "实现用户管理API"（太泛泛，Worker要浪费时间探索）
 
+## TriggerE2ETest 工具用法（端到端测试）
+\`\`\`json
+{
+  "appUrl": "http://localhost:3000",
+  "similarityThreshold": 80,
+  "model": "opus"
+}
+\`\`\`
+**注意**：仅在 Phase 4 集成检查通过后使用。E2E Agent 会自动执行浏览器测试并返回结果。
+
 ## Git 提交规则
 完成代码后必须提交：
 \`\`\`bash
@@ -238,7 +277,8 @@ git add -A && git commit -m "[LeadAgent] 任务描述"
 3. **Brief 是灵魂** - 派给 Worker 的 brief 越详细，Worker 效率越高
 4. **自己做关键任务** - 涉及全局决策的任务不要派给 Worker
 5. **动态调整** - 发现计划有问题就用 UpdateTaskPlan 跳过/新增，不执行明知错误的计划
-6. **保持一致性** - 你是唯一的大脑，确保所有代码风格和设计决策一致`;
+6. **保持一致性** - 你是唯一的大脑，确保所有代码风格和设计决策一致
+7. **永不轻易放弃** - 任务失败时必须分析原因并尝试修复/重试，fail_task 是最后手段而非默认选项`;
   }
 
   /**
@@ -284,6 +324,79 @@ ${endpointLines.join('\n')}
   }
 
   /**
+   * 构建恢复模式的用户提示词
+   * 告诉 LeadAgent 之前已有的任务树和进度，让它从中断位置继续
+   */
+  private buildResumePrompt(): string {
+    const tasks = this.executionPlan?.tasks || [];
+    const completedTasks = tasks.filter(t => t.status === 'completed');
+    const failedTasks = tasks.filter(t => t.status === 'failed');
+    const skippedTasks = tasks.filter(t => t.status === 'skipped');
+    const pendingTasks = tasks.filter(t => t.status === 'pending');
+    const runningTasks = tasks.filter(t => t.status === 'running');
+
+    let taskSummary = '## 当前任务计划状态\n\n';
+
+    if (completedTasks.length > 0) {
+      taskSummary += `### ✅ 已完成的任务 (${completedTasks.length}个)\n`;
+      completedTasks.forEach(t => {
+        taskSummary += `- [${t.id}] ${t.name}: ${t.description || ''}\n`;
+      });
+      taskSummary += '\n';
+    }
+
+    if (failedTasks.length > 0) {
+      taskSummary += `### ❌ 失败的任务 (${failedTasks.length}个)\n`;
+      failedTasks.forEach(t => {
+        taskSummary += `- [${t.id}] ${t.name}: ${t.description || ''}\n`;
+      });
+      taskSummary += '\n';
+    }
+
+    if (skippedTasks.length > 0) {
+      taskSummary += `### ⏭️ 跳过的任务 (${skippedTasks.length}个)\n`;
+      skippedTasks.forEach(t => {
+        taskSummary += `- [${t.id}] ${t.name}\n`;
+      });
+      taskSummary += '\n';
+    }
+
+    if (runningTasks.length > 0) {
+      taskSummary += `### 🔄 中断时正在执行的任务 (${runningTasks.length}个)\n`;
+      runningTasks.forEach(t => {
+        taskSummary += `- [${t.id}] ${t.name}: ${t.description || ''}\n`;
+      });
+      taskSummary += '\n';
+    }
+
+    if (pendingTasks.length > 0) {
+      taskSummary += `### ⏳ 待执行的任务 (${pendingTasks.length}个)\n`;
+      pendingTasks.forEach(t => {
+        taskSummary += `- [${t.id}] ${t.name}: ${t.description || ''}\n`;
+      });
+      taskSummary += '\n';
+    }
+
+    return `你正在恢复执行项目: ${this.blueprint.name}
+
+**重要**：这是一次恢复执行，不是全新开始。之前的执行被中断了，现在需要从中断位置继续。
+
+${taskSummary}
+
+## 恢复执行要求
+1. **不要重新生成任务计划** - 任务计划已经存在，不需要再次调用 add_task 来创建已有的任务
+2. **不要重复执行已完成的任务** - 已完成的任务不需要重做
+3. **从中断处继续** - 优先处理之前中断的"正在执行"的任务，然后继续剩余的"待执行"任务
+4. **失败的任务** - 可以尝试重新执行失败的任务（先用 start_task 标记开始）
+5. 对于每个任务：
+   - 自己做的任务：用 UpdateTaskPlan 标记 start_task/complete_task
+   - 派给 Worker 的任务：用 DispatchWorker（自动更新状态）
+6. 所有任务完成后进行集成检查
+
+请从${runningTasks.length > 0 ? '中断的任务' : '待执行的任务'}开始继续执行！`;
+  }
+
+  /**
    * 运行 LeadAgent
    * 这是核心方法 - 创建持久 ConversationLoop 并驱动整个执行
    */
@@ -312,33 +425,41 @@ ${endpointLines.join('\n')}
         createdAt: new Date(),
       };
     }
+    // 设置 UpdateTaskPlan 工具的静态上下文
+    // 回调链路: UpdateTaskPlan.execute() → onPlanUpdate → LeadAgent.emit('task:plan_update') → Coordinator
     UpdateTaskPlanTool.setContext({
       executionPlan: this.executionPlan,
       blueprintId: this.blueprint.id,
       onPlanUpdate: (update: TaskPlanUpdateInput) => {
-        // 转发任务计划更新事件 → Coordinator → WebSocket → 前端
         this.emit('task:plan_update', update);
-        this.emitLeadEvent('lead:plan_update', { update });
       },
     });
 
-    // 设置 DispatchWorker 工具的上下文
+    // 设置 DispatchWorker 工具的静态上下文
     DispatchWorkerTool.setLeadAgentContext({
       blueprint: this.blueprint,
       projectPath: this.projectPath,
       swarmConfig: this.swarmConfig,
-      techStack: this.blueprint.techStack || { language: 'unknown' } as TechStack,
+      techStack: this.blueprint.techStack as any || { language: 'unknown', packageManager: 'npm' },
       onTaskEvent: (event) => {
-        // 转发 Worker 事件
+        // 转发 Worker 事件给 Coordinator/WebSocket
         this.emit(event.type, event.data);
-        this.config.onEvent?.({
-          type: event.type as LeadAgentEvent['type'],
-          data: event.data,
-          timestamp: new Date(),
-        });
       },
       onTaskResult: (taskId: string, result: TaskResult) => {
         this.taskResults.set(taskId, result);
+      },
+    });
+
+    // 设置 TriggerE2ETest 工具的静态上下文
+    TriggerE2ETestTool.setContext({
+      blueprint: this.blueprint,
+      projectPath: this.projectPath,
+      techStack: this.blueprint.techStack as any || { language: 'unknown', packageManager: 'npm' },
+      onEvent: (event) => {
+        this.emit(event.type, event.data);
+      },
+      onComplete: (result) => {
+        this.emit('lead:e2e_completed', result);
       },
     });
 
@@ -346,19 +467,34 @@ ${endpointLines.join('\n')}
     const model = this.config.model || this.swarmConfig.leadAgentModel || 'sonnet';
     const maxTurns = this.config.maxTurns || this.swarmConfig.leadAgentMaxTurns || 200;
 
+    const systemPrompt = this.buildSystemPrompt();
+
+    // 从 AGENT_TOOL_CONFIGS 获取 LeadAgent 的工具白名单，避免注入全量工具浪费 token
+    const leadToolConfig = AGENT_TOOL_CONFIGS['lead-agent'];
+    const allowedTools = leadToolConfig?.allowedTools !== '*'
+      ? leadToolConfig?.allowedTools
+      : undefined;
+
     this.loop = new ConversationLoop({
       model,
       maxTurns,
       verbose: false,
       permissionMode: 'bypassPermissions',
       workingDir: this.projectPath,
-      systemPrompt: this.buildSystemPrompt(),
+      systemPrompt,
       isSubAgent: true,
       askUserHandler: this.config.askUserHandler as any,
+      allowedTools,
     });
 
-    // 流式处理消息
-    const messageStream = this.loop.processMessageStream(this.buildInitialPrompt());
+    // 发射 LeadAgent 的 system_prompt 事件，供前端查看
+    this.emit('lead:system_prompt', { systemPrompt });
+
+    // 流式处理消息：恢复模式使用恢复提示词，否则使用初始提示词
+    const initialPrompt = this.config.isResume
+      ? this.buildResumePrompt()
+      : this.buildInitialPrompt();
+    const messageStream = this.loop.processMessageStream(initialPrompt);
     let lastResponse = '';
 
     try {
@@ -429,6 +565,7 @@ ${endpointLines.join('\n')}
         estimatedCost: 0,
         durationMs: Date.now() - this.startTime,
         summary: `LeadAgent 执行失败: ${errorMsg}`,
+        rawResponse: lastResponse || `LeadAgent 执行失败: ${errorMsg}`,
         taskResults: this.taskResults,
       };
     }
@@ -461,17 +598,24 @@ ${endpointLines.join('\n')}
       estimatedCost: 0,
       durationMs,
       summary: lastResponse.substring(0, 1000),
+      rawResponse: lastResponse,  // v10.0: 完整输出给 Planner Agent
       taskResults: this.taskResults,
     };
   }
 
   /**
    * 停止 LeadAgent
+   * 调用 ConversationLoop.abort() 中断当前 API 请求和执行循环
    */
   stop(): void {
-    // ConversationLoop 没有显式的 stop 方法
-    // 但我们可以清理引用
-    this.loop = null;
+    // 清理工具静态上下文
+    UpdateTaskPlanTool.clearContext();
+    DispatchWorkerTool.clearContext();
+    TriggerE2ETestTool.clearContext();
+    if (this.loop) {
+      this.loop.abort();
+      this.loop = null;
+    }
   }
 
   /**
@@ -479,5 +623,54 @@ ${endpointLines.join('\n')}
    */
   getLoop(): ConversationLoop | null {
     return this.loop;
+  }
+
+  /**
+   * 获取调试信息（探针功能）
+   * 返回 LeadAgent 当前的系统提示词、消息体、工具列表等
+   */
+  getDebugInfo(): { systemPrompt: string; messages: unknown[]; tools: unknown[]; model: string; messageCount: number; agentType: string } | null {
+    if (!this.loop) {
+      return null;
+    }
+    const info = this.loop.getDebugInfo();
+    return {
+      ...info,
+      agentType: 'lead-agent',
+    };
+  }
+
+  /**
+   * 用户插嘴 - 向正在执行的 LeadAgent 发送消息
+   * 将用户消息注入到当前对话的 Session 中，
+   * ConversationLoop 在下一轮 API 调用时会自动包含这条消息
+   */
+  interject(message: string): boolean {
+    if (!this.loop) {
+      console.warn('[LeadAgent] 插嘴失败：当前没有正在执行的 Loop');
+      return false;
+    }
+
+    try {
+      const session = this.loop.getSession();
+      session.addMessage({
+        role: 'user',
+        content: `[用户插嘴] ${message}`,
+      });
+
+      console.log(`[LeadAgent] 用户插嘴: ${message.substring(0, 50)}${message.length > 50 ? '...' : ''}`);
+
+      // 发射流式事件通知前端显示插嘴消息
+      this.emit('lead:stream', {
+        blueprintId: this.blueprint.id,
+        streamType: 'text',
+        content: `\n💬 [用户插嘴] ${message}\n`,
+      });
+
+      return true;
+    } catch (err) {
+      console.error('[LeadAgent] 插嘴失败:', err);
+      return false;
+    }
   }
 }

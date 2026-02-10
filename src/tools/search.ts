@@ -11,6 +11,7 @@ import { BaseTool } from './base.js';
 import type { GlobInput, GrepInput, ToolResult, ToolDefinition } from '../types/index.js';
 import { persistLargeOutputSync } from './output-persistence.js';
 import { getCurrentCwd } from '../core/cwd-context.js';
+import { getRgPath } from '../search/ripgrep.js';
 
 // 检测当前平台
 const isWindows = process.platform === 'win32';
@@ -262,15 +263,22 @@ Usage:
       // v2.1.23: 添加超时配置（默认 30 秒）
       const GREP_TIMEOUT_MS = parseInt(process.env.GREP_TIMEOUT_MS || '30000', 10);
 
-      // 使用 spawnSync 代替 execSync，实现跨平台兼容
+      // 获取 ripgrep 可执行文件路径（vendored 优先，回退到系统 PATH）
+      const rgPath = getRgPath();
+      if (!rgPath) {
+        return {
+          success: false,
+          error: 'ripgrep (rg) is not available. Please install ripgrep: https://github.com/BurntSushi/ripgrep#installation',
+        };
+      }
+
       let output: string;
       try {
-        const result = spawnSync('rg', args, {
+        const result = spawnSync(rgPath, args, {
           maxBuffer: 50 * 1024 * 1024,
           encoding: 'utf-8',
-          shell: isWindows,  // Windows 上可能需要 shell
-          windowsHide: true, // Windows 隐藏命令窗口
-          timeout: GREP_TIMEOUT_MS, // v2.1.23: 添加超时
+          windowsHide: true,
+          timeout: GREP_TIMEOUT_MS,
         });
 
         // v2.1.23: 检查是否超时（而不是静默返回空结果）
@@ -329,7 +337,12 @@ Usage:
       // 对于 content 模式，将文件路径转换为相对路径
       if (output_mode === 'content') {
         lines = lines.map(line => {
-          const colonIndex = line.indexOf(':');
+          // Windows drive letter 修复：跳过 "X:\" 中的冒号
+          // ripgrep 输出格式: filepath:linenum:content
+          // Windows 上: F:\path\file.ts:42:content
+          const colonIndex = /^[A-Za-z]:[\\/]/.test(line)
+            ? line.indexOf(':', 2)
+            : line.indexOf(':');
           if (colonIndex > 0) {
             const filePath = line.substring(0, colonIndex);
             const rest = line.substring(colonIndex);
@@ -470,6 +483,14 @@ Usage:
   }
 
   private fallbackGrep(input: GrepInput): ToolResult {
+    // Windows 上没有 grep 命令，直接报错
+    if (isWindows) {
+      return {
+        success: false,
+        error: 'ripgrep (rg) is not available and grep fallback is not supported on Windows. Please install ripgrep: https://github.com/BurntSushi/ripgrep#installation',
+      };
+    }
+
     const {
       pattern,
       path: searchPath = getCurrentCwd(),
@@ -487,7 +508,10 @@ Usage:
 
       // 转换文件路径为相对路径
       lines = lines.map(line => {
-        const colonIndex = line.indexOf(':');
+        // Windows drive letter 修复：跳过 "X:\" 中的冒号
+        const colonIndex = /^[A-Za-z]:[\\/]/.test(line)
+          ? line.indexOf(':', 2)
+          : line.indexOf(':');
         if (colonIndex > 0) {
           const filePath = line.substring(0, colonIndex);
           const rest = line.substring(colonIndex);

@@ -153,6 +153,62 @@ export function Message({ message, onNavigateToBlueprint, onNavigateToSwarm, onN
         />
       );
     }
+    if (item.type === 'design_image') {
+      return (
+        <div key={index} className="design-image-container" style={{
+          margin: '12px 0',
+          borderRadius: '8px',
+          overflow: 'hidden',
+          border: '1px solid var(--border-color, #333)',
+          backgroundColor: 'var(--bg-secondary, #1a1a2e)',
+        }}>
+          <div style={{
+            padding: '8px 12px',
+            fontSize: '13px',
+            color: 'var(--text-muted, #888)',
+            borderBottom: '1px solid var(--border-color, #333)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+          }}>
+            <span style={{ fontSize: '16px' }}>🎨</span>
+            <span>UI 设计图 - {item.projectName}</span>
+            <span style={{
+              marginLeft: 'auto',
+              fontSize: '11px',
+              padding: '2px 6px',
+              borderRadius: '4px',
+              backgroundColor: 'var(--bg-tertiary, #252540)',
+            }}>
+              {item.style}
+            </span>
+          </div>
+          <div style={{ padding: '8px' }}>
+            <img
+              src={item.imageUrl}
+              alt={`${item.projectName} UI 设计图`}
+              style={{
+                width: '100%',
+                maxHeight: '600px',
+                objectFit: 'contain',
+                borderRadius: '4px',
+              }}
+            />
+          </div>
+          {item.generatedText && (
+            <div style={{
+              padding: '8px 12px',
+              fontSize: '12px',
+              color: 'var(--text-secondary, #aaa)',
+              borderTop: '1px solid var(--border-color, #333)',
+              lineHeight: '1.5',
+            }}>
+              {item.generatedText}
+            </div>
+          )}
+        </div>
+      );
+    }
     return null;
   };
 

@@ -17,13 +17,13 @@ const __dirname = path.dirname(__filename);
 // Ripgrep 版本
 const RG_VERSION = '14.1.0';
 
-// 平台到二进制名称的映射
-const PLATFORM_BINARIES: Record<string, string> = {
-  'darwin-x64': 'rg-darwin-x64',
-  'darwin-arm64': 'rg-darwin-arm64',
-  'linux-x64': 'rg-linux-x64',
-  'linux-arm64': 'rg-linux-arm64',
-  'win32-x64': 'rg-win32-x64.exe',
+// 平台到 vendor 子目录的映射（对齐官方目录结构：vendor/ripgrep/{arch}-{platform}/rg[.exe]）
+const PLATFORM_VENDOR_DIR: Record<string, string> = {
+  'darwin-x64': 'x64-darwin',
+  'darwin-arm64': 'arm64-darwin',
+  'linux-x64': 'x64-linux',
+  'linux-arm64': 'arm64-linux',
+  'win32-x64': 'x64-win32',
 };
 
 // 下载 URL 模板
@@ -67,25 +67,31 @@ export interface RipgrepResult {
 
 /**
  * 获取 vendored ripgrep 路径
+ * 对齐官方 or1 函数的路径解析逻辑
  */
 export function getVendoredRgPath(): string | null {
   const platform = os.platform();
   const arch = os.arch();
   const key = `${platform}-${arch}`;
 
-  const binaryName = PLATFORM_BINARIES[key];
-  if (!binaryName) {
+  const vendorSubDir = PLATFORM_VENDOR_DIR[key];
+  if (!vendorSubDir) {
     return null;
   }
 
+  // 官方逻辑：path.resolve(__dirname, "../", "vendor", "ripgrep")
+  // 然后 Windows: path.resolve(vendorDir, "x64-win32", "rg.exe")
+  // 其他:         path.resolve(vendorDir, `${arch}-${platform}`, "rg")
+  const rgBinary = platform === 'win32' ? 'rg.exe' : 'rg';
+
   // 检查多个可能的位置
   const possiblePaths = [
-    // 包内 vendor 目录
-    path.join(__dirname, '..', '..', 'vendor', 'ripgrep', binaryName),
-    // node_modules 内
-    path.join(__dirname, '..', '..', 'node_modules', '.bin', 'rg'),
-    // 全局安装
-    path.join(os.homedir(), '.claude', 'bin', binaryName),
+    // 官方 vendor 目录结构（从 dist/search/ 往上两级到项目根，再到 node_modules 中的官方包）
+    path.resolve(__dirname, '..', '..', 'node_modules', '@anthropic-ai', 'claude-code', 'vendor', 'ripgrep', vendorSubDir, rgBinary),
+    // 项目自身的 vendor 目录（如果将来自己打包 rg）
+    path.resolve(__dirname, '..', '..', 'vendor', 'ripgrep', vendorSubDir, rgBinary),
+    // 全局安装目录
+    path.join(os.homedir(), '.claude', 'bin', rgBinary),
   ];
 
   for (const rgPath of possiblePaths) {
@@ -437,10 +443,12 @@ export async function downloadVendoredRg(targetDir: string): Promise<string> {
   const arch = os.arch();
   const key = `${platform}-${arch}`;
 
-  const binaryName = PLATFORM_BINARIES[key];
-  if (!binaryName) {
+  const vendorSubDir = PLATFORM_VENDOR_DIR[key];
+  if (!vendorSubDir) {
     throw new Error(`Unsupported platform: ${key}`);
   }
+
+  const rgBinary = platform === 'win32' ? 'rg.exe' : 'rg';
 
   // 构建下载 URL
   let archiveName: string;
@@ -453,11 +461,12 @@ export async function downloadVendoredRg(targetDir: string): Promise<string> {
   }
 
   const downloadUrl = `${DOWNLOAD_BASE}/${archiveName}`;
-  const targetPath = path.join(targetDir, binaryName);
+  const rgDir = path.join(targetDir, vendorSubDir);
+  const targetPath = path.join(rgDir, rgBinary);
 
   // 确保目录存在
-  if (!fs.existsSync(targetDir)) {
-    fs.mkdirSync(targetDir, { recursive: true });
+  if (!fs.existsSync(rgDir)) {
+    fs.mkdirSync(rgDir, { recursive: true });
   }
 
   console.log(`Downloading ripgrep from ${downloadUrl}...`);

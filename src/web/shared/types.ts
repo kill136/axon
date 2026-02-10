@@ -16,7 +16,7 @@ export interface WSMessage {
 /**
  * 附件类型枚举
  */
-export type AttachmentType = 'image' | 'pdf' | 'docx' | 'xlsx' | 'pptx' | 'text';
+export type AttachmentType = 'image' | 'pdf' | 'docx' | 'xlsx' | 'pptx' | 'text' | 'file';
 
 /**
  * 附件类型
@@ -25,7 +25,7 @@ export interface Attachment {
   name: string;
   type: AttachmentType;
   mimeType: string;
-  data: string; // base64 for images/pdf/office, text content for text files
+  data: string; // base64 for images and files, text content for legacy text type
 }
 
 // ============ 认证相关类型 ============
@@ -141,6 +141,8 @@ export type ClientMessage =
   | { type: 'swarm:ask_response'; payload: { blueprintId: string; requestId: string; answers: Record<string, string>; cancelled?: boolean } }
   // v4.5: 用户插嘴
   | { type: 'task:interject'; payload: { blueprintId: string; taskId: string; message: string } }
+  // v9.2: LeadAgent 插嘴
+  | { type: 'lead:interject'; payload: { blueprintId: string; message: string } }
   // 持续开发消息
   | { type: 'continuous_dev:start'; payload: { requirement: string } }
   | { type: 'continuous_dev:status' }
@@ -149,7 +151,15 @@ export type ClientMessage =
   | { type: 'continuous_dev:rollback'; payload: { checkpointId?: string } }
   | { type: 'continuous_dev:approve' }
   // 探针调试消息
-  | { type: 'debug_get_messages' };
+  | { type: 'debug_get_messages' }
+  // Agent 探针调试消息（蜂群模式）
+  | { type: 'swarm:debug_agent'; payload: { blueprintId: string; agentType: 'lead' | 'worker' | 'e2e'; workerId?: string } }
+  | { type: 'swarm:debug_agent_list'; payload: { blueprintId: string } }
+  // 终端消息
+  | { type: 'terminal:create'; payload: { cwd?: string; cols?: number; rows?: number } }
+  | { type: 'terminal:input'; payload: { terminalId: string; data: string } }
+  | { type: 'terminal:resize'; payload: { terminalId: string; cols: number; rows: number } }
+  | { type: 'terminal:destroy'; payload: { terminalId: string } };
 
 /**
  * 服务端发送的消息类型
@@ -243,6 +253,9 @@ export type ServerMessage =
   // v4.5: 用户插嘴响应
   | { type: 'task:interject_success'; payload: { blueprintId: string; taskId: string; success: true; message: string; timestamp: string } }
   | { type: 'task:interject_failed'; payload: { blueprintId: string; taskId: string; success: false; error: string; timestamp: string } }
+  // v9.2: LeadAgent 插嘴响应
+  | { type: 'lead:interject_success'; payload: { blueprintId: string; success: true; message: string; timestamp: string } }
+  | { type: 'lead:interject_failed'; payload: { blueprintId: string; success: false; error: string; timestamp: string } }
   // v3.8: 取消执行响应
   | { type: 'swarm:cancelled'; payload: { blueprintId: string; success: boolean; timestamp: string } }
   // v4.2: AskUserQuestion 相关消息
@@ -271,8 +284,17 @@ export type ServerMessage =
   | { type: 'continuous_dev:flow_stopped'; payload?: any }
   | { type: 'continuous_dev:flow_paused'; payload?: any }
   | { type: 'continuous_dev:flow_resumed'; payload?: any }
+  // 权限模式同步
+  | { type: 'permission_config_update'; payload: { mode: PermissionMode; bypassTools?: string[]; alwaysAllow?: string[]; alwaysDeny?: string[] } }
   // 探针调试消息
-  | { type: 'debug_messages_response'; payload: DebugMessagesPayload };
+  | { type: 'debug_messages_response'; payload: DebugMessagesPayload }
+  // Agent 探针调试响应（蜂群模式）
+  | { type: 'swarm:debug_agent_response'; payload: AgentDebugPayload }
+  | { type: 'swarm:debug_agent_list_response'; payload: { blueprintId: string; agents: Array<{ agentType: string; id: string; label: string; taskId?: string }> } }
+  // 终端消息
+  | { type: 'terminal:created'; payload: { terminalId: string } }
+  | { type: 'terminal:output'; payload: { terminalId: string; data: string } }
+  | { type: 'terminal:exit'; payload: { terminalId: string; exitCode: number } };
 
 // ============ 消息负载类型 ============
 
@@ -991,6 +1013,28 @@ export interface SystemPromptGetPayload {
   current: string;
   /** 当前配置 */
   config: SystemPromptConfig;
+}
+
+/**
+ * Agent 调试信息负载（蜂群探针功能）
+ */
+export interface AgentDebugPayload {
+  /** Agent 类型 */
+  agentType: 'lead' | 'worker' | 'e2e';
+  /** Worker ID（仅 worker 类型） */
+  workerId?: string;
+  /** 当前任务 ID（仅 worker 类型） */
+  taskId?: string | null;
+  /** 当前系统提示词 */
+  systemPrompt: string;
+  /** 发送给 API 的原始消息体 */
+  messages: unknown[];
+  /** 当前使用的工具定义列表 */
+  tools: unknown[];
+  /** 当前模型 */
+  model: string;
+  /** 消息总数 */
+  messageCount: number;
 }
 
 /**

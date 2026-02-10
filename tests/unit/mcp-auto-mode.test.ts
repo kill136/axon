@@ -138,7 +138,7 @@ describe('MCP Tool Search Auto Mode', () => {
       const tools = [
         { name: 'Bash' },
         { name: 'Read' },
-        { name: 'MCPSearch' },
+        { name: 'Mcp' },
       ];
       expect(isMcpSearchToolAvailable(tools)).toBe(true);
     });
@@ -177,7 +177,7 @@ describe('MCP Tool Search Auto Mode', () => {
     const mockTools = [
       { name: 'Bash' },
       { name: 'Read' },
-      { name: 'MCPSearch' },
+      { name: 'Mcp' },
     ];
 
     it('should return false for haiku models', () => {

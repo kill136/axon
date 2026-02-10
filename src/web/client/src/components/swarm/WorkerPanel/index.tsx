@@ -32,6 +32,10 @@ export type StreamContentBlock =
 export interface TaskStreamContent {
   content: StreamContentBlock[];
   lastUpdated: string;
+  /** v4.6: Agent 的 System Prompt */
+  systemPrompt?: string;
+  /** v4.6: Agent 类型 */
+  agentType?: 'worker' | 'e2e' | 'reviewer';
 }
 
 /**
@@ -989,5 +993,5 @@ export const WorkerPanel: React.FC<WorkerPanelProps> = ({ queen, workers, select
 
 // 导出类型定义（SelectedTask 和 WorkerLogEntry 已在顶部定义并导出）
 export type { QueenAgent, WorkerAgent };
-export { QueenStatus, WorkerCard };
+export { QueenStatus, WorkerCard, WorkerChatLog };
 export default WorkerPanel;

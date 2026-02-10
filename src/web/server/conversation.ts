@@ -6,8 +6,8 @@
 import { ClaudeClient } from '../../core/client.js';
 import { Session } from '../../core/session.js';
 import { runWithCwd } from '../../core/cwd-context.js';
-import { shouldAutoCompact, calculateAutoCompactThreshold, getContextWindowSize } from '../../core/loop.js';
-import { toolRegistry } from '../../tools/index.js';
+import { shouldAutoCompact, calculateAutoCompactThreshold, getContextWindowSize, generateSummaryPrompt, formatCompactSummaryContent } from '../../core/loop.js';
+import { toolRegistry, registerBlueprintTools } from '../../tools/index.js';
 import { systemPromptBuilder, type PromptContext } from '../../prompt/index.js';
 import { modelConfig } from '../../models/index.js';
 import { configManager } from '../../config/index.js';
@@ -29,6 +29,7 @@ import { extractExplicitMemories, mergeExtractedMemories } from '../../memory/in
 import { oauthManager } from './oauth-manager.js';
 import { blueprintStore, executionManager } from './routes/blueprint-api.js';
 import type { Blueprint } from '../../blueprint/types.js';
+import { StartLeadAgentTool } from '../../tools/start-lead-agent.js';
 import { geminiImageService } from './services/gemini-image-service.js';
 import {
   initSessionMemory,
@@ -266,6 +267,10 @@ interface SessionState {
   isProcessing: boolean;
   /** 上一次 API 返回的实际 inputTokens（用于精确判断是否需要压缩） */
   lastActualInputTokens: number;
+  /** 最后一次压缩的边界标记 UUID（对齐官方，用于增量压缩） */
+  lastCompactedUuid?: string;
+  /** 标记：处理中 WebSocket 被刷新替换，完成后需要重发 history */
+  needsHistoryResend?: boolean;
 }
 
 /**
@@ -297,6 +302,21 @@ export class ConversationManager {
    * 初始化
    */
   async initialize(): Promise<void> {
+    // 注册蓝图工具（仅 Web 模式需要，CLI 模式不加载）
+    registerBlueprintTools();
+
+    // v11.0: 注入 StartLeadAgent 自包含执行上下文（替代 executeTool 拦截模式）
+    StartLeadAgentTool.setContext({
+      getBlueprint: (id: string) => blueprintStore.get(id),
+      saveBlueprint: (blueprint: Blueprint) => blueprintStore.save(blueprint),
+      startExecution: (blueprint: Blueprint) => executionManager.startExecution(blueprint),
+      waitForCompletion: async (sessionId: string) => {
+        const result = await executionManager.waitForCompletion(sessionId);
+        return { success: result.success, rawResponse: result.rawResponse };
+      },
+      // navigateToSwarm 在 createSession 中按会话设置（需要 ws 引用）
+    });
+
     // 初始化认证系统（加载 OAuth token 或 API key）
     const auth = initAuth();
     if (auth) {
@@ -408,8 +428,9 @@ export class ConversationManager {
 
   /**
    * 获取或创建会话
+   * @param permissionMode 可选，从客户端继承的权限模式（确保 YOLO 等模式跨会话持久化）
    */
-  private async getOrCreateSession(sessionId: string, model?: string, projectPath?: string): Promise<SessionState> {
+  private async getOrCreateSession(sessionId: string, model?: string, projectPath?: string, permissionMode?: string): Promise<SessionState> {
     let state = this.sessions.get(sessionId);
 
     if (state) {
@@ -419,12 +440,16 @@ export class ConversationManager {
         state.session.setWorkingDirectory(projectPath);
         await state.session.initializeGitInfo();
       }
+      // 如果提供了权限模式，同步到现有会话（修复切换会话后权限模式丢失的问题）
+      if (permissionMode) {
+        state.permissionHandler.updateConfig({ mode: permissionMode as any });
+      }
       return state;
     }
 
     // 创建新会话
     const workingDir = projectPath || this.cwd;
-    console.log(`[ConversationManager] 创建新会话 ${sessionId}, workingDir: ${workingDir}`);
+    console.log(`[ConversationManager] 创建新会话 ${sessionId}, workingDir: ${workingDir}, permissionMode: ${permissionMode || 'default'}`);
 
     const session = new Session(workingDir);
     await session.initializeGitInfo();
@@ -439,8 +464,8 @@ export class ConversationManager {
     // 创建任务管理器
     const taskManager = new TaskManager();
 
-    // 创建权限处理器（默认模式：需要用户确认敏感操作）
-    const permissionHandler = new PermissionHandler({ mode: 'default' });
+    // 创建权限处理器：优先使用客户端传入的权限模式，确保 YOLO 等模式跨会话生效
+    const permissionHandler = new PermissionHandler({ mode: (permissionMode as any) || 'default' });
 
     state = {
       session,
@@ -534,20 +559,56 @@ export class ConversationManager {
 
   /**
    * 设置会话的 WebSocket 连接
-   * 如果会话正在处理对话（isProcessing），不覆盖 ws 引用，
-   * 防止另一个标签页切换到此会话时导致消息串扰
+   * 当会话正在处理中且旧 WebSocket 仍然存活时（另一个标签页切换场景），不覆盖 ws 引用防止串扰
+   * 但如果旧 WebSocket 已关闭（如页面刷新场景），允许更新以确保流式消息能发送到新连接
    */
   setWebSocket(sessionId: string, ws: WebSocket): void {
     const state = this.sessions.get(sessionId);
     if (state) {
       if (state.isProcessing && state.ws && state.ws.readyState === 1 /* OPEN */) {
-        console.warn(`[ConversationManager] 会话 ${sessionId} 正在处理中，不更新 WebSocket 引用（防止会话串扰）`);
+        console.warn(`[ConversationManager] 会话 ${sessionId} 正在处理中且旧连接仍存活，不更新 WebSocket 引用（防止会话串扰）`);
         return;
+      }
+      // 如果会话正在处理中，说明是页面刷新导致的 ws 替换
+      // 标记需要在处理完成后重发 history，因为刷新后客户端没有 currentMessageRef
+      if (state.isProcessing) {
+        state.needsHistoryResend = true;
+        console.log(`[ConversationManager] 会话 ${sessionId} 处理中 ws 被替换（页面刷新），标记完成后重发 history`);
       }
       state.ws = ws;
       state.userInteractionHandler.setWebSocket(ws);
       state.taskManager.setWebSocket(ws);
     }
+  }
+
+  /**
+   * 获取会话当前活跃的 WebSocket 连接
+   * 用于流式回调中动态获取最新的 ws，解决页面刷新后旧闭包引用失效的问题
+   */
+  getWebSocket(sessionId: string): WebSocket | undefined {
+    const state = this.sessions.get(sessionId);
+    return state?.ws;
+  }
+
+  /**
+   * 检查并消费 needsHistoryResend 标记
+   * 返回 true 表示需要重发 history
+   */
+  consumeHistoryResendFlag(sessionId: string): boolean {
+    const state = this.sessions.get(sessionId);
+    if (state?.needsHistoryResend) {
+      state.needsHistoryResend = false;
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * 检查会话是否正在处理中
+   */
+  isSessionProcessing(sessionId: string): boolean {
+    const state = this.sessions.get(sessionId);
+    return state?.isProcessing ?? false;
   }
 
   /**
@@ -589,6 +650,17 @@ export class ConversationManager {
   }
 
   /**
+   * 获取当前权限配置
+   */
+  getPermissionConfig(sessionId: string): PermissionConfig | null {
+    const state = this.sessions.get(sessionId);
+    if (state) {
+      return state.permissionHandler.getConfig();
+    }
+    return null;
+  }
+
+  /**
    * 媒体附件信息（图片或 PDF）
    */
 
@@ -599,13 +671,14 @@ export class ConversationManager {
   async chat(
     sessionId: string,
     content: string,
-    mediaAttachments: Array<{ data: string; mimeType: string; type: 'image' | 'pdf' }> | undefined,
+    mediaAttachments: Array<{ data: string; mimeType: string; type: 'image' }> | undefined,
     model: string,
     callbacks: StreamCallbacks,
     projectPath?: string,
-    ws?: WebSocket
+    ws?: WebSocket,
+    permissionMode?: string
   ): Promise<void> {
-    const state = await this.getOrCreateSession(sessionId, model, projectPath);
+    const state = await this.getOrCreateSession(sessionId, model, projectPath, permissionMode);
 
     // 防止同一会话并发处理：如果会话正在处理中，拒绝新的聊天请求
     if (state.isProcessing) {
@@ -631,31 +704,18 @@ export class ConversationManager {
         content: content,
       };
 
-      // 如果有媒体附件（图片或 PDF），转换为多内容块格式
+      // 如果有图片附件，转换为多内容块格式（直接传递给 Claude API）
       if (mediaAttachments && mediaAttachments.length > 0) {
         const contentBlocks: any[] = [{ type: 'text', text: content }];
         for (const attachment of mediaAttachments) {
-          if (attachment.type === 'image') {
-            // 图片使用 image 类型
-            contentBlocks.push({
-              type: 'image',
-              source: {
-                type: 'base64',
-                media_type: attachment.mimeType,
-                data: attachment.data,
-              },
-            });
-          } else if (attachment.type === 'pdf') {
-            // PDF 使用 document 类型（官方格式）
-            contentBlocks.push({
-              type: 'document',
-              source: {
-                type: 'base64',
-                media_type: 'application/pdf',
-                data: attachment.data,
-              },
-            });
-          }
+          contentBlocks.push({
+            type: 'image',
+            source: {
+              type: 'base64',
+              media_type: attachment.mimeType,
+              data: attachment.data,
+            },
+          });
         }
         userMessage.content = contentBlocks;
       }
@@ -737,6 +797,10 @@ export class ConversationManager {
             cleanedMessages = compactResult.messages;
             state.messages = compactResult.messages;
             state.lastActualInputTokens = 0; // 压缩后重置
+            // 对齐官方：保存边界 UUID 用于增量压缩
+            if (compactResult.boundaryUuid) {
+              state.lastCompactedUuid = compactResult.boundaryUuid;
+            }
             console.log(`[AutoCompact] 上下文已压缩`);
             // 通知前端：压缩完成
             callbacks.onContextCompact?.('end', { threshold, savedTokens: compactResult.savedTokens || 0 });
@@ -843,10 +907,27 @@ export class ConversationManager {
 
             case 'usage':
               if (event.usage) {
-                totalInputTokens = event.usage.inputTokens || 0;
+                // 对齐官方：context 使用量 = inputTokens + cacheReadTokens + cacheCreationTokens
+                // 开启 prompt caching 后，大部分 tokens 走缓存，inputTokens 可能极小（如 1）
+                // 必须将 cache tokens 也计入，才能反映真实的上下文窗口占用
+                const cacheRead = event.usage.cacheReadTokens || 0;
+                const cacheCreation = event.usage.cacheCreationTokens || 0;
+                totalInputTokens = (event.usage.inputTokens || 0) + cacheRead + cacheCreation;
                 totalOutputTokens = event.usage.outputTokens || 0;
                 // 记录实际 inputTokens 供下次循环迭代的自动压缩判断使用
                 state.lastActualInputTokens = totalInputTokens;
+
+                // 实时发送上下文使用量更新（每次 API 调用都更新，而非仅对话结束时）
+                if (totalInputTokens > 0) {
+                  const contextWindow = getContextWindowSize(resolvedModel);
+                  const percentage = Math.min(100, Math.round((totalInputTokens / contextWindow) * 100));
+                  callbacks.onContextUpdate?.({
+                    usedTokens: totalInputTokens,
+                    maxTokens: contextWindow,
+                    percentage,
+                    model: resolvedModel,
+                  });
+                }
               }
               break;
 
@@ -956,18 +1037,6 @@ export class ConversationManager {
             inputTokens: totalInputTokens,
             outputTokens: totalOutputTokens,
           });
-
-          // 发送上下文使用量更新
-          if (totalInputTokens > 0) {
-            const contextWindow = getContextWindowSize(resolvedModel);
-            const percentage = Math.min(100, Math.round((totalInputTokens / contextWindow) * 100));
-            callbacks.onContextUpdate?.({
-              usedTokens: totalInputTokens,
-              maxTokens: contextWindow,
-              percentage,
-              model: resolvedModel,
-            });
-          }
         }
 
       } catch (error) {
@@ -987,6 +1056,10 @@ export class ConversationManager {
             if (compactResult.wasCompacted) {
               state.messages = compactResult.messages;
               state.lastActualInputTokens = 0;
+              // 对齐官方：保存边界 UUID 用于增量压缩
+              if (compactResult.boundaryUuid) {
+                state.lastCompactedUuid = compactResult.boundaryUuid;
+              }
               console.log(`[AutoCompact] 强制压缩成功，重试 API 调用`);
               callbacks.onContextCompact?.('end', { savedTokens: compactResult.savedTokens || 0 });
               continue; // 重新进入循环
@@ -1390,13 +1463,13 @@ export class ConversationManager {
     try {
       console.log(`[Tool] 执行 ${toolUse.name}:`, JSON.stringify(toolUse.input).slice(0, 200));
 
-      // 拦截 Task 工具 - 通过 TaskManager 执行后台任务
+      // 拦截 Task 工具 - WebUI 模式下使用同步执行 + WebSocket 实时推送
+      // 不再默认后台执行，避免 TaskOutput 多次轮询的性能浪费
       if (toolUse.name === 'Task') {
         const input = toolUse.input as any;
         const description = input.description || 'Background task';
         const prompt = input.prompt || '';
         const agentType = input.subagent_type || 'general-purpose';
-        const runInBackground = input.run_in_background !== false;
 
         // 验证必需参数
         if (!prompt) {
@@ -1406,50 +1479,31 @@ export class ConversationManager {
         }
 
         try {
-          // 创建任务
-          const taskId = await state.taskManager.createTask(
+          // WebUI 始终使用同步执行：await 拿结果，中间过程由 TaskManager 通过 WebSocket 实时推送
+          const result = await state.taskManager.executeTaskSync(
             description,
             prompt,
             agentType,
             {
               model: input.model || state.model,
-              runInBackground,
               parentMessages: state.messages,
               workingDirectory: state.session.cwd,
             }
           );
 
-          let output: string;
-          if (runInBackground) {
-            output = `Agent started in background with ID: ${taskId}\n\nDescription: ${description}\nAgent Type: ${agentType}\n\nUse the TaskOutput tool to check progress and retrieve results when complete.`;
-          } else {
-            // 同步执行 - 等待完成
-            const task = state.taskManager.getTask(taskId);
-            if (task) {
-              // 等待任务完成
-              while (task.status === 'running') {
-                await new Promise(resolve => setTimeout(resolve, 500));
-              }
+          const output = result.success
+            ? (result.output || 'Task completed successfully')
+            : `Task failed: ${result.error || 'Unknown error'}`;
 
-              if (task.status === 'completed') {
-                output = task.result || 'Task completed successfully';
-              } else {
-                output = `Task failed: ${task.error || 'Unknown error'}`;
-              }
-            } else {
-              output = 'Task execution completed';
-            }
-          }
-
-          callbacks.onToolResult?.(toolUse.id, true, output, undefined, {
+          callbacks.onToolResult?.(toolUse.id, result.success, output, result.success ? undefined : result.error, {
             tool: 'Task',
             agentType,
             description,
-            status: runInBackground ? 'running' : 'completed',
+            status: 'completed',
             output,
           });
 
-          return { success: true, output };
+          return { success: result.success, output };
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error);
           console.error(`[Tool] Task 执行失败:`, errorMessage);
@@ -1619,38 +1673,22 @@ export class ConversationManager {
         }
       }
 
-      // 拦截 StartLeadAgent 工具 - 启动 LeadAgent 执行蓝图
+      // v11.0: StartLeadAgent 不再拦截，走正常 tool.execute() 路径
+      // 执行前动态绑定当前会话的 WebSocket，用于前端导航通知
       if (toolUse.name === 'StartLeadAgent') {
-        const input = toolUse.input as any;
-        const { blueprintId } = input;
-
-        try {
-          const blueprint = blueprintStore.get(blueprintId);
-          if (!blueprint) {
-            const error = `蓝图 ${blueprintId} 不存在`;
-            callbacks.onToolResult?.(toolUse.id, false, undefined, error);
-            return { success: false, error };
-          }
-
-          // 复用现有的 executionManager.startExecution()
-          const session = await executionManager.startExecution(blueprint);
-
-          // 通知前端导航到 SwarmConsole
-          if (state.ws && state.ws.readyState === 1) {
-            state.ws.send(JSON.stringify({
-              type: 'navigate_to_swarm',
-              payload: { blueprintId, executionId: session.id },
-            }));
-          }
-
-          const output = `LeadAgent 已启动，正在执行蓝图「${blueprint.name}」。\n执行ID: ${session.id}\n用户可切换到 SwarmConsole（蜂群面板）查看实时进度。`;
-          callbacks.onToolResult?.(toolUse.id, true, output);
-          return { success: true, output };
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : String(error);
-          console.error(`[Tool] StartLeadAgent 执行失败:`, errorMessage);
-          callbacks.onToolResult?.(toolUse.id, false, undefined, errorMessage);
-          return { success: false, error: errorMessage };
+        const currentCtx = StartLeadAgentTool.getContext();
+        if (currentCtx) {
+          StartLeadAgentTool.setContext({
+            ...currentCtx,
+            navigateToSwarm: (blueprintId: string, executionId: string) => {
+              if (state.ws && state.ws.readyState === 1) {
+                state.ws.send(JSON.stringify({
+                  type: 'navigate_to_swarm',
+                  payload: { blueprintId, executionId },
+                }));
+              }
+            },
+          });
         }
       }
 
@@ -1770,38 +1808,51 @@ export class ConversationManager {
   }
 
   /**
-   * 执行 AutoCompact（对齐 CLI loop.ts 的 autoCompact 函数）
+   * 执行 AutoCompact（对齐官方 CLI oj1 + SQ1 + Au1 + oT9）
    *
    * 压缩优先级：
    * 1. TJ1: Session Memory 压缩（增量压缩）
    * 2. NJ1: 对话摘要压缩（AI 生成摘要）
+   *
+   * 压缩结果结构（对齐官方）：
+   * - boundaryMarker: 压缩边界标记（type: "user", 带 uuid）
+   * - summaryMessage: 摘要消息（type: "user", isCompactSummary: true）
    */
   private async performAutoCompact(
     messages: Message[],
     model: string,
     state: SessionState
-  ): Promise<{ wasCompacted: boolean; messages: Message[]; savedTokens?: number }> {
+  ): Promise<{ wasCompacted: boolean; messages: Message[]; savedTokens?: number; boundaryUuid?: string }> {
     const threshold = calculateAutoCompactThreshold(model);
-    // 压缩前的原始消息数量（用于估算节省的 tokens）
-    const preCompactMessageCount = messages.length;
 
     // 1. 尝试 Session Memory 压缩 (TJ1)
     if (isSessionMemoryEnabled()) {
       try {
         const memoryContent = await readSessionMemory(state.session.cwd, state.session.sessionId || '');
         if (memoryContent && memoryContent.trim().length > 0) {
-          // 生成一个包含 Session Memory 的摘要消息
-          const summaryMessage: Message = {
-            role: 'user',
-            content: `[Session Memory - Auto Compact]\n${memoryContent}\n\n[Previous conversation has been summarized. The session memory above captures the key context.]`,
-          };
+          // 对齐官方 Au1 函数：格式化为标准摘要内容
+          const formattedContent = formatCompactSummaryContent(memoryContent, true);
 
-          // 估算新消息的 token 数
-          const summaryTokens = Math.ceil(memoryContent.length / 4);
+          const summaryTokens = Math.ceil(formattedContent.length / 4);
           if (summaryTokens < threshold * 0.5) {
+            // 对齐官方 SQ1 函数：创建 compact_boundary 边界标记
+            const boundaryUuid = `sm-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            const boundaryMarker: Message = {
+              role: 'user',
+              content: `--- Session Memory Compacted (auto) ---\nPrevious messages were compressed using Session Memory.`,
+              uuid: boundaryUuid,
+            };
+
+            const summaryMessage: Message = {
+              role: 'user',
+              content: formattedContent,
+              isCompactSummary: true,
+              isVisibleInTranscriptOnly: true,
+            };
+
             const savedTokens = Math.max(0, (state.lastActualInputTokens || threshold) - summaryTokens);
             console.log(`[AutoCompact/TJ1] Session Memory 压缩成功，节省约 ${savedTokens.toLocaleString()} tokens`);
-            return { wasCompacted: true, messages: [summaryMessage], savedTokens };
+            return { wasCompacted: true, messages: [boundaryMarker, summaryMessage], savedTokens, boundaryUuid };
           }
         }
       } catch (err) {
@@ -1811,31 +1862,17 @@ export class ConversationManager {
 
     // 2. 尝试对话摘要 (NJ1) — 对齐官方 oj1 压缩函数
     try {
-      // 使用官方压缩 prompt 的简化版本
-      const summaryPrompt = [
-        'Your task is to create a detailed summary of the conversation so far, paying close attention to the user\'s explicit requests and your previous actions.',
-        'This summary should be thorough in capturing technical details, code patterns, and architectural decisions.',
-        '',
-        'Focus on:',
-        '1. The user\'s explicit requests and intents (chronologically)',
-        '2. Actions taken: files created/modified, commands run, tools used',
-        '3. Key technical decisions, code patterns, and architecture',
-        '4. Current state of the work and any pending tasks',
-        '5. Important file paths, function names, and variable names',
-        '6. Errors encountered and how they were resolved',
-        '',
-        'Be comprehensive but efficient. This summary will replace the conversation history.',
-        'Output only the summary, nothing else.',
-      ].join('\n');
+      // 对齐官方 dDA 函数：使用完整的摘要 prompt（含 <analysis> + <summary> 结构）
+      const summaryPrompt = generateSummaryPrompt();
 
       const summaryMessages: Message[] = [
-        ...messages.slice(-20), // 最多保留最近 20 条用于生成摘要
+        ...messages,
         { role: 'user', content: summaryPrompt },
       ];
 
       const response = await state.client.createMessage(
         summaryMessages,
-        undefined, // 不需要工具
+        undefined, // 不需要工具（对齐官方：compaction agent should only produce text summary）
         'You are a helpful AI assistant tasked with summarizing conversations concisely while preserving all critical technical details.'
       );
 
@@ -1849,14 +1886,27 @@ export class ConversationManager {
       }
 
       if (summaryText && summaryText.trim().length > 0) {
+        // 对齐官方 SQ1 函数：创建 compact_boundary 边界标记
+        const boundaryUuid = `nj1-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const boundaryMarker: Message = {
+          role: 'user',
+          content: `--- Conversation Compacted (auto) ---\nPrevious messages were summarized.`,
+          uuid: boundaryUuid,
+        };
+
+        // 对齐官方 Au1 函数：格式化摘要内容
+        const formattedContent = formatCompactSummaryContent(summaryText, false);
         const summaryMessage: Message = {
           role: 'user',
-          content: `[Conversation Summary - Auto Compact]\n${summaryText}`,
+          content: formattedContent,
+          isCompactSummary: true,
+          isVisibleInTranscriptOnly: true,
         };
-        const summaryTokens = Math.ceil(summaryText.length / 4);
+
+        const summaryTokens = Math.ceil(formattedContent.length / 4);
         const savedTokens = Math.max(0, (state.lastActualInputTokens || threshold) - summaryTokens);
         console.log(`[AutoCompact/NJ1] 对话摘要压缩成功，节省约 ${savedTokens.toLocaleString()} tokens`);
-        return { wasCompacted: true, messages: [summaryMessage], savedTokens };
+        return { wasCompacted: true, messages: [boundaryMarker, summaryMessage], savedTokens, boundaryUuid };
       }
     } catch (err) {
       console.warn('[AutoCompact/NJ1] 对话摘要压缩失败:', err);
@@ -2309,15 +2359,25 @@ Guidelines:
   /**
    * 获取过滤后的工具列表
    */
+  // Chat Tab 不应暴露的工具（各 Agent 专用工具不应注入到 Chat Tab 上下文）
+  // 避免浪费 token，也防止模型误调用不属于当前角色的工具
+  private static readonly CHAT_EXCLUDED_TOOLS = new Set([
+    'Blueprint',        // CLI 模式工具，Chat Tab 应使用 GenerateBlueprint + StartLeadAgent
+    'UpdateTaskPlan',   // LeadAgent 专用 - 更新执行计划中的任务状态
+    'DispatchWorker',   // LeadAgent 专用 - 派发任务给 Worker 执行
+    'TriggerE2ETest',   // LeadAgent 专用 - 触发 E2E 端到端测试
+  ]);
+
   private getFilteredTools(sessionId: string): any[] {
     const state = this.sessions.get(sessionId);
     const config = state?.toolFilterConfig || { mode: 'all' };
 
     const allTools = toolRegistry.getAll();
 
-    // 根据配置过滤工具
+    // 根据配置过滤工具，同时排除 Chat Tab 不适用的工具
     const filteredTools = allTools.filter(tool =>
-      this.isToolEnabled(tool.name, config)
+      this.isToolEnabled(tool.name, config) &&
+      !ConversationManager.CHAT_EXCLUDED_TOOLS.has(tool.name)
     );
 
     return filteredTools.map(tool => ({
@@ -2396,11 +2456,17 @@ Guidelines:
 
   /**
    * 恢复会话
+   * @param permissionMode 可选，从客户端继承的权限模式
    */
-  async resumeSession(sessionId: string): Promise<boolean> {
+  async resumeSession(sessionId: string, permissionMode?: string): Promise<boolean> {
     try {
       // 如果会话已经在内存中，直接返回成功（避免重复创建）
       if (this.sessions.has(sessionId)) {
+        // 同步权限模式（修复切换会话后 YOLO 模式丢失的问题）
+        if (permissionMode) {
+          const state = this.sessions.get(sessionId)!;
+          state.permissionHandler.updateConfig({ mode: permissionMode as any });
+        }
         return true;
       }
 
@@ -2432,7 +2498,7 @@ Guidelines:
         chatHistory,
         userInteractionHandler: new UserInteractionHandler(),
         taskManager: new TaskManager(),
-        permissionHandler: new PermissionHandler({ mode: 'default' }),
+        permissionHandler: new PermissionHandler({ mode: (permissionMode as any) || 'default' }),
         toolFilterConfig: (sessionData as any).toolFilterConfig || {
           mode: 'all', // 默认允许所有工具
         },
@@ -2444,7 +2510,7 @@ Guidelines:
       };
 
       this.sessions.set(sessionId, state);
-      console.log(`[ConversationManager] 会话已恢复: ${sessionId}, 消息数: ${sessionData.messages.length}, chatHistory: ${chatHistory.length}`);
+      console.log(`[ConversationManager] 会话已恢复: ${sessionId}, 消息数: ${sessionData.messages.length}, chatHistory: ${chatHistory.length}, permissionMode: ${permissionMode || 'default'}`);
       return true;
     } catch (error) {
       console.error(`[ConversationManager] 恢复会话失败:`, error);

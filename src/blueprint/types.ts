@@ -18,10 +18,13 @@
  */
 export type BlueprintStatus =
   | 'draft'        // 草稿：需求对话中
-  | 'confirmed'    // 已确认：用户确认，可执行
+  | 'review'       // 审核：等待用户确认
+  | 'approved'     // 已批准：用户已确认，可执行
+  | 'confirmed'    // 已确认（兼容旧数据，等同于 approved）
   | 'executing'    // 执行中
   | 'completed'    // 已完成
   | 'paused'       // 已暂停
+  | 'modified'     // 已修改：执行中用户修改了蓝图
   | 'failed'       // 已失败
   | 'cancelled';   // 已取消
 
@@ -58,10 +61,15 @@ export interface Blueprint {
   // 约束（用户指定的限制）
   constraints?: string[];
 
+  // 蓝图来源
+  source?: 'requirement' | 'codebase';
+
   // 时间戳
   createdAt: Date | string;
   updatedAt: Date | string;
   confirmedAt?: Date | string;
+  approvedAt?: Date | string;
+  approvedBy?: string;
 
   // v2.1: 持久化的执行计划（用于服务重启后恢复显示）
   lastExecutionPlan?: SerializableExecutionPlan;
@@ -143,7 +151,7 @@ export interface ProcessStep {
 /**
  * 模块类型
  */
-export type ModuleType = 'frontend' | 'backend' | 'database' | 'service' | 'shared' | 'other';
+export type ModuleType = 'frontend' | 'backend' | 'database' | 'service' | 'infrastructure' | 'shared' | 'other';
 
 /**
  * 模块来源
@@ -228,8 +236,9 @@ export interface NFR {
   category: NFRCategory;
   name: string;
   description: string;
-  priority: 'high' | 'medium' | 'low';
+  priority: 'must' | 'should' | 'could' | 'wont' | 'high' | 'medium' | 'low';
   metrics?: string[];  // 可量化的指标
+  metric?: string;     // 单个量化指标（前端兼容）
 }
 
 // ============================================================================
@@ -537,6 +546,8 @@ export interface TaskResult {
   summary?: string;
   /** v9.0: 完整摘要（LeadAgent 模式下不截断） */
   fullSummary?: string;
+  /** v10.0: Worker 的完整文本输出（对齐 TaskTool 模式） */
+  rawResponse?: string;
   /** v9.0: 审查者标记 */
   reviewedBy?: 'lead-agent' | 'reviewer' | 'none';
   /** v3.7: Review 反馈（失败时包含，用于下次重试） */
@@ -1376,6 +1387,8 @@ export interface LeadAgentConfig {
   onEvent?: (event: LeadAgentEvent) => void;
   /** 用户交互处理器（WebUI 环境下） */
   askUserHandler?: (input: unknown) => Promise<unknown>;
+  /** 是否为恢复模式（从中断位置继续执行） */
+  isResume?: boolean;
 }
 
 /**
@@ -1404,6 +1417,8 @@ export interface LeadAgentResult {
   durationMs: number;
   /** LeadAgent 的最终总结 */
   summary: string;
+  /** v10.0: LeadAgent 的完整文本输出（对齐 TaskTool 模式） */
+  rawResponse: string;
   /** 所有任务结果 */
   taskResults: Map<string, TaskResult>;
 }

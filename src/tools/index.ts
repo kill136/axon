@@ -1,8 +1,13 @@
 /**
  * 工具注册表
  * 导出所有工具
+ *
+ * 工具分为两类：
+ * 1. 核心工具 (registerCoreTools) - 对齐官方 Claude Code v2.1.34，CLI/Web 都加载
+ * 2. 蓝图工具 (registerBlueprintTools) - Blueprint 多 Agent 系统专用，仅 Web 模式按需加载
  */
 
+// 核心工具类型导出
 export * from './base.js';
 export * from './bash.js';
 export * from './file.js';
@@ -17,26 +22,22 @@ export * from './ask.js';
 export * from './sandbox.js';
 export * from './skill.js';
 export * from './lsp.js';
-export * from './blueprint.js';
 export * from './task-storage.js';
 export * from './task-v2.js';
-export * from './task-status.js';
-export * from './commit-and-merge.js';
 export * from './agent-teams.js';
-export * from './submit-review.js';
-export * from './submit-e2e-result.js';
-export * from './dispatch-worker.js';
-export * from './generate-blueprint.js';
-export * from './start-lead-agent.js';
-export * from './generate-design.js';
+export * from './notebook-write.js';
 export * from './team.js';
 
+// 蓝图工具不通过此处 re-export
+// 蓝图模块直接 import 各自需要的工具文件 (如 ../tools/dispatch-worker.js)
+
 import { toolRegistry } from './base.js';
+
+// ============ 核心工具 imports ============
 import { BashTool, KillShellTool } from './bash.js';
 import { ReadTool, WriteTool, EditTool } from './file.js';
 import { GlobTool, GrepTool } from './search.js';
 import { WebFetchTool } from './web.js';
-// WebSearchTool 已移除 - 使用 Anthropic API Server Tool (web_search_20250305) 替代
 import { TodoWriteTool } from './todo.js';
 import { TaskTool, TaskOutputTool } from './agent.js';
 import { TaskCreateTool, TaskGetTool, TaskUpdateTool, TaskListTool } from './task-v2.js';
@@ -47,24 +48,33 @@ import { MCPSearchTool, ListMcpResourcesTool, ReadMcpResourceTool } from './mcp.
 import { AskUserQuestionTool } from './ask.js';
 import { SkillTool } from './skill.js';
 import { LSPTool } from './lsp.js';
-import { BlueprintTool } from './blueprint.js';
-import { UpdateTaskStatusTool } from './task-status.js';
-import { CommitAndMergeTool } from './commit-and-merge.js';
-import { TeammateTool, SendMessageTool as AgentTeamsSendMessageTool } from './agent-teams.js';
+import { NotebookWriteTool } from './notebook-write.js';
+import { TeammateTool } from './agent-teams.js';
 import { isAgentTeamsEnabled } from '../agents/teammate-context.js';
-import { SubmitReviewTool } from './submit-review.js';
-import { SubmitE2EResultTool } from './submit-e2e-result.js';
-import { DispatchWorkerTool } from './dispatch-worker.js';
-import { UpdateTaskPlanTool } from './update-task-plan.js';
+import { TeamCreateTool, TeamDeleteTool, TeamSendMessageTool } from './team.js';
+
+// ============ 蓝图工具 imports (lazy) ============
+import { BlueprintTool } from './blueprint.js';
 import { GenerateBlueprintTool } from './generate-blueprint.js';
 import { StartLeadAgentTool } from './start-lead-agent.js';
 import { GenerateDesignTool } from './generate-design.js';
-import { TeamCreateTool, TeamDeleteTool, TeamSendMessageTool } from './team.js';
-import { registerBlueprintHooks } from '../hooks/blueprint-hooks.js';
+import { UpdateTaskPlanTool } from './update-task-plan.js';
+import { DispatchWorkerTool } from './dispatch-worker.js';
+import { TriggerE2ETestTool } from './trigger-e2e-test.js';
 
-// 注册所有工具（与官方 Claude Code 保持一致：18个核心工具）
-export function registerAllTools(): void {
-  // 1. Bash 工具 (2个)
+// ============ 幂等保护标志 ============
+let coreToolsRegistered = false;
+let blueprintToolsRegistered = false;
+
+/**
+ * 注册核心工具 - 对齐官方 Claude Code v2.1.34
+ * CLI 和 Web 模式都会加载，模块导入时自动调用
+ */
+export function registerCoreTools(): void {
+  if (coreToolsRegistered) return;
+  coreToolsRegistered = true;
+
+  // 1. Bash 工具 (2个) - Bash + KillShell(对标官方 TaskStop)
   toolRegistry.register(new BashTool());
   toolRegistry.register(new KillShellTool());
 
@@ -83,12 +93,12 @@ export function registerAllTools(): void {
   // WebSearch: 使用 Anthropic API Server Tool (web_search_20250305)
   // 在 client.ts 的 buildApiTools 中自动添加，无需注册客户端工具
 
-  // 5. 任务管理 (3个 + Task v2 工具 4个)
+  // 5. 任务管理 (3个)
   toolRegistry.register(new TodoWriteTool());
   toolRegistry.register(new TaskTool());
   toolRegistry.register(new TaskOutputTool());
 
-  // Task v2 系统 (2.1.16 新增，支持依赖追踪)
+  // Task v2 系统 (条件注册，需 CLAUDE_CODE_ENABLE_TASKS=true)
   if (isTasksEnabled()) {
     toolRegistry.register(new TaskCreateTool());
     toolRegistry.register(new TaskGetTool());
@@ -107,64 +117,60 @@ export function registerAllTools(): void {
   toolRegistry.register(new AskUserQuestionTool());
 
   // 9. Skill 系统 (1个)
-  // Skills 初始化延迟到 initializeSkillsLazy() 调用时
-  // 因为 skills 需要工作目录上下文，而模块加载时可能还没有设置
   toolRegistry.register(new SkillTool());
 
-  // 10. 代码智能 (1个)
-  toolRegistry.register(new LSPTool());
+  // 10. MCP 工具 (3个)
+  toolRegistry.register(new MCPSearchTool());
+  toolRegistry.register(new ListMcpResourcesTool());
+  toolRegistry.register(new ReadMcpResourceTool());
 
-  // 11. 蓝图系统工具 (1个)
-  toolRegistry.register(new BlueprintTool());
-
-  // 12. 任务状态工具 (1个) - Worker 用于汇报状态
-  toolRegistry.register(new UpdateTaskStatusTool());
-
-  // 13. 代码合并工具 (1个) - Worker 用于提交并合并代码
-  toolRegistry.register(new CommitAndMergeTool());
-
-  // 14. 审查结果提交工具 (1个) - Reviewer 专用
-  toolRegistry.register(new SubmitReviewTool());
-
-  // 15. E2E 测试结果提交工具 (1个) - E2E Test Agent 专用
-  toolRegistry.register(new SubmitE2EResultTool());
-
-  // 16. LeadAgent 专用工具 (2个) - 派发任务 + 更新任务状态
-  toolRegistry.register(new DispatchWorkerTool());
-  toolRegistry.register(new UpdateTaskPlanTool());
-
-  // 17. Chat Tab 主 Agent 专用工具 (3个) - 生成蓝图 + 启动 LeadAgent + 生成设计图
-  toolRegistry.register(new GenerateBlueprintTool());
-  toolRegistry.register(new StartLeadAgentTool());
-  toolRegistry.register(new GenerateDesignTool());
-
-  // 18. Agent Teams v2.1.33 工具 (3个) - TeamCreate/TeamDelete/TeamSendMessage
+  // 11. Agent Teams (条件注册，需 CLAUDE_CODE_ENABLE_AGENT_TEAMS=true)
   if (isAgentTeamsEnabled()) {
     toolRegistry.register(new TeamCreateTool());
     toolRegistry.register(new TeamDeleteTool());
     toolRegistry.register(new TeamSendMessageTool());
-  }
-
-  // MCP 工具通过动态注册机制添加
-  // MCPSearchTool 作为 MCP 桥接工具保留
-  toolRegistry.register(new MCPSearchTool());
-
-  // 12. MCP 资源工具 (2个) - v2.1.6 新增
-  toolRegistry.register(new ListMcpResourcesTool());
-  toolRegistry.register(new ReadMcpResourceTool());
-
-  // 19. Agent Teams 工具 (1个) - v2.1.32 TeammateTool
-  // 需要 CLAUDE_CODE_ENABLE_AGENT_TEAMS=true 环境变量
-  // 注意: SendMessage 已在上方 v2.1.33 工具中注册（TeamSendMessageTool），此处不重复注册
-  if (isAgentTeamsEnabled()) {
     toolRegistry.register(new TeammateTool());
   }
+
+  // 12. 项目扩展工具 (非官方，但 CLI 模式也用)
+  toolRegistry.register(new LSPTool());
+  toolRegistry.register(new NotebookWriteTool());
 }
 
-// 自动注册工具（不包括 skills 初始化）
-// Skills 会在 SkillTool.execute() 第一次调用时延迟初始化
-// 此时已经在 runWithCwd 上下文中，可以正确获取工作目录
-registerAllTools();
-registerBlueprintHooks();
+/**
+ * 注册蓝图工具 - Blueprint 多 Agent 系统专用
+ * 仅在 Web 模式下由 ConversationManager.initialize() 调用
+ *
+ * 各 Agent 类型使用的蓝图工具：
+ * - Chat Tab Agent: BlueprintTool, GenerateBlueprintTool, StartLeadAgentTool, GenerateDesignTool
+ */
+export function registerBlueprintTools(): void {
+  if (blueprintToolsRegistered) return;
+  blueprintToolsRegistered = true;
+
+  // Chat Tab Agent 专用 (4个)
+  toolRegistry.register(new BlueprintTool());
+  toolRegistry.register(new GenerateBlueprintTool());
+  toolRegistry.register(new StartLeadAgentTool());
+  toolRegistry.register(new GenerateDesignTool());
+
+  // LeadAgent 专用 (3个) - 任务计划管理、Worker 派发、E2E 测试
+  toolRegistry.register(new UpdateTaskPlanTool());
+  toolRegistry.register(new DispatchWorkerTool());
+  toolRegistry.register(new TriggerE2ETestTool());
+}
+
+/**
+ * 注册所有工具 - 向后兼容入口
+ * 同时注册核心工具和蓝图工具
+ */
+export function registerAllTools(): void {
+  registerCoreTools();
+  registerBlueprintTools();
+}
+
+// 模块加载时自动注册核心工具
+// 蓝图工具由 Web 服务器按需注册 (见 src/web/server/conversation.ts)
+registerCoreTools();
 
 export { toolRegistry };

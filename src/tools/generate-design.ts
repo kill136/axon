@@ -28,7 +28,7 @@ export interface GenerateDesignInput {
  */
 export class GenerateDesignTool extends BaseTool<GenerateDesignInput, ToolResult> {
   name = 'GenerateDesign';
-  description = `使用 AI 生成项目的 UI 设计图/界面原型图
+  description = `使用 AI 生成项目的 UI 设计图/界面原型图，不仅仅限于这些种类的图片
 
 ## 使用时机
 当你与用户讨论项目需求时，可以调用此工具生成可视化的 UI 设计预览，帮助用户直观理解项目外观。

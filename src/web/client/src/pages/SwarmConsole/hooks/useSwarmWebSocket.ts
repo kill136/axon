@@ -304,6 +304,17 @@ export function useSwarmWebSocket(options: UseSwarmWebSocketOptions): UseSwarmWe
     });
   }, [send]);
 
+  // v9.2: LeadAgent 插嘴 - 向正在执行的 LeadAgent 发送消息
+  const interjectLead = useCallback((
+    blueprintId: string,
+    message: string
+  ) => {
+    send({
+      type: 'lead:interject',
+      payload: { blueprintId, message },
+    });
+  }, [send]);
+
   return {
     connected,
     status,
@@ -321,5 +332,9 @@ export function useSwarmWebSocket(options: UseSwarmWebSocketOptions): UseSwarmWe
     cancelSwarm,
     sendAskUserResponse,
     interjectTask,
+    interjectLead,
+    // 探针功能：暴露底层通信方法
+    send,
+    addMessageHandler,
   };
 }

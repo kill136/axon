@@ -20,6 +20,7 @@ export type BlueprintStatus =
   | 'completed'    // 已完成：所有任务都已完成
   | 'paused'       // 已暂停：用户暂停了执行
   | 'modified'     // 已修改：执行中用户修改了蓝图，需要重新规划
+  | 'failed'       // 已失败：执行失败
   | 'cancelled';   // 已取消：用户取消了执行
 
 /**
@@ -123,6 +124,9 @@ export interface Blueprint {
   approvedAt?: string;
   approvedBy?: string;
 
+  // 蓝图来源
+  source?: 'requirement' | 'codebase';
+
   // 变更历史
   changeHistory: BlueprintChange[];
 
@@ -155,10 +159,12 @@ export interface BlueprintListItem {
   status: BlueprintStatus;
   createdAt: string;
   updatedAt: string;
-  moduleCount: number;      // 已预计算的数量
-  processCount: number;     // 已预计算的数量
-  nfrCount: number;         // 非功能要求数量
-  projectPath?: string;     // 关联的项目路径（全局视图时显示）
+  moduleCount: number;          // 模块数量
+  processCount: number;         // 流程数量
+  nfrCount: number;             // 非功能要求数量
+  requirementCount: number;     // 需求数量
+  constraintCount: number;      // 约束数量
+  projectPath?: string;         // 关联的项目路径
 }
 
 /**
@@ -192,6 +198,8 @@ export const BLUEPRINT_STATUS_OPTIONS: Array<{ value: BlueprintStatus | 'all'; l
   { value: 'completed', label: '已完成' },
   { value: 'paused', label: '已暂停' },
   { value: 'modified', label: '已修改' },
+  { value: 'failed', label: '已失败' },
+  { value: 'cancelled', label: '已取消' },
 ];
 
 /**
@@ -205,6 +213,8 @@ export const BLUEPRINT_STATUS_COLORS: Record<BlueprintStatus, string> = {
   completed: '#10b981',    // 绿色
   paused: '#f97316',       // 橙色
   modified: '#8b5cf6',     // 紫色
+  failed: '#ef4444',       // 红色
+  cancelled: '#9ca3af',    // 浅灰色
 };
 
 /**
@@ -218,4 +228,6 @@ export const BLUEPRINT_STATUS_ICONS: Record<BlueprintStatus, string> = {
   completed: '🎉',
   paused: '⏸️',
   modified: '🔄',
+  failed: '❌',
+  cancelled: '🚫',
 };

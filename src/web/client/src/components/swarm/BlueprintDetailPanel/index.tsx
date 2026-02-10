@@ -32,9 +32,11 @@ interface SystemModule {
   id: string;
   name: string;
   description: string;
-  type: 'frontend' | 'backend' | 'database' | 'service' | 'infrastructure' | 'other';
+  type: 'frontend' | 'backend' | 'database' | 'service' | 'infrastructure' | 'shared' | 'other';
   responsibilities: string[];
   techStack?: string[];
+  rootPath?: string;
+  dependencies?: string[];
 }
 
 /**
@@ -63,6 +65,18 @@ interface DesignImage {
 }
 
 /**
+ * 技术栈类型
+ */
+interface TechStack {
+  language?: string;
+  framework?: string;
+  database?: string;
+  styling?: string;
+  testing?: string;
+  [key: string]: string | undefined;
+}
+
+/**
  * 蓝图详情数据类型
  */
 interface BlueprintDetail {
@@ -70,11 +84,16 @@ interface BlueprintDetail {
   name: string;
   description: string;
   version: string;
-  status: 'draft' | 'review' | 'approved' | 'executing' | 'completed' | 'paused' | 'modified';
+  status: 'draft' | 'review' | 'approved' | 'executing' | 'completed' | 'paused' | 'modified' | 'failed' | 'cancelled';
   businessProcesses: BusinessProcess[];
   modules: SystemModule[];
   nfrs: NonFunctionalRequirement[];
   designImages?: DesignImage[];  // UI 设计图
+  // 需求驱动蓝图的字段
+  requirements?: string[];
+  techStack?: TechStack;
+  constraints?: string[];
+  brief?: string;
   createdAt: string;
   updatedAt: string;
   approvedAt?: string;
@@ -113,11 +132,15 @@ export const BlueprintDetailPanel: React.FC<BlueprintDetailPanelProps> = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedSections, setExpandedSections] = useState({
+    requirements: true,
+    techStack: true,
+    constraints: true,
+    brief: false,          // 项目简介默认折叠（内容较长）
     asIsProcesses: true,
     toBeProcesses: true,
     modules: true,
     nfrs: true,
-    designImages: true,  // UI 设计图默认展开
+    designImages: true,
   });
 
   // 设计图预览模态框状态
@@ -260,6 +283,8 @@ export const BlueprintDetailPanel: React.FC<BlueprintDetailPanelProps> = ({
     completed: '已完成',
     paused: '已暂停',
     modified: '已修改',
+    failed: '已失败',
+    cancelled: '已取消',
   };
 
   const priorityTexts: Record<string, string> = {
@@ -370,6 +395,119 @@ export const BlueprintDetailPanel: React.FC<BlueprintDetailPanelProps> = ({
           </section>
         </FadeIn>
 
+        {/* 需求列表 */}
+        {blueprint.requirements && blueprint.requirements.length > 0 && (
+          <FadeIn delay={100}>
+            <section className={styles.section}>
+              <button
+                className={styles.sectionHeader}
+                onClick={() => toggleSection('requirements')}
+              >
+                <span className={styles.sectionIcon}>📋</span>
+                <h3 className={styles.sectionTitle}>
+                  需求列表 ({blueprint.requirements.length})
+                </h3>
+                <span className={styles.expandIcon}>
+                  {expandedSections.requirements ? '▼' : '▶'}
+                </span>
+              </button>
+              {expandedSections.requirements && (
+                <div className={styles.sectionContent}>
+                  <ol className={styles.requirementList}>
+                    {blueprint.requirements.map((req, i) => (
+                      <li key={i} className={styles.requirementItem}>{req}</li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+            </section>
+          </FadeIn>
+        )}
+
+        {/* 技术栈 */}
+        {blueprint.techStack && Object.keys(blueprint.techStack).length > 0 && (
+          <FadeIn delay={150}>
+            <section className={styles.section}>
+              <button
+                className={styles.sectionHeader}
+                onClick={() => toggleSection('techStack')}
+              >
+                <span className={styles.sectionIcon}>🛠️</span>
+                <h3 className={styles.sectionTitle}>技术栈</h3>
+                <span className={styles.expandIcon}>
+                  {expandedSections.techStack ? '▼' : '▶'}
+                </span>
+              </button>
+              {expandedSections.techStack && (
+                <div className={styles.sectionContent}>
+                  <div className={styles.techStackGrid}>
+                    {Object.entries(blueprint.techStack)
+                      .filter(([, v]) => v)
+                      .map(([key, value]) => (
+                        <div key={key} className={styles.techStackItem}>
+                          <span className={styles.techStackLabel}>{key}</span>
+                          <span className={styles.techStackValue}>{value}</span>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+            </section>
+          </FadeIn>
+        )}
+
+        {/* 约束条件 */}
+        {blueprint.constraints && blueprint.constraints.length > 0 && (
+          <FadeIn delay={200}>
+            <section className={styles.section}>
+              <button
+                className={styles.sectionHeader}
+                onClick={() => toggleSection('constraints')}
+              >
+                <span className={styles.sectionIcon}>⚠️</span>
+                <h3 className={styles.sectionTitle}>
+                  约束条件 ({blueprint.constraints.length})
+                </h3>
+                <span className={styles.expandIcon}>
+                  {expandedSections.constraints ? '▼' : '▶'}
+                </span>
+              </button>
+              {expandedSections.constraints && (
+                <div className={styles.sectionContent}>
+                  <ul className={styles.constraintList}>
+                    {blueprint.constraints.map((c, i) => (
+                      <li key={i} className={styles.constraintItem}>{c}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </section>
+          </FadeIn>
+        )}
+
+        {/* 项目简介 */}
+        {blueprint.brief && (
+          <FadeIn delay={250}>
+            <section className={styles.section}>
+              <button
+                className={styles.sectionHeader}
+                onClick={() => toggleSection('brief')}
+              >
+                <span className={styles.sectionIcon}>📖</span>
+                <h3 className={styles.sectionTitle}>项目简介</h3>
+                <span className={styles.expandIcon}>
+                  {expandedSections.brief ? '▼' : '▶'}
+                </span>
+              </button>
+              {expandedSections.brief && (
+                <div className={styles.sectionContent}>
+                  <pre className={styles.briefContent}>{blueprint.brief}</pre>
+                </div>
+              )}
+            </section>
+          </FadeIn>
+        )}
+
         {/* As-Is 业务流程 */}
         {asIsProcesses.length > 0 && (
           <FadeIn delay={100}>
@@ -462,6 +600,12 @@ export const BlueprintDetailPanel: React.FC<BlueprintDetailPanelProps> = ({
                         <h4 className={styles.moduleName}>{module.name}</h4>
                         <span className={styles.moduleType}>{module.type}</span>
                       </div>
+                      {module.rootPath && (
+                        <div className={styles.moduleRootPath}>
+                          <span className={styles.moduleSectionTitle}>路径:</span>
+                          <code>{module.rootPath}</code>
+                        </div>
+                      )}
                       <p className={styles.moduleDesc}>{module.description}</p>
                       {module.responsibilities.length > 0 && (
                         <div className={styles.moduleSection}>
@@ -481,6 +625,13 @@ export const BlueprintDetailPanel: React.FC<BlueprintDetailPanelProps> = ({
                               <span key={i} className={styles.techTag}>{tech}</span>
                             ))}
                           </div>
+                        </div>
+                      )}
+                      {module.dependencies && module.dependencies.length > 0 && (
+                        <div className={styles.moduleSection}>
+                          <span className={styles.moduleSectionTitle}>
+                            依赖: {module.dependencies.length} 个模块
+                          </span>
                         </div>
                       )}
                     </div>
@@ -690,8 +841,33 @@ export const BlueprintDetailPanel: React.FC<BlueprintDetailPanelProps> = ({
         {/* approved 状态且从代码生成：显示说明 */}
         {blueprint.status === 'approved' && blueprint.source === 'codebase' && (
           <div className={styles.infoMessage}>
-            ✅ 此蓝图从现有代码生成，作为项目文档和后续开发的基础
+            此蓝图从现有代码生成，作为项目文档和后续开发的基础
           </div>
+        )}
+
+        {/* failed 状态：显示失败提示 + 删除 */}
+        {blueprint.status === 'failed' && (
+          <>
+            <div className={styles.infoMessage}>
+              执行失败，可以删除后重新创建蓝图
+            </div>
+            <button
+              className={`${styles.footerButton} ${styles.delete}`}
+              onClick={() => handleAction('delete')}
+            >
+              删除
+            </button>
+          </>
+        )}
+
+        {/* cancelled 状态：显示取消提示 + 删除 */}
+        {blueprint.status === 'cancelled' && (
+          <button
+            className={`${styles.footerButton} ${styles.delete}`}
+            onClick={() => handleAction('delete')}
+          >
+            删除
+          </button>
         )}
       </div>
     </div>

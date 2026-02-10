@@ -151,7 +151,7 @@ class SchemaComparator {
       'FileWrite': 'src/tools/file.ts',
       'Glob': 'src/tools/search.ts',
       'Grep': 'src/tools/search.ts',
-      'KillShell': 'src/tools/bash.ts',
+      'TaskStop': 'src/tools/bash.ts',
       'ListMcpResources': 'src/tools/mcp.ts',
       'Mcp': 'src/tools/mcp.ts',
       'NotebookEdit': 'src/tools/notebook.ts',

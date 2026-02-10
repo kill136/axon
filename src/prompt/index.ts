@@ -5,7 +5,23 @@
 
 export { SystemPromptBuilder, systemPromptBuilder } from './builder.js';
 export { AttachmentManager, attachmentManager } from './attachments.js';
-export { PromptTemplates, CORE_IDENTITY, TOOL_GUIDELINES, PERMISSION_MODES } from './templates.js';
+export {
+  PromptTemplates,
+  CORE_IDENTITY,
+  PERMISSION_MODES,
+  SECURITY_RULES,
+  EXECUTING_WITH_CARE,
+  getSystemSection,
+  getCodingGuidelines,
+  getToolGuidelines,
+  getToneAndStyle,
+  getToneAndStyleSimple,
+  getMcpInstructions,
+  getMcpCliInstructions,
+  getOutputStylePrompt,
+  getPastSessionsPrompt,
+  getEnvironmentInfo,
+} from './templates.js';
 export { PromptCache, promptCache } from './cache.js';
 export { PromptPreview, promptPreview } from './preview.js';
 export type {

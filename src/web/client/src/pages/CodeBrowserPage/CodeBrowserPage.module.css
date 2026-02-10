@@ -155,13 +155,32 @@
 .chatTabHeader {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 16px 24px;
+  gap: 12px;
+  padding: 10px 16px;
   border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1));
+  background: var(--bg-secondary, #1e293b);
+}
+
+.backToCodeButton {
+  padding: 4px 10px;
+  background: transparent;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.15));
+  border-radius: 4px;
+  color: var(--text-secondary, #cbd5e1);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.backToCodeButton:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
 }
 
 .chatTabTitle {
-  font-size: 18px;
+  flex: 1;
+  font-size: 15px;
   font-weight: 600;
   color: var(--text-primary);
 }

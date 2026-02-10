@@ -120,7 +120,7 @@
   overflow-y: auto;
 }
 
-/* ===== Edit 工具样式 ===== */
+/* ===== Edit 工具样式 (Side-by-side Diff) ===== */
 .cli-edit-content {
   background: var(--code-bg);
   border-radius: 6px;
@@ -134,58 +134,89 @@
   color: var(--accent-warning);
 }
 
-.cli-edit-diff {
-  padding: 8px 0;
+/* Side-by-side 容器 */
+.cli-diff-sidebyside {
   font-size: 12px;
   line-height: 1.5;
+  font-family: 'JetBrains Mono', Consolas, monospace;
 }
 
-.cli-diff-section {
-  padding: 4px 12px;
-}
-
-.cli-diff-removed {
-  background: rgba(239, 68, 68, 0.1);
-}
-
-.cli-diff-added {
-  background: rgba(16, 185, 129, 0.1);
-}
-
-.cli-diff-line {
+/* 每一行：左右两列 */
+.cli-diff-row {
   display: flex;
-  gap: 8px;
-  font-family: 'JetBrains Mono', monospace;
 }
 
-.cli-diff-prefix {
+/* 单元格通用 */
+.cli-diff-cell {
+  flex: 1;
+  display: flex;
+  min-width: 0;
+  padding: 0 10px;
+  min-height: 20px;
+}
+
+/* 左列右边框分隔 */
+.cli-diff-cell:first-child {
+  border-right: 1px solid var(--border-color);
+}
+
+/* 删除行 - 红色背景 */
+.cli-diff-cell--removed {
+  background: rgba(239, 68, 68, 0.13);
+}
+
+/* 新增行 - 绿色背景 */
+.cli-diff-cell--added {
+  background: rgba(16, 185, 129, 0.13);
+}
+
+/* 未变更行 */
+.cli-diff-cell--unchanged {
+  background: transparent;
+}
+
+/* 空白占位 - 斜线纹理 */
+.cli-diff-cell--empty {
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 4px,
+    rgba(128, 128, 128, 0.07) 4px,
+    rgba(128, 128, 128, 0.07) 5px
+  );
+}
+
+/* 前缀符号 (+/-) */
+.cli-diff-cell-prefix {
   color: var(--text-muted);
   user-select: none;
-  min-width: 16px;
+  min-width: 14px;
+  flex-shrink: 0;
+  text-align: center;
 }
 
-.cli-diff-removed .cli-diff-prefix {
-  color: var(--accent-error);
-}
-
-.cli-diff-added .cli-diff-prefix {
-  color: var(--accent-success);
-}
-
-.cli-diff-text {
-  flex: 1;
-  white-space: pre-wrap;
-  word-break: break-all;
-}
-
-.cli-diff-removed .cli-diff-text {
+.cli-diff-cell--removed .cli-diff-cell-prefix {
   color: #f87171;
-  text-decoration: line-through;
-  opacity: 0.8;
 }
 
-.cli-diff-added .cli-diff-text {
+.cli-diff-cell--added .cli-diff-cell-prefix {
   color: #34d399;
+}
+
+/* 代码文本 */
+.cli-diff-cell-text {
+  flex: 1;
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cli-diff-cell--removed .cli-diff-cell-text {
+  color: #fca5a5;
+}
+
+.cli-diff-cell--added .cli-diff-cell-text {
+  color: #6ee7b7;
 }
 
 /* ===== Write 工具样式 ===== */
@@ -639,5 +670,19 @@
   .cli-expand-btn {
     width: 100%;
     text-align: center;
+  }
+
+  /* 小屏幕下 side-by-side diff 降级为上下堆叠 */
+  .cli-diff-row {
+    flex-direction: column;
+  }
+
+  .cli-diff-cell:first-child {
+    border-right: none;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .cli-diff-cell--empty {
+    display: none;
   }
 }

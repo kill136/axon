@@ -442,42 +442,6 @@ async function executeCommandHook(
     let stdout = '';
     let stderr = '';
 
-    // 内置蓝图 hooks（不执行外部命令）
-    if (hook.command === '__blueprint_boundary_check__') {
-      import('./blueprint-hooks.js')
-        .then(({ preToolUseBoundaryCheck }) => preToolUseBoundaryCheck(
-          input.toolName || '',
-          (input.toolInput as Record<string, any>) || {}
-        ))
-        .then((result) => {
-          if (!result.allowed) {
-            resolve({
-              success: false,
-              blocked: true,
-              blockMessage: result.message || 'Blocked by blueprint boundary check',
-            });
-            return;
-          }
-          resolve({ success: true });
-        })
-        .catch((err) => {
-          resolve({ success: false, error: err.message || String(err) });
-        });
-      return;
-    }
-
-    if (hook.command === '__blueprint_test_runner__') {
-      import('./blueprint-hooks.js')
-        .then(({ postToolUseTestRunner }) => postToolUseTestRunner(
-          input.toolName || '',
-          (input.toolInput as Record<string, any>) || {},
-          { success: true, output: input.toolOutput || '' }
-        ))
-        .then(() => resolve({ success: true, async: true }))
-        .catch((err) => resolve({ success: false, error: err.message || String(err) }));
-      return;
-    }
-
     // 替换命令中的环境变量
     const command = replaceCommandVariables(hook.command, input);
 

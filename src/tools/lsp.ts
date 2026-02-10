@@ -725,6 +725,13 @@ Note: LSP servers must be configured for the file type. If no server is availabl
       console.warn('Failed to decode URI:', uri);
     }
 
+    // Windows drive letter 修复：file:///C:/path → /C:/path → C:/path
+    // file URI 在 Windows 上是 file:///C:/path，去掉 file:// 后剩 /C:/path
+    // 需要去掉前导 / 才能得到正确的 Windows 路径
+    if (/^\/[A-Za-z]:/.test(decoded)) {
+      decoded = decoded.substring(1);
+    }
+
     // 如果提供了工作目录，尝试返回相对路径
     if (workingDir) {
       const relativePath = path.relative(workingDir, decoded);

@@ -12,3 +12,4 @@ export { PluginsPanel } from './PluginsPanel';
 export { BlueprintSummaryCard } from './BlueprintSummaryCard';
 export { CodebaseAnalysisDialog } from './CodebaseAnalysisDialog';
 export { NotebookOutputRenderer } from './NotebookOutputRenderer';
+export { DebugPanel } from './DebugPanel';

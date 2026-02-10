@@ -6,15 +6,16 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 16px;
+  padding: 0 12px;
   flex-shrink: 0;
+  gap: 8px;
 }
 
 /* 导航标签容器 */
 .navTabs {
   display: flex;
   gap: 4px;
-  flex: 1;
+  flex-shrink: 0;
 }
 
 /* 单个导航标签 */
@@ -22,15 +23,16 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 16px;
+  padding: 6px 14px;
   background: transparent;
   border: none;
   color: var(--text-secondary);
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13px;
   border-radius: 6px;
   transition: all 0.2s;
   font-weight: 500;
+  white-space: nowrap;
 }
 
 .navTab:hover {
@@ -44,35 +46,286 @@
 }
 
 .navTab .icon {
-  font-size: 16px;
+  font-size: 14px;
   line-height: 1;
 }
 
-/* 中央标题 */
-.title {
+/* ===================== 中央控制区 ===================== */
+.centerControls {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--accent-primary);
   flex: 1;
   justify-content: center;
+  min-width: 0;
 }
 
-.logo {
-  font-size: 20px;
+/* 项目选择器在导航栏中的紧凑样式 */
+.navProjectSelector {
+  min-width: 140px;
+  max-width: 220px;
+}
+
+/* 中央分隔线 */
+.centerDivider {
+  width: 1px;
+  height: 20px;
+  background: var(--border-color);
+  flex-shrink: 0;
+}
+
+/* ===================== 会话选择器 ===================== */
+.sessionSelector {
+  position: relative;
+  min-width: 120px;
+  max-width: 220px;
+}
+
+.sessionTrigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  width: 100%;
+  color: var(--text-primary);
+}
+
+.sessionTrigger:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--accent-primary);
+}
+
+.sessionTrigger.open {
+  border-color: var(--accent-primary);
+  background: var(--bg-tertiary);
+}
+
+.sessionIcon {
+  font-size: 13px;
+  flex-shrink: 0;
   line-height: 1;
 }
 
-/* 右侧操作区 */
-.actions {
-  display: flex;
-  gap: 8px;
+.sessionName {
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   flex: 1;
-  justify-content: flex-end;
+  text-align: left;
 }
 
+.sessionArrow {
+  font-size: 10px;
+  color: var(--text-muted);
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+
+.sessionArrow.open {
+  transform: rotate(180deg);
+}
+
+/* 会话下拉菜单 */
+.sessionDropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 280px;
+  max-width: 360px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  z-index: 1000;
+  max-height: 380px;
+  overflow-y: auto;
+  animation: dropdownSlide 0.15s ease;
+}
+
+@keyframes dropdownSlide {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.sessionDropdown::-webkit-scrollbar {
+  width: 5px;
+}
+
+.sessionDropdown::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sessionDropdown::-webkit-scrollbar-thumb {
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+}
+
+.sessionDropdownHeader {
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.sessionList {
+  padding: 4px 0;
+}
+
+.sessionEmpty {
+  padding: 20px 12px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.sessionItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+  gap: 8px;
+}
+
+.sessionItem:hover {
+  background: var(--bg-tertiary);
+}
+
+.sessionItem.active {
+  background: rgba(99, 102, 241, 0.12);
+}
+
+.sessionItemInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.sessionItemName {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sessionItemMeta {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.sessionItemActions {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.sessionItem:hover .sessionItemActions {
+  opacity: 1;
+}
+
+.sessionRenameBtn,
+.sessionDeleteBtn {
+  padding: 3px 5px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--text-muted);
+  transition: all 0.15s;
+}
+
+.sessionRenameBtn:hover {
+  background: rgba(99, 102, 241, 0.15);
+  color: var(--accent-light);
+}
+
+.sessionDeleteBtn:hover {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--accent-error);
+}
+
+/* 重命名输入框 */
+.renameInput {
+  width: 100%;
+  padding: 3px 6px;
+  background: var(--bg-primary);
+  border: 1px solid var(--accent-primary);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+}
+
+/* ===================== 右侧操作区 ===================== */
+.actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* 连接状态小圆点 */
+.connectionDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-error);
+  flex-shrink: 0;
+  transition: background 0.3s;
+}
+
+.connectionDot.connected {
+  background: var(--accent-success);
+}
+
+/* 新建会话按钮 */
+.newSessionButton {
+  padding: 4px 10px;
+  background: var(--accent-primary);
+  border: none;
+  color: #fff;
+  cursor: pointer;
+  border-radius: 6px;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.newSessionButton:hover {
+  background: var(--accent-hover);
+  transform: scale(1.05);
+}
+
+/* 设置按钮 */
 .settingsButton {
   padding: 6px 10px;
   background: transparent;
@@ -80,7 +333,7 @@
   color: var(--text-muted);
   cursor: pointer;
   border-radius: 6px;
-  font-size: 18px;
+  font-size: 16px;
   transition: all 0.2s;
   display: flex;
   align-items: center;
@@ -93,17 +346,42 @@
   border-color: var(--accent-primary);
 }
 
-/* 响应式调整 */
-@media (max-width: 768px) {
-  .title {
-    display: none;
+/* ===================== 响应式 ===================== */
+@media (max-width: 900px) {
+  .centerControls {
+    gap: 4px;
   }
 
+  .navProjectSelector {
+    min-width: 100px;
+    max-width: 160px;
+  }
+
+  .sessionSelector {
+    min-width: 100px;
+    max-width: 160px;
+  }
+
+  .centerDivider {
+    display: none;
+  }
+}
+
+@media (max-width: 768px) {
   .navTab span:not(.icon) {
     display: none;
   }
 
   .navTab {
-    padding: 8px 12px;
+    padding: 6px 10px;
+  }
+
+  .navProjectSelector {
+    min-width: 80px;
+    max-width: 120px;
+  }
+
+  .sessionName {
+    max-width: 60px;
   }
 }

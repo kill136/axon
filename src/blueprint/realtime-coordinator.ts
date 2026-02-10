@@ -100,6 +100,8 @@ export interface ExecutionResult {
   skippedCount: number;
   /** 问题列表 */
   issues: ExecutionIssue[];
+  /** v10.0: LeadAgent 的完整文本输出（对齐 TaskTool 模式） */
+  rawResponse?: string;
   /** 取消原因（如果被取消）*/
   cancelReason?: string;
 }
@@ -181,6 +183,9 @@ export class RealtimeCoordinator extends EventEmitter {
 
   // 任务修改队列（运行时修改）
   private taskModifications: Map<string, { newDescription?: string; skip?: boolean }> = new Map();
+
+  // v9.1: LeadAgent 实例引用（用于重试时的插嘴通信）
+  private currentLeadAgent: LeadAgent | null = null;
 
   // 统计信息
   private startTime: Date | null = null;
@@ -374,7 +379,7 @@ export class RealtimeCoordinator extends EventEmitter {
    * @param plan 执行计划
    * @param projectPath 项目路径（用于持久化）
    */
-  async start(plan: ExecutionPlan, projectPath?: string): Promise<ExecutionResult> {
+  async start(plan: ExecutionPlan, projectPath?: string, options?: { isResume?: boolean }): Promise<ExecutionResult> {
     // 设置项目路径
     if (projectPath) {
       this.projectPath = projectPath;
@@ -384,31 +389,54 @@ export class RealtimeCoordinator extends EventEmitter {
     if (!this.currentBlueprint) {
       throw new Error('LeadAgent 模式需要蓝图，请先调用 setBlueprint()');
     }
-    return this.startWithLeadAgent(plan);
+    return this.startWithLeadAgent(plan, options?.isResume);
   }
 
   /**
    * v9.0: 使用 LeadAgent 持久大脑模式执行
    * LeadAgent 接管整个执行过程：探索、规划、执行、审查
    */
-  private async startWithLeadAgent(plan: ExecutionPlan): Promise<ExecutionResult> {
+  private async startWithLeadAgent(plan: ExecutionPlan, isResume?: boolean): Promise<ExecutionResult> {
     if (!this.currentBlueprint) {
       throw new Error('LeadAgent 模式需要蓝图，请先调用 setBlueprint()');
     }
 
-    // 初始化状态
-    this.reset();
-    this.currentPlan = plan;
-    this.startTime = new Date();
-    this.isExecuting = true;
+    if (isResume) {
+      // 恢复模式：不调用 reset()，保留通过 restoreFromState() 恢复的状态
+      // 只更新必要的字段
+      this.currentPlan = plan;
+      if (!this.startTime) {
+        this.startTime = new Date();
+      }
+      this.isExecuting = true;
+      // 确保暂停状态被清除
+      this.isPaused = false;
+      this.isCancelled = false;
 
-    // 发送计划开始事件
-    this.emitEvent('plan:started', {
-      planId: plan.id,
-      blueprintId: plan.blueprintId,
-      totalTasks: plan.tasks.length,
-      mode: 'lead-agent',
-    });
+      // 恢复模式下发送 plan:resumed 事件而不是 plan:started
+      this.emitEvent('plan:resumed', {
+        planId: plan.id,
+        blueprintId: plan.blueprintId,
+        totalTasks: plan.tasks.length,
+        completedTasks: plan.tasks.filter(t => t.status === 'completed').length,
+        mode: 'lead-agent',
+        isResume: true,
+      });
+    } else {
+      // 全新启动：重置所有状态
+      this.reset();
+      this.currentPlan = plan;
+      this.startTime = new Date();
+      this.isExecuting = true;
+
+      // 发送计划开始事件
+      this.emitEvent('plan:started', {
+        planId: plan.id,
+        blueprintId: plan.blueprintId,
+        totalTasks: plan.tasks.length,
+        mode: 'lead-agent',
+      });
+    }
 
     // 创建 LeadAgent
     const leadAgentConfig: LeadAgentConfig = {
@@ -418,6 +446,7 @@ export class RealtimeCoordinator extends EventEmitter {
       model: this.config.leadAgentModel || 'sonnet',
       maxTurns: this.config.leadAgentMaxTurns || 200,
       swarmConfig: this.config,
+      isResume,
       onEvent: (event) => {
         // 转发 LeadAgent 事件到 WebSocket
         this.emitEvent(event.type, event.data);
@@ -425,6 +454,15 @@ export class RealtimeCoordinator extends EventEmitter {
     };
 
     const leadAgent = new LeadAgent(leadAgentConfig);
+    this.currentLeadAgent = leadAgent;
+
+    // 转发 LeadAgent 的 system_prompt 事件（供前端查看提示词）
+    leadAgent.on('lead:system_prompt', (data: { systemPrompt: string }) => {
+      this.emit('lead:system_prompt', {
+        ...data,
+        blueprintId: this.currentBlueprint?.id,
+      });
+    });
 
     // 转发 LeadAgent 的流式事件（不经过 emitEvent，避免 eventLog 膨胀）
     leadAgent.on('lead:stream', (data) => {
@@ -438,6 +476,22 @@ export class RealtimeCoordinator extends EventEmitter {
     leadAgent.on('lead:event', (event) => {
       this.emit('lead:event', {
         ...event,
+        blueprintId: this.currentBlueprint?.id,
+      });
+    });
+
+    // v9.0 fix: 转发 Worker 的流式事件（DispatchWorkerTool → LeadAgent → Coordinator → WebSocket）
+    leadAgent.on('worker:stream', (data: any) => {
+      this.emit('worker:stream', {
+        ...data,
+        blueprintId: this.currentBlueprint?.id,
+      });
+    });
+
+    // v9.1: 转发 E2E 完成事件（LeadAgent ↔ E2E Agent 双向通信）
+    leadAgent.on('lead:e2e_completed', (data: any) => {
+      this.emit('lead:e2e_completed', {
+        ...data,
         blueprintId: this.currentBlueprint?.id,
       });
     });
@@ -554,6 +608,34 @@ export class RealtimeCoordinator extends EventEmitter {
         this.taskResults.set(taskId, taskResult);
       }
 
+      // v9.1 fix: 清理孤儿 "running" 任务
+      // LeadAgent 可能因 maxTurns 耗尽或主动退出，导致部分任务卡在 running 状态
+      if (this.currentPlan) {
+        for (const task of this.currentPlan.tasks) {
+          if (task.status === 'running') {
+            const hasResult = result.taskResults.has(task.id);
+            if (!hasResult) {
+              console.log(`[RealtimeCoordinator] 清理孤儿任务: ${task.id} (${task.name}) - LeadAgent 已结束但任务仍在 running`);
+              task.status = 'failed';
+              task.result = { success: false, changes: [], decisions: [], error: 'LeadAgent 执行结束，任务未完成' };
+              task.completedAt = new Date();
+              result.failedTasks.push(task.id);
+
+              // 通知前端更新任务状态
+              this.emit('task:status_changed', {
+                blueprintId: this.currentBlueprint?.id,
+                taskId: task.id,
+                updates: {
+                  status: 'failed',
+                  error: 'LeadAgent 执行结束，任务未完成',
+                  completedAt: new Date().toISOString(),
+                },
+              });
+            }
+          }
+        }
+      }
+
       // 转换 LeadAgent 结果为 ExecutionResult
       const executionResult: ExecutionResult = {
         success: result.success,
@@ -566,6 +648,7 @@ export class RealtimeCoordinator extends EventEmitter {
         failedCount: result.failedTasks.length,
         skippedCount: 0,
         issues: this.issues,
+        rawResponse: result.rawResponse,  // v10.0: 传递 LeadAgent 完整输出给 Planner
       };
 
       // 发送完成事件
@@ -628,6 +711,29 @@ export class RealtimeCoordinator extends EventEmitter {
   pause(): void {
     if (!this.isPaused && !this.isCancelled) {
       this.isPaused = true;
+      // v9.1: 在 LeadAgent 模式下，暂停 = 中止 LeadAgent + 保存状态
+      // 恢复时通过 unpause() 以 isResume 模式重启
+      if (this.currentLeadAgent) {
+        console.log('[RealtimeCoordinator] 暂停执行：中止 LeadAgent 并保存状态');
+        this.currentLeadAgent.stop();
+        // 将正在运行的任务重置为 pending（避免卡在 running 状态）
+        if (this.currentPlan) {
+          for (const task of this.currentPlan.tasks) {
+            if (task.status === 'running') {
+              task.status = 'pending';
+              task.startedAt = undefined;
+              this.emit('task:status_changed', {
+                blueprintId: this.currentBlueprint?.id,
+                taskId: task.id,
+                updates: { status: 'pending' },
+              });
+            }
+          }
+        }
+        if (this.autoSaveEnabled && this.projectPath) {
+          this.saveExecutionState();
+        }
+      }
       this.emitEvent('plan:paused', {
         planId: this.currentPlan?.id,
         status: this.getStatus(),
@@ -637,8 +743,9 @@ export class RealtimeCoordinator extends EventEmitter {
 
   /**
    * 取消暂停，继续执行（暂停后调用）
+   * v9.1: 在 LeadAgent 模式下，返回 true 表示需要调用方以 isResume 模式重启执行
    */
-  unpause(): void {
+  unpause(): boolean {
     if (this.isPaused) {
       this.isPaused = false;
       if (this.pauseResolve) {
@@ -649,11 +756,17 @@ export class RealtimeCoordinator extends EventEmitter {
         planId: this.currentPlan?.id,
         status: this.getStatus(),
       });
+      // v9.1: 如果 LeadAgent 已被中止，返回 true 告诉调用方需要重启
+      if (!this.isExecuting && this.currentPlan) {
+        return true;  // 需要 isResume 重启
+      }
     }
+    return false;
   }
 
   /**
    * 取消执行
+   * v9.1: 在 LeadAgent 模式下，直接中止 LeadAgent 的 ConversationLoop
    */
   cancel(): void {
     if (!this.isCancelled) {
@@ -662,6 +775,11 @@ export class RealtimeCoordinator extends EventEmitter {
       if (this.pauseResolve) {
         this.pauseResolve();
         this.pauseResolve = null;
+      }
+      // v9.1: 中止 LeadAgent 的 ConversationLoop
+      if (this.currentLeadAgent) {
+        console.log('[RealtimeCoordinator] 取消执行：中止 LeadAgent');
+        this.currentLeadAgent.stop();
       }
       this.emitEvent('plan:cancelled', {
         planId: this.currentPlan?.id,
@@ -811,10 +929,67 @@ export class RealtimeCoordinator extends EventEmitter {
   }
 
   /**
-   * v9.0: LeadAgent 模式下，重试由 LeadAgent 内部处理
+   * v9.1: LeadAgent 模式下的任务重试
+   * - 如果 LeadAgent 正在执行：通过插嘴机制注入重试指令，返回 true
+   * - 如果 LeadAgent 已结束：重置任务状态，返回 false（调用方负责重启执行）
    */
-  async retryTask(_taskId: string): Promise<boolean> {
-    console.warn('[RealtimeCoordinator] LeadAgent 模式下，任务重试由 LeadAgent 内部处理');
+  async retryTask(taskId: string): Promise<boolean> {
+    if (!this.currentPlan) {
+      console.warn('[RealtimeCoordinator] 无法重试任务：没有执行计划');
+      return false;
+    }
+
+    const task = this.currentPlan.tasks.find(t => t.id === taskId);
+    if (!task) {
+      console.warn(`[RealtimeCoordinator] 无法重试任务：找不到任务 ${taskId}`);
+      return false;
+    }
+
+    if (task.status !== 'failed') {
+      console.warn(`[RealtimeCoordinator] 无法重试任务：任务 ${taskId} 状态为 ${task.status}，不是 failed`);
+      return false;
+    }
+
+    console.log(`[RealtimeCoordinator] 重试任务: ${task.name} (${taskId})`);
+
+    // 重置任务状态
+    task.status = 'pending';
+    task.completedAt = undefined;
+    task.result = undefined;
+
+    // 从 taskResults 中移除
+    this.taskResults.delete(taskId);
+
+    // 通知前端状态变更
+    this.emit('task:status_changed', {
+      blueprintId: this.currentBlueprint?.id,
+      taskId,
+      updates: { status: 'pending' },
+    });
+
+    // 如果 LeadAgent 正在执行，通过插嘴机制通知
+    if (this.isExecuting && this.currentLeadAgent) {
+      const loop = this.currentLeadAgent.getLoop();
+      if (loop) {
+        const session = loop.getSession();
+        session.addMessage({
+          role: 'user',
+          content: `[系统通知] 用户请求重试失败的任务 "${task.name}" (${taskId})。该任务状态已重置为 pending，请重新执行此任务。`,
+        });
+        console.log(`[RealtimeCoordinator] 已向正在运行的 LeadAgent 注入重试指令: ${taskId}`);
+
+        if (this.autoSaveEnabled && this.projectPath) {
+          this.saveExecutionState();
+        }
+        return true;
+      }
+    }
+
+    // LeadAgent 未在执行中，保存状态，返回 false 让调用方重启执行
+    console.log(`[RealtimeCoordinator] LeadAgent 未在执行中，需要调用方重启执行`);
+    if (this.autoSaveEnabled && this.projectPath) {
+      this.saveExecutionState();
+    }
     return false;
   }
 
@@ -868,6 +1043,74 @@ export class RealtimeCoordinator extends EventEmitter {
       estimatedTotalCost,
       issues: this.issues,
     };
+  }
+
+  /**
+   * v9.2: 获取当前 LeadAgent 实例（用于插嘴功能）
+   */
+  getLeadAgent(): LeadAgent | null {
+    return this.currentLeadAgent;
+  }
+
+  /**
+   * 获取 Agent 调试信息（探针功能）
+   * @param agentType 'lead' | 'worker' | 'e2e'
+   * @param workerId 当 agentType 为 'worker' 时，指定 Worker ID
+   */
+  getAgentDebugInfo(agentType: string, workerId?: string): { systemPrompt: string; messages: unknown[]; tools: unknown[]; model: string; messageCount: number; agentType: string; workerId?: string; taskId?: string | null } | null {
+    if (agentType === 'lead') {
+      return this.currentLeadAgent?.getDebugInfo() || null;
+    }
+
+    if (agentType === 'worker' && workerId) {
+      const executor = this.activeWorkerExecutors.get(workerId);
+      return executor?.getDebugInfo() || null;
+    }
+
+    // worker 但未指定 ID：返回第一个活跃的 Worker
+    if (agentType === 'worker') {
+      for (const [, executor] of this.activeWorkerExecutors) {
+        if (executor.isExecuting()) {
+          return executor.getDebugInfo();
+        }
+      }
+      return null;
+    }
+
+    // e2e: 目前 E2ETestAgent 由 LeadAgent 通过 TriggerE2ETest 工具调用
+    // 需要从 TriggerE2ETestTool 获取当前 Agent 实例
+    // 这里返回 null，后续如果需要可以扩展
+    return null;
+  }
+
+  /**
+   * 获取所有活跃 Agent 的列表（探针功能 - 用于前端选择器）
+   */
+  getActiveAgents(): Array<{ agentType: string; id: string; label: string; taskId?: string }> {
+    const agents: Array<{ agentType: string; id: string; label: string; taskId?: string }> = [];
+
+    // LeadAgent
+    if (this.currentLeadAgent) {
+      agents.push({
+        agentType: 'lead',
+        id: 'lead-agent',
+        label: 'LeadAgent (首席开发者)',
+      });
+    }
+
+    // Workers
+    for (const [workerId, executor] of this.activeWorkerExecutors) {
+      if (executor.isExecuting()) {
+        agents.push({
+          agentType: 'worker',
+          id: workerId,
+          label: `Worker ${workerId}`,
+          taskId: executor.getCurrentTaskId() || undefined,
+        });
+      }
+    }
+
+    return agents;
   }
 
   /**
@@ -946,6 +1189,7 @@ export class RealtimeCoordinator extends EventEmitter {
     this.taskModifications.clear();
     this.executingTaskIds.clear();
     this.activeWorkerExecutors.clear();
+    this.currentLeadAgent = null;
     this.startTime = null;
     this.currentCost = 0;
   }

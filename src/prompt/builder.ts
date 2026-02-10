@@ -8,22 +8,26 @@ import type {
   SystemPromptOptions,
   BuildResult,
   Attachment,
+  PromptBlock,
 } from './types.js';
 import { PromptTooLongError } from './types.js';
 import {
   CORE_IDENTITY,
-  TOOL_GUIDELINES,
-  PERMISSION_MODES,
-  OUTPUT_STYLE,
-  GIT_GUIDELINES,
   TASK_MANAGEMENT,
-  CODING_GUIDELINES,
-  SUBAGENT_SYSTEM,
+  SECURITY_RULES,
+  getCodingGuidelines,
+  getToolGuidelines,
+  getToneAndStyle,
   getEnvironmentInfo,
+  getMcpInstructions,
+  getOutputStylePrompt,
 } from './templates.js';
 import { AttachmentManager, attachmentManager as defaultAttachmentManager } from './attachments.js';
 import { PromptCache, promptCache, generateCacheKey } from './cache.js';
 import * as os from 'os';
+import * as path from 'path';
+import { fileURLToPath } from 'url';
+import { getNotebookManager } from '../memory/notebook.js';
 // 注意：旧的 blueprintManager 已被移除，新架构使用 SmartPlanner
 // import { blueprintManager } from '../blueprint/blueprint-manager.js';
 
@@ -106,6 +110,7 @@ export class SystemPromptBuilder {
         }
         return {
           content: cached.content,
+          blocks: [{ text: cached.content, cacheScope: 'global' as const }],
           hashInfo: cached.hashInfo,
           attachments: [],
           truncated: false,
@@ -117,79 +122,201 @@ export class SystemPromptBuilder {
     // 生成附件
     const attachments = await this.attachmentManager.generateAttachments(context);
 
-    // 构建各个部分
-    const parts: string[] = [];
+    // ===== 对齐官方 aV 函数的组装顺序 (v2.1.34) =====
+    // 官方顺序: Rqz, yqz, Cqz, Sqz, cwq, hqz, Iqz, xqz, BV6, bqz, uqz, [CG1], NSA动态部分
+    // CG1 是缓存边界标记：CG1 之前为静态（cacheScope: "global"），之后为动态（cacheScope: null）
 
-    // 1. 核心身份
+    const staticParts: (string | null)[] = [];
+    const dynamicParts: (string | null)[] = [];
+    const toolNames = context.toolNames ?? new Set<string>();
+    const outputStyle = context.outputStyle ?? null;
+
+    // 工具名称映射（默认值）
+    const bashTool = 'Bash';
+    const readTool = 'Read';
+    const editTool = 'Edit';
+    const writeTool = 'Write';
+    const globTool = 'Glob';
+    const grepTool = 'Grep';
+    const taskTool = 'Task';
+    const skillTool = 'Skill';
+    const todoWriteTool = 'TodoWrite';
+    const webFetchTool = 'WebFetch';
+    const askTool = 'AskUserQuestion';
+    const exploreAgentType = 'Explore';
+
+    // ===== 静态部分（跨会话可缓存，对应官方 CG1 之前的内容）=====
+
+    // 1. 核心身份 (Rqz)
     if (opts.includeIdentity) {
-      parts.push(CORE_IDENTITY);
+      staticParts.push(CORE_IDENTITY);
     }
 
-    // 2. 帮助信息
-    parts.push(`If the user asks for help or wants to give feedback inform them of the following:
-- /help: Get help with using Claude Code
-- To give feedback, users should report the issue at https://github.com/anthropics/claude-code/issues`);
+    // 2. 语气和风格 (yqz) - 当没有自定义输出样式时才添加完整版
+    if (outputStyle === null) {
+      staticParts.push(getToneAndStyle(bashTool));
+    }
 
-    // 3. 输出风格
-    parts.push(OUTPUT_STYLE);
+    // 3. 任务管理 (Cqz) - 仅在有 TodoWrite 工具时
+    if (toolNames.has(todoWriteTool)) {
+      staticParts.push(TASK_MANAGEMENT);
+    }
 
-    // 4. 任务管理
-    parts.push(TASK_MANAGEMENT);
+    // 4. 提问指导 (Sqz) - 仅在有 AskUserQuestion 工具时
+    if (toolNames.has(askTool)) {
+      staticParts.push(`# Asking questions as you work
 
-    // 6. 代码编写指南
-    parts.push(CODING_GUIDELINES);
+You have access to the ${askTool} tool to ask the user questions when you need clarification, want to validate assumptions, or need to make a decision you're unsure about. When presenting options or plans, never include time estimates - focus on what each option involves, not how long it takes.`);
+    }
 
-    // 7. 工具使用指南
+    // 5. Hooks 系统 (cwq)
+    staticParts.push("Users may configure 'hooks', shell commands that execute in response to events like tool calls, in settings. Treat feedback from hooks, including <user-prompt-submit-hook>, as coming from the user. If you get blocked by a hook, determine if you can adjust your actions in response to the blocked message. If not, ask the user to check their hooks configuration.");
+
+    // 6. 代码编写指南 (hqz)
+    staticParts.push(getCodingGuidelines(toolNames, todoWriteTool, askTool));
+
+    // 7. System-reminder 说明 (Iqz)
+    staticParts.push(`- Tool results and user messages may include <system-reminder> tags. <system-reminder> tags contain useful information and reminders. They are automatically added by the system, and bear no direct relation to the specific tool results or user messages in which they appear.
+- The conversation has unlimited context through automatic summarization.`);
+
+    // 8. 工具使用指南 (xqz)
     if (opts.includeToolGuidelines) {
-      parts.push(TOOL_GUIDELINES);
+      staticParts.push(getToolGuidelines(toolNames, context.hasSkills ?? false, {
+        bash: bashTool,
+        read: readTool,
+        edit: editTool,
+        write: writeTool,
+        glob: globTool,
+        grep: grepTool,
+        task: taskTool,
+        skill: skillTool,
+        todoWrite: todoWriteTool,
+        webFetch: webFetchTool,
+        exploreAgentType,
+      }));
     }
 
-    // 8. Git 操作指南
-    parts.push(GIT_GUIDELINES);
+    // 9. 安全规则 (BV6)
+    staticParts.push(SECURITY_RULES);
 
-    // 9. 子代理系统
-    parts.push(SUBAGENT_SYSTEM);
-
-    // 10. 权限模式
-    if (opts.includePermissionMode && context.permissionMode) {
-      const modeDescription = PERMISSION_MODES[context.permissionMode] || PERMISSION_MODES.default;
-      parts.push(modeDescription);
+    // 10. TodoWrite 强制使用提醒 (bqz)
+    if (toolNames.has(todoWriteTool)) {
+      staticParts.push(`IMPORTANT: Always use the ${todoWriteTool} tool to plan and track tasks throughout the conversation.`);
     }
 
-    // 11. 环境信息（与官方 CLI 保持一致）
-    parts.push(
+    // 11. 代码引用格式 (uqz)
+    staticParts.push(`# Code References
+
+When referencing specific functions or pieces of code include the pattern \`file_path:line_number\` to allow the user to easily navigate to the source code location.
+
+<example>
+user: Where are errors from the client handled?
+assistant: Clients are marked as failed in the \`connectToServer\` function in src/services/process.ts:712.
+</example>`);
+
+    // ===== [CG1] 缓存边界 =====
+    // 以下是动态上下文部分（每次会话/每轮对话可能变化）
+
+    // 12. 环境信息
+    dynamicParts.push(
       getEnvironmentInfo({
         workingDir: context.workingDir,
         isGitRepo: context.isGitRepo ?? false,
         platform: context.platform ?? process.platform,
         todayDate: context.todayDate ?? new Date().toISOString().split('T')[0],
-        osVersion: os.release(), // 添加 OS 版本信息
+        osVersion: os.release(),
         model: context.model,
       })
     );
 
-    // 11.5 语言设置 (v2.1.0+)
-    // 官方格式：# Language\nAlways respond in ${language}...
+    // 12.5 自我认知 - 告知主 Agent 自身源码位置和记忆文件位置
+    const selfDir = path.dirname(fileURLToPath(import.meta.url));  // prompt/ 或 dist/prompt/
+    const srcRoot = path.resolve(selfDir, '..');                    // src/ 或 dist/
+    const codeProjectRoot = path.resolve(srcRoot, '..');            // 项目根目录
+    const claudeConfigDir = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
+
+    // 从 NotebookManager 获取精确的记忆文件路径
+    const notebookMgr = getNotebookManager();
+    let memoryPaths = '';
+    if (notebookMgr) {
+      const stats = notebookMgr.getStats();
+      memoryPaths = `
+### Memory files (your persistent memory across conversations)
+- Experience notebook: ${stats.experience.path} (~4K tokens max, cross-project knowledge)
+- Project notebook: ${stats.project.path} (~8K tokens max, project-specific discoveries)
+- Session memories: ${claudeConfigDir}/projects/ (past session summaries, searchable via Grep)
+- Sessions data: ${claudeConfigDir}/sessions/ (conversation history, 30-day expiry)`;
+    } else {
+      memoryPaths = `
+### Memory files (your persistent memory across conversations)
+- Experience notebook: ${claudeConfigDir}/memory/experience.md (~4K tokens max)
+- Project notebooks: ${claudeConfigDir}/memory/projects/ (per-project knowledge)
+- Session memories: ${claudeConfigDir}/projects/ (past session summaries)
+- Sessions data: ${claudeConfigDir}/sessions/ (conversation history)`;
+    }
+
+    dynamicParts.push(`# Self-Awareness (your own source code and memory)
+Hot-reload version: v0.1.0-canary
+
+Your runtime source code is located at the following paths. You can Read these files to understand your own behavior, or Edit them to improve yourself when needed:
+
+### Source code
+- Project root: ${codeProjectRoot}
+- Core engine: ${srcRoot}/core/ (loop.ts, client.ts, session.ts - conversation orchestration)
+- Prompt system: ${selfDir}/ (builder.ts, templates.ts - YOUR system prompt is assembled here)
+- Tool system: ${srcRoot}/tools/ (all 25+ tools you can use)
+- Blueprint/Swarm: ${srcRoot}/blueprint/ (lead-agent.ts, smart-planner.ts, autonomous-worker.ts)
+- Agent configs: ${srcRoot}/agents/tools.ts (tool permissions for each agent type)
+- Config system: ${srcRoot}/config/ (settings management)
+- Entry point: ${codeProjectRoot}/package.json (project metadata and scripts)
+${memoryPaths}`);
+
+    // 13. 语言设置
     if (context.language) {
-      parts.push(`# Language
+      dynamicParts.push(`# Language
 Always respond in ${context.language}. Use ${context.language} for all explanations, comments, and communications with the user. Technical terms and code identifiers should remain in their original form.`);
     }
 
-    // 11.6 蓝图上下文（如果有活跃蓝图）
-    const blueprintSummary = this.generateBlueprintSummary();
-    if (blueprintSummary) {
-      parts.push(blueprintSummary);
+    // 14. 输出样式（如果有自定义样式）
+    const outputStylePrompt = getOutputStylePrompt(outputStyle);
+    if (outputStylePrompt) {
+      dynamicParts.push(outputStylePrompt);
     }
 
-        // 12. 附件内容
+    // 15. MCP 指令
+    const mcpInstructions = getMcpInstructions(context.mcpServers);
+    if (mcpInstructions) {
+      dynamicParts.push(mcpInstructions);
+    }
+
+    // 16. Scratchpad 信息（如果有）
+    // 由附件系统处理
+
+    // 17. 附件内容
     for (const attachment of attachments) {
       if (attachment.content) {
-        parts.push(attachment.content);
+        dynamicParts.push(attachment.content);
       }
     }
 
-    // 组装完整提示词
-    let content = parts.join('\n\n');
+    // 过滤 null
+    const filteredStatic = staticParts.filter((p): p is string => p !== null);
+    const filteredDynamic = dynamicParts.filter((p): p is string => p !== null);
+    const filteredParts = [...filteredStatic, ...filteredDynamic];
+
+    // 构建 blocks（对齐官方 CG1 分割逻辑）
+    const staticText = filteredStatic.join('\n\n');
+    const dynamicText = filteredDynamic.join('\n\n');
+    const blocks: PromptBlock[] = [];
+    if (staticText) {
+      blocks.push({ text: staticText, cacheScope: 'global' });
+    }
+    if (dynamicText) {
+      blocks.push({ text: dynamicText, cacheScope: null });
+    }
+
+    // 组装完整提示词（向后兼容）
+    let content = filteredParts.join('\n\n');
 
     // 检查长度限制
     let truncated = false;
@@ -197,7 +324,7 @@ Always respond in ${context.language}. Use ${context.language} for all explanati
 
     if (opts.maxTokens && estimatedTokens > opts.maxTokens) {
       // 尝试截断附件
-      content = this.truncateToLimit(parts, attachments, opts.maxTokens);
+      content = this.truncateToLimit(filteredParts, attachments, opts.maxTokens);
       truncated = true;
 
       // 再次检查
@@ -219,11 +346,12 @@ Always respond in ${context.language}. Use ${context.language} for all explanati
     const buildTimeMs = Date.now() - startTime;
 
     if (this.debug) {
-      console.debug(`[SystemPromptBuilder] Built in ${buildTimeMs}ms, ${hashInfo.estimatedTokens} tokens`);
+      console.debug(`[SystemPromptBuilder] Built in ${buildTimeMs}ms, ${hashInfo.estimatedTokens} tokens, ${blocks.length} blocks`);
     }
 
     return {
       content,
+      blocks,
       hashInfo,
       attachments,
       truncated,
@@ -236,7 +364,7 @@ Always respond in ${context.language}. Use ${context.language} for all explanati
    */
   private truncateToLimit(
     parts: string[],
-    attachments: Attachment[],
+    _attachments: Attachment[],
     maxTokens: number
   ): string {
     // 优先保留核心部分
@@ -308,18 +436,6 @@ Always respond in ${context.language}. Use ${context.language} for all explanati
     this.cache.clear();
   }
 
-  /**
-   * 生成蓝图上下文摘要（用于系统提示）
-   * 让 AI 在每次对话中都能记住蓝图的核心约束
-   *
-   * 注意：新蜂群架构 v2.0 使用 SmartPlanner 进行需求规划，
-   * 此方法暂时返回 null，后续可以集成 SmartPlanner 的上下文。
-   */
-  private generateBlueprintSummary(): string | null {
-    // 新架构暂不使用蓝图上下文摘要
-    // 后续可以集成 SmartPlanner 的规划上下文
-    return null;
-  }
 }
 
 /**

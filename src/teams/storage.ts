@@ -398,22 +398,6 @@ export function isInTeamMode(): boolean {
 }
 
 /**
- * 检查 agent teams 功能是否启用
- * 官方 p8() 函数
- */
-export function isAgentTeamsEnabled(): boolean {
-  // 检查环境变量
-  const envValue = process.env.CLAUDE_CODE_ENABLE_AGENT_TEAMS;
-  if (envValue) {
-    const lower = envValue.toLowerCase().trim();
-    return ['1', 'true', 'yes', 'on'].includes(lower);
-  }
-
-  // 默认禁用（企业级功能）
-  return false;
-}
-
-/**
  * 检查是否在 teammate 模式
  * 官方 MH() 函数
  */

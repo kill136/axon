@@ -11,13 +11,17 @@ import { apiManager } from './api-manager.js';
 import { authManager } from './auth-manager.js';
 import { oauthManager } from './oauth-manager.js';
 import { CheckpointManager } from './checkpoint-manager.js';
-import type { ClientMessage, ServerMessage, Attachment } from '../shared/types.js';
+import type { ClientMessage, ServerMessage, Attachment, AgentDebugPayload } from '../shared/types.js';
 // 导入蓝图存储和执行管理器（用于 WebSocket 订阅）
 import { blueprintStore, executionEventEmitter, executionManager, activeWorkers } from './routes/blueprint-api.js';
 // v4.5: 导入 Worker 类型
 import type { AutonomousWorkerExecutor } from '../../blueprint/autonomous-worker.js';
 // v4.0: 导入 SQLite 日志存储
 import { getSwarmLogDB, type WorkerLog, type WorkerStream } from './database/swarm-logs.js';
+// v4.9: 导入共享 E2E Agent 注册表
+import { registerE2EAgent, unregisterE2EAgent, getE2EAgent } from '../../blueprint/e2e-agent-registry.js';
+// 终端管理器
+import { TerminalManager } from './terminal-manager.js';
 
 // ============================================================================
 // 旧蓝图系统已被移除，以下是类型占位符和空函数
@@ -122,9 +126,8 @@ const createContinuousDevOrchestrator = (_config: any): ContinuousDevOrchestrato
 // 持续开发编排器实例管理：sessionId -> Orchestrator
 const orchestrators = new Map<string, ContinuousDevOrchestrator>();
 
-// v4.2: 活动的 E2E Agent 实例管理：blueprintId -> E2ETestAgent
-// 用于接收前端的 AskUserQuestion 响应
-const activeE2EAgents = new Map<string, any>();
+// v4.9: E2E Agent 注册已迁移到共享模块 e2e-agent-registry.ts
+// 通过 registerE2EAgent/unregisterE2EAgent/getE2EAgent 访问
 
 // v4.8: E2E 测试状态存储，用于刷新浏览器后恢复上下文
 // blueprintId -> { status, message, e2eTaskId, result? }
@@ -136,6 +139,20 @@ interface E2ETestState {
 }
 const activeE2EState = new Map<string, E2ETestState>();
 
+// v9.2: LeadAgent 状态存储，用于刷新浏览器后恢复上下文
+// blueprintId -> { phase, stream, events, systemPrompt, lastUpdated }
+interface LeadAgentPersistState {
+  phase: string;
+  stream: Array<
+    | { type: 'text'; text: string }
+    | { type: 'tool'; id: string; name: string; input?: any; result?: string; error?: string; status: 'running' | 'completed' | 'error' }
+  >;
+  events: Array<{ type: string; data: Record<string, unknown>; timestamp: string }>;
+  systemPrompt?: string;
+  lastUpdated: string;
+}
+const activeLeadAgentState = new Map<string, LeadAgentPersistState>();
+
 interface ClientConnection {
   id: string;
   ws: WebSocket;
@@ -144,10 +161,16 @@ interface ClientConnection {
   isAlive: boolean;
   swarmSubscriptions: Set<string>; // 订阅的 blueprint IDs
   projectPath?: string; // 当前选择的项目路径
+  permissionMode?: string; // 客户端级别的权限模式（跨会话持久化）
 }
 
 // 全局检查点管理器实例
 const checkpointManager = new CheckpointManager();
+
+// 全局终端管理器实例
+const terminalManager = new TerminalManager();
+// 客户端终端映射：clientId -> Set of terminalIds
+const clientTerminals = new Map<string, Set<string>>();
 
 export function setupWebSocket(
   wss: WebSocketServer,
@@ -181,6 +204,40 @@ export function setupWebSocket(
         swarmSubscriptions.delete(blueprintId);
       }
     });
+  };
+
+  // v5.0: thinking/text 流式内容聚合缓冲区（避免碎片化存储到 SQLite）
+  // key: `${workerId}:${taskId}`, value: 聚合的内容
+  const streamBuffers = new Map<string, {
+    type: 'thinking' | 'text';
+    content: string;
+    timestamp: string;
+    blueprintId: string;
+    taskId: string;
+    workerId: string;
+  }>();
+
+  // 刷新指定任务的缓冲区到 SQLite（任务完成时调用）
+  const flushStreamBuffer = (workerId: string, taskId: string) => {
+    const bufferKey = `${workerId}:${taskId}`;
+    const buffer = streamBuffers.get(bufferKey);
+    if (buffer && buffer.content.trim()) {
+      try {
+        const logDB = getSwarmLogDB();
+        logDB.insertStream({
+          id: `stream-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          blueprintId: buffer.blueprintId,
+          taskId: buffer.taskId,
+          workerId: buffer.workerId,
+          timestamp: buffer.timestamp,
+          streamType: buffer.type,
+          content: buffer.content,
+        });
+      } catch (err) {
+        console.error('[SwarmLogDB] 刷新缓冲区失败:', err);
+      }
+    }
+    streamBuffers.delete(bufferKey);
   };
 
   // 广播消息给订阅了特定 blueprint 的客户端
@@ -697,7 +754,19 @@ export function setupWebSocket(
   executionEventEmitter.on('swarm:event', (data: { blueprintId: string; event: any }) => {
     console.log(`[Swarm v2.0] Event: ${data.event.type}`);
     // 根据事件类型转发
-    if (data.event.type === 'plan:started') {
+    if (data.event.type === 'plan:resumed') {
+      // 恢复执行：发送 swarm:resumed 事件，不清空前端的任务树状态
+      console.log(`[Swarm v9.1] Plan resumed: ${data.event.data.completedTasks}/${data.event.data.totalTasks} tasks completed`);
+      broadcastToSubscribers(data.blueprintId, {
+        type: 'swarm:resumed',
+        payload: {
+          blueprintId: data.blueprintId,
+          totalTasks: data.event.data.totalTasks,
+          completedTasks: data.event.data.completedTasks,
+          isResume: true,
+        },
+      });
+    } else if (data.event.type === 'plan:started') {
       broadcastToSubscribers(data.blueprintId, {
         type: 'swarm:state',
         payload: {
@@ -746,6 +815,36 @@ export function setupWebSocket(
   });
 
   // ============================================================================
+  // v9.0: LeadAgent System Prompt 事件（供前端查看提示词）
+  // ============================================================================
+
+  executionEventEmitter.on('lead:system_prompt', (data: {
+    blueprintId: string;
+    systemPrompt: string;
+  }) => {
+    // v9.2: 持久化 systemPrompt
+    const existingState = activeLeadAgentState.get(data.blueprintId);
+    if (existingState) {
+      existingState.systemPrompt = data.systemPrompt;
+    } else {
+      activeLeadAgentState.set(data.blueprintId, {
+        phase: 'idle',
+        stream: [],
+        events: [],
+        systemPrompt: data.systemPrompt,
+        lastUpdated: new Date().toISOString(),
+      });
+    }
+
+    broadcastToSubscribers(data.blueprintId, {
+      type: 'swarm:lead_system_prompt',
+      payload: {
+        systemPrompt: data.systemPrompt,
+      },
+    });
+  });
+
+  // ============================================================================
   // v9.0: LeadAgent 流式输出事件
   // ============================================================================
 
@@ -758,6 +857,65 @@ export function setupWebSocket(
     toolResult?: string;
     toolError?: string;
   }) => {
+    // v9.2: 持久化 stream blocks（复用前端相同逻辑）
+    let leadState = activeLeadAgentState.get(data.blueprintId);
+    if (!leadState) {
+      leadState = { phase: 'idle', stream: [], events: [], lastUpdated: new Date().toISOString() };
+      activeLeadAgentState.set(data.blueprintId, leadState);
+    }
+    switch (data.streamType) {
+      case 'text':
+        if (data.content) {
+          const last = leadState.stream[leadState.stream.length - 1];
+          if (last?.type === 'text') {
+            last.text += data.content;
+          } else {
+            leadState.stream.push({ type: 'text', text: data.content });
+          }
+        }
+        break;
+      case 'tool_start': {
+        let found = false;
+        for (let i = leadState.stream.length - 1; i >= 0; i--) {
+          const block = leadState.stream[i];
+          if (block.type === 'tool' && block.status === 'running' && block.name === data.toolName) {
+            if (data.toolInput !== undefined) {
+              (block as any).input = data.toolInput;
+            }
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          leadState.stream.push({
+            type: 'tool',
+            id: `lead-tool-${Date.now()}`,
+            name: data.toolName || 'unknown',
+            input: data.toolInput,
+            status: 'running',
+          });
+        }
+        break;
+      }
+      case 'tool_end':
+        for (let i = leadState.stream.length - 1; i >= 0; i--) {
+          const block = leadState.stream[i];
+          if (block.type === 'tool' && block.status === 'running' && block.name === data.toolName) {
+            (block as any).input = data.toolInput ?? (block as any).input;
+            (block as any).status = data.toolError ? 'error' : 'completed';
+            (block as any).result = data.toolResult;
+            (block as any).error = data.toolError;
+            break;
+          }
+        }
+        break;
+    }
+    // 限制 stream 数量，与前端保持一致
+    if (leadState.stream.length > 200) {
+      leadState.stream = leadState.stream.slice(-200);
+    }
+    leadState.lastUpdated = new Date().toISOString();
+
     broadcastToSubscribers(data.blueprintId, {
       type: 'swarm:lead_stream',
       payload: {
@@ -782,12 +940,79 @@ export function setupWebSocket(
     timestamp: string;
   }) => {
     console.log(`[Swarm v9.0] LeadAgent event: ${data.eventType}`);
+
+    // v9.2: 持久化 LeadAgent 阶段事件（复用前端相同的 phase 映射逻辑）
+    let leadState = activeLeadAgentState.get(data.blueprintId);
+    if (!leadState) {
+      leadState = { phase: 'idle', stream: [], events: [], lastUpdated: new Date().toISOString() };
+      activeLeadAgentState.set(data.blueprintId, leadState);
+    }
+    switch (data.eventType) {
+      case 'lead:started': leadState.phase = 'started'; break;
+      case 'lead:exploring': leadState.phase = 'exploring'; break;
+      case 'lead:planning': leadState.phase = 'planning'; break;
+      case 'lead:executing':
+      case 'lead:dispatch': leadState.phase = 'executing'; break;
+      case 'lead:reviewing': leadState.phase = 'reviewing'; break;
+      case 'lead:completed':
+        leadState.phase = (data.data as any)?.success === false ? 'failed' : 'completed';
+        break;
+    }
+    leadState.events.push({
+      type: data.eventType,
+      data: data.data,
+      timestamp: data.timestamp,
+    });
+    if (leadState.events.length > 100) {
+      leadState.events = leadState.events.slice(-100);
+    }
+    leadState.lastUpdated = data.timestamp || new Date().toISOString();
+
     broadcastToSubscribers(data.blueprintId, {
       type: 'swarm:lead_event',
       payload: {
         eventType: data.eventType,
         data: data.data,
         timestamp: data.timestamp,
+      },
+    });
+  });
+
+  // ============================================================================
+  // v9.1: LeadAgent E2E 完成事件 → 通知 Planner Agent（聊天 Tab）
+  // ============================================================================
+
+  executionEventEmitter.on('lead:e2e_completed', (data: {
+    blueprintId: string;
+    success: boolean;
+    summary: string;
+  }) => {
+    console.log(`[Swarm v9.1] LeadAgent E2E completed: ${data.success ? 'PASSED' : 'FAILED'}`);
+
+    // 1. 通知蜂群订阅者（SwarmConsole）
+    broadcastToSubscribers(data.blueprintId, {
+      type: 'swarm:lead_event',
+      payload: {
+        eventType: 'lead:e2e_completed',
+        data: {
+          success: data.success,
+          summary: data.summary,
+        },
+        timestamp: new Date().toISOString(),
+      },
+    });
+
+    // 2. 通知所有聊天 Tab（Planner Agent）— 双向通信闭环
+    broadcastToAllClients({
+      type: 'execution:report',
+      payload: {
+        blueprintId: data.blueprintId,
+        status: data.success ? 'completed' : 'e2e_failed',
+        summary: data.summary,
+        message: data.success
+          ? `项目执行完成，E2E 端到端测试全部通过。\n\n${data.summary}`
+          : `项目开发任务已完成，但 E2E 测试存在失败。LeadAgent 正在处理...\n\n${data.summary}`,
+        timestamp: new Date().toISOString(),
       },
     });
   });
@@ -998,27 +1223,74 @@ export function setupWebSocket(
     systemPrompt?: string;
     agentType?: 'worker' | 'e2e' | 'reviewer';
   }) => {
-    // console.log(`[Swarm v2.1] Worker stream: ${data.workerId} - ${data.streamType}`);
+    console.log(`[Swarm v2.1] Worker stream: workerId=${data.workerId}, taskId=${data.taskId}, streamType=${data.streamType}`);
     const timestamp = new Date().toISOString();
 
-    // v4.0: 只存储 tool_start 和 tool_end（thinking/text 太碎片化，不存储）
-    // v4.6: 也存储 system_prompt（用于历史查看）
-    if (data.taskId && (data.streamType === 'tool_start' || data.streamType === 'tool_end' || data.streamType === 'system_prompt')) {
+    // v5.0: 存储所有 stream 类型到 SQLite（修复历史日志加载为空的问题）
+    // thinking/text 使用缓冲区聚合后再写入，避免碎片化
+    if (data.taskId) {
       try {
         const logDB = getSwarmLogDB();
-        logDB.insertStream({
-          id: `stream-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          blueprintId: data.blueprintId,
-          taskId: data.taskId,
-          workerId: data.workerId,
-          timestamp,
-          streamType: data.streamType,
-          content: data.streamType === 'system_prompt' ? data.systemPrompt : data.content,
-          toolName: data.toolName,
-          toolInput: data.toolInput,
-          toolResult: data.toolResult,
-          toolError: data.toolError,
-        });
+        const bufferKey = `${data.workerId}:${data.taskId}`;
+
+        if (data.streamType === 'thinking' || data.streamType === 'text') {
+          // 聚合 thinking/text 碎片到缓冲区
+          if (!streamBuffers.has(bufferKey)) {
+            streamBuffers.set(bufferKey, { type: data.streamType, content: '', timestamp, blueprintId: data.blueprintId, taskId: data.taskId, workerId: data.workerId });
+          }
+          const buffer = streamBuffers.get(bufferKey)!;
+
+          // 如果类型变化了（thinking→text 或反过来），先刷新旧缓冲区
+          if (buffer.type !== data.streamType) {
+            if (buffer.content.trim()) {
+              logDB.insertStream({
+                id: `stream-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                blueprintId: buffer.blueprintId,
+                taskId: buffer.taskId,
+                workerId: buffer.workerId,
+                timestamp: buffer.timestamp,
+                streamType: buffer.type,
+                content: buffer.content,
+              });
+            }
+            // 重置为新类型
+            buffer.type = data.streamType;
+            buffer.content = data.content || '';
+            buffer.timestamp = timestamp;
+          } else {
+            buffer.content += data.content || '';
+          }
+        } else {
+          // tool_start/tool_end/system_prompt: 先刷新缓冲区，再立即写入
+          const buffer = streamBuffers.get(bufferKey);
+          if (buffer && buffer.content.trim()) {
+            logDB.insertStream({
+              id: `stream-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+              blueprintId: buffer.blueprintId,
+              taskId: buffer.taskId,
+              workerId: buffer.workerId,
+              timestamp: buffer.timestamp,
+              streamType: buffer.type,
+              content: buffer.content,
+            });
+            buffer.content = '';
+          }
+
+          // 写入 tool/system_prompt 记录
+          logDB.insertStream({
+            id: `stream-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            blueprintId: data.blueprintId,
+            taskId: data.taskId,
+            workerId: data.workerId,
+            timestamp,
+            streamType: data.streamType,
+            content: data.streamType === 'system_prompt' ? data.systemPrompt : data.content,
+            toolName: data.toolName,
+            toolInput: data.toolInput,
+            toolResult: data.toolResult,
+            toolError: data.toolError,
+          });
+        }
       } catch (err) {
         console.error('[SwarmLogDB] 存储流失败:', err);
       }
@@ -1039,50 +1311,6 @@ export function setupWebSocket(
         // v4.6: System Prompt 透明展示
         systemPrompt: data.systemPrompt,
         agentType: data.agentType,
-      },
-    });
-  });
-
-  // v3.0: AI 主动汇报的任务状态变更（通过 UpdateTaskStatus 工具）
-  executionEventEmitter.on('task:status_change', (data: {
-    blueprintId: string;
-    workerId: string;
-    taskId: string;
-    status: 'running' | 'completed' | 'failed' | 'blocked';
-    percent?: number;
-    currentAction?: string;
-    error?: string;
-    notes?: string;
-    timestamp?: string;
-  }) => {
-    console.log(`[Swarm v3.0] Task status change from AI: taskId=${data.taskId}, status=${data.status}, blueprintId=${data.blueprintId}`);
-
-    // 检查订阅者
-    const subscribers = swarmSubscriptions.get(data.blueprintId);
-    console.log(`[Swarm v3.0] Subscribers for blueprint ${data.blueprintId}: ${subscribers ? subscribers.size : 0}`);
-
-    // 构建任务更新
-    const updates: Record<string, any> = {
-      status: data.status,
-    };
-
-    // 根据状态添加额外字段
-    if (data.status === 'completed') {
-      updates.completedAt = data.timestamp || new Date().toISOString();
-    } else if (data.status === 'failed') {
-      updates.error = data.error;
-      updates.completedAt = data.timestamp || new Date().toISOString();
-    } else if (data.status === 'running') {
-      updates.startedAt = updates.startedAt || data.timestamp || new Date().toISOString();
-    }
-
-    // 发送任务更新到前端
-    console.log(`[Swarm v3.0] Broadcasting task update: taskId=${data.taskId}, updates=${JSON.stringify(updates)}`);
-    broadcastToSubscribers(data.blueprintId, {
-      type: 'swarm:task_update',
-      payload: {
-        taskId: data.taskId,
-        updates,
       },
     });
   });
@@ -1156,6 +1384,10 @@ export function setupWebSocket(
         model: 'opus',
         similarityThreshold: data.config.similarityThreshold || 80,
       });
+
+      // v4.9: 创建后立即注册到共享注册表，支持用户插嘴
+      // 之前只在 ask:request 回调中注册，导致 Agent 未发出提问时插嘴找不到
+      registerE2EAgent(data.blueprintId, agent);
 
       // 监听 Agent 事件（仅服务端日志，不发送到前端）
       agent.on('log', (msg: string) => {
@@ -1257,8 +1489,7 @@ export function setupWebSocket(
           },
         });
 
-        // 保存 agent 引用用于响应
-        activeE2EAgents.set(data.blueprintId, agent);
+        // v4.9: agent 已在创建时注册到共享注册表，此处无需重复注册
       });
 
       // 构建测试上下文
@@ -1336,8 +1567,8 @@ export function setupWebSocket(
 
       console.log(`[Swarm E2E] E2E test completed: ${result.success ? 'PASSED' : 'FAILED'}`);
 
-      // v4.2: 清理 agent 引用
-      activeE2EAgents.delete(data.blueprintId);
+      // v4.9: 清理 agent 引用（使用共享注册表）
+      unregisterE2EAgent(data.blueprintId);
     } catch (error: any) {
       console.error(`[Swarm E2E] E2E test error:`, error);
 
@@ -1358,8 +1589,8 @@ export function setupWebSocket(
         },
       });
 
-      // v4.2: 清理 agent 引用
-      activeE2EAgents.delete(data.blueprintId);
+      // v4.9: 清理 agent 引用（使用共享注册表）
+      unregisterE2EAgent(data.blueprintId);
     }
   });
 
@@ -1393,6 +1624,20 @@ export function setupWebSocket(
       },
     });
 
+    // 推送当前权限模式
+    const permConfig = conversationManager.getPermissionConfig(sessionId);
+    if (permConfig) {
+      sendMessage(ws, {
+        type: 'permission_config_update',
+        payload: {
+          mode: permConfig.mode,
+          bypassTools: permConfig.bypassTools,
+          alwaysAllow: permConfig.alwaysAllow,
+          alwaysDeny: permConfig.alwaysDeny,
+        },
+      } as any);
+    }
+
     // 处理心跳
     ws.on('pong', () => {
       client.isAlive = true;
@@ -1419,6 +1664,14 @@ export function setupWebSocket(
       console.log(`[WebSocket] 客户端断开: ${clientId}`);
       // 清理订阅
       cleanupClientSubscriptions(clientId);
+      // 清理终端会话
+      const terminals = clientTerminals.get(clientId);
+      if (terminals) {
+        for (const termId of terminals) {
+          terminalManager.destroy(termId);
+        }
+        clientTerminals.delete(clientId);
+      }
       clients.delete(clientId);
     });
 
@@ -1506,7 +1759,26 @@ async function handleClientMessage(
       break;
 
     case 'permission_config':
+      // 关键修复：同时保存到 client 级别，确保跨会话持久化
+      if (message.payload?.mode) {
+        client.permissionMode = message.payload.mode;
+      }
       conversationManager.updatePermissionConfig(client.sessionId, message.payload);
+      // 回传更新后的权限配置给客户端
+      {
+        const updatedConfig = conversationManager.getPermissionConfig(client.sessionId);
+        if (updatedConfig) {
+          sendMessage(client.ws, {
+            type: 'permission_config_update',
+            payload: {
+              mode: updatedConfig.mode,
+              bypassTools: updatedConfig.bypassTools,
+              alwaysAllow: updatedConfig.alwaysAllow,
+              alwaysDeny: updatedConfig.alwaysDeny,
+            },
+          } as any);
+        }
+      }
       break;
 
     case 'user_answer':
@@ -1761,6 +2033,15 @@ async function handleClientMessage(
       );
       break;
 
+    // v9.2: LeadAgent 插嘴 - 向正在执行的 LeadAgent 发送消息
+    case 'lead:interject':
+      await handleLeadInterject(
+        client,
+        (message.payload as any).blueprintId,
+        (message.payload as any).message
+      );
+      break;
+
     // v3.8: 取消执行
     case 'swarm:cancel':
       await handleSwarmCancel(client, (message.payload as any).blueprintId, swarmSubscriptions);
@@ -1769,6 +2050,15 @@ async function handleClientMessage(
     // v4.2: E2E Agent AskUserQuestion 响应
     case 'swarm:ask_response':
       await handleAskUserResponse(client, message.payload as any);
+      break;
+
+    // Agent 探针调试（蜂群模式）
+    case 'swarm:debug_agent':
+      await handleSwarmDebugAgent(client, message.payload as any);
+      break;
+
+    case 'swarm:debug_agent_list':
+      await handleSwarmDebugAgentList(client, message.payload as any);
       break;
 
     // ========== 持续开发相关消息 ==========
@@ -1796,28 +2086,104 @@ async function handleClientMessage(
       await handleContinuousDevApprove(client);
       break;
 
+    // ========== 终端消息 ==========
+    case 'terminal:create': {
+      const termPayload = (message as any).payload || {};
+      const termId = `term-${client.id}-${Date.now()}`;
+      const created = terminalManager.create(termId, {
+        cols: termPayload.cols || 80,
+        rows: termPayload.rows || 24,
+        cwd: termPayload.cwd || client.projectPath || process.cwd(),
+        onData: (data: string) => {
+          sendMessage(client.ws, {
+            type: 'terminal:output',
+            payload: { terminalId: termId, data },
+          });
+        },
+        onExit: (exitCode: number) => {
+          sendMessage(client.ws, {
+            type: 'terminal:exit',
+            payload: { terminalId: termId, exitCode },
+          });
+          // 清理映射
+          const terms = clientTerminals.get(client.id);
+          if (terms) {
+            terms.delete(termId);
+            if (terms.size === 0) clientTerminals.delete(client.id);
+          }
+        },
+      });
+
+      if (created) {
+        // 记录映射
+        if (!clientTerminals.has(client.id)) {
+          clientTerminals.set(client.id, new Set());
+        }
+        clientTerminals.get(client.id)!.add(termId);
+
+        sendMessage(client.ws, {
+          type: 'terminal:created',
+          payload: { terminalId: termId },
+        });
+      } else {
+        sendMessage(client.ws, {
+          type: 'error',
+          payload: { message: '创建终端失败' },
+        });
+      }
+      break;
+    }
+
+    case 'terminal:input': {
+      const inputPayload = (message as any).payload;
+      if (inputPayload?.terminalId && inputPayload?.data) {
+        terminalManager.write(inputPayload.terminalId, inputPayload.data);
+      }
+      break;
+    }
+
+    case 'terminal:resize': {
+      const resizePayload = (message as any).payload;
+      if (resizePayload?.terminalId && resizePayload?.cols && resizePayload?.rows) {
+        terminalManager.resize(resizePayload.terminalId, resizePayload.cols, resizePayload.rows);
+      }
+      break;
+    }
+
+    case 'terminal:destroy': {
+      const destroyPayload = (message as any).payload;
+      if (destroyPayload?.terminalId) {
+        terminalManager.destroy(destroyPayload.terminalId);
+        const terms = clientTerminals.get(client.id);
+        if (terms) {
+          terms.delete(destroyPayload.terminalId);
+          if (terms.size === 0) clientTerminals.delete(client.id);
+        }
+      }
+      break;
+    }
+
     default:
       console.warn('[WebSocket] 未知消息类型:', (message as any).type);
   }
 }
 
 /**
- * 媒体附件信息（图片或 PDF）
+ * 媒体附件信息（仅图片，直接传递给 Claude API）
  */
 interface MediaAttachment {
   data: string;
   mimeType: string;
-  type: 'image' | 'pdf';
+  type: 'image';
 }
 
 /**
- * Office 文档附件信息
+ * 文件附件信息（非图片类型，保存为临时文件后传路径给模型）
  */
-interface OfficeAttachment {
+interface FileAttachment {
   name: string;
   data: string;  // base64 数据
   mimeType: string;
-  type: 'docx' | 'xlsx' | 'pptx';
 }
 
 /**
@@ -1890,43 +2256,32 @@ async function handleChatMessage(
 
   const messageId = randomUUID();
 
-  // 处理附件：转换为媒体附件数组（图片和 PDF）或增强内容
+  // 处理附件：图片直接传递给 Claude API，其他文件保存为临时文件传路径
   let mediaAttachments: MediaAttachment[] | undefined;
-  let officeAttachments: OfficeAttachment[] | undefined;
+  let fileAttachments: FileAttachment[] | undefined;
   let enhancedContent = content;
 
   if (attachments && Array.isArray(attachments)) {
-    // 检查是否是新格式的附件
     if (attachments.length > 0 && typeof attachments[0] === 'object') {
       const typedAttachments = attachments as Attachment[];
 
-      // 提取图片和 PDF 附件（直接支持 Claude API）
+      // 提取图片附件（直接传递给 Claude API）
       mediaAttachments = typedAttachments
-        .filter(att => att.type === 'image' || att.type === 'pdf')
+        .filter(att => att.type === 'image')
         .map(att => ({
           data: att.data,
-          mimeType: att.mimeType || (att.type === 'pdf' ? 'application/pdf' : 'image/png'),
-          type: att.type as 'image' | 'pdf',
+          mimeType: att.mimeType || 'image/png',
+          type: 'image' as const,
         }));
 
-      // 提取 Office 文档附件（需要通过 Skills 处理）
-      officeAttachments = typedAttachments
-        .filter(att => att.type === 'docx' || att.type === 'xlsx' || att.type === 'pptx')
+      // 所有非图片附件统一保存为临时文件（包括 pdf/docx/xlsx/pptx/text/file 等任意格式）
+      fileAttachments = typedAttachments
+        .filter(att => att.type !== 'image')
         .map(att => ({
           name: att.name,
           data: att.data,
-          mimeType: att.mimeType,
-          type: att.type as 'docx' | 'xlsx' | 'pptx',
+          mimeType: att.mimeType || 'application/octet-stream',
         }));
-
-      // 将文本附件添加到内容中
-      const textAttachments = typedAttachments.filter(att => att.type === 'text');
-      if (textAttachments.length > 0) {
-        const textParts = textAttachments.map(
-          att => `[文件: ${att.name}]\n\`\`\`\n${att.data}\n\`\`\``
-        );
-        enhancedContent = textParts.join('\n\n') + (content ? '\n\n' + content : '');
-      }
     } else {
       // 旧格式：直接是 base64 字符串数组（默认图片 png）
       mediaAttachments = (attachments as string[]).map(data => ({
@@ -1937,23 +2292,22 @@ async function handleChatMessage(
     }
   }
 
-  // 处理 Office 文档附件（docx/xlsx/pptx）
-  // 这些文档需要通过 Skills 或解析库处理，Claude API 不直接支持
-  if (officeAttachments && officeAttachments.length > 0) {
-    const processedDocs: string[] = [];
-    for (const doc of officeAttachments) {
+  // 处理非图片文件附件：保存到临时目录，将文件路径告知模型
+  if (fileAttachments && fileAttachments.length > 0) {
+    const processedFiles: string[] = [];
+    for (const file of fileAttachments) {
       try {
-        const docContent = await processOfficeDocument(doc);
-        if (docContent) {
-          processedDocs.push(docContent);
+        const fileInfo = await processFileAttachment(file);
+        if (fileInfo) {
+          processedFiles.push(fileInfo);
         }
       } catch (error) {
-        console.error(`[WebSocket] 处理 Office 文档失败: ${doc.name}`, error);
-        processedDocs.push(`[${doc.type.toUpperCase()} 文档: ${doc.name}]\n（处理失败: ${error instanceof Error ? error.message : '未知错误'}）`);
+        console.error(`[WebSocket] 处理文件附件失败: ${file.name}`, error);
+        processedFiles.push(`[附件: ${file.name}]\n（处理失败: ${error instanceof Error ? error.message : '未知错误'}）`);
       }
     }
-    if (processedDocs.length > 0) {
-      enhancedContent = processedDocs.join('\n\n') + (enhancedContent ? '\n\n' + enhancedContent : '');
+    if (processedFiles.length > 0) {
+      enhancedContent = processedFiles.join('\n\n') + (enhancedContent ? '\n\n' + enhancedContent : '');
     }
   }
 
@@ -1961,69 +2315,77 @@ async function handleChatMessage(
   // 这样即使用户在对话过程中切换了会话，客户端也能区分消息来源
   const chatSessionId = sessionId;
 
+  // 动态获取当前活跃的 WebSocket 连接
+  // 关键修复：页面刷新后旧 ws 闭包引用失效，需从 ConversationManager 获取最新的 ws
+  // 这样即使用户刷新页面，流式消息也能发送到新的 WebSocket 连接
+  const getActiveWs = (): WebSocket => {
+    return conversationManager.getWebSocket(chatSessionId) || ws;
+  };
+
   // 发送消息开始
-  sendMessage(ws, {
+  sendMessage(getActiveWs(), {
     type: 'message_start',
     payload: { messageId, sessionId: chatSessionId },
   });
 
   // 发送状态更新
-  sendMessage(ws, {
+  sendMessage(getActiveWs(), {
     type: 'status',
     payload: { status: 'thinking', sessionId: chatSessionId },
   });
 
   try {
     // 调用对话管理器，传入流式回调（媒体附件包含 mimeType 和类型）
+    // 所有回调使用 getActiveWs() 动态获取 WebSocket，确保刷新后消息仍能送达
     await conversationManager.chat(chatSessionId, enhancedContent, mediaAttachments, model, {
       onThinkingStart: () => {
-        sendMessage(ws, {
+        sendMessage(getActiveWs(), {
           type: 'thinking_start',
           payload: { messageId, sessionId: chatSessionId },
         });
       },
 
       onThinkingDelta: (text: string) => {
-        sendMessage(ws, {
+        sendMessage(getActiveWs(), {
           type: 'thinking_delta',
           payload: { messageId, text, sessionId: chatSessionId },
         });
       },
 
       onThinkingComplete: () => {
-        sendMessage(ws, {
+        sendMessage(getActiveWs(), {
           type: 'thinking_complete',
           payload: { messageId, sessionId: chatSessionId },
         });
       },
 
       onTextDelta: (text: string) => {
-        sendMessage(ws, {
+        sendMessage(getActiveWs(), {
           type: 'text_delta',
           payload: { messageId, text, sessionId: chatSessionId },
         });
       },
 
       onToolUseStart: (toolUseId: string, toolName: string, input: unknown) => {
-        sendMessage(ws, {
+        sendMessage(getActiveWs(), {
           type: 'tool_use_start',
           payload: { messageId, toolUseId, toolName, input, sessionId: chatSessionId },
         });
-        sendMessage(ws, {
+        sendMessage(getActiveWs(), {
           type: 'status',
           payload: { status: 'tool_executing', message: `执行 ${toolName}...`, sessionId: chatSessionId },
         });
       },
 
       onToolUseDelta: (toolUseId: string, partialJson: string) => {
-        sendMessage(ws, {
+        sendMessage(getActiveWs(), {
           type: 'tool_use_delta',
           payload: { toolUseId, partialJson, sessionId: chatSessionId },
         });
       },
 
       onToolResult: (toolUseId: string, success: boolean, output?: string, error?: string, data?: unknown) => {
-        sendMessage(ws, {
+        sendMessage(getActiveWs(), {
           type: 'tool_result',
           payload: {
             toolUseId,
@@ -2038,7 +2400,7 @@ async function handleChatMessage(
       },
 
       onPermissionRequest: (request: any) => {
-        sendMessage(ws, {
+        sendMessage(getActiveWs(), {
           type: 'permission_request',
           payload: { ...request, sessionId: chatSessionId },
         });
@@ -2048,41 +2410,60 @@ async function handleChatMessage(
         // 保存会话到磁盘（确保 messageCount 正确更新）
         await conversationManager.persistSession(chatSessionId);
 
-        sendMessage(ws, {
-          type: 'message_complete',
-          payload: {
-            messageId,
-            stopReason: (stopReason || 'end_turn') as 'end_turn' | 'max_tokens' | 'stop_sequence' | 'tool_use',
-            usage,
-            sessionId: chatSessionId,
-          },
-        });
-        sendMessage(ws, {
+        // 检查是否需要重发 history（页面刷新导致客户端丢失了流式上下文）
+        // 如果需要，发送完整 history 替代 message_complete，确保客户端显示完整对话
+        if (conversationManager.consumeHistoryResendFlag(chatSessionId)) {
+          console.log(`[WebSocket] 会话 ${chatSessionId} 处理完成，重发 history（页面刷新恢复）`);
+          const updatedHistory = conversationManager.getHistory(chatSessionId);
+          sendMessage(getActiveWs(), {
+            type: 'history',
+            payload: { messages: updatedHistory },
+          });
+        } else {
+          sendMessage(getActiveWs(), {
+            type: 'message_complete',
+            payload: {
+              messageId,
+              stopReason: (stopReason || 'end_turn') as 'end_turn' | 'max_tokens' | 'stop_sequence' | 'tool_use',
+              usage,
+              sessionId: chatSessionId,
+            },
+          });
+        }
+        sendMessage(getActiveWs(), {
           type: 'status',
           payload: { status: 'idle', sessionId: chatSessionId },
         });
       },
 
       onError: (error: Error) => {
-        sendMessage(ws, {
+        // 页面刷新恢复：错误时也需要重发 history 确保客户端状态一致
+        if (conversationManager.consumeHistoryResendFlag(chatSessionId)) {
+          const updatedHistory = conversationManager.getHistory(chatSessionId);
+          sendMessage(getActiveWs(), {
+            type: 'history',
+            payload: { messages: updatedHistory },
+          });
+        }
+        sendMessage(getActiveWs(), {
           type: 'error',
           payload: { message: error.message, sessionId: chatSessionId },
         });
-        sendMessage(ws, {
+        sendMessage(getActiveWs(), {
           type: 'status',
           payload: { status: 'idle', sessionId: chatSessionId },
         });
       },
 
       onContextUpdate: (usage: { usedTokens: number; maxTokens: number; percentage: number; model: string }) => {
-        sendMessage(ws, {
+        sendMessage(getActiveWs(), {
           type: 'context_update',
           payload: { ...usage, sessionId: chatSessionId },
         });
       },
 
       onContextCompact: (phase: 'start' | 'end' | 'error', info?: Record<string, any>) => {
-        sendMessage(ws, {
+        sendMessage(getActiveWs(), {
           type: 'context_compact',
           payload: {
             phase,
@@ -2092,20 +2473,20 @@ async function handleChatMessage(
         });
         // 压缩开始时，通知前端状态变更
         if (phase === 'start') {
-          sendMessage(ws, {
+          sendMessage(getActiveWs(), {
             type: 'status',
             payload: { status: 'thinking', message: '正在压缩上下文...', sessionId: chatSessionId },
           });
         }
       },
-    }, client.projectPath, ws);  // 传入 ws 参数，确保 UserInteractionHandler 可用
+    }, client.projectPath, getActiveWs(), client.permissionMode);  // 传入动态 ws 和权限模式，确保跨会话持久化
   } catch (error) {
     console.error('[WebSocket] 聊天处理错误:', error);
-    sendMessage(ws, {
+    sendMessage(getActiveWs(), {
       type: 'error',
       payload: { message: error instanceof Error ? error.message : '处理失败', sessionId: chatSessionId },
     });
-    sendMessage(ws, {
+    sendMessage(getActiveWs(), {
       type: 'status',
       payload: { status: 'idle', sessionId: chatSessionId },
     });
@@ -2340,8 +2721,8 @@ async function handleSessionSwitch(
     // 保存当前会话
     await conversationManager.persistSession(client.sessionId);
 
-    // 恢复目标会话
-    const success = await conversationManager.resumeSession(sessionId);
+    // 恢复目标会话（传入客户端权限模式，确保 YOLO 等模式跨会话持久化）
+    const success = await conversationManager.resumeSession(sessionId, client.permissionMode);
 
     if (success) {
       // 更新客户端会话ID
@@ -2369,6 +2750,16 @@ async function handleSessionSwitch(
         type: 'history',
         payload: { messages: history },
       });
+
+      // 如果会话正在处理中（如页面刷新），通知客户端当前状态
+      // 客户端会显示加载指示器，处理完成后会收到 history 重发
+      const isProcessing = conversationManager.isSessionProcessing(sessionId);
+      if (isProcessing) {
+        sendMessage(ws, {
+          type: 'status',
+          payload: { status: 'streaming', message: '对话处理中...', sessionId },
+        });
+      }
     } else {
       sendMessage(ws, {
         type: 'error',
@@ -2506,7 +2897,7 @@ async function handleSessionResume(
   const { ws } = client;
 
   try {
-    const success = await conversationManager.resumeSession(sessionId);
+    const success = await conversationManager.resumeSession(sessionId, client.permissionMode);
 
     if (success) {
       client.sessionId = sessionId;
@@ -4204,8 +4595,12 @@ async function handleOAuthGetAuthUrl(
  * - Claude 可以根据上下文决定如何处理
  * - 不需要在服务器端实现复杂的解析逻辑
  */
-async function processOfficeDocument(doc: OfficeAttachment): Promise<string> {
-  const { name, data, type } = doc;
+/**
+ * 处理非图片文件附件：保存到临时目录，返回文件路径信息
+ * 支持任意格式文件
+ */
+async function processFileAttachment(file: FileAttachment): Promise<string> {
+  const { name, data, mimeType } = file;
   const fs = await import('fs');
   const path = await import('path');
   const os = await import('os');
@@ -4219,37 +4614,37 @@ async function processOfficeDocument(doc: OfficeAttachment): Promise<string> {
 
     // 生成唯一文件名（避免冲突）
     const timestamp = Date.now();
-    const safeFileName = name.replace(/[^a-zA-Z0-9.-_一-龥]/g, '_');
+    const safeFileName = name.replace(/[^a-zA-Z0-9.\-_\u4e00-\u9fff]/g, '_');
     const tempFilePath = path.join(tempDir, timestamp + '_' + safeFileName);
 
     // 将 base64 数据解码并保存到临时文件
     const buffer = Buffer.from(data, 'base64');
     fs.writeFileSync(tempFilePath, buffer);
 
-    console.log('[WebSocket] Office 文档已保存到临时文件: ' + tempFilePath);
+    console.log('[WebSocket] 文件附件已保存到临时文件: ' + tempFilePath);
 
-    // 返回文档信息，告诉 Claude 文档的位置
-    // Claude 可以使用 document-skills 或 Read 工具来处理
-    const typeDescription: Record<string, string> = {
-      docx: 'Word 文档',
-      xlsx: 'Excel 电子表格',
-      pptx: 'PowerPoint 演示文稿',
+    // 根据 MIME 类型或扩展名给出提示
+    const ext = path.extname(name).toLowerCase();
+    let hint = '';
+
+    // 对已知的文档类型给出 Skill 提示
+    const skillMap: Record<string, string> = {
+      '.docx': 'document-skills:docx',
+      '.xlsx': 'document-skills:xlsx',
+      '.pptx': 'document-skills:pptx',
+      '.pdf': 'document-skills:pdf',
     };
 
-    const skillHint: Record<string, string> = {
-      docx: 'document-skills:docx',
-      xlsx: 'document-skills:xlsx',
-      pptx: 'document-skills:pptx',
-    };
+    if (skillMap[ext]) {
+      hint = '\n可使用 Skill: ' + skillMap[ext] + ' 处理此文件';
+    } else if (mimeType.startsWith('text/') || /^\.(txt|md|json|js|ts|tsx|jsx|py|java|c|cpp|h|css|html|xml|yaml|yml|sh|bat|sql|log|csv|tsv|ini|cfg|conf|toml|rs|go|rb|php|swift|kt|scala|r|m|pl|lua|hs|ex|exs|clj|dart|vue|svelte)$/i.test(ext)) {
+      hint = '\n这是文本文件，可使用 Read 工具直接读取内容';
+    }
 
-    const desc = typeDescription[type] || type.toUpperCase() + ' 文档';
-    const skill = skillHint[type] || '';
-    const skillNote = skill ? '\n如需读取或处理此文档，可使用 Skill: ' + skill : '';
-
-    return '[附件: ' + name + ']\n类型: ' + desc + '\n文件路径: ' + tempFilePath + skillNote;
+    return '[附件: ' + name + ']\nMIME: ' + mimeType + '\n文件路径: ' + tempFilePath + hint;
   } catch (error) {
-    console.error('[WebSocket] 保存 ' + type + ' 文档失败:', error);
-    throw new Error('保存 ' + type + ' 文档失败: ' + (error instanceof Error ? error.message : '未知错误'));
+    console.error('[WebSocket] 保存文件附件失败: ' + name, error);
+    throw new Error('保存文件附件失败: ' + (error instanceof Error ? error.message : '未知错误'));
   }
 }
 
@@ -4428,6 +4823,20 @@ async function handleSwarmSubscribe(
       console.log(`[Swarm] 恢复 E2E 测试状态: ${e2eState.status}, taskId=${e2eState.e2eTaskId}`);
     }
 
+    // v9.2: 获取当前 LeadAgent 状态（用于刷新浏览器后恢复）
+    const leadAgentPersist = activeLeadAgentState.get(blueprintId);
+    let leadAgentData = null;
+    if (leadAgentPersist && leadAgentPersist.phase !== 'idle') {
+      leadAgentData = {
+        phase: leadAgentPersist.phase,
+        stream: leadAgentPersist.stream,
+        events: leadAgentPersist.events,
+        systemPrompt: leadAgentPersist.systemPrompt,
+        lastUpdated: leadAgentPersist.lastUpdated,
+      };
+      console.log(`[Swarm] 恢复 LeadAgent 状态: phase=${leadAgentPersist.phase}, stream=${leadAgentPersist.stream.length} blocks, events=${leadAgentPersist.events.length}`);
+    }
+
     // v2.0: 构建完整的响应
     sendMessage(ws, {
       type: 'swarm:state',
@@ -4447,6 +4856,8 @@ async function handleSwarmSubscribe(
         costEstimate: costEstimateData,
         // v4.8: E2E 验收测试状态（用于刷新浏览器后恢复上下文）
         verification: verificationData,
+        // v9.2: LeadAgent 状态（用于刷新浏览器后恢复上下文）
+        leadAgent: leadAgentData,
       },
     });
   } catch (error) {
@@ -5314,7 +5725,7 @@ async function handleTaskInterject(
 
     // v4.5: 首先检查是否是 E2E 测试任务
     if (taskId.startsWith('e2e-test')) {
-      const e2eAgent = activeE2EAgents.get(blueprintId);
+      const e2eAgent = getE2EAgent(blueprintId);
       if (e2eAgent && typeof e2eAgent.interject === 'function') {
         const success = e2eAgent.interject(message);
         if (success) {
@@ -5424,8 +5835,203 @@ async function handleTaskInterject(
 }
 
 /**
+ * v9.2: 处理 LeadAgent 插嘴请求
+ */
+async function handleLeadInterject(
+  client: ClientConnection,
+  blueprintId: string,
+  message: string
+): Promise<void> {
+  const { ws } = client;
+
+  try {
+    if (!blueprintId || !message) {
+      sendMessage(ws, {
+        type: 'error',
+        payload: { message: '缺少必要参数: blueprintId, message' },
+      });
+      return;
+    }
+
+    console.log(`[LeadInterject] 用户向 LeadAgent 插嘴: blueprintId=${blueprintId}, message=${message.substring(0, 50)}...`);
+
+    // 通过 executionManager 获取当前执行会话
+    const session = executionManager.getSessionByBlueprint(blueprintId);
+    if (!session) {
+      sendMessage(ws, {
+        type: 'lead:interject_failed',
+        payload: {
+          blueprintId,
+          success: false as const,
+          error: '找不到活跃的执行会话，LeadAgent 可能尚未启动',
+          timestamp: new Date().toISOString(),
+        },
+      });
+      return;
+    }
+
+    // 获取 coordinator 中的 LeadAgent 实例
+    const leadAgent = session.coordinator.getLeadAgent();
+    if (!leadAgent) {
+      sendMessage(ws, {
+        type: 'lead:interject_failed',
+        payload: {
+          blueprintId,
+          success: false as const,
+          error: '找不到活跃的 LeadAgent，可能已完成或尚未启动',
+          timestamp: new Date().toISOString(),
+        },
+      });
+      return;
+    }
+
+    // 调用 LeadAgent 的插嘴方法
+    const success = leadAgent.interject(message);
+    if (success) {
+      console.log(`[LeadInterject] 消息已发送到 LeadAgent`);
+      sendMessage(ws, {
+        type: 'lead:interject_success',
+        payload: {
+          blueprintId,
+          success: true as const,
+          message: '消息已发送，LeadAgent 将在下一轮对话中处理',
+          timestamp: new Date().toISOString(),
+        },
+      });
+    } else {
+      sendMessage(ws, {
+        type: 'lead:interject_failed',
+        payload: {
+          blueprintId,
+          success: false as const,
+          error: 'LeadAgent 插嘴失败，可能未在执行中',
+          timestamp: new Date().toISOString(),
+        },
+      });
+    }
+  } catch (error) {
+    console.error('[LeadInterject] 处理 LeadAgent 插嘴失败:', error);
+    sendMessage(ws, {
+      type: 'error',
+      payload: {
+        message: error instanceof Error ? error.message : '处理 LeadAgent 插嘴失败',
+      },
+    });
+  }
+}
+
+/**
  * v3.8: 处理取消执行请求
  */
+/**
+ * 处理 Agent 探针请求（蜂群模式）
+ * 返回指定 Agent 的系统提示词、消息体、工具列表等调试信息
+ */
+async function handleSwarmDebugAgent(
+  client: ClientConnection,
+  payload: { blueprintId: string; agentType: 'lead' | 'worker' | 'e2e'; workerId?: string }
+): Promise<void> {
+  const { ws } = client;
+
+  try {
+    const { blueprintId, agentType, workerId } = payload as { blueprintId: string; agentType: 'lead' | 'worker' | 'e2e'; workerId?: string };
+
+    if (!blueprintId) {
+      sendMessage(ws, {
+        type: 'error',
+        payload: { message: '缺少 blueprintId' },
+      });
+      return;
+    }
+
+    const session = executionManager.getSessionByBlueprint(blueprintId);
+    if (!session) {
+      sendMessage(ws, {
+        type: 'error',
+        payload: { message: '找不到执行会话' },
+      });
+      return;
+    }
+
+    const debugInfo = session.coordinator.getAgentDebugInfo(agentType, workerId);
+
+    if (!debugInfo) {
+      sendMessage(ws, {
+        type: 'swarm:debug_agent_response',
+        payload: {
+          agentType,
+          workerId,
+          systemPrompt: `(${agentType} Agent 当前未在执行)`,
+          messages: [],
+          tools: [],
+          model: 'unknown',
+          messageCount: 0,
+        },
+      });
+      return;
+    }
+
+    sendMessage(ws, {
+      type: 'swarm:debug_agent_response',
+      payload: debugInfo as AgentDebugPayload,
+    });
+  } catch (error) {
+    console.error('[Swarm] 获取 Agent 调试信息失败:', error);
+    sendMessage(ws, {
+      type: 'error',
+      payload: {
+        message: error instanceof Error ? error.message : '获取 Agent 调试信息失败',
+      },
+    });
+  }
+}
+
+/**
+ * 处理 Agent 列表请求（探针功能 - 获取当前活跃的 Agent 列表）
+ */
+async function handleSwarmDebugAgentList(
+  client: ClientConnection,
+  payload: { blueprintId: string }
+): Promise<void> {
+  const { ws } = client;
+
+  try {
+    const { blueprintId } = payload;
+
+    if (!blueprintId) {
+      sendMessage(ws, {
+        type: 'error',
+        payload: { message: '缺少 blueprintId' },
+      });
+      return;
+    }
+
+    const session = executionManager.getSessionByBlueprint(blueprintId);
+    if (!session) {
+      sendMessage(ws, {
+        type: 'swarm:debug_agent_list_response',
+        payload: { blueprintId, agents: [] },
+      });
+      return;
+    }
+
+    const agents = session.coordinator.getActiveAgents();
+
+    sendMessage(ws, {
+      type: 'swarm:debug_agent_list_response',
+      payload: { blueprintId, agents },
+    });
+  } catch (error) {
+    console.error('[Swarm] 获取活跃 Agent 列表失败:', error);
+    sendMessage(ws, {
+      type: 'error',
+      payload: {
+        message: error instanceof Error ? error.message : '获取 Agent 列表失败',
+      },
+    });
+  }
+}
+
 async function handleSwarmCancel(
   client: ClientConnection,
   blueprintId: string,
@@ -5486,7 +6092,7 @@ async function handleSwarmCancel(
 /**
  * v4.2: 处理 E2E Agent / Worker AskUserQuestion 响应
  * 支持两种场景：
- * 1. E2E Agent - 使用 activeE2EAgents Map
+ * 1. E2E Agent - 使用共享注册表 (e2e-agent-registry)
  * 2. Worker - 使用 activeWorkers Map（payload 中有 workerId）
  */
 async function handleAskUserResponse(
@@ -5538,7 +6144,7 @@ async function handleAskUserResponse(
       // activeWorkers.delete(workerKey);
     } else {
       // E2E Agent 响应（原有逻辑）
-      const agent = activeE2EAgents.get(blueprintId);
+      const agent = getE2EAgent(blueprintId);
       if (!agent) {
         console.warn(`[E2E Agent] No active agent found for blueprint: ${blueprintId}`);
         sendMessage(ws, {

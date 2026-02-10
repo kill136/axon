@@ -424,6 +424,12 @@
   flex-wrap: wrap;
 }
 
+.cardMetaEmpty {
+  color: var(--text-muted);
+  font-style: italic;
+  opacity: 0.6;
+}
+
 .cardFooter {
   display: flex;
   justify-content: space-between;
