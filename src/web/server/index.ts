@@ -24,6 +24,7 @@ export interface WebServerOptions {
   cwd?: string;
   model?: string;
   ngrok?: boolean;
+  open?: boolean;
 }
 
 export interface WebServerResult {
@@ -44,6 +45,7 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
     cwd = process.cwd(),
     model = process.env.CLAUDE_MODEL || 'opus',
     ngrok: enableNgrok = process.env.ENABLE_NGROK === 'true' || !!process.env.NGROK_AUTHTOKEN,
+    open: autoOpen = process.env.CLAUDE_WEB_NO_OPEN !== 'true',
   } = options;
 
   // 创建 Express 应用
@@ -166,13 +168,26 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
 
   // 启动服务器
   await new Promise<void>((resolve) => {
-    server.listen(port, host, () => {
+    server.listen(port, host, async () => {
       const displayHost = host === '0.0.0.0' ? 'localhost' : host;
+      const url = `http://${displayHost}:${port}`;
       console.log(`\n🌐 Claude Code WebUI 已启动`);
-      console.log(`   地址: http://${displayHost}:${port}`);
+      console.log(`   地址: ${url}`);
       console.log(`   WebSocket: ws://${displayHost}:${port}/ws`);
       console.log(`   工作目录: ${cwd}`);
       console.log(`   模型: ${model}`);
+
+      // 自动打开浏览器
+      if (autoOpen) {
+        try {
+          const open = (await import('open')).default;
+          await open(url);
+          console.log(`   🌍 已在浏览器中打开`);
+        } catch (error) {
+          console.log(`   ⚠️  无法自动打开浏览器，请手动访问上述地址`);
+        }
+      }
+
       resolve();
     });
   });

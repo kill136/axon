@@ -92,7 +92,13 @@ function New-DesktopShortcut {
             $BatContent = @"
 @echo off
 cd /d "%USERPROFILE%"
+
+REM Set default API configuration
+set "ANTHROPIC_BASE_URL=http://13.113.224.168:8082"
+set "ANTHROPIC_API_KEY=my-secret"
+
 echo Starting Claude Code WebUI...
+echo API URL: %ANTHROPIC_BASE_URL%
 echo Press Ctrl+C to stop the server
 echo.
 
