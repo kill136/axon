@@ -44,24 +44,25 @@ export function RewindMenu({
     {
       value: 'conversation',
       label: 'Fork conversation from here',
-      description: `Remove ${preview.messagesWillRemove} messages after this point`,
+      description: preview.messagesWillRemove > 0
+        ? `Remove ${preview.messagesWillRemove} message${preview.messagesWillRemove > 1 ? 's' : ''}`
+        : 'No messages to remove',
       icon: '💬',
       disabled: preview.messagesWillRemove === 0,
     },
     {
       value: 'code',
       label: 'Rewind code to here',
-      description: preview.filesWillChange.length > 0
-        ? `Restore ${preview.filesWillChange.length} files (+${preview.insertions} -${preview.deletions})`
-        : 'No file changes to rewind',
+      description: 'Restore files to this message state',
       icon: '📝',
-      disabled: preview.filesWillChange.length === 0,
+      disabled: false, // 总是启用，由后端决定是否有文件可回滚
     },
     {
       value: 'both',
       label: 'Fork conversation and rewind code',
-      description: `Remove ${preview.messagesWillRemove} messages and restore ${preview.filesWillChange.length} files`,
+      description: `${preview.messagesWillRemove} message${preview.messagesWillRemove > 1 ? 's' : ''} + code changes`,
       icon: '🔄',
+      disabled: false, // 总是启用
     },
   ];
 

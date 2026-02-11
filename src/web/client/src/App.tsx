@@ -188,7 +188,7 @@ function AppContent({
   // Rewind 功能
   // ========================================================================
 
-  // 获取回滚预览信息（通过后端）
+  // 获取回滚预览信息
   const getRewindPreview = useCallback((messageId: string) => {
     const messageIndex = messages.findIndex(m => m.id === messageId);
     if (messageIndex === -1) {
@@ -198,7 +198,8 @@ function AppContent({
     // 计算将要删除的消息数（当前消息之后的所有消息）
     const messagesWillRemove = messages.length - messageIndex - 1;
 
-    // 简单预览：统计消息数，文件变化由后端实时计算
+    // 返回简单的预览信息
+    // 文件变化由后端 RewindManager 实时追踪，前端不需要计算
     return {
       filesWillChange: [],
       messagesWillRemove,

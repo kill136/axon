@@ -1018,6 +1018,74 @@ export class ConversationManager {
             }
           }
 
+          // 修复：检查 messagesToKeep 中是否有孤立的 tool_result（tool_use 被压缩掉了）
+          // 如果有，需要向前扩展 messagesToKeep，包含对应的 assistant 消息
+          if (messagesToKeep.length > 0) {
+            const toolResultIds = new Set<string>();
+
+            // 1. 收集 messagesToKeep 中所有的 tool_result IDs
+            for (const msg of messagesToKeep) {
+              if (msg.role === 'user' && Array.isArray(msg.content)) {
+                for (const block of msg.content) {
+                  if (block.type === 'tool_result' && 'tool_use_id' in block) {
+                    toolResultIds.add(block.tool_use_id);
+                  }
+                }
+              }
+            }
+
+            // 2. 如果有 tool_result，检查是否有对应的 tool_use
+            if (toolResultIds.size > 0) {
+              const toolUseIds = new Set<string>();
+              for (const msg of messagesToKeep) {
+                if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+                  for (const block of msg.content) {
+                    if (block.type === 'tool_use' && 'id' in block) {
+                      toolUseIds.add(block.id);
+                    }
+                  }
+                }
+              }
+
+              // 3. 找出缺失的 tool_use IDs
+              const missingToolUseIds: string[] = [];
+              for (const id of toolResultIds) {
+                if (!toolUseIds.has(id)) {
+                  missingToolUseIds.push(id);
+                }
+              }
+
+              // 4. 如果有缺失，向前扩展 messagesToKeep 直到包含所有对应的 tool_use
+              if (missingToolUseIds.length > 0) {
+                const startIndex = cleanedMessages.indexOf(messagesToKeep[0]);
+                let earliestIndex = startIndex; // 记录最早需要保留的消息索引
+
+                for (let i = startIndex - 1; i >= 0; i--) {
+                  const msg = cleanedMessages[i];
+                  if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+                    for (const block of msg.content) {
+                      if (block.type === 'tool_use' && 'id' in block && missingToolUseIds.includes(block.id)) {
+                        // 找到了缺失的 tool_use，更新最早索引
+                        earliestIndex = Math.min(earliestIndex, i);
+                        missingToolUseIds.splice(missingToolUseIds.indexOf(block.id), 1);
+                      }
+                    }
+                  }
+                  // 如果所有缺失的 tool_use 都找到了，停止向前查找
+                  if (missingToolUseIds.length === 0) {
+                    break;
+                  }
+                }
+
+                // 从最早的索引开始保留所有消息
+                if (earliestIndex < startIndex) {
+                  messagesToKeep = cleanedMessages.slice(earliestIndex);
+                  console.log(`[AutoCompact] 检测到孤立 tool_result，扩展 messagesToKeep 从索引 ${earliestIndex}`);
+                }
+              }
+            }
+          }
+
           const compactResult = await this.performAutoCompact(cleanedMessages, resolvedModel, state);
           if (compactResult.wasCompacted) {
             // 修复：压缩后保留当前轮次的消息（对齐 CLI TJ1 的 messagesToKeep 逻辑）

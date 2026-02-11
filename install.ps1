@@ -90,12 +90,8 @@ echo Starting Claude Code WebUI...
 echo Press Ctrl+C to stop the server
 echo.
 
-REM Add npm global path to PATH
-set "PATH=%APPDATA%\npm;%PATH%"
-set "PATH=%ProgramFiles%\nodejs;%PATH%"
-
-REM Launch claude-web
-claude-web
+REM Run the script directly with node (no need for npm link)
+node "%USERPROFILE%\.claude-code-open\dist\web-cli.js"
 
 pause
 "@
