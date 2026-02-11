@@ -5,6 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import { McpServerConfig } from '../../shared/types';
+import './McpPanel.css';
 
 // 图标常量
 const ICONS = {

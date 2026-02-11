@@ -20,6 +20,7 @@ export type AttachmentType =
   | 'delegate_mode'
   | 'git_status'
   | 'todo_list'
+  | 'skill_listing'
   | 'custom';
 
 /**

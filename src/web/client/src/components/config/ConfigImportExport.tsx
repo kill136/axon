@@ -4,6 +4,7 @@
  */
 
 import { useState } from 'react';
+import '../../styles/config-panels.css';
 
 interface ValidationResult {
   valid: boolean;

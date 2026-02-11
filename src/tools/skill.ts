@@ -1177,21 +1177,17 @@ export class SkillTool extends BaseTool<SkillInput, any> {
   name = 'Skill';
 
   /**
-   * 获取工具描述（对齐官网 cI6 函数）
+   * 获取工具描述（对齐官网 A0A 缓存函数）
+   *
+   * 官网实现：Skill tool 的 description 是固定文本，不内联 skill 列表。
+   * Skill 列表通过 attachment 机制（skill_listing）以 system-reminder 方式注入到对话中。
    */
   get description(): string {
-    const skills = getAllSkills();
-    const skillsList = formatSkillsList(skills);
-
     return `Execute a skill within the main conversation
 
-When users ask you to perform tasks, check if any of the available skills below can help complete the task more effectively. Skills provide specialized capabilities and domain knowledge.
+When users ask you to perform tasks, check if any of the available skills match. Skills provide specialized capabilities and domain knowledge.
 
-When users ask you to run a "slash command" or reference "/<something>" (e.g., "/commit", "/review-pr"), they are referring to a skill. Use this tool to invoke the corresponding skill.
-
-Example:
-  User: "run /commit"
-  Assistant: [Calls Skill tool with skill: "commit"]
+When users reference a "slash command" or "/<something>" (e.g., "/commit", "/review-pr"), they are referring to a skill. Use this tool to invoke it.
 
 How to invoke:
 - Use this tool with the skill name and optional arguments
@@ -1202,15 +1198,11 @@ How to invoke:
   - \`skill: "ms-office-suite:pdf"\` - invoke using fully qualified name
 
 Important:
-- When a skill is relevant, you must invoke this tool IMMEDIATELY as your first action
-- NEVER just announce or mention a skill in your text response without actually calling this tool
-- This is a BLOCKING REQUIREMENT: invoke the relevant Skill tool BEFORE generating any other response about the task
-- Skills listed below are available for invocation
+- Available skills are listed in system-reminder messages in the conversation
+- When a skill matches the user's request, this is a BLOCKING REQUIREMENT: invoke the relevant Skill tool BEFORE generating any other response about the task
+- NEVER mention a skill without actually calling this tool
 - Do not invoke a skill that is already running
 - Do not use this tool for built-in CLI commands (like /help, /clear, etc.)
-
-Available skills:
-${skillsList}
 `;
   }
 

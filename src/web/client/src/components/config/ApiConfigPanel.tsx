@@ -4,6 +4,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import '../../styles/config-panels.css';
 
 /**
  * API 配置接口

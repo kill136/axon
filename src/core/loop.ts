@@ -1965,6 +1965,9 @@ export class ConversationLoop {
     // v2.1.33: 将工具名称集合注入 promptContext，用于条件化提示词组装
     this.promptContext.toolNames = new Set(tools.map(t => t.name));
 
+    // 标记是否有 Skill 工具可用，用于系统提示词中的条件化指引
+    this.promptContext.hasSkills = this.promptContext.toolNames.has('Skill');
+
     // v2.1.33: 将 allowedSubagentTypes 传递给 TaskTool 实例
     // 当子 loop 通过 Task(agent_type) 语法限制了允许的子 agent 类型时
     // 在 TaskTool.execute() 中进行验证

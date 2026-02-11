@@ -2355,25 +2355,95 @@ const skillsCommand: SlashCommand = {
   description: '查看可用的技能和自定义命令',
   category: 'utility',
   execute: (ctx: ExtendedCommandContext): CommandResult => {
+    // 扫描并列出实际的 skills
+    const homeDir = process.env.HOME || process.env.USERPROFILE || '';
+    const userSkillsDir = path.join(homeDir, '.claude', 'skills');
+    const projectSkillsDir = path.join(ctx.cwd, '.claude', 'skills');
+
+    let message = '技能系统\n\n' +
+      '技能位置:\n' +
+      `  • 全局: ${userSkillsDir}\n` +
+      `  • 项目: ${projectSkillsDir}\n\n`;
+
+    // 扫描项目级 skills
+    const projectSkills: string[] = [];
+    if (fs.existsSync(projectSkillsDir)) {
+      try {
+        const entries = fs.readdirSync(projectSkillsDir, { withFileTypes: true });
+        for (const entry of entries) {
+          if (entry.isDirectory()) {
+            const skillFile = path.join(projectSkillsDir, entry.name, 'SKILL.md');
+            if (fs.existsSync(skillFile)) {
+              projectSkills.push(entry.name);
+            }
+          }
+        }
+      } catch (error) {
+        // 忽略错误
+      }
+    }
+
+    // 扫描用户全局 skills
+    const userSkills: string[] = [];
+    if (fs.existsSync(userSkillsDir)) {
+      try {
+        const entries = fs.readdirSync(userSkillsDir, { withFileTypes: true });
+        for (const entry of entries) {
+          if (entry.isDirectory()) {
+            const skillFile = path.join(userSkillsDir, entry.name, 'SKILL.md');
+            if (fs.existsSync(skillFile)) {
+              userSkills.push(entry.name);
+            }
+          }
+        }
+      } catch (error) {
+        // 忽略错误
+      }
+    }
+
+    // 显示已加载的 skills
+    if (projectSkills.length > 0) {
+      message += `项目级 Skills (${projectSkills.length}):\n`;
+      projectSkills.forEach(skill => {
+        message += `  • ${skill}\n`;
+      });
+      message += '\n';
+    }
+
+    if (userSkills.length > 0) {
+      message += `全局 Skills (${userSkills.length}):\n`;
+      userSkills.forEach(skill => {
+        message += `  • ${skill}\n`;
+      });
+      message += '\n';
+    }
+
+    if (projectSkills.length === 0 && userSkills.length === 0) {
+      message += '目前没有配置任何自定义 Skills\n\n';
+    }
+
+    message += '技能类型:\n' +
+      '  • 斜杠命令: 自定义快捷命令\n' +
+      '  • 提示模板: 可复用的提示词\n' +
+      '  • 工作流: 自动化任务序列\n\n' +
+      '创建技能:\n' +
+      '  1. 在 .claude/skills/<skill-name>/ 目录创建 SKILL.md 文件\n' +
+      '  2. 在 SKILL.md 文件顶部添加 YAML frontmatter\n' +
+      '  3. 文件内容为技能使用文档\n\n' +
+      '示例:\n' +
+      '  文件: .claude/skills/review/SKILL.md\n' +
+      '  内容:\n' +
+      '  ---\n' +
+      '  name: review\n' +
+      '  description: Code review assistant\n' +
+      '  ---\n' +
+      '  # Code Review\n' +
+      '  审查代码的质量和安全性...\n\n' +
+      '详细文档: https://docs.anthropic.com/claude-code/skills';
+
     return {
       success: true,
-      message: '技能系统\n\n' +
-        '技能位置:\n' +
-        '  • 全局: ~/.claude/skills/\n' +
-        '  • 项目: ./.claude/commands/\n\n' +
-        '技能类型:\n' +
-        '  • 斜杠命令: 自定义快捷命令\n' +
-        '  • 提示模板: 可复用的提示词\n' +
-        '  • 工作流: 自动化任务序列\n\n' +
-        '创建技能:\n' +
-        '  1. 在技能目录创建 .md 文件\n' +
-        '  2. 文件名即为命令名\n' +
-        '  3. 内容为提示词模板\n\n' +
-        '示例:\n' +
-        '  文件: .claude/commands/review.md\n' +
-        '  内容: "审查以下代码的质量和安全性..."\n' +
-        '  使用: /review\n\n' +
-        '详细文档: https://docs.anthropic.com/claude-code/skills',
+      message,
     };
   },
 };

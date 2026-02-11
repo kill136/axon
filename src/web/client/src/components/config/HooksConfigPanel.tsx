@@ -4,6 +4,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import '../../styles/config-panels.css';
 
 // ============ 类型定义 ============
 

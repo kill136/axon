@@ -188,6 +188,15 @@ export class AttachmentManager {
       );
     }
 
+    // Skill Listing（对齐官网 AyY 函数）
+    // 通过 attachment 机制将 skill 列表注入到对话中
+    // 始终尝试生成，让 generateSkillListingAttachment 内部决定是否返回空
+    attachmentPromises.push(
+      this.computeAttachment('skill_listing', () =>
+        this.generateSkillListingAttachment()
+      )
+    );
+
     // Custom Attachments
     if (context.customAttachments && context.customAttachments.length > 0) {
       attachmentPromises.push(Promise.resolve(context.customAttachments));
@@ -494,6 +503,42 @@ Do not directly edit files - delegate work to teammate agents.
         priority: 35,
       },
     ];
+  }
+
+  /**
+   * 生成 Skill 列表附件（对齐官网 AyY 函数）
+   *
+   * 官网实现：每次 API 请求前收集 skill 列表，以 attachment 形式注入到对话中。
+   * 格式为：
+   * "The following skills are available for use with the Skill tool:\n\n{formattedList}"
+   */
+  private async generateSkillListingAttachment(): Promise<Attachment[]> {
+    try {
+      const { initializeSkills, getAllSkills, formatSkillsList } = require('../tools/skill.js');
+      // 确保 skills 已初始化（内部有 skillsLoaded guard，不会重复加载）
+      await initializeSkills();
+
+      const skills = getAllSkills();
+      if (!skills || skills.length === 0) {
+        return [];
+      }
+
+      const formattedList = formatSkillsList(skills);
+      if (!formattedList) {
+        return [];
+      }
+
+      return [
+        {
+          type: 'skill_listing' as AttachmentType,
+          content: `<system-reminder>\nThe following skills are available for use with the Skill tool:\n\n${formattedList}\n</system-reminder>`,
+          label: 'Skill Listing',
+          priority: 25,
+        },
+      ];
+    } catch {
+      return [];
+    }
   }
 }
 

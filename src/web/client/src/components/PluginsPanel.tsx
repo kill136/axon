@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { PluginInfo } from '../../shared/types';
+import './PluginsPanel.css';
 
 // 图标常量
 const ICONS = {

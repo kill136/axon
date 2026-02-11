@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { cacheApi } from '../../api/blueprint';
+import '../../styles/config-panels.css';
 
 // ============ 类型定义 ============
 
