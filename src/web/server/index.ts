@@ -14,6 +14,8 @@ import { ConversationManager } from './conversation.js';
 import { setupWebSocket } from './websocket.js';
 import { setupApiRoutes } from './routes/api.js';
 import { setupConfigApiRoutes } from './routes/config-api.js';
+import { initI18n } from '../../i18n/index.js';
+import { configManager } from '../../config/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -67,6 +69,9 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
     }
     // 其他路径（如 Vite HMR）由 Vite 处理，不需要在这里处理
   });
+
+  // 初始化 i18n（WebUI server 需要独立初始化，CLI 入口有自己的初始化）
+  await initI18n(configManager.getAll().language);
 
   // 创建对话管理器
   const conversationManager = new ConversationManager(cwd, model);
@@ -136,7 +141,10 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
   app.use('/api/ai-hover', aiHoverRouter.default);
 
   // 前端静态文件路径
-  const clientPath = path.join(__dirname, '../client');
+  // 在生产环境下，代码在 dist/web/server，需要找到 src/web/client/dist
+  // 在开发环境下，代码在 src/web/server，需要找到 src/web/client
+  const projectRoot = path.join(__dirname, '../../..');
+  const clientPath = path.join(projectRoot, 'src/web/client');
   const clientDistPath = path.join(clientPath, 'dist');
 
   if (isDev) {
