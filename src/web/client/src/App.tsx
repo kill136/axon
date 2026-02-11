@@ -195,8 +195,9 @@ function AppContent({
       return { filesWillChange: [], messagesWillRemove: 0, insertions: 0, deletions: 0 };
     }
 
-    // 计算将要删除的消息数（当前消息之后的所有消息）
-    const messagesWillRemove = messages.length - messageIndex - 1;
+    // 计算将要删除的消息数（包括当前消息及之后的所有消息）
+    // 这样"Fork conversation from here"就表示"回到这条消息之前的状态"
+    const messagesWillRemove = messages.length - messageIndex;
 
     // 返回简单的预览信息
     // 文件变化由后端 RewindManager 实时追踪，前端不需要计算

@@ -43,24 +43,28 @@ export function RewindMenu({
   const options: Array<{ value: RewindOption; label: string; description: string; icon: string; disabled?: boolean }> = [
     {
       value: 'conversation',
-      label: 'Fork conversation from here',
-      description: preview.messagesWillRemove > 0
-        ? `Remove ${preview.messagesWillRemove} message${preview.messagesWillRemove > 1 ? 's' : ''}`
+      label: 'Delete this message',
+      description: preview.messagesWillRemove > 1
+        ? `Remove this and ${preview.messagesWillRemove - 1} more message${preview.messagesWillRemove > 2 ? 's' : ''}`
+        : preview.messagesWillRemove === 1
+        ? 'Remove this message'
         : 'No messages to remove',
       icon: '💬',
       disabled: preview.messagesWillRemove === 0,
     },
     {
       value: 'code',
-      label: 'Rewind code to here',
-      description: 'Restore files to this message state',
+      label: 'Rewind code before this',
+      description: 'Restore files to before this message',
       icon: '📝',
       disabled: false, // 总是启用，由后端决定是否有文件可回滚
     },
     {
       value: 'both',
-      label: 'Fork conversation and rewind code',
-      description: `${preview.messagesWillRemove} message${preview.messagesWillRemove > 1 ? 's' : ''} + code changes`,
+      label: 'Delete message and rewind code',
+      description: preview.messagesWillRemove > 1
+        ? `${preview.messagesWillRemove} messages + code changes`
+        : 'This message + code changes',
       icon: '🔄',
       disabled: false, // 总是启用
     },

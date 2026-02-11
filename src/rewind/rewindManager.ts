@@ -146,6 +146,7 @@ export class RewindManager {
 
   /**
    * 回退对话到指定消息状态
+   * 注意：会删除包括指定消息在内的所有后续消息（回到该消息发送之前的状态）
    */
   private rewindConversation(messageId: string): { messagesRemoved: number; newMessageCount: number } {
     // 找到消息索引
@@ -154,9 +155,10 @@ export class RewindManager {
       return { messagesRemoved: -1, newMessageCount: this.messages.length };
     }
 
-    // 保留该消息及之前的所有消息
+    // 保留该消息之前的所有消息（不包括该消息本身）
+    // 这样用户可以"撤回"刚发送的消息
     const originalCount = this.messages.length;
-    const newMessages = this.messages.slice(0, index + 1);
+    const newMessages = this.messages.slice(0, index);
     const messagesRemoved = originalCount - newMessages.length;
 
     // 更新消息数组

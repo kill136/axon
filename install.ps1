@@ -66,7 +66,10 @@ function Test-Git {
 
 # --- Create Desktop Shortcut ---
 function New-DesktopShortcut {
-    param([string]$Type)
+    param(
+        [string]$Type,
+        [string]$InstallPath
+    )
 
     Write-Info "Creating desktop shortcut..."
 
@@ -83,6 +86,7 @@ function New-DesktopShortcut {
             if (!(Test-Path $BatDir)) { New-Item -ItemType Directory -Path $BatDir -Force | Out-Null }
 
             $BatPath = Join-Path $BatDir "claude-web-launch.bat"
+            $WebCliPath = Join-Path $InstallPath "dist\web-cli.js"
             $BatContent = @"
 @echo off
 cd /d "%USERPROFILE%"
@@ -90,8 +94,8 @@ echo Starting Claude Code WebUI...
 echo Press Ctrl+C to stop the server
 echo.
 
-REM Run the script directly with node (no need for npm link)
-node "%USERPROFILE%\.claude-code-open\dist\web-cli.js"
+REM Run the script directly with node
+node "$WebCliPath"
 
 pause
 "@
@@ -154,7 +158,7 @@ function Install-Npm {
     Pop-Location
 
     # Create desktop shortcut
-    New-DesktopShortcut -Type "npm"
+    New-DesktopShortcut -Type "npm" -InstallPath $InstallDir
 
     Write-Ok "Installation complete via npm!"
     Write-Host ""
