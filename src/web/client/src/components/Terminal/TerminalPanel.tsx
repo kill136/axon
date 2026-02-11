@@ -38,8 +38,10 @@ const XTERM_THEME = {
 interface TerminalTab {
   id: string;           // 客户端 tab ID
   name: string;         // 显示名称
-  terminalId: string | null; // 服务端终端 ID
+  terminalId: string | null; // 服务端终端 ID（null 表示任务 Tab）
   isReady: boolean;
+  isTask?: boolean;     // 是否是后台任务 Tab
+  taskId?: string;      // 后台任务 ID（仅任务 Tab）
 }
 
 interface TerminalPanelProps {
@@ -300,7 +302,8 @@ export function TerminalPanel({
   // 监听 WebSocket 消息
   useEffect(() => {
     const unsubscribe = addMessageHandler((msg: any) => {
-      if (!msg.type?.startsWith('terminal:')) return;
+      // 处理终端消息和 Bash 任务消息
+      if (!msg.type?.startsWith('terminal:') && !msg.type?.startsWith('bash:')) return;
       const payload = msg.payload as Record<string, unknown>;
 
       switch (msg.type) {
@@ -376,11 +379,106 @@ export function TerminalPanel({
           });
           break;
         }
+
+        // ========== Bash 后台任务消息 ==========
+        case 'bash:task-started': {
+          const taskId = payload.taskId as string;
+          const command = payload.command as string;
+          if (!taskId || !command) break;
+
+          // 创建新的任务 Tab
+          counterRef.current += 1;
+          const tabId = `task-${taskId}`;
+          const commandPreview = command.length > 40 ? command.substring(0, 40) + '...' : command;
+          const newTab: TerminalTab = {
+            id: tabId,
+            name: `Task: ${commandPreview}`,
+            terminalId: null,
+            isReady: true,
+            isTask: true,
+            taskId,
+          };
+
+          setTabs(prev => [...prev, newTab]);
+          // 自动切换到任务 Tab
+          setActiveTabId(tabId);
+          break;
+        }
+
+        case 'bash:task-output': {
+          const taskId = payload.taskId as string;
+          const data = payload.data as string;
+          if (!taskId || !data) break;
+
+          // 查找对应的任务 Tab 并写入输出
+          const container = instancesContainerRef.current;
+          if (container) {
+            setTabs(currentTabs => {
+              const tab = currentTabs.find(t => t.isTask && t.taskId === taskId);
+              if (tab) {
+                const el = container.querySelector(`[data-tab-id="${tab.id}"]`);
+                if (el) (el as any).__xtermWrite?.(data);
+              }
+              return currentTabs; // 不修改状态
+            });
+          }
+          break;
+        }
+
+        case 'bash:task-completed': {
+          const taskId = payload.taskId as string;
+          const exitCode = payload.exitCode as number;
+          const success = payload.success as boolean;
+          if (!taskId) break;
+
+          // 显示完成状态
+          const container = instancesContainerRef.current;
+          if (container) {
+            setTabs(currentTabs => {
+              const tab = currentTabs.find(t => t.isTask && t.taskId === taskId);
+              if (tab) {
+                const el = container.querySelector(`[data-tab-id="${tab.id}"]`);
+                if (el) {
+                  const statusColor = success ? '\x1b[32m' : '\x1b[31m'; // green or red
+                  const statusText = success ? 'completed' : 'failed';
+                  (el as any).__xtermWrite?.(
+                    `\r\n${statusColor}[Task ${statusText} with exit code ${exitCode}]\x1b[0m\r\n`
+                  );
+                }
+              }
+              return currentTabs;
+            });
+          }
+
+          // 3 秒后自动关闭任务 Tab
+          setTimeout(() => {
+            setTabs(prev => {
+              const taskTab = prev.find(t => t.isTask && t.taskId === taskId);
+              if (!taskTab) return prev;
+
+              const newTabs = prev.filter(t => !(t.isTask && t.taskId === taskId));
+
+              // 如果关闭的是活跃 tab，切换到最后一个
+              if (taskTab.id === activeTabId) {
+                const newActive = newTabs.length > 0 ? newTabs[newTabs.length - 1].id : null;
+                setTimeout(() => setActiveTabId(newActive), 0);
+              }
+
+              // 如果没有 tab 了，关闭面板
+              if (newTabs.length === 0) {
+                setTimeout(() => onClose(), 0);
+              }
+
+              return newTabs;
+            });
+          }, 3000);
+          break;
+        }
       }
     });
 
     return unsubscribe;
-  }, [addMessageHandler, send, findInstanceEl]);
+  }, [addMessageHandler, send, findInstanceEl, activeTabId, onClose]);
 
   // 窗口 resize 时 fit 活跃终端
   useEffect(() => {

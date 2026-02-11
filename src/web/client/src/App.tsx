@@ -383,6 +383,7 @@ function AppContent({
         onClose={() => onCloseSettings?.()}
         model={model}
         onModelChange={setModel}
+        onSendMessage={send}
       />
       <DebugPanel
         isOpen={showDebugPanel}

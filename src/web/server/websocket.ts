@@ -12,6 +12,8 @@ import { authManager } from './auth-manager.js';
 import { oauthManager } from './oauth-manager.js';
 import { CheckpointManager } from './checkpoint-manager.js';
 import type { ClientMessage, ServerMessage, Attachment, AgentDebugPayload } from '../shared/types.js';
+import { changeLocale, getCurrentLocale } from '../../i18n/index.js';
+import { configManager } from '../../config/index.js';
 // 导入蓝图存储和执行管理器（用于 WebSocket 订阅）
 import { blueprintStore, executionEventEmitter, executionManager, activeWorkers } from './routes/blueprint-api.js';
 // v4.5: 导入 Worker 类型
@@ -172,11 +174,27 @@ const terminalManager = new TerminalManager();
 // 客户端终端映射：clientId -> Set of terminalIds
 const clientTerminals = new Map<string, Set<string>>();
 
+// 全局 WebSocket 客户端连接池（用于跨模块广播消息）
+const wsClients = new Map<string, ClientConnection>();
+
+/**
+ * 广播消息给所有连接的 WebSocket 客户端
+ * 用于从 Bash 工具等模块向前端推送实时消息
+ */
+export function broadcastMessage(message: any): void {
+  const messageStr = JSON.stringify(message);
+  wsClients.forEach(client => {
+    if (client.ws.readyState === WebSocket.OPEN) {
+      client.ws.send(messageStr);
+    }
+  });
+}
+
 export function setupWebSocket(
   wss: WebSocketServer,
   conversationManager: ConversationManager
 ): void {
-  const clients = new Map<string, ClientConnection>();
+  const clients = wsClients; // 使用全局 Map
 
   // 订阅管理：blueprintId -> Set of client IDs
   const swarmSubscriptions = new Map<string, Set<string>>();
@@ -1749,6 +1767,21 @@ async function handleClientMessage(
     case 'set_model':
       client.model = message.payload.model;
       conversationManager.setModel(client.sessionId, message.payload.model);
+      break;
+
+    case 'set_language':
+      try {
+        const lang = message.payload.language;
+        await changeLocale(lang);
+        // 持久化到 ~/.claude/settings.json
+        configManager.save({ language: lang });
+        sendMessage(ws, {
+          type: 'language_changed',
+          payload: { language: getCurrentLocale() },
+        } as any);
+      } catch (err) {
+        console.error('[WebSocket] set_language failed:', err);
+      }
       break;
 
     case 'permission_response':

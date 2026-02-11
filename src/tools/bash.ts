@@ -32,6 +32,18 @@ import { needsElevation, getElevationReason, executeElevated } from '../permissi
 import { truncateString } from '../utils/truncated-buffer.js';
 import { t } from '../i18n/index.js';
 
+// WebUI 模式下的 WebSocket 广播（可选依赖）
+let broadcastMessage: ((message: any) => void) | null = null;
+(async () => {
+  try {
+    // 动态导入，避免在 CLI 模式下加载 WebSocket 模块
+    const wsModule = await import('../web/server/websocket.js');
+    broadcastMessage = wsModule.broadcastMessage;
+  } catch {
+    // WebSocket 模块不可用（CLI 模式），忽略
+  }
+})();
+
 const execAsync = promisify(exec);
 
 // ============================================================================
@@ -1182,6 +1194,18 @@ Important:
       // 写入文件
       taskState.outputStream?.write(dataStr);
 
+      // WebUI: 向前端发送输出消息
+      if (broadcastMessage) {
+        broadcastMessage({
+          type: 'bash:task-output',
+          payload: {
+            taskId,
+            data: dataStr,
+            stream: 'stdout',
+          },
+        });
+      }
+
       // 同时保存在内存中（用于 TaskOutput 工具）
       if (taskState.outputSize < MAX_BACKGROUND_OUTPUT) {
         taskState.output.push(dataStr);
@@ -1203,6 +1227,18 @@ Important:
       // 写入文件
       taskState.outputStream?.write(stderrStr);
 
+      // WebUI: 向前端发送输出消息
+      if (broadcastMessage) {
+        broadcastMessage({
+          type: 'bash:task-output',
+          payload: {
+            taskId,
+            data: dataStr,
+            stream: 'stderr',
+          },
+        });
+      }
+
       // 同时保存在内存中
       if (taskState.outputSize < MAX_BACKGROUND_OUTPUT) {
         taskState.output.push(stderrStr);
@@ -1222,6 +1258,19 @@ Important:
 
       // 关闭输出文件流
       taskState.outputStream?.end();
+
+      // WebUI: 向前端发送任务完成消息
+      if (broadcastMessage) {
+        broadcastMessage({
+          type: 'bash:task-completed',
+          payload: {
+            taskId,
+            exitCode: code ?? 1,
+            success: code === 0,
+            duration: Date.now() - taskState.startTime,
+          },
+        });
+      }
 
       // 记录审计日志
       const auditLog: AuditLog = {
@@ -1250,6 +1299,18 @@ Important:
     });
 
     backgroundTasks.set(taskId, taskState);
+
+    // WebUI: 向前端发送任务启动消息
+    if (broadcastMessage) {
+      broadcastMessage({
+        type: 'bash:task-started',
+        payload: {
+          taskId,
+          command: command.substring(0, 200), // 限制长度避免消息过大
+          cwd: getCurrentCwd(),
+        },
+      });
+    }
 
     // 返回与官方一致的格式（使用 task_id）
     const statusMsg = `<task-id>${taskId}</task-id>

@@ -59,6 +59,9 @@ export function SettingsPanel({
   onSendMessage,
 }: SettingsPanelProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
+  const [language, setLanguage] = useState<string>(() => {
+    return localStorage.getItem('claude-code-language') || 'en';
+  });
 
   if (!isOpen) return null;
 
@@ -86,7 +89,16 @@ export function SettingsPanel({
             </div>
             <div className="setting-item">
               <label>Language</label>
-              <select className="setting-select" disabled>
+              <select
+                className="setting-select"
+                value={language}
+                onChange={(e) => {
+                  const lang = e.target.value;
+                  setLanguage(lang);
+                  localStorage.setItem('claude-code-language', lang);
+                  onSendMessage?.({ type: 'set_language', payload: { language: lang } });
+                }}
+              >
                 <option value="en">English</option>
                 <option value="zh">中文</option>
               </select>

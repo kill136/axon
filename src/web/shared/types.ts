@@ -72,6 +72,7 @@ export type ClientMessage =
   | { type: 'get_history' }
   | { type: 'clear_history' }
   | { type: 'set_model'; payload: { model: string } }
+  | { type: 'set_language'; payload: { language: string } }
   | { type: 'slash_command'; payload: { command: string } }
   | { type: 'permission_response'; payload: PermissionResponsePayload }
   | { type: 'permission_config'; payload: PermissionConfigPayload }
