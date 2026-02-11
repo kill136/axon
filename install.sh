@@ -235,9 +235,35 @@ install_npm() {
     info "Building backend..."
     npm run build
 
+    # Configure npm to use user-level global directory
+    info "Configuring npm for user-level installation..."
+    NPM_PREFIX="$HOME/.local"
+    mkdir -p "$NPM_PREFIX/bin"
+    npm config set prefix "$NPM_PREFIX"
+
     # Global link
     info "Linking globally..."
     npm link
+
+    # Ensure ~/.local/bin is in PATH
+    if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
+        SHELL_RC=""
+        if [ -n "$ZSH_VERSION" ] || [ "$SHELL" = "/bin/zsh" ]; then
+            SHELL_RC="$HOME/.zshrc"
+        elif [ -n "$BASH_VERSION" ] || [ "$SHELL" = "/bin/bash" ]; then
+            SHELL_RC="$HOME/.bashrc"
+        fi
+
+        if [ -n "$SHELL_RC" ]; then
+            echo "" >> "$SHELL_RC"
+            echo '# Claude Code Open' >> "$SHELL_RC"
+            echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$SHELL_RC"
+            warn "Added ~/.local/bin to PATH in $SHELL_RC"
+            warn "Run: source $SHELL_RC  (or open a new terminal)"
+        else
+            warn "Please add ~/.local/bin to your PATH manually."
+        fi
+    fi
 
     # Create desktop shortcut
     create_desktop_shortcut_npm
@@ -245,10 +271,22 @@ install_npm() {
     success "Installation complete via npm!"
     echo ""
     echo -e "  ${BOLD}Usage:${NC}"
-    echo -e "    ${GREEN}claude${NC}                        # Interactive mode"
-    echo -e "    ${GREEN}claude \"your prompt\"${NC}           # With prompt"
-    echo -e "    ${GREEN}claude -p \"your prompt\"${NC}        # Print mode"
-    echo -e "    ${GREEN}claude-web${NC}                    # Start WebUI"
+
+    # Check if commands are available in current shell
+    if command -v claude &> /dev/null; then
+        echo -e "    ${GREEN}claude${NC}                        # Interactive mode"
+        echo -e "    ${GREEN}claude \"your prompt\"${NC}           # With prompt"
+        echo -e "    ${GREEN}claude -p \"your prompt\"${NC}        # Print mode"
+        echo -e "    ${GREEN}claude-web${NC}                    # Start WebUI"
+    else
+        echo -e "    ${YELLOW}source ~/.bashrc${NC}             # Reload shell config first"
+        echo -e "    ${YELLOW}# or open a new terminal${NC}"
+        echo -e "    ${GREEN}claude${NC}                        # Then: Interactive mode"
+        echo -e "    ${GREEN}claude \"your prompt\"${NC}           # With prompt"
+        echo -e "    ${GREEN}claude -p \"your prompt\"${NC}        # Print mode"
+        echo -e "    ${GREEN}claude-web${NC}                    # Start WebUI"
+    fi
+
     echo ""
     echo -e "  ${BOLD}Set your API key:${NC}"
     echo -e "    ${YELLOW}export ANTHROPIC_API_KEY=sk-...${NC}"
