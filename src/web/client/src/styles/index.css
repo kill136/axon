@@ -784,22 +784,15 @@ body {
   font-size: 11px;
 }
 
-/* 消息操作按钮容器 */
-.message-actions {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-/* 通用消息操作按钮 */
+/* 消息操作按钮（header 中的回滚按钮） */
 .message-action-button {
+  margin-left: auto;
   padding: 4px 8px;
   background: transparent;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: 16px;
   cursor: pointer;
   transition: all 0.2s;
   display: flex;
@@ -822,9 +815,40 @@ body {
   transform: scale(0.95);
 }
 
-/* 回滚按钮特殊样式 */
-.message-rewind-button {
-  font-size: 16px;
+/* 消息底部区域 */
+.message-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 0 0;
+  margin-top: 8px;
+}
+
+/* 复制按钮 */
+.message-copy-button {
+  padding: 4px 12px;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0.7;
+  user-select: none;
+}
+
+.message-copy-button:hover {
+  background: var(--bg-tertiary);
+  color: var(--accent-primary);
+  border-color: var(--accent-primary);
+  opacity: 1;
+}
+
+.message-copy-button:active {
+  transform: scale(0.98);
 }
 
 .message-content {

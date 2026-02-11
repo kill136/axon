@@ -78,9 +78,30 @@ function New-DesktopShortcut {
         $Shortcut = $WshShell.CreateShortcut($ShortcutPath)
 
         if ($Type -eq "npm") {
-            # npm installation: use claude-web command
-            $Shortcut.TargetPath = "cmd.exe"
-            $Shortcut.Arguments = "/k claude-web"
+            # npm installation: create a batch file and shortcut to it
+            $BatDir = Join-Path $env:USERPROFILE ".local\bin"
+            if (!(Test-Path $BatDir)) { New-Item -ItemType Directory -Path $BatDir -Force | Out-Null }
+
+            $BatPath = Join-Path $BatDir "claude-web-launch.bat"
+            $BatContent = @"
+@echo off
+cd /d "%USERPROFILE%"
+echo Starting Claude Code WebUI...
+echo Press Ctrl+C to stop the server
+echo.
+
+REM Add npm global path to PATH
+set "PATH=%APPDATA%\npm;%PATH%"
+set "PATH=%ProgramFiles%\nodejs;%PATH%"
+
+REM Launch claude-web
+claude-web
+
+pause
+"@
+            Set-Content -Path $BatPath -Value $BatContent -Encoding ASCII
+
+            $Shortcut.TargetPath = $BatPath
             $Shortcut.Description = "Launch Claude Code Web Interface"
             $Shortcut.WorkingDirectory = "$env:USERPROFILE"
         }
