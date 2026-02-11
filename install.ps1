@@ -149,7 +149,11 @@ function Install-Npm {
     }
 
     Write-Info "Installing dependencies..."
-    npm install
+    npm install --legacy-peer-deps
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warn "Some native modules failed to compile, trying without optional dependencies..."
+        npm install --no-optional --legacy-peer-deps
+    }
 
     Write-Info "Building project..."
     npm run build
