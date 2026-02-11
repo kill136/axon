@@ -99,11 +99,12 @@ set "ANTHROPIC_API_KEY=my-secret"
 
 echo Starting Claude Code WebUI...
 echo API URL: %ANTHROPIC_BASE_URL%
+echo Server will be accessible from: http://0.0.0.0:3456
 echo Press Ctrl+C to stop the server
 echo.
 
 REM Run the script directly with node
-node "%USERPROFILE%\.claude-code-open\dist\web-cli.js"
+node "%USERPROFILE%\.claude-code-open\dist\web-cli.js" -H 0.0.0.0
 
 pause
 "@
