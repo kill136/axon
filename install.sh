@@ -80,6 +80,109 @@ check_git() {
     fi
 }
 
+# --- Create Desktop Shortcut (npm) ---
+create_desktop_shortcut_npm() {
+    info "Creating desktop shortcut..."
+
+    if [ "$PLATFORM" = "linux" ]; then
+        # Linux: Create .desktop file
+        DESKTOP_DIR="$HOME/Desktop"
+        if [ ! -d "$DESKTOP_DIR" ]; then
+            DESKTOP_DIR="$HOME/桌面"  # Chinese desktop name
+        fi
+
+        if [ -d "$DESKTOP_DIR" ]; then
+            DESKTOP_FILE="$DESKTOP_DIR/claude-code-webui.desktop"
+            cat > "$DESKTOP_FILE" << EOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Claude Code WebUI
+Comment=Launch Claude Code Web Interface
+Exec=bash -c 'export PATH="\$HOME/.local/bin:\$PATH"; claude-web'
+Icon=utilities-terminal
+Terminal=true
+Categories=Development;Utility;
+EOF
+            chmod +x "$DESKTOP_FILE"
+            success "Desktop shortcut created: $DESKTOP_FILE"
+        else
+            warn "Desktop directory not found, skipping shortcut creation"
+        fi
+
+    elif [ "$PLATFORM" = "macos" ]; then
+        # macOS: Create .command file
+        DESKTOP_DIR="$HOME/Desktop"
+        if [ -d "$DESKTOP_DIR" ]; then
+            SHORTCUT_FILE="$DESKTOP_DIR/Claude Code WebUI.command"
+            cat > "$SHORTCUT_FILE" << 'EOF'
+#!/bin/bash
+cd ~
+export PATH="$HOME/.local/bin:$PATH"
+echo "Starting Claude Code WebUI..."
+echo "Press Ctrl+C to stop the server"
+echo ""
+claude-web
+EOF
+            chmod +x "$SHORTCUT_FILE"
+            success "Desktop shortcut created: $SHORTCUT_FILE"
+        else
+            warn "Desktop directory not found, skipping shortcut creation"
+        fi
+    fi
+}
+
+# --- Create Desktop Shortcut (Docker) ---
+create_desktop_shortcut_docker() {
+    info "Creating desktop shortcut..."
+
+    if [ "$PLATFORM" = "linux" ]; then
+        # Linux: Create .desktop file
+        DESKTOP_DIR="$HOME/Desktop"
+        if [ ! -d "$DESKTOP_DIR" ]; then
+            DESKTOP_DIR="$HOME/桌面"  # Chinese desktop name
+        fi
+
+        if [ -d "$DESKTOP_DIR" ]; then
+            DESKTOP_FILE="$DESKTOP_DIR/claude-code-webui.desktop"
+            cat > "$DESKTOP_FILE" << EOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Claude Code WebUI
+Comment=Launch Claude Code Web Interface
+Exec=bash -c 'cd ~; docker run -it --rm -p 3456:3456 -v "\$HOME/.claude:/root/.claude" -v "\$(pwd):/workspace" $DOCKER_IMAGE claude-web'
+Icon=utilities-terminal
+Terminal=true
+Categories=Development;Utility;
+EOF
+            chmod +x "$DESKTOP_FILE"
+            success "Desktop shortcut created: $DESKTOP_FILE"
+        else
+            warn "Desktop directory not found, skipping shortcut creation"
+        fi
+
+    elif [ "$PLATFORM" = "macos" ]; then
+        # macOS: Create .command file
+        DESKTOP_DIR="$HOME/Desktop"
+        if [ -d "$DESKTOP_DIR" ]; then
+            SHORTCUT_FILE="$DESKTOP_DIR/Claude Code WebUI.command"
+            cat > "$SHORTCUT_FILE" << EOF
+#!/bin/bash
+cd ~
+echo "Starting Claude Code WebUI..."
+echo "Press Ctrl+C to stop the server"
+echo ""
+docker run -it --rm -p 3456:3456 -v "\$HOME/.claude:/root/.claude" -v "\$(pwd):/workspace" $DOCKER_IMAGE claude-web
+EOF
+            chmod +x "$SHORTCUT_FILE"
+            success "Desktop shortcut created: $SHORTCUT_FILE"
+        else
+            warn "Desktop directory not found, skipping shortcut creation"
+        fi
+    fi
+}
+
 # --- Install via npm (from source) ---
 install_npm() {
     info "Installing via npm (from source)..."
@@ -111,15 +214,23 @@ install_npm() {
     info "Linking globally..."
     npm link
 
+    # Create desktop shortcut
+    create_desktop_shortcut_npm
+
     success "Installation complete via npm!"
     echo ""
     echo -e "  ${BOLD}Usage:${NC}"
     echo -e "    ${GREEN}claude${NC}                        # Interactive mode"
     echo -e "    ${GREEN}claude \"your prompt\"${NC}           # With prompt"
     echo -e "    ${GREEN}claude -p \"your prompt\"${NC}        # Print mode"
+    echo -e "    ${GREEN}claude-web${NC}                    # Start WebUI"
     echo ""
     echo -e "  ${BOLD}Set your API key:${NC}"
     echo -e "    ${YELLOW}export ANTHROPIC_API_KEY=sk-...${NC}"
+    echo ""
+    echo -e "  ${BOLD}Desktop Shortcut:${NC}"
+    echo -e "    A shortcut has been created on your desktop"
+    echo -e "    Click it to start Claude Code WebUI"
     echo ""
 }
 
@@ -169,6 +280,9 @@ WRAPPER_EOF
         fi
     fi
 
+    # Create desktop shortcut
+    create_desktop_shortcut_docker
+
     success "Installation complete via Docker!"
     echo ""
     echo -e "  ${BOLD}Usage:${NC}"
@@ -177,6 +291,10 @@ WRAPPER_EOF
     echo ""
     echo -e "  ${BOLD}Set your API key:${NC}"
     echo -e "    ${YELLOW}export ANTHROPIC_API_KEY=sk-...${NC}"
+    echo ""
+    echo -e "  ${BOLD}Desktop Shortcut:${NC}"
+    echo -e "    A shortcut has been created on your desktop"
+    echo -e "    Click it to start Claude Code WebUI"
     echo ""
 }
 

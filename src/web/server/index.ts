@@ -26,7 +26,11 @@ export interface WebServerOptions {
   ngrok?: boolean;
 }
 
-export async function startWebServer(options: WebServerOptions = {}): Promise<void> {
+export interface WebServerResult {
+  conversationManager: ConversationManager;
+}
+
+export async function startWebServer(options: WebServerOptions = {}): Promise<WebServerResult> {
   // 设置 CLAUDE_CODE_ENTRYPOINT 环境变量（如果未设置）
   // 官方 Claude Code 使用此变量标识启动入口点
   // WebUI 模式使用 'claude-vscode' 以匹配官方的 VSCode 扩展入口
@@ -139,7 +143,7 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<vo
       const { createServer: createViteServer } = await import('vite');
       const vite = await createViteServer({
         root: clientPath,
-        server: { middlewareMode: true },
+        server: { middlewareMode: true, allowedHosts: true },
         appType: 'spa',
       });
       app.use(vite.middlewares);
@@ -173,8 +177,9 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<vo
     });
   });
 
-  // 如果启用了 ngrok，创建公网隧道
-  if (enableNgrok) {
+  // 如果启用了 ngrok 或设置了 NGROK_AUTHTOKEN，创建公网隧道
+  const shouldEnableNgrok = enableNgrok || !!process.env.NGROK_AUTHTOKEN;
+  if (shouldEnableNgrok) {
     try {
       const ngrok = await import('@ngrok/ngrok');
 
@@ -240,6 +245,8 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<vo
 
   process.on('SIGINT', () => gracefulShutdown('SIGINT'));
   process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+
+  return { conversationManager };
 }
 
 function setupStaticFiles(app: express.Application, clientDistPath: string) {

@@ -7,6 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { Box, Text } from 'ink';
 import type { ContentBlock, ToolUseBlock, ToolResultBlockParam, AnyContentBlock } from '../../types/messages.js';
 import { parseMarkdown, renderBlock, type MarkdownBlock } from '../markdown-renderer.js';
+import { t } from '../../i18n/index.js';
 
 export interface MessageProps {
   role: 'user' | 'assistant' | 'system' | 'error';
@@ -56,7 +57,7 @@ const ToolResultBlockComponent: React.FC<{ block: ToolResultBlockParam }> = ({ b
     <Box flexDirection="column" marginTop={1} marginBottom={1}>
       <Box>
         <Text color={isError ? 'red' : 'green'}>
-          {isError ? '✗' : '✓'} Tool Result
+          {isError ? '✗' : '✓'} {t('message.toolResult')}
         </Text>
       </Box>
       <Box marginLeft={2}>
@@ -165,10 +166,10 @@ export const Message: React.FC<MessageProps> = React.memo(({
 
   // 渲染角色标签 - 官方风格
   const getRoleLabel = () => {
-    if (isUser) return 'You';
-    if (isSystem) return 'System';
-    if (isError) return 'Error';
-    return 'Claude';
+    if (isUser) return t('message.you');
+    if (isSystem) return t('message.system');
+    if (isError) return t('message.error');
+    return t('message.claude');
   };
 
   const getRoleColor = () => {
@@ -255,7 +256,7 @@ export const Message: React.FC<MessageProps> = React.memo(({
       {showCopyHint && !streaming && (
         <Box marginLeft={2} marginTop={1}>
           <Text color="gray" dimColor italic>
-            Press Cmd+A to select and copy
+            {t('message.copyHint')}
           </Text>
         </Box>
       )}

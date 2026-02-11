@@ -58,6 +58,7 @@ import * as readline from 'readline';
 import chalk from 'chalk';
 import { BaseTool } from './base.js';
 import type { AskUserQuestionInput, ToolResult, ToolDefinition } from '../types/index.js';
+import { t } from '../i18n/index.js';
 
 interface QuestionOption {
   label: string;
@@ -218,7 +219,7 @@ Usage notes:
     } catch (error) {
       return {
         success: false,
-        error: `Failed to get user response: ${error instanceof Error ? error.message : String(error)}`
+        error: t('ask.responseError', { error: error instanceof Error ? error.message : String(error) })
       };
     }
 
@@ -626,7 +627,7 @@ Usage notes:
           if (question?.validator) {
             const validation = question.validator(trimmed);
             if (!validation.valid) {
-              const message = validation.message || 'Invalid input. Please try again.';
+              const message = validation.message || t('ask.invalidInput');
               console.log(chalk.red(`  Error: ${message}`));
               const retry = await askForInput();
               resolve(retry);

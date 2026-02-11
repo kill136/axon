@@ -17,6 +17,7 @@
 
 import { BaseTool } from './base.js';
 import type { ToolResult, ToolDefinition } from '../types/index.js';
+import { t } from '../i18n/index.js';
 import type {
   TaskPlanUpdateInput,
   TaskPlanContext,
@@ -165,7 +166,7 @@ export class UpdateTaskPlanTool extends BaseTool<TaskPlanUpdateInput, ToolResult
     if (!ctx) {
       return {
         success: false,
-        output: 'UpdateTaskPlan 工具尚未配置上下文。此工具仅供 LeadAgent 使用。',
+        output: t('taskPlan.noContext'),
       };
     }
 
@@ -173,11 +174,11 @@ export class UpdateTaskPlanTool extends BaseTool<TaskPlanUpdateInput, ToolResult
 
     // 验证 taskId（add_task 除外，因为是新 ID）
     if (action !== 'add_task') {
-      const taskExists = ctx.executionPlan.tasks.some(t => t.id === taskId);
+      const taskExists = ctx.executionPlan.tasks.some(tt => tt.id === taskId);
       if (!taskExists) {
         return {
           success: false,
-          output: `任务 ${taskId} 不存在于执行计划中。可用的任务 ID: ${ctx.executionPlan.tasks.map(t => t.id).join(', ')}`,
+          output: t('taskPlan.taskNotFound', { taskId, availableIds: ctx.executionPlan.tasks.map(tt => tt.id).join(', ') }),
         };
       }
     }
@@ -186,7 +187,7 @@ export class UpdateTaskPlanTool extends BaseTool<TaskPlanUpdateInput, ToolResult
     if (action === 'add_task' && !input.name) {
       return {
         success: false,
-        output: 'add_task 操作必须提供 name 参数',
+        output: t('taskPlan.addTaskNameRequired'),
       };
     }
 
@@ -198,32 +199,32 @@ export class UpdateTaskPlanTool extends BaseTool<TaskPlanUpdateInput, ToolResult
       case 'start_task':
         return {
           success: true,
-          output: `✅ 任务 ${taskId} 已标记为执行中（${input.executionMode || 'lead-agent'}模式）`,
+          output: t('taskPlan.statusRunning', { taskId }),
         };
       case 'complete_task':
         return {
           success: true,
-          output: `✅ 任务 ${taskId} 已标记为完成${input.summary ? `\n摘要: ${input.summary.substring(0, 100)}` : ''}`,
+          output: t('taskPlan.statusCompleted', { taskId }),
         };
       case 'fail_task':
         return {
           success: true,
-          output: `❌ 任务 ${taskId} 已标记为失败: ${input.error || '未知错误'}`,
+          output: t('taskPlan.statusFailed', { taskId, reason: input.error || 'unknown' }),
         };
       case 'skip_task':
         return {
           success: true,
-          output: `⏭️ 任务 ${taskId} 已跳过: ${input.reason || '无原因'}`,
+          output: t('taskPlan.statusSkipped', { taskId }),
         };
       case 'add_task':
         return {
           success: true,
-          output: `➕ 新任务已添加到执行计划: ${taskId} - ${input.name}`,
+          output: t('taskPlan.statusPending', { taskId }),
         };
       default:
         return {
           success: false,
-          output: `未知操作: ${action}`,
+          output: t('blueprint.unknownAction', { action }),
         };
     }
   }

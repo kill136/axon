@@ -14,6 +14,7 @@
 
 import { BaseTool } from './base.js';
 import type { ToolResult, ToolDefinition } from '../types/index.js';
+import { t } from '../i18n/index.js';
 import type { Blueprint, TechStack } from '../blueprint/types.js';
 // v4.9: 共享 E2E Agent 注册表，支持用户插嘴
 import { registerE2EAgent as registerAgent, unregisterE2EAgent as unregisterAgent } from '../blueprint/e2e-agent-registry.js';
@@ -121,7 +122,7 @@ E2E 测试的完整结果，包括：
     if (!ctx) {
       return {
         success: false,
-        output: 'TriggerE2ETest 工具尚未配置上下文。此工具仅供 LeadAgent 使用。',
+        output: t('triggerE2E.noContext'),
       };
     }
 
@@ -135,7 +136,7 @@ E2E 测试的完整结果，包括：
         blueprintId: ctx.blueprint.id,
         e2eTaskId,
         status: 'running',
-        message: 'LeadAgent 触发 E2E 端到端测试...',
+        message: t('triggerE2E.starting'),
       },
     });
 
@@ -250,7 +251,7 @@ E2E 测试的完整结果，包括：
       // v10.1: 完全对齐 TaskTool — 直接返回 E2E Agent 的 raw text
       // 与 CLI TaskTool 一致：上级 agent 拿到下级的原始文本输出
       const rawResponse = result.rawResponse || '';
-      const output = rawResponse || `E2E 测试完成，无文本输出。(success: ${result.success})`;
+      const output = rawResponse || t('triggerE2E.noOutput', { success: String(result.success) });
 
       return { success: result.success, output };
     } catch (error) {
@@ -272,7 +273,7 @@ E2E 测试的完整结果，包括：
 
       return {
         success: false,
-        output: `## E2E 测试启动失败\n\n**错误**: ${errorMsg}\n\n可能的原因：\n- Chrome MCP 扩展未连接\n- 应用服务未启动\n- 浏览器环境不可用\n\n请检查环境后重试。`,
+        output: t('triggerE2E.startFailed', { error: errorMsg }),
       };
     }
   }

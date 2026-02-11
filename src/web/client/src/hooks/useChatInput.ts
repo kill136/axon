@@ -3,7 +3,7 @@
  * 从 App.tsx 提取的输入框相关逻辑
  */
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import type {
   ChatMessage,
   ChatContent,
@@ -30,6 +30,7 @@ interface UseChatInputParams {
   userQuestion: UserQuestion | null;
   setUserQuestion: React.Dispatch<React.SetStateAction<UserQuestion | null>>;
   setPermissionMode: React.Dispatch<React.SetStateAction<PermissionMode>>;
+  sessionId: string | null;
 }
 
 interface UseChatInputReturn {
@@ -38,6 +39,8 @@ interface UseChatInputReturn {
   attachments: Attachment[];
   showCommandPalette: boolean;
   setShowCommandPalette: React.Dispatch<React.SetStateAction<boolean>>;
+  isPinned: boolean;
+  togglePin: () => void;
   inputRef: React.RefObject<HTMLTextAreaElement>;
   fileInputRef: React.RefObject<HTMLInputElement>;
   handleSend: () => void;
@@ -71,13 +74,24 @@ export function useChatInput({
   userQuestion,
   setUserQuestion,
   setPermissionMode,
+  sessionId,
 }: UseChatInputParams): UseChatInputReturn {
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [isPinned, setIsPinned] = useState(false);
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 会话切换时清空输入框
+  useEffect(() => {
+    setInput('');
+    setAttachments([]);
+    if (inputRef.current) {
+      inputRef.current.style.height = 'auto';
+    }
+  }, [sessionId]);
 
   // 文件处理
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -355,12 +369,19 @@ export function useChatInput({
     }
   }, [send]);
 
+  // 切换输入框锁定状态
+  const togglePin = useCallback(() => {
+    setIsPinned(prev => !prev);
+  }, []);
+
   return {
     input,
     setInput,
     attachments,
     showCommandPalette,
     setShowCommandPalette,
+    isPinned,
+    togglePin,
     inputRef: inputRef as React.RefObject<HTMLTextAreaElement>,
     fileInputRef: fileInputRef as React.RefObject<HTMLInputElement>,
     handleSend,

@@ -4,6 +4,7 @@ dist
 .claude
 *.md
 !README.md
+!skills/**/*.md
 tests
 docs
 .env

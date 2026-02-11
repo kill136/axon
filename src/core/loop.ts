@@ -8,6 +8,7 @@ import { Session, setCurrentSessionId } from './session.js';
 import { toolRegistry } from '../tools/index.js';
 import { runWithCwd, runGeneratorWithCwd } from './cwd-context.js';
 import { isToolSearchEnabled } from '../tools/mcp.js';
+import { isDeferredTool, getDiscoveredToolsFromMessages } from '../mcp/tools.js';
 import type { Message, ContentBlock, ToolDefinition, PermissionMode, AnyContentBlock, ToolResult } from '../types/index.js';
 
 // ============================================================================
@@ -1629,6 +1630,10 @@ export class ConversationLoop {
   private session: Session;
   private options: LoopOptions;
   private tools: ToolDefinition[];
+  /** 所有工具（包含 deferred 的 MCP 工具），用于动态过滤 */
+  private allTools: ToolDefinition[] = [];
+  /** 是否启用了工具搜索/延迟加载 */
+  private toolSearchEnabled: boolean = false;
   private totalCostUSD: number = 0;
   private promptBuilder: SystemPromptBuilder;
   private promptContext: PromptContext;
@@ -1924,19 +1929,6 @@ export class ConversationLoop {
       tools = tools.filter(t => DELEGATE_MODE_TOOLS.has(t.name));
     }
 
-    // v2.1.7: MCP 工具搜索自动模式
-    // 当 MCP 工具描述超过上下文窗口的 10% * 2.5 = 25% 时，自动启用延迟加载模式
-    // 延迟加载模式下，MCP 工具不会直接暴露给模型，而是通过 MCPSearch 工具按需发现
-    const toolSearchEnabled = isToolSearchEnabled(resolvedModel, tools);
-    if (toolSearchEnabled) {
-      // 过滤掉所有 MCP 工具（以 mcp__ 开头的工具），只保留 MCPSearch
-      tools = tools.filter(t => !t.name.startsWith('mcp__') || t.name === 'Mcp');
-
-      if (options.verbose || options.debug) {
-        console.log(chalk.blue('[MCP] Tool search auto mode enabled: MCP tools will be loaded on-demand via Mcp'));
-      }
-    }
-
     // v2.1.30: 合并 SDK 提供的 MCP 工具
     if (options.mcpTools && options.mcpTools.length > 0) {
       const existingNames = new Set(tools.map(t => t.name));
@@ -1947,7 +1939,28 @@ export class ConversationLoop {
       }
     }
 
-    this.tools = tools;
+    // v2.1.7+: MCP 工具搜索/延迟加载模式（对齐官方 v2.1.34）
+    // 判断是否启用 tool search，但不在初始化时过滤工具
+    // 工具过滤推迟到每次 API 请求前动态执行（filterToolsForRequest）
+    this.toolSearchEnabled = isToolSearchEnabled(resolvedModel, tools);
+
+    if (this.toolSearchEnabled) {
+      // 如果启用了 tool search 但没有任何 deferred 工具，关闭它
+      // 对齐官方：if(O && !Y.some(OG)) O = false
+      if (!tools.some(isDeferredTool)) {
+        this.toolSearchEnabled = false;
+      }
+    }
+
+    if (this.toolSearchEnabled && (options.verbose || options.debug)) {
+      console.log(chalk.blue('[MCP] Tool search enabled: MCP tools will be loaded on-demand via Mcp'));
+    }
+
+    // 保存所有工具（用于动态过滤）
+    this.allTools = tools;
+    // this.tools 在每次请求前由 filterToolsForRequest() 动态设置
+    // 初始化时先做一次过滤
+    this.tools = this.filterToolsForRequest([]);
 
     // v2.1.33: 将工具名称集合注入 promptContext，用于条件化提示词组装
     this.promptContext.toolNames = new Set(tools.map(t => t.name));
@@ -2012,6 +2025,43 @@ export class ConversationLoop {
     this.client = new ClaudeClient(clientConfig);
     console.log('[Loop] Client reinitialized with new credentials');
     return true;
+  }
+
+  /**
+   * 动态过滤工具列表（对齐官方 v2.1.34）
+   *
+   * 每次 API 请求前调用，根据 toolSearchEnabled 和消息历史动态决定
+   * 哪些工具的 schema 传给模型。
+   *
+   * 官方逻辑：
+   * if (toolSearchEnabled) {
+   *   let discovered = abA(messages);  // 扫描历史中已发现的工具
+   *   filteredTools = allTools.filter(t => {
+   *     if (!isDeferredTool(t)) return true;       // 非 MCP 工具保留
+   *     if (t.name === "ToolSearch") return true;   // ToolSearch 自身保留
+   *     return discovered.has(t.name);              // 已发现的 MCP 工具保留
+   *   });
+   * } else {
+   *   filteredTools = allTools.filter(t => t.name !== "ToolSearch");
+   * }
+   */
+  private filterToolsForRequest(messages: Array<Record<string, any>>): ToolDefinition[] {
+    if (!this.toolSearchEnabled) {
+      // 不启用 tool search 时，移除 Mcp（ToolSearch）工具本身，其他全部保留
+      return this.allTools.filter(t => t.name !== 'Mcp');
+    }
+
+    // 启用 tool search：从消息历史中找出已发现的 MCP 工具
+    const discovered = getDiscoveredToolsFromMessages(messages);
+
+    return this.allTools.filter(t => {
+      // 非 deferred 工具（内置工具）始终保留
+      if (!isDeferredTool(t)) return true;
+      // Mcp（ToolSearch）工具自身始终保留
+      if (t.name === 'Mcp') return true;
+      // 已被模型通过 ToolSearch 发现的 MCP 工具保留
+      return discovered.has(t.name);
+    });
   }
 
   /**
@@ -2183,16 +2233,21 @@ export class ConversationLoop {
         }
       }
 
+      // v2.1.34: 每次请求前动态过滤工具列表
+      // 根据消息历史中已发现的 MCP 工具决定传哪些工具 schema 给 API
+      const filteredTools = this.filterToolsForRequest(messages);
+
       let response;
       try {
         response = await this.client.createMessage(
           messages,
-          this.tools,
+          filteredTools,
           systemPrompt,
           {
             enableThinking: this.options.thinking?.enabled,
             thinkingBudget: this.options.thinking?.budgetTokens,
             promptBlocks,
+            toolSearchEnabled: this.toolSearchEnabled,
           }
         );
       } catch (apiError: any) {
@@ -2493,19 +2548,25 @@ Guidelines:
 
       const assistantContent: ContentBlock[] = [];
       const toolCalls: Map<string, { name: string; input: string; isServerTool: boolean }> = new Map();
+      // 存储 web_search_tool_result（用于在 tool_end 中传递搜索结果摘要给 UI）
+      const webSearchResults: Map<string, any> = new Map();
       let currentToolId = '';
       let streamStopReason: string = 'end_turn';
+
+      // v2.1.34: 流式 API 也使用动态过滤
+      const streamFilteredTools = this.filterToolsForRequest(messages);
 
       try {
         for await (const event of this.client.createMessageStream(
           messages,
-          this.tools,
+          streamFilteredTools,
           systemPrompt,
           {
             enableThinking: this.options.thinking?.enabled,
             thinkingBudget: this.options.thinking?.budgetTokens,
             signal: this.abortController?.signal,
             promptBlocks,
+            toolSearchEnabled: this.toolSearchEnabled,
           }
         )) {
           // 检查是否已被中断
@@ -2536,13 +2597,27 @@ Guidelines:
             // Server Tool (如 web_search) - 由 Anthropic 服务器执行
             // 不需要客户端执行，只记录
             currentToolId = event.id || '';
-            toolCalls.set(currentToolId, { name: event.name || '', input: '', isServerTool: true });
-            // Server Tool 立即发送事件（不需要等待参数解析）
-            yield { type: 'tool_start', toolName: `[Server] ${event.name}`, toolInput: undefined };
+            const serverToolInput = event.input || '';
+            toolCalls.set(currentToolId, { name: event.name || '', input: serverToolInput, isServerTool: true });
+            // Server Tool 立即发送事件，传递 input（如 web_search 的 query）
+            let parsedInput: Record<string, unknown> | undefined;
+            try { parsedInput = JSON.parse(serverToolInput); } catch { /* ignore */ }
+            yield { type: 'tool_start', toolName: `[Server] ${event.name}`, toolInput: parsedInput };
           } else if (event.type === 'tool_use_delta') {
             const tool = toolCalls.get(currentToolId);
             if (tool && !tool.isServerTool) {
               tool.input += event.input || '';
+            }
+          } else if (event.type === 'web_search_result') {
+            // web_search_tool_result 从 finalMessage 中提取，收集搜索结果
+            const resultBlock = (event as any).data;
+            if (resultBlock) {
+              assistantContent.push(resultBlock);
+              // 关联到对应的 server_tool_use（通过 tool_use_id）
+              const toolUseId = resultBlock.tool_use_id;
+              if (toolUseId) {
+                webSearchResults.set(toolUseId, resultBlock);
+              }
             }
           } else if (event.type === 'response_headers') {
             // v2.1.6: 处理响应头中的速率限制信息
@@ -2636,11 +2711,31 @@ Guidelines:
             name: tool.name,
             input: {},
           });
+
+          // 生成搜索结果摘要（对齐官方 "Did N searches in Xs" 格式）
+          let toolResult = '(executed by Anthropic servers)';
+          const searchResult = webSearchResults.get(id);
+          if (searchResult && tool.name === 'web_search') {
+            if (Array.isArray(searchResult.content)) {
+              const results = searchResult.content.filter((r: any) => r.type === 'web_search_result');
+              toolResult = JSON.stringify({
+                type: 'web_search_summary',
+                searchCount: results.length,
+                results: results.slice(0, 5).map((r: any) => ({
+                  title: r.title,
+                  url: r.url,
+                })),
+              });
+            } else if (searchResult.content?.type === 'web_search_tool_result_error') {
+              toolResult = `Search error: ${searchResult.content.error_code}`;
+            }
+          }
+
           yield {
             type: 'tool_end',
             toolName: `[Server] ${tool.name}`,
             toolInput: undefined,
-            toolResult: '(executed by Anthropic servers)',
+            toolResult,
             toolError: undefined,
           };
           continue;

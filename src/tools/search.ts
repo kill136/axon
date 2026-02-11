@@ -12,6 +12,7 @@ import type { GlobInput, GrepInput, ToolResult, ToolDefinition } from '../types/
 import { persistLargeOutputSync } from './output-persistence.js';
 import { getCurrentCwd } from '../core/cwd-context.js';
 import { getRgPath } from '../search/ripgrep.js';
+import { t } from '../i18n/index.js';
 
 // 检测当前平台
 const isWindows = process.platform === 'win32';
@@ -63,7 +64,7 @@ export class GlobTool extends BaseTool<GlobInput, ToolResult> {
         .map(item => item.file);
 
       if (sortedFiles.length === 0) {
-        return { success: true, output: 'No files found' };
+        return { success: true, output: t('search.noFiles') };
       }
 
       let output = sortedFiles.join('\n');
@@ -76,7 +77,7 @@ export class GlobTool extends BaseTool<GlobInput, ToolResult> {
 
       return { success: true, output: persistResult.content };
     } catch (err) {
-      return { success: false, error: `Glob error: ${err}` };
+      return { success: false, error: t('search.globError', { error: err }) };
     }
   }
 }
@@ -268,7 +269,7 @@ Usage:
       if (!rgPath) {
         return {
           success: false,
-          error: 'ripgrep (rg) is not available. Please install ripgrep: https://github.com/BurntSushi/ripgrep#installation',
+          error: t('search.rgNotAvailable'),
         };
       }
 
@@ -285,7 +286,7 @@ Usage:
         if (result.signal === 'SIGTERM' || result.signal === 'SIGKILL') {
           return {
             success: false,
-            error: `Grep search timed out after ${GREP_TIMEOUT_MS / 1000} seconds. Try narrowing your search pattern or path.`,
+            error: t('search.grepTimeout', { seconds: GREP_TIMEOUT_MS / 1000 }),
           };
         }
 
@@ -296,7 +297,7 @@ Usage:
           if (errorMsg.includes('ETIMEDOUT') || errorMsg.includes('timed out')) {
             return {
               success: false,
-              error: `Grep search timed out. Try narrowing your search pattern or path.`,
+              error: t('search.grepTimeoutGeneral'),
             };
           }
           throw result.error;
@@ -380,7 +381,7 @@ Usage:
 
       if (output_mode === 'content') {
         // Content 模式：显示匹配行
-        const content = lines.join('\n') || 'No matches found';
+        const content = lines.join('\n') || t('search.noMatches');
         const pagination = this.formatPagination(
           head_limit,
           offset > 0 ? offset : undefined
@@ -412,11 +413,11 @@ Usage:
           offset > 0 ? offset : undefined
         );
         const summary = `\n\nFound ${totalMatches} total ${totalMatches === 1 ? 'occurrence' : 'occurrences'} across ${numFiles} ${numFiles === 1 ? 'file' : 'files'}.${pagination ? ` with pagination = ${pagination}` : ''}`;
-        finalOutput = (content || 'No matches found') + summary;
+        finalOutput = (content || t('search.noMatches')) + summary;
       } else {
         // Files_with_matches 模式：显示文件列表 + 统计
         if (lines.length === 0) {
-          return { success: true, output: 'No files found' };
+          return { success: true, output: t('search.noFiles') };
         }
 
         // 遵循官方逻辑：只有 offset > 0 时才传入 offset，否则传入 undefined
@@ -487,7 +488,7 @@ Usage:
     if (isWindows) {
       return {
         success: false,
-        error: 'ripgrep (rg) is not available and grep fallback is not supported on Windows. Please install ripgrep: https://github.com/BurntSushi/ripgrep#installation',
+        error: t('search.rgNotAvailableWindows'),
       };
     }
 
@@ -525,9 +526,9 @@ Usage:
       lines = this.applyOffsetAndLimit(lines, head_limit, offset);
 
       const result = lines.join('\n');
-      return { success: true, output: result || 'No matches found.' };
+      return { success: true, output: result || t('search.noMatches') };
     } catch (err) {
-      return { success: false, error: `Grep error: ${err}` };
+      return { success: false, error: t('search.grepError', { error: err }) };
     }
   }
 }

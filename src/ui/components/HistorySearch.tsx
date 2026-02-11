@@ -5,6 +5,7 @@
 
 import React from 'react';
 import { Box, Text } from 'ink';
+import { t } from '../../i18n/index.js';
 
 const CLAUDE_COLOR = '#D77757';
 
@@ -71,7 +72,7 @@ export const HistorySearch: React.FC<HistorySearchProps> = ({
         {currentMatch ? (
           renderHighlightedMatch(currentMatch, query)
         ) : (
-          <Text dimColor>no matches found</Text>
+          <Text dimColor>{t('history.noMatches')}</Text>
         )}
       </Box>
 
@@ -79,9 +80,9 @@ export const HistorySearch: React.FC<HistorySearchProps> = ({
       {matchCount > 0 && (
         <Box>
           <Text dimColor>
-            [{selectedIndex + 1}/{matchCount} matches]
-            {matchCount > 1 && ' (Ctrl+R: next, Ctrl+S: prev, Enter: select, Esc: cancel)'}
-            {matchCount === 1 && ' (Enter: select, Esc: cancel)'}
+            [{selectedIndex + 1}/{matchCount} {t('history.matches')}]
+            {matchCount > 1 && ` (${t('history.nextPrev')})`}
+            {matchCount === 1 && ` (${t('history.selectCancel')})`}
           </Text>
         </Box>
       )}
@@ -102,7 +103,7 @@ export const HistorySearch: React.FC<HistorySearchProps> = ({
           ))}
           {matchCount > 5 && (
             <Box>
-              <Text dimColor>  ... and {matchCount - 5} more</Text>
+              <Text dimColor>  {t('history.andMore', { count: matchCount - 5 })}</Text>
             </Box>
           )}
         </Box>

@@ -9,6 +9,7 @@ import React, { useState, useMemo } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { RewindableMessage, RewindOption } from '../../rewind/rewindManager.js';
 import { convertFullwidthToHalfwidth, charToDigit } from '../../utils/index.js';
+import { t } from '../../i18n/index.js';
 
 interface MessageSelectorProps {
   /** 可回退的消息列表 */
@@ -46,7 +47,7 @@ export function MessageSelector({
   messages,
   onSelect,
   onCancel,
-  title = 'Select a message to rewind to',
+  title = t('rewind.selectTitle'),
   totalMessages = 0,
 }: MessageSelectorProps) {
   const [selectedIndex, setSelectedIndex] = useState(messages.length - 1);
@@ -86,10 +87,10 @@ export function MessageSelector({
   if (messages.length === 0) {
     return (
       <Box flexDirection="column" padding={1}>
-        <Text color="yellow">No messages to rewind to.</Text>
+        <Text color="yellow">{t('rewind.noMessages')}</Text>
         <Box marginTop={1}>
           <Text color="gray" dimColor>
-            Press ESC to go back
+            {t('rewind.pressEsc')}
           </Text>
         </Box>
       </Box>
@@ -108,7 +109,7 @@ export function MessageSelector({
       {/* 统计信息 */}
       <Box marginBottom={1}>
         <Text color="gray" dimColor>
-          {reversedMessages.length} rewind points · {totalMessages} total messages
+          {t('rewind.rewindPoints', { count: reversedMessages.length })} · {t('rewind.totalMessages', { count: totalMessages })}
         </Text>
       </Box>
 
@@ -154,7 +155,7 @@ export function MessageSelector({
       {/* 帮助提示 */}
       <Box marginTop={1} flexDirection="column">
         <Text color="gray" dimColor>
-          ↑/↓ or j/k to navigate · Enter to select · ESC to cancel
+          {t('rewind.navHint')}
         </Text>
       </Box>
     </Box>
@@ -176,25 +177,25 @@ export function RewindOptionSelector({
   const options: Array<{ value: RewindOption; label: string; description: string; disabled?: boolean }> = [
     {
       value: 'both',
-      label: 'Restore code and conversation',
-      description: `Revert ${preview.filesWillChange.length} files and remove ${preview.messagesWillRemove} messages`,
+      label: t('rewind.optionBoth'),
+      description: t('rewind.optionBothDesc', { fileCount: preview.filesWillChange.length, msgCount: preview.messagesWillRemove }),
     },
     {
       value: 'code',
-      label: 'Restore code only',
-      description: `Revert ${preview.filesWillChange.length} files (+${preview.insertions}/-${preview.deletions} lines)`,
+      label: t('rewind.optionCode'),
+      description: t('rewind.optionCodeDesc', { fileCount: preview.filesWillChange.length, insertions: preview.insertions, deletions: preview.deletions }),
       disabled: preview.filesWillChange.length === 0,
     },
     {
       value: 'conversation',
-      label: 'Restore conversation only',
-      description: `Remove ${preview.messagesWillRemove} messages from history`,
+      label: t('rewind.optionConversation'),
+      description: t('rewind.optionConversationDesc', { count: preview.messagesWillRemove }),
       disabled: preview.messagesWillRemove === 0,
     },
     {
       value: 'nevermind',
-      label: 'Cancel',
-      description: 'Go back without making changes',
+      label: t('rewind.optionCancel'),
+      description: t('rewind.optionCancelDesc'),
     },
   ];
 
@@ -241,7 +242,7 @@ export function RewindOptionSelector({
       {/* 标题 */}
       <Box marginBottom={1}>
         <Text color="cyan" bold>
-          Rewind to message:
+          {t('rewind.toMessage')}
         </Text>
       </Box>
 
@@ -254,7 +255,7 @@ export function RewindOptionSelector({
       {preview.filesWillChange.length > 0 && (
         <Box marginBottom={1} flexDirection="column" paddingLeft={2}>
           <Text color="yellow">
-            Files that will change ({preview.filesWillChange.length}):
+            {t('rewind.filesWillChange', { count: preview.filesWillChange.length })}
           </Text>
           {preview.filesWillChange.slice(0, 5).map((file, i) => (
             <Text key={i} color="gray" dimColor>
@@ -263,7 +264,7 @@ export function RewindOptionSelector({
           ))}
           {preview.filesWillChange.length > 5 && (
             <Text color="gray" dimColor>
-              {'  '}...and {preview.filesWillChange.length - 5} more
+              {'  '}{t('rewind.andMore', { count: preview.filesWillChange.length - 5 })}
             </Text>
           )}
         </Box>
@@ -272,7 +273,7 @@ export function RewindOptionSelector({
       {/* 选项列表 */}
       <Box flexDirection="column" marginTop={1}>
         <Text color="gray" dimColor>
-          Choose an option:
+          {t('rewind.chooseOption')}
         </Text>
         {options.map((option, index) => {
           const enabledIndex = enabledOptions.findIndex(o => o.value === option.value);
@@ -294,7 +295,7 @@ export function RewindOptionSelector({
                 </Text>
                 {isDisabled && (
                   <Text color="gray" dimColor>
-                    {' '}(no changes)
+                    {' '}{t('rewind.noChanges')}
                   </Text>
                 )}
               </Box>
@@ -313,7 +314,7 @@ export function RewindOptionSelector({
       {/* 帮助提示 */}
       <Box marginTop={1}>
         <Text color="gray" dimColor>
-          ↑/↓ to navigate · Enter to confirm · ESC to go back
+          {t('rewind.confirmHint')}
         </Text>
       </Box>
     </Box>
@@ -378,13 +379,13 @@ export function RewindUI({
       setState({
         step: 'done',
         success: true,
-        message: `Successfully rewound to the selected message.`,
+        message: t('rewind.success'),
       });
     } catch (error) {
       setState({
         step: 'done',
         success: false,
-        message: `Rewind failed: ${error instanceof Error ? error.message : String(error)}`,
+        message: t('rewind.failed', { error: error instanceof Error ? error.message : String(error) }),
       });
     }
   };
@@ -420,7 +421,7 @@ export function RewindUI({
       return (
         <Box padding={1}>
           <Text color="cyan">
-            Rewinding... Please wait.
+            {t('rewind.executing')}
           </Text>
         </Box>
       );
@@ -433,7 +434,7 @@ export function RewindUI({
           </Text>
           <Box marginTop={1}>
             <Text color="gray" dimColor>
-              Press any key to continue
+              {t('rewind.pressAnyKey')}
             </Text>
           </Box>
         </Box>
@@ -454,19 +455,19 @@ function formatTimestamp(timestamp: number): string {
 
   // 不到一分钟
   if (diff < 60000) {
-    return 'just now';
+    return t('rewind.justNow');
   }
 
   // 不到一小时
   if (diff < 3600000) {
     const minutes = Math.floor(diff / 60000);
-    return `${minutes}m ago`;
+    return t('rewind.minutesAgo', { count: minutes });
   }
 
   // 不到一天
   if (diff < 86400000) {
     const hours = Math.floor(diff / 3600000);
-    return `${hours}h ago`;
+    return t('rewind.hoursAgo', { count: hours });
   }
 
   // 超过一天

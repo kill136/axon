@@ -14,6 +14,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { BaseTool } from './base.js';
 import type { NotebookEditInput, ToolResult, ToolDefinition } from '../types/index.js';
+import { t } from '../i18n/index.js';
 
 interface NotebookCell {
   id?: string;
@@ -90,7 +91,7 @@ export class NotebookEditTool extends BaseTool<NotebookEditInput, ToolResult> {
       if (!fs.existsSync(notebook_path)) {
         return {
           success: false,
-          error: `Notebook file not found: ${notebook_path}`,
+          error: t('notebook.notFound', { path: notebook_path }),
         };
       }
 
@@ -99,7 +100,7 @@ export class NotebookEditTool extends BaseTool<NotebookEditInput, ToolResult> {
       if (!stats.isFile()) {
         return {
           success: false,
-          error: `Path is not a file: ${notebook_path}`,
+          error: t('notebook.notFile', { path: notebook_path }),
         };
       }
 
@@ -107,7 +108,7 @@ export class NotebookEditTool extends BaseTool<NotebookEditInput, ToolResult> {
       if (!notebook_path.endsWith('.ipynb')) {
         return {
           success: false,
-          error: `File must be a Jupyter notebook (.ipynb), got: ${path.extname(notebook_path)}`,
+          error: t('notebook.invalidExt', { ext: path.extname(notebook_path) }),
         };
       }
 
@@ -120,7 +121,7 @@ export class NotebookEditTool extends BaseTool<NotebookEditInput, ToolResult> {
       } catch (parseError) {
         return {
           success: false,
-          error: `Failed to parse notebook JSON: ${parseError instanceof Error ? parseError.message : String(parseError)}`,
+          error: t('notebook.parseError', { error: parseError instanceof Error ? parseError.message : String(parseError) }),
         };
       }
 
@@ -261,7 +262,7 @@ export class NotebookEditTool extends BaseTool<NotebookEditInput, ToolResult> {
         default:
           return {
             success: false,
-            error: `Invalid edit_mode: ${edit_mode}. Must be 'replace', 'insert', or 'delete'`,
+            error: t('notebook.invalidEditMode', { mode: edit_mode }),
           };
       }
 
@@ -276,7 +277,7 @@ export class NotebookEditTool extends BaseTool<NotebookEditInput, ToolResult> {
       const errorMessage = err instanceof Error ? err.message : String(err);
       return {
         success: false,
-        error: `Failed to edit notebook: ${errorMessage}`,
+        error: t('notebook.editError', { error: errorMessage }),
       };
     }
   }
@@ -287,15 +288,15 @@ export class NotebookEditTool extends BaseTool<NotebookEditInput, ToolResult> {
   private validateNotebookFormat(notebook: any): string | null {
     // 检查必需字段
     if (!notebook.cells || !Array.isArray(notebook.cells)) {
-      return 'Invalid notebook structure: missing or invalid cells array';
+      return t('notebook.invalidStructure', { detail: 'missing or invalid cells array' });
     }
 
     if (typeof notebook.nbformat !== 'number') {
-      return 'Invalid notebook structure: missing or invalid nbformat';
+      return t('notebook.invalidStructure', { detail: 'missing or invalid nbformat' });
     }
 
     if (typeof notebook.nbformat_minor !== 'number') {
-      return 'Invalid notebook structure: missing or invalid nbformat_minor';
+      return t('notebook.invalidStructure', { detail: 'missing or invalid nbformat_minor' });
     }
 
     // 验证 nbformat 版本（支持 v4.x）
@@ -310,7 +311,7 @@ export class NotebookEditTool extends BaseTool<NotebookEditInput, ToolResult> {
 
     // 验证 metadata
     if (!notebook.metadata || typeof notebook.metadata !== 'object') {
-      return 'Invalid notebook structure: missing or invalid metadata';
+      return t('notebook.invalidStructure', { detail: 'missing or invalid metadata' });
     }
 
     // 验证每个单元格的基本结构

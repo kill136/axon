@@ -7,6 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { Box, Text } from 'ink';
 import { ProgressBar } from './ProgressBar.js';
 import { Spinner } from './Spinner.js';
+import { t } from '../../i18n/index.js';
 import { LSPManager, ProgressEvent, InstallStatus, LSP_SERVERS } from '../../parser/lsp/lsp-manager.js';
 
 export interface LSPInitProgressProps {
@@ -54,7 +55,7 @@ export const LSPInitProgress: React.FC<LSPInitProgressProps> = ({
         language: lang,
         serverName: server?.name || lang,
         status: 'checking',
-        message: 'Waiting...',
+        message: t('lsp.waiting'),
         progress: 0,
       });
     }
@@ -166,8 +167,8 @@ export const LSPInitProgress: React.FC<LSPInitProgressProps> = ({
     return (
       <Box>
         <Text color="green">✓ </Text>
-        <Text>LSP servers ready: {installed} installed</Text>
-        {failed > 0 && <Text color="red"> ({failed} failed)</Text>}
+        <Text>{t('lsp.serversReady', { count: installed })}</Text>
+        {failed > 0 && <Text color="red"> {t('lsp.failed', { count: failed })}</Text>}
       </Box>
     );
   }
@@ -177,7 +178,7 @@ export const LSPInitProgress: React.FC<LSPInitProgressProps> = ({
       {/* 标题 */}
       <Box marginBottom={1}>
         <Text bold color="cyan">
-          {isComplete ? '✓ LSP Initialization Complete' : '⚡ Initializing Language Servers...'}
+          {isComplete ? `✓ ${t('lsp.initComplete')}` : `⚡ ${t('lsp.initializing')}`}
         </Text>
       </Box>
 
@@ -189,7 +190,7 @@ export const LSPInitProgress: React.FC<LSPInitProgressProps> = ({
             width={50}
             color="cyan"
             showPercentage
-            label={currentLanguage ? `Current: ${LSP_SERVERS[currentLanguage]?.name || currentLanguage}` : 'Initializing...'}
+            label={currentLanguage ? t('lsp.current', { name: LSP_SERVERS[currentLanguage]?.name || currentLanguage }) : t('lsp.initDefault')}
           />
         </Box>
       )}
@@ -241,7 +242,7 @@ export interface LSPLoadingIndicatorProps {
 }
 
 export const LSPLoadingIndicator: React.FC<LSPLoadingIndicatorProps> = ({
-  message = 'Starting language servers...',
+  message = t('lsp.startingServers'),
   languages = [],
 }) => {
   return (

@@ -23,6 +23,7 @@ import type { Message } from '../types/index.js';
 import { GENERAL_PURPOSE_AGENT_PROMPT, EXPLORE_AGENT_PROMPT, CODE_ANALYZER_PROMPT, BLUEPRINT_WORKER_PROMPT } from '../prompt/templates.js';
 import { notificationManager, type AgentCompletionResult } from '../notifications/index.js';
 import { isAgentTeamsEnabled } from '../agents/teammate-context.js';
+import { t } from '../i18n/index.js';
 
 // 代理类型定义（参照官方）
 export interface AgentTypeDefinition {
@@ -602,7 +603,7 @@ ${!isAgentTeamsEnabled() ? `\nNote: The "Agent Teams" feature (TeammateTool, Sen
     if (!agentDef) {
       return {
         success: false,
-        error: `Unknown agent type: ${subagent_type}. Available types: ${BUILT_IN_AGENT_TYPES.map(d => d.agentType).join(', ')}`,
+        error: t('agent.unknownType', { type: subagent_type, available: BUILT_IN_AGENT_TYPES.map(d => d.agentType).join(', ') }),
       };
     }
 
@@ -613,7 +614,7 @@ ${!isAgentTeamsEnabled() ? `\nNote: The "Agent Teams" feature (TeammateTool, Sen
       if (!this._allowedSubagentTypes.includes(subagent_type)) {
         return {
           success: false,
-          error: `Agent type "${subagent_type}" is not allowed. This agent can only spawn: ${this._allowedSubagentTypes.join(', ')}`,
+          error: t('agent.typeNotAllowed', { type: subagent_type, allowed: this._allowedSubagentTypes.join(', ') }),
         };
       }
     }
@@ -660,7 +661,7 @@ ${!isAgentTeamsEnabled() ? `\nNote: The "Agent Teams" feature (TeammateTool, Sen
 
       return {
         success: true,
-        output: `Agent started in background with ID: ${agentId}\nUse TaskOutput tool to check progress.`,
+        output: t('agent.backgroundStarted', { id: agentId }),
       };
     }
 
@@ -678,7 +679,7 @@ ${!isAgentTeamsEnabled() ? `\nNote: The "Agent Teams" feature (TeammateTool, Sen
     if (!existingAgent) {
       return {
         success: false,
-        error: `Agent ${agentId} not found. Unable to resume.`,
+        error: t('agent.notFound', { id: agentId }),
       };
     }
 
@@ -686,7 +687,7 @@ ${!isAgentTeamsEnabled() ? `\nNote: The "Agent Teams" feature (TeammateTool, Sen
     if (existingAgent.status === 'completed') {
       return {
         success: false,
-        error: `Agent ${agentId} has already completed. Cannot resume.`,
+        error: t('agent.alreadyCompleted', { id: agentId }),
         output: `Agent result:\n${JSON.stringify(existingAgent.result, null, 2)}`,
       };
     }
@@ -694,7 +695,7 @@ ${!isAgentTeamsEnabled() ? `\nNote: The "Agent Teams" feature (TeammateTool, Sen
     if (existingAgent.status === 'running') {
       return {
         success: false,
-        error: `Agent ${agentId} is still running. Cannot resume.`,
+        error: t('agent.stillRunning', { id: agentId }),
       };
     }
 
@@ -706,7 +707,7 @@ ${!isAgentTeamsEnabled() ? `\nNote: The "Agent Teams" feature (TeammateTool, Sen
     if (!agentDef) {
       return {
         success: false,
-        error: `Agent type ${existingAgent.agentType} not found`,
+        error: t('agent.typeNotFoundForResume', { type: existingAgent.agentType }),
       };
     }
 
@@ -1194,7 +1195,7 @@ Usage notes:
         // 超时但仍在运行
         return {
           success: true,
-          output: `Bash task ${taskId} is still running after ${maxTimeout}ms timeout.\nUse block=false to check current output without waiting.`,
+          output: t('agent.bashTaskTimeout', { id: taskId, timeout: maxTimeout }),
         };
       }
     }

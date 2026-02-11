@@ -532,17 +532,26 @@ function buildBetas(model: string, isOAuth: boolean, fastMode?: boolean): string
  *
  * Server Tool 由 Anthropic 服务器执行，比客户端实现更可靠
  */
-function buildApiTools(tools?: ToolDefinition[]): any[] | undefined {
+function buildApiTools(tools?: ToolDefinition[], toolSearchEnabled?: boolean): any[] | undefined {
   const apiTools: any[] = [];
 
   // 添加客户端工具
   if (tools && tools.length > 0) {
     for (const tool of tools) {
-      apiTools.push({
+      const apiTool: any = {
         name: tool.name,
         description: tool.description,
         input_schema: tool.inputSchema,
-      });
+      };
+
+      // v2.1.34: deferred tool 标记 defer_loading
+      // 对齐官方 PP6 函数：if(q.deferLoading) z.defer_loading = true
+      // 当 toolSearchEnabled 时，isMcp 的工具（已被发现并传给 API 的）标记为 defer_loading
+      if (toolSearchEnabled && tool.isMcp) {
+        apiTool.defer_loading = true;
+      }
+
+      apiTools.push(apiTool);
     }
   }
 
@@ -550,11 +559,6 @@ function buildApiTools(tools?: ToolDefinition[]): any[] | undefined {
   const webSearchServerTool: WebSearchTool20250305 = {
     name: 'web_search',
     type: 'web_search_20250305',
-    // 可以根据需要添加配置：
-    // allowed_domains: ['example.com'],
-    // blocked_domains: ['spam.com'],
-    // max_uses: 10,
-    // user_location: { type: 'approximate', country: 'US' },
   };
   apiTools.push(webSearchServerTool);
 
@@ -920,6 +924,7 @@ export class ClaudeClient {
       thinkingBudget?: number;
       toolChoice?: { type: 'auto' } | { type: 'any' } | { type: 'tool'; name: string };
       promptBlocks?: PromptBlock[];
+      toolSearchEnabled?: boolean;
     }
   ): Promise<{
     content: ContentBlock[];
@@ -959,7 +964,7 @@ export class ClaudeClient {
         const formattedSystem = formatSystemPrompt(systemPrompt, this.isOAuth, options?.promptBlocks);
 
         // 构建 API 工具列表（将 WebSearch 客户端工具替换为 Server Tool）
-        const apiTools = buildApiTools(tools);
+        const apiTools = buildApiTools(tools, options?.toolSearchEnabled);
 
         const requestParams: any = {
           model: currentModel,
@@ -1068,6 +1073,7 @@ export class ClaudeClient {
       signal?: AbortSignal;
       toolChoice?: { type: 'auto' } | { type: 'any' } | { type: 'tool'; name: string };
       promptBlocks?: PromptBlock[];
+      toolSearchEnabled?: boolean;
     }
   ): AsyncGenerator<{
     type: 'text' | 'thinking' | 'tool_use_start' | 'tool_use_delta' | 'server_tool_use_start' | 'web_search_result' | 'stop' | 'usage' | 'error' | 'response_headers';
@@ -1078,6 +1084,8 @@ export class ClaudeClient {
     input?: string;
     /** Web search results (for server_tool_use) */
     searchResults?: any[];
+    /** Full web_search_tool_result block from API */
+    data?: any;
     stopReason?: string;
     usage?: {
       inputTokens: number;
@@ -1123,7 +1131,7 @@ export class ClaudeClient {
       const formattedSystem = formatSystemPrompt(systemPrompt, this.isOAuth, options?.promptBlocks);
 
       // 构建 API 工具列表（将 WebSearch 客户端工具替换为 Server Tool）
-      const apiTools = buildApiTools(tools);
+      const apiTools = buildApiTools(tools, options?.toolSearchEnabled);
 
       if (this.debug) {
         console.log('[ClaudeClient] Using beta.messages.stream with betas:', betas);
@@ -1238,7 +1246,8 @@ export class ClaudeClient {
             yield { type: 'tool_use_start', id: block.id, name: block.name };
           } else if (block.type === 'server_tool_use') {
             // Server Tool (如 web_search) - 由 Anthropic 服务器执行
-            yield { type: 'server_tool_use_start', id: block.id, name: block.name };
+            // input 包含 server tool 的参数（如 web_search 的 { query: "..." }）
+            yield { type: 'server_tool_use_start', id: block.id, name: block.name, input: JSON.stringify(block.input || {}) };
           } else if (block.type === 'thinking') {
             // Extended Thinking block started
             if (this.debug) {
@@ -1261,8 +1270,18 @@ export class ClaudeClient {
             cacheCreationTokens = msg.usage.cache_creation_input_tokens || 0;
           }
         } else if (event.type === 'message_stop') {
-          // 从最终消息中获取 thinking_tokens
+          // 从最终消息中获取 web_search_tool_result 和 thinking_tokens
           const finalMessage = await stream.finalMessage();
+
+          // 提取 web_search_tool_result（Server Tool 的搜索结果在 finalMessage 中）
+          if (finalMessage?.content) {
+            for (const block of finalMessage.content) {
+              if ((block as any).type === 'web_search_tool_result') {
+                yield { type: 'web_search_result', data: block };
+              }
+            }
+          }
+
           if (finalMessage?.usage) {
             // 优先使用 usage 中的 thinking_tokens
             thinkingTokens = (finalMessage.usage as any).thinking_tokens || 0;

@@ -5,6 +5,7 @@
 
 import { BaseTool } from './base.js';
 import type { TodoWriteInput, TodoItem, ToolResult, ToolDefinition } from '../types/index.js';
+import { t } from '../i18n/index.js';
 
 // 官方常量：自动提醒配置
 const TODO_REMINDER_CONFIG = {
@@ -376,7 +377,7 @@ When in doubt, use this tool. Being proactive with task management demonstrates 
     if (inProgress.length > 1) {
       return {
         success: false,
-        error: 'Only one task can be in_progress at a time.',
+        error: t('todo.onlyOneInProgress'),
       };
     }
 

@@ -11,6 +11,7 @@ import { getGlobalAppState } from './planmode.js';
 import type { ToolPermissionContext } from './planmode.js';
 import { escapePathForShell, isWindows } from '../utils/platform.js';
 import { getCurrentCwd } from '../core/cwd-context.js';
+import { t } from '../i18n/index.js';
 
 // ============ 跨平台进程终止 ============
 
@@ -253,13 +254,13 @@ export function getSandboxStatus(): {
   // 返回不可用的原因
   let reason: string;
   if (platform === 'win32') {
-    reason = 'Windows does not support sandboxing. Consider using WSL for sandbox support.';
+    reason = t('sandbox.windowsNotSupported');
   } else if (platform === 'linux') {
-    reason = 'Bubblewrap (bwrap) is not installed. Install it with your package manager.';
+    reason = t('sandbox.bwrapNotInstalled');
   } else if (platform === 'darwin') {
-    reason = 'sandbox-exec is not available on this macOS version.';
+    reason = t('sandbox.sandboxExecNotAvailable');
   } else {
-    reason = `Unsupported platform: ${platform}`;
+    reason = t('sandbox.unsupportedPlatform', { platform });
   }
 
   return { available: false, type: 'none', platform, reason };
@@ -632,7 +633,7 @@ async function executeWithSeatbelt(
       stderr: '',
       exitCode: null,
       killed: false,
-      error: `Failed to create sandbox profile: ${err}`,
+      error: t('sandbox.profileError', { error: err }),
       sandboxed: false,
       sandboxType: 'seatbelt',
     };

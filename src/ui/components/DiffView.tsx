@@ -6,6 +6,7 @@
 import React, { useMemo, useState } from 'react';
 import { Box, Text } from 'ink';
 import chalk from 'chalk';
+import { t } from '../../i18n/index.js';
 
 export interface DiffViewProps {
   oldContent: string;
@@ -366,13 +367,13 @@ const SideBySideView: React.FC<{
       <Box marginBottom={1}>
         <Box width={halfWidth + (showLineNumbers ? lineNumberWidth + 2 : 0)}>
           <Text color="red" bold>
-            Original
+            {t('diff.original')}
           </Text>
         </Box>
         <Text> │ </Text>
         <Box width={halfWidth + (showLineNumbers ? lineNumberWidth + 2 : 0)}>
           <Text color="green" bold>
-            Modified
+            {t('diff.modified')}
           </Text>
         </Box>
       </Box>
@@ -583,7 +584,7 @@ export const DiffView: React.FC<DiffViewProps> = ({
       {/* 文件头部 */}
       {fileName && (
         <Box marginBottom={1}>
-          <Text bold>File: </Text>
+          <Text bold>{t('diff.file')}</Text>
           <Text color="cyan">{fileName}</Text>
           {language && (
             <>
@@ -603,7 +604,7 @@ export const DiffView: React.FC<DiffViewProps> = ({
         <Text color="red">-{stats.deletions}</Text>
         <Text> </Text>
         <Text color="gray" dimColor>
-          ({stats.changes} {stats.changes === 1 ? 'change' : 'changes'})
+          ({stats.changes === 1 ? t('diff.change', { count: stats.changes }) : t('diff.changes', { count: stats.changes })})
         </Text>
       </Box>
 
@@ -611,7 +612,7 @@ export const DiffView: React.FC<DiffViewProps> = ({
       {hunks.length === 0 ? (
         <Box>
           <Text color="gray" dimColor>
-            No changes detected
+            {t('diff.noChanges')}
           </Text>
         </Box>
       ) : mode === 'unified' ? (

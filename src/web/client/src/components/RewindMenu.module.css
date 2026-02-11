@@ -1,0 +1,105 @@
+.rewindMenu {
+  position: fixed;
+  background: var(--panel-background, #1e1e1e);
+  border: 1px solid var(--border-color, #444);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  min-width: 320px;
+  max-width: 400px;
+  z-index: 10000;
+  padding: 8px 0;
+  animation: fadeIn 0.15s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.menuHeader {
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border-color, #444);
+  margin-bottom: 4px;
+}
+
+.menuTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, #e0e0e0);
+}
+
+.menuOption {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 16px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary, #e0e0e0);
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition: background-color 0.12s;
+}
+
+.menuOption:hover:not(.disabled) {
+  background: var(--hover-background, rgba(255, 255, 255, 0.08));
+}
+
+.menuOption.selected {
+  background: var(--selected-background, rgba(14, 165, 233, 0.2));
+}
+
+.menuOption.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.optionIcon {
+  font-size: 18px;
+  line-height: 1;
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.optionContent {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.optionLabel {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary, #e0e0e0);
+}
+
+.optionDescription {
+  font-size: 12px;
+  color: var(--text-muted, #888);
+  line-height: 1.4;
+}
+
+.menuOption.disabled .optionLabel {
+  color: var(--text-muted, #888);
+}
+
+.menuFooter {
+  padding: 8px 16px 4px;
+  border-top: 1px solid var(--border-color, #444);
+  margin-top: 4px;
+}
+
+.hint {
+  font-size: 11px;
+  color: var(--text-muted, #888);
+  text-align: center;
+}

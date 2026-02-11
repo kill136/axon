@@ -35,6 +35,7 @@ import {
 import { persistLargeOutputSync } from './output-persistence.js';
 import { runPreToolUseHooks, runPostToolUseHooks } from '../hooks/index.js';
 import { getCurrentCwd } from '../core/cwd-context.js';
+import { t } from '../i18n/index.js';
 
 /**
  * 解析文件路径
@@ -384,7 +385,7 @@ Usage:
       if (!parsedRange) {
         return {
           success: false,
-          error: `Invalid pages parameter: "${pages}". Use formats like "1-5", "3", or "10-20". Pages are 1-indexed.`,
+          error: t('file.invalidPages', { pages }),
         };
       }
       const pageCount = parsedRange.lastPage === Infinity
@@ -393,19 +394,19 @@ Usage:
       if (pageCount > PDF_MAX_PAGES_PER_REQUEST) {
         return {
           success: false,
-          error: `Page range "${pages}" exceeds maximum of ${PDF_MAX_PAGES_PER_REQUEST} pages per request. Please use a smaller range.`,
+          error: t('file.pageRangeExceeds', { pages, max: PDF_MAX_PAGES_PER_REQUEST }),
         };
       }
     }
 
     try {
       if (!fs.existsSync(file_path)) {
-        return { success: false, error: `File not found: ${file_path}` };
+        return { success: false, error: t('file.notFound', { path: file_path }) };
       }
 
       const stat = fs.statSync(file_path);
       if (stat.isDirectory()) {
-        return { success: false, error: `Path is a directory: ${file_path}. Use the Read tool on specific files within this directory, or use ls command via Bash to list contents.` };
+        return { success: false, error: t('file.isDirectory', { path: file_path }) };
       }
 
       const ext = path.extname(file_path).toLowerCase().slice(1);
@@ -414,7 +415,7 @@ Usage:
       if (isBlacklistedFile(file_path)) {
         return {
           success: false,
-          error: `Cannot read binary file type: .${ext}. This file type is not supported.`
+          error: t('file.binaryNotSupported', { ext })
         };
       }
 
@@ -482,7 +483,7 @@ Usage:
         lineCount: lines.length,
       };
     } catch (err) {
-      return { success: false, error: `Error reading file: ${err}` };
+      return { success: false, error: t('file.readError', { error: err }) };
     }
   }
 
@@ -519,7 +520,7 @@ Usage:
     } catch (error) {
       return {
         success: false,
-        error: `Error reading image: ${error}`,
+        error: t('file.imageReadError', { error }),
       };
     }
   }
@@ -539,7 +540,7 @@ Usage:
       if (!isPdfSupported()) {
         return {
           success: false,
-          error: 'PDF support is not enabled. Set CLAUDE_PDF_SUPPORT=true to enable.',
+          error: t('file.pdfNotEnabled'),
         };
       }
 
@@ -601,7 +602,7 @@ Usage:
       if (pageCount !== null && pageCount > PDF_LARGE_THRESHOLD) {
         return {
           success: false,
-          error: `This PDF has ${pageCount} pages, which is too many to read at once. Use the pages parameter to read specific page ranges (e.g., pages: "1-5"). Maximum ${PDF_MAX_PAGES_PER_REQUEST} pages per request.`,
+          error: t('file.pdfTooLarge', { count: pageCount, max: PDF_MAX_PAGES_PER_REQUEST }),
         };
       }
 
@@ -635,7 +636,7 @@ Usage:
       const errorMessage = error?.message || String(error);
       return {
         success: false,
-        error: `Error reading PDF: ${errorMessage}`,
+        error: t('file.pdfReadError', { error: errorMessage }),
       };
     }
   }
@@ -675,7 +676,7 @@ Usage:
     } catch (error) {
       return {
         success: false,
-        error: `Error reading SVG: ${error}`,
+        error: t('file.svgReadError', { error }),
       };
     }
   }
@@ -805,7 +806,7 @@ Usage:
 
       return result;
     } catch (err) {
-      return { success: false, error: `Error reading notebook: ${err}` };
+      return { success: false, error: t('file.notebookReadError', { error: err }) };
     }
   }
 
@@ -1068,13 +1069,13 @@ Usage:
       const lines = content.split('\n').length;
       const result = {
         success: true,
-        output: `Successfully wrote ${lines} lines to ${file_path}`,
+        output: t('file.writeSuccess', { lines, path: file_path }),
         lineCount: lines,
       };
       await runPostToolUseHooks('Write', input, result.output || '');
       return result;
     } catch (err) {
-      return { success: false, error: `Error writing file: ${err}` };
+      return { success: false, error: t('file.writeError', { error: err }) };
     }
   }
 }
@@ -1366,12 +1367,12 @@ Usage:
           }
           return result;
         }
-        return { success: false, error: `File not found: ${file_path}` };
+        return { success: false, error: t('file.notFound', { path: file_path }) };
       }
 
       const stat = fs.statSync(file_path);
       if (stat.isDirectory()) {
-        return { success: false, error: `Path is a directory: ${file_path}. Use the Read tool on specific files within this directory, or use ls command via Bash to list contents.` };
+        return { success: false, error: t('file.isDirectory', { path: file_path }) };
       }
 
       // 5. 读取原始内容并标准化换行符
@@ -1466,7 +1467,7 @@ Usage:
           if (matchedString !== '' && prevEdit.includes(matchedString)) {
             return {
               success: false,
-              error: `Cannot edit file: old_string is a substring of a new_string from a previous edit.\nold_string: ${matchedString}`,
+              error: t('file.editSubstringConflict', { match: matchedString }),
             };
           }
         }
@@ -1480,7 +1481,7 @@ Usage:
       if (currentContent === originalContent) {
         return {
           success: false,
-          error: 'Original and edited file match exactly. No changes were made.',
+          error: t('file.editNoChanges'),
         };
       }
 
@@ -1521,9 +1522,9 @@ Usage:
         let output = '';
 
         if (batch_edits) {
-          output += `Successfully applied ${edits.length} edit(s) to ${file_path}\n`;
+          output += t('file.editBatchSuccess', { count: edits.length, path: file_path }) + '\n';
         } else {
-          output += `Successfully edited ${file_path}\n`;
+          output += t('file.editSuccess', { path: file_path }) + '\n';
         }
 
         if (diffPreview) {
@@ -1545,7 +1546,7 @@ Usage:
         this.fileBackup.restore(file_path);
         return {
           success: false,
-          error: `Error writing file: ${writeErr}. Changes have been rolled back.`,
+          error: t('file.editWriteError', { error: writeErr }),
         };
       }
     } catch (err) {
@@ -1555,7 +1556,7 @@ Usage:
       }
       return {
         success: false,
-        error: `Error editing file: ${err}. Changes have been rolled back.`,
+        error: t('file.editError', { error: err }),
       };
     }
   }
@@ -1586,13 +1587,13 @@ Usage:
       const lineCount = content.split('\n').length;
       return {
         success: true,
-        output: `Successfully created new file: ${filePath} (${lineCount} lines)`,
+        output: t('file.createSuccess', { path: filePath, lines: lineCount }),
         content,
       };
     } catch (err) {
       return {
         success: false,
-        error: `Error creating file: ${err}`,
+        error: t('file.createError', { error: err }),
       };
     }
   }
@@ -1615,7 +1616,7 @@ Usage:
       if (newContent === originalContent) {
         return {
           success: false,
-          error: 'Original and new content match exactly. No changes were made.',
+          error: t('file.writeEntireNoChanges'),
         };
       }
 
@@ -1629,7 +1630,7 @@ Usage:
       fs.writeFileSync(filePath, newContent, 'utf-8');
 
       // 构建输出消息
-      let output = `Successfully wrote to ${filePath}\n`;
+      let output = t('file.writeEntireSuccess', { path: filePath }) + '\n';
       if (diffPreview) {
         output += '\n' + this.formatDiffOutput(diffPreview);
       }
@@ -1647,7 +1648,7 @@ Usage:
       this.fileBackup.restore(filePath);
       return {
         success: false,
-        error: `Error writing file: ${err}. Changes have been rolled back.`,
+        error: t('file.writeEntireError', { error: err }),
       };
     }
   }

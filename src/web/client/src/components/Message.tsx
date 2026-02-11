@@ -1,3 +1,4 @@
+import { useState, useRef, useEffect } from 'react';
 import { MarkdownContent } from './MarkdownContent';
 import { CliToolCall } from './CliToolCall';
 import { CliThinkingBlock } from './CliThinkingBlock';
@@ -7,6 +8,7 @@ import { DevProgressBar } from './continuous/DevProgressBar';
 import { RegressionResultCard } from './continuous/RegressionResultCard';
 import { CycleReviewCard } from './continuous/CycleReviewCard';
 import { NotebookOutputRenderer } from './NotebookOutputRenderer';
+import { RewindMenu, RewindOption } from './RewindMenu';
 import { coordinatorApi } from '../api/blueprint';
 import type { ChatMessage, ChatContent, ToolUse, NotebookOutputData } from '../types';
 
@@ -20,13 +22,108 @@ interface MessageProps {
   isStreaming?: boolean;
   /** 对齐官方 transcript 模式 */
   isTranscriptMode?: boolean;
+  /** 回滚功能回调 */
+  onRewind?: (messageId: string, option: RewindOption) => Promise<void>;
+  /** 获取回滚预览信息 */
+  getRewindPreview?: (messageId: string) => {
+    filesWillChange: string[];
+    messagesWillRemove: number;
+    insertions: number;
+    deletions: number;
+  };
+  /** 是否可以回滚 */
+  canRewind?: boolean;
 }
 
-export function Message({ message, onNavigateToBlueprint, onNavigateToSwarm, onNavigateToCode, onDevAction, isStreaming = false, isTranscriptMode = false }: MessageProps) {
+export function Message({
+  message,
+  onNavigateToBlueprint,
+  onNavigateToSwarm,
+  onNavigateToCode,
+  onDevAction,
+  isStreaming = false,
+  isTranscriptMode = false,
+  onRewind,
+  getRewindPreview,
+  canRewind = false,
+}: MessageProps) {
   const { role, content } = message;
+  const messageRef = useRef<HTMLDivElement>(null);
+  const [showRewindMenu, setShowRewindMenu] = useState(false);
+  const [rewindMenuPosition, setRewindMenuPosition] = useState({ x: 0, y: 0 });
+  const [isHovering, setIsHovering] = useState(false);
+  const [copyButtonText, setCopyButtonText] = useState('📋');
 
   // 获取内容数组
   const contentArray = Array.isArray(content) ? content : [];
+
+  // 处理回滚按钮点击
+  const handleRewindClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!getRewindPreview || !message.id) return;
+
+    const buttonRect = (e.target as HTMLElement).getBoundingClientRect();
+    setRewindMenuPosition({
+      x: buttonRect.left,
+      y: buttonRect.bottom + 4,
+    });
+    setShowRewindMenu(true);
+  };
+
+  // 处理回滚选项选择
+  const handleRewindSelect = async (option: RewindOption) => {
+    if (option === 'cancel' || !message.id || !onRewind) {
+      setShowRewindMenu(false);
+      return;
+    }
+
+    try {
+      await onRewind(message.id, option);
+      setShowRewindMenu(false);
+    } catch (error) {
+      console.error('[Message] 回滚失败:', error);
+      alert('回滚失败: ' + (error instanceof Error ? error.message : String(error)));
+    }
+  };
+
+  // 获取预览信息
+  const rewindPreview = message.id && getRewindPreview
+    ? getRewindPreview(message.id)
+    : { filesWillChange: [], messagesWillRemove: 0, insertions: 0, deletions: 0 };
+
+  // 提取消息的文本内容
+  const extractMessageText = (): string => {
+    const texts: string[] = [];
+    for (const item of contentArray) {
+      if (item.type === 'text' && item.text) {
+        texts.push(item.text);
+      } else if (item.type === 'thinking' && item.text) {
+        texts.push(`[Thinking]\n${item.text}`);
+      }
+    }
+    return texts.join('\n\n');
+  };
+
+  // 复制消息内容
+  const handleCopyMessage = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const text = extractMessageText();
+    if (!text) return;
+
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyButtonText('✓');
+      setTimeout(() => {
+        setCopyButtonText('📋');
+      }, 2000);
+    } catch (error) {
+      console.error('[Message] 复制失败:', error);
+      setCopyButtonText('✗');
+      setTimeout(() => {
+        setCopyButtonText('📋');
+      }, 2000);
+    }
+  };
 
   const renderContent = (item: ChatContent, index: number) => {
     if (item.type === 'text') {
@@ -250,16 +347,62 @@ export function Message({ message, onNavigateToBlueprint, onNavigateToSwarm, onN
     );
   }
 
+  // 是否显示回滚按钮（只对用户消息显示，且需要有回滚功能）
+  const showRewindButton = role === 'user' && canRewind && onRewind && getRewindPreview;
+
   return (
-    <div className={`message ${role}`}>
-      <div className="message-header">
-        <span className="message-role">{role === 'user' ? '你' : 'Claude'}</span>
-        {message.model && <span>({message.model})</span>}
+    <>
+      <div
+        ref={messageRef}
+        className={`message ${role}`}
+        onMouseEnter={() => showRewindButton && setIsHovering(true)}
+        onMouseLeave={() => setIsHovering(false)}
+      >
+        <div className="message-header">
+          <span className="message-role">{role === 'user' ? '你' : 'Claude'}</span>
+          {message.model && <span>({message.model})</span>}
+
+          {/* 操作按钮组 */}
+          {isHovering && (
+            <div className="message-actions">
+              {/* 复制按钮 */}
+              <button
+                className="message-action-button"
+                onClick={handleCopyMessage}
+                title="Copy message"
+              >
+                {copyButtonText}
+              </button>
+
+              {/* 回滚按钮 */}
+              {showRewindButton && (
+                <button
+                  className="message-action-button message-rewind-button"
+                  onClick={handleRewindClick}
+                  title="Rewind to this message"
+                >
+                  ↻
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+        {Array.isArray(content)
+          ? content.map(renderContent)
+          : <MarkdownContent content={content as unknown as string} />
+        }
       </div>
-      {Array.isArray(content)
-        ? content.map(renderContent)
-        : <MarkdownContent content={content as unknown as string} />
-      }
-    </div>
+
+      {/* 回滚菜单 */}
+      {showRewindMenu && (
+        <RewindMenu
+          visible={showRewindMenu}
+          position={rewindMenuPosition}
+          preview={rewindPreview}
+          onSelect={handleRewindSelect}
+          onCancel={() => setShowRewindMenu(false)}
+        />
+      )}
+    </>
   );
 }

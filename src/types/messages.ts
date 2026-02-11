@@ -835,6 +835,8 @@ export interface ToolDefinition {
     properties: Record<string, unknown>;
     required?: string[];
   };
+  /** 是否为 MCP 工具（用于 deferred tool 判断） */
+  isMcp?: boolean;
 }
 
 /**

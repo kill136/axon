@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Text, Box } from 'ink';
+import { t } from '../../i18n/index.js';
 
 // 定义多种动画类型的帧
 const SPINNER_TYPES = {
@@ -154,7 +155,7 @@ export const Spinner: React.FC<SpinnerProps> = React.memo(({
 
   // v2.1.0 改进：等待首个 token 时的特殊显示
   const waitingLabel = waitingForFirstToken
-    ? `Waiting for response${'.'.repeat(pulsePhase + 1)}`
+    ? `${t('spinner.waitingForResponse')}${'.'.repeat(pulsePhase + 1)}`
     : label;
 
   // v2.1.20 新增：计算 shimmer 效果的颜色

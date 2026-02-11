@@ -8,6 +8,7 @@ import type { ToolResult, ToolDefinition, ExitPlanModeInput } from '../types/ind
 import { PlanPersistenceManager } from '../plan/persistence.js';
 import type { SavedPlan } from '../plan/types.js';
 import { getCurrentCwd } from '../core/cwd-context.js';
+import { t } from '../i18n/index.js';
 
 /**
  * AppState 接口（简化版本，用于权限管理）
@@ -326,7 +327,7 @@ Focus on understanding the problem before proposing solutions.`,
     } catch (error) {
       return {
         success: false,
-        error: `Failed to enter plan mode: ${error instanceof Error ? error.message : String(error)}`,
+        error: t('planmode.enterFailed', { error: error instanceof Error ? error.message : String(error) }),
       };
     }
   }
@@ -476,7 +477,7 @@ Awaiting user approval to proceed with implementation.`
     } catch (error) {
       return {
         success: false,
-        error: `Failed to exit plan mode: ${error instanceof Error ? error.message : String(error)}`,
+        error: t('planmode.exitFailed', { error: error instanceof Error ? error.message : String(error) }),
       };
     }
   }

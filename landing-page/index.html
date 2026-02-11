@@ -179,8 +179,8 @@
     <section id="features" class="features">
         <div class="container">
             <div class="section-header">
-                <h2 class="section-title">12 Core Capabilities</h2>
-                <p class="section-subtitle">From CLI to Web UI, from single-agent to multi-agent — going far beyond the original Claude Code</p>
+                <h2 class="section-title">16 Core Capabilities</h2>
+                <p class="section-subtitle">From CLI to Web UI, from single-agent to multi-agent, from local to multi-cloud — going far beyond the original Claude Code</p>
             </div>
             <div class="features-grid">
                 <div class="feature-card featured-card">
@@ -242,6 +242,26 @@
                     <div class="feature-icon">⚡</div>
                     <h3>Streaming & Real-time</h3>
                     <p>JSON streaming API, WebSocket real-time messaging, tRPC type-safe communication. End-to-end real-time response from CLI to Web UI</p>
+                </div>
+                <div class="feature-card featured-card">
+                    <div class="feature-icon">💬</div>
+                    <h3>WeChat Bot</h3>
+                    <p>Complete WeChat integration via Wechaty. QR code login, group/private chat, budget control, rate limiting — AI coding for 1.2 billion users</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">☁️</div>
+                    <h3>Multi-Cloud Providers</h3>
+                    <p>Anthropic API / AWS Bedrock / GCP Vertex AI / Foundry. Provider abstraction layer — switch clouds with one environment variable</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🛡️</div>
+                    <h3>4-Layer Security Sandbox</h3>
+                    <p>Filesystem whitelist → Bubblewrap/Seatbelt process isolation → Network domain filtering → Docker containers. Plus command injection detection & Ed25519 code signing</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🩺</div>
+                    <h3>Diagnostics & Auto-Update</h3>
+                    <p><code>/doctor</code> one-command health check (Node/Git/API/Provider validation). Auto-update system supporting npm/yarn/pnpm/Docker installs</p>
                 </div>
             </div>
         </div>
@@ -322,7 +342,7 @@
         <div class="container">
             <div class="section-header">
                 <h2 class="section-title">Technical Blog</h2>
-                <p class="section-subtitle">6 in-depth articles documenting every step of building an AI coding platform from scratch</p>
+                <p class="section-subtitle">10 in-depth articles documenting every step of building an AI coding platform from scratch</p>
             </div>
             <div class="blog-posts">
 
@@ -526,7 +546,162 @@ TeamDelete      — Clean up team resources after task completion</code>
                     </div>
                 </article>
 
-                <!-- Blog 6: Original OAuth Blog (kept) -->
+                <!-- Blog 6: WeChat Bot -->
+                <article class="blog-post featured">
+                    <div class="blog-post-header">
+                        <span class="blog-tag">Cross-Platform</span>
+                        <span class="blog-date">January 2026</span>
+                    </div>
+                    <h3>WeChat Bot: Bringing AI Coding to 1.2 Billion Users Through Chat</h3>
+                    <div class="blog-content">
+                        <h4>Why WeChat?</h4>
+                        <p>Web UI targets developers, CLI targets power users, but we wanted AI coding to reach everyone. WeChat is China's largest messaging platform — putting Claude inside WeChat means: <strong>anyone on any device can get AI coding help by sending a single message</strong>.</p>
+
+                        <h4>Complete Wechaty Implementation</h4>
+                        <p>We chose Wechaty as the underlying framework and built a complete bot system:</p>
+                        <ul>
+                            <li><strong>QR Code Login</strong> — Display QR code directly in terminal, scan to login, zero config</li>
+                            <li><strong>Message Routing</strong> — Support for private and group chats, auto-detect @bot mentions</li>
+                            <li><strong>Session Management</strong> — Independent sessions per user/group, zero interference</li>
+                            <li><strong>Budget Control</strong> — Configurable daily USD spending limit to prevent runaway API costs</li>
+                            <li><strong>Rate Limiting</strong> — Per-minute request limits to protect API quotas</li>
+                            <li><strong>Tool Whitelist</strong> — Fine-grained control over which tools WeChat users can invoke</li>
+                        </ul>
+
+                        <h4>Built-in Command System</h4>
+                        <div class="code-block" style="margin: 1rem 0;">
+                            <code>/help  — View help<br>
+/reset — Reset current session<br>
+/mode  — Switch mode (code/chat)<br>
+/cost  — View today's spending stats</code>
+                        </div>
+
+                        <p style="margin-top: 1.5rem; padding: 1rem; background: linear-gradient(135deg, rgba(34, 197, 94, 0.1), rgba(99, 102, 241, 0.1)); border-radius: 8px;">
+                            <strong>Core Capabilities:</strong> QR code login · Private/group chat · Budget control · Rate limiting · Tool whitelist · Multi-language support
+                        </p>
+                    </div>
+                    <div class="blog-footer">
+                        <a href="https://github.com/kill136/claude-code-open/tree/main/src/wechat" target="_blank" class="btn btn-outline btn-small">
+                            View WeChat Bot Source →
+                        </a>
+                    </div>
+                </article>
+
+                <!-- Blog 7: Checkpoint + Teleport -->
+                <article class="blog-post">
+                    <div class="blog-post-header">
+                        <span class="blog-tag">Version Control</span>
+                        <span class="blog-date">January 2026</span>
+                    </div>
+                    <h3>File Checkpoints + Remote Teleport: Time Travel and Teleportation for AI Editing</h3>
+                    <div class="blog-content">
+                        <h4>Checkpoint System: Finer-Grained Than Git</h4>
+                        <p>Git records commit-level changes, but during AI editing you need finer control. Our Checkpoint system <strong>automatically creates snapshots on every file edit</strong>, supporting:</p>
+                        <ul>
+                            <li><strong>Incremental Diff Storage</strong> — Only records changes, not full files, saving space</li>
+                            <li><strong>Gzip Compression</strong> — Auto-compresses content over 1KB</li>
+                            <li><strong>Time-Range Search</strong> — Find snapshots by time, tags, git commits, or name patterns</li>
+                            <li><strong>Multi-File Restore</strong> — Roll back to any historical state in one operation</li>
+                            <li><strong>Session Import/Export</strong> — Migrate editing history across machines</li>
+                            <li><strong>500MB Storage Limit</strong> — Auto-cleanup of expired checkpoints, 30-day retention</li>
+                        </ul>
+
+                        <h4>Remote Session Teleport</h4>
+                        <p>Want to continue your Claude Code session on another machine? The Teleport system enables real-time session sync via WebSocket:</p>
+                        <ul>
+                            <li><strong>Repository Validation</strong> — Auto-checks target machine's git branch and workspace state</li>
+                            <li><strong>Auto-Reconnection</strong> — Automatically re-establishes connection after network interruption</li>
+                            <li><strong>Auth Management</strong> — Secure token transport, protecting session data</li>
+                        </ul>
+
+                        <p style="margin-top: 1.5rem; padding: 1rem; background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(34, 211, 238, 0.1)); border-radius: 8px;">
+                            <strong>Time Travel + Teleportation:</strong> Incremental snapshots · Gzip compression · Multi-file rollback · WebSocket remote sync · Auto-reconnect · Repo validation
+                        </p>
+                    </div>
+                    <div class="blog-footer">
+                        <a href="https://github.com/kill136/claude-code-open/tree/main/src/checkpoint" target="_blank" class="btn btn-outline btn-small">
+                            View Checkpoint Source →
+                        </a>
+                    </div>
+                </article>
+
+                <!-- Blog 8: Multi-Cloud -->
+                <article class="blog-post">
+                    <div class="blog-post-header">
+                        <span class="blog-tag">Enterprise</span>
+                        <span class="blog-date">January 2026</span>
+                    </div>
+                    <h3>Multi-Cloud Providers: One Codebase Across Anthropic / AWS Bedrock / GCP Vertex / Foundry</h3>
+                    <div class="blog-content">
+                        <h4>Why Multi-Cloud?</h4>
+                        <p>Enterprise users have different infrastructure: some use AWS Bedrock for unified billing, some use GCP Vertex to integrate existing ML pipelines, others deploy Anthropic Foundry private instances. Our goal: <strong>switch cloud providers by changing one environment variable, zero code changes</strong>.</p>
+
+                        <h4>Provider Abstraction Layer</h4>
+                        <ul>
+                            <li><strong>Anthropic API</strong> — Default provider, direct connection to Anthropic's official API</li>
+                            <li><strong>AWS Bedrock</strong> — Model ARN parsing, cross-region inference, Profile auth, IAM role support</li>
+                            <li><strong>GCP Vertex AI</strong> — OAuth integration, region-based endpoint routing, Service Account auth</li>
+                            <li><strong>Anthropic Foundry</strong> — Custom model deployment, private endpoint support</li>
+                        </ul>
+
+                        <h4>Auto-Detection & Switching</h4>
+                        <p>The <code>/doctor</code> diagnostic command auto-detects the configured provider, validates credentials, and reports connection status. Switching requires only one environment variable change.</p>
+
+                        <p style="margin-top: 1.5rem; padding: 1rem; background: linear-gradient(135deg, rgba(249, 115, 22, 0.1), rgba(234, 179, 8, 0.1)); border-radius: 8px;">
+                            <strong>One Codebase, Four Clouds:</strong> Anthropic API · AWS Bedrock · GCP Vertex AI · Foundry — env var switch, zero code changes
+                        </p>
+                    </div>
+                    <div class="blog-footer">
+                        <a href="https://github.com/kill136/claude-code-open/tree/main/src/providers" target="_blank" class="btn btn-outline btn-small">
+                            View Providers Source →
+                        </a>
+                    </div>
+                </article>
+
+                <!-- Blog 9: Sandboxing & Security -->
+                <article class="blog-post featured">
+                    <div class="blog-post-header">
+                        <span class="blog-tag">Security</span>
+                        <span class="blog-date">February 2026</span>
+                    </div>
+                    <h3>4-Layer Security Sandbox: Sleep Well While AI Executes Code</h3>
+                    <div class="blog-content">
+                        <h4>The Risk of AI Code Execution</h4>
+                        <p>The biggest risk of AI coding assistants is: <strong>they execute code</strong>. One <code>rm -rf /</code> or a malicious dependency can be catastrophic. We built four security layers to ensure AI operations run in controlled environments.</p>
+
+                        <h4>Four-Layer Sandbox Architecture</h4>
+                        <p><strong>Layer 1: Filesystem Sandbox</strong></p>
+                        <p>Path whitelist/blacklist mechanism — AI can only access specified directories. Try accessing <code>/etc/passwd</code>? Denied.</p>
+
+                        <p><strong>Layer 2: Process Sandbox (Linux: Bubblewrap / macOS: Seatbelt)</strong></p>
+                        <p>Linux uses Bubblewrap for complete process isolation with restricted capabilities and syscalls. macOS uses Seatbelt sandbox profiles for equivalent protection.</p>
+
+                        <p><strong>Layer 3: Network Sandbox</strong></p>
+                        <p>HTTP/HTTPS requests filtered by domain. AI can only access whitelisted domains, preventing data exfiltration and malicious downloads.</p>
+
+                        <p><strong>Layer 4: Docker Sandbox</strong></p>
+                        <p>Ultimate isolation: run all AI operations inside Docker containers. Host machine completely unaffected.</p>
+
+                        <h4>Supplementary Security Infrastructure</h4>
+                        <ul>
+                            <li><strong>Command Injection Detection</strong> — Analyzes shell commands, intercepts dangerous patterns</li>
+                            <li><strong>Sensitive Data Masking</strong> — Auto-detects and masks API keys, passwords, PII</li>
+                            <li><strong>Ed25519 Code Signing</strong> — Verifies code integrity, prevents tampering</li>
+                            <li><strong>Permission Audit Logging</strong> — Every permission decision is recorded and traceable</li>
+                        </ul>
+
+                        <p style="margin-top: 1.5rem; padding: 1rem; background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(168, 85, 247, 0.1)); border-radius: 8px;">
+                            <strong>Four Defense Layers:</strong> Filesystem whitelist → Process isolation (Bubblewrap/Seatbelt) → Network domain filter → Docker container + Command injection detection + Code signing
+                        </p>
+                    </div>
+                    <div class="blog-footer">
+                        <a href="https://github.com/kill136/claude-code-open/tree/main/src/sandbox" target="_blank" class="btn btn-outline btn-small">
+                            View Sandbox System Source →
+                        </a>
+                    </div>
+                </article>
+
+                <!-- Blog 10: Original OAuth Blog (kept) -->
                 <article class="blog-post featured">
                     <div class="blog-post-header">
                         <span class="blog-tag">Deep Dive</span>

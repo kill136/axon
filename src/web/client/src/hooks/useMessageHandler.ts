@@ -65,13 +65,31 @@ export function useMessageHandler({
 
   const currentMessageRef = useRef<ChatMessage | null>(null);
   const sessionIdRef = useRef<string | null>(sessionId);
-  sessionIdRef.current = sessionId;
+  // 修复竞态条件：不在 render body 中同步覆盖 sessionIdRef.current
+  // 原因：message handler 中直接设置 sessionIdRef.current = persistentId（同步），
+  // 但 React 的 setSessionId 是异步批量更新。如果其他 state 变更触发了中间 render，
+  // sessionId prop 还是旧的 tempId，会覆盖 handler 设置的 persistentId，
+  // 导致后续流式消息因 session ID 不匹配被过滤。
+  // 改用 useEffect：只在 React state 真正更新后才同步 ref，避免中间 render 覆盖。
   const permissionModeRef = useRef<PermissionMode>(permissionMode);
   permissionModeRef.current = permissionMode;
+  // 稳定 refreshSessions 引用：App.tsx 传入的是内联箭头函数，每次 render 都变，
+  // 如果放在 useEffect deps 中会导致 handler 频繁重新注册，增加竞态风险。
+  // 用 ref 包裹，useEffect deps 中改用稳定的 ref callback。
+  const refreshSessionsRef = useRef(refreshSessions);
+  refreshSessionsRef.current = refreshSessions;
   // 插话（interrupt）保护：当用户在模型回复中发送新消息时，
   // 标记为 true，直到新消息的 message_start 到达。
   // 在此期间忽略来自旧消息的 status: idle 和 message_complete 事件。
   const interruptPendingRef = useRef(false);
+
+  // 安全同步 sessionId prop → ref：仅在 React state 真正更新后才同步
+  // useEffect 在 commit phase 后执行，此时 sessionId prop 已经是最新值
+  useEffect(() => {
+    if (sessionId) {
+      sessionIdRef.current = sessionId;
+    }
+  }, [sessionId]);
 
   useEffect(() => {
     const unsubscribe = addMessageHandler((msg: WSMessage) => {
@@ -255,7 +273,7 @@ export function useMessageHandler({
           }
           // 注意：如果 currentMessageRef 为 null，说明消息已被取消/清理（插话场景），
           // 不应设置 status: idle，否则会覆盖用户刚发新消息设置的 'thinking' 状态
-          refreshSessions();
+          refreshSessionsRef.current();
           break;
 
         case 'error':
@@ -359,8 +377,18 @@ export function useMessageHandler({
 
         case 'session_switched':
           console.log('[useMessageHandler] session_switched received, clearing messages');
+          // 立即同步更新 sessionIdRef，防止旧会话的流式消息通过隔离检查泄漏到新会话
+          // 不能依赖 useWebSocket 的 setSessionId（异步），必须在此处直接更新 ref
+          if (payload.sessionId) {
+            sessionIdRef.current = payload.sessionId as string;
+          }
+          // 清除正在流式传输的消息引用，防止旧会话的 streaming 数据混入新会话
+          currentMessageRef.current = null;
+          // 重置所有状态
+          interruptPendingRef.current = false;
+          setStatus('idle');
           setMessages([]);
-          refreshSessions();
+          refreshSessionsRef.current();
           break;
 
         case 'history':
@@ -384,12 +412,19 @@ export function useMessageHandler({
         case 'session_created':
           if (payload.sessionId) {
             sessionIdRef.current = payload.sessionId as string;
-            refreshSessions();
+            refreshSessionsRef.current();
           }
           break;
 
         case 'session_new_ready':
           console.log('[App] 临时会话已就绪:', payload.sessionId);
+          // 立即同步更新 sessionIdRef，与 session_switched 同理
+          if (payload.sessionId) {
+            sessionIdRef.current = payload.sessionId as string;
+          }
+          // 清除旧会话的流式消息引用
+          currentMessageRef.current = null;
+          interruptPendingRef.current = false;
           setStatus('idle');
           break;
 
@@ -766,7 +801,7 @@ export function useMessageHandler({
     });
 
     return unsubscribe;
-  }, [addMessageHandler, model, send, refreshSessions, onNavigateToSwarm]);
+  }, [addMessageHandler, model, send, onNavigateToSwarm]);
 
   return {
     messages,

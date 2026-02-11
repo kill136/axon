@@ -5,6 +5,7 @@
 
 import React from 'react';
 import { Box, Text } from 'ink';
+import { t } from '../../i18n/index.js';
 
 export interface ToolCallProps {
   name: string;
@@ -25,6 +26,19 @@ const formatDuration = (ms?: number): string => {
 };
 
 /**
+ * 解析 web_search 结果摘要 JSON
+ */
+const parseWebSearchSummary = (result: string): { searchCount: number; results: Array<{ title: string; url: string }> } | null => {
+  try {
+    const data = JSON.parse(result);
+    if (data.type === 'web_search_summary') {
+      return data;
+    }
+  } catch { /* not JSON */ }
+  return null;
+};
+
+/**
  * 生成结果摘要（增强版 - 显示更多有用信息）
  */
 const generateSummary = (name: string, result?: string, error?: string): string => {
@@ -38,6 +52,20 @@ const generateSummary = (name: string, result?: string, error?: string): string 
     return '';
   }
 
+  // WebSearch Server Tool — 对齐官方 "Did N searches in Xs" 格式
+  if (name === '[Server] web_search') {
+    const summary = parseWebSearchSummary(result);
+    if (summary) {
+      const n = summary.searchCount;
+      return n !== 1 ? t('tool.didSearches', { count: n }) : t('tool.didSearch', { count: n });
+    }
+    // 搜索错误
+    if (result.startsWith('Search error:')) {
+      return result;
+    }
+    return '';
+  }
+
   // 根据工具类型生成智能摘要
   const lines = result.split('\n').filter(l => l.trim());
   const firstLine = lines[0] || '';
@@ -45,28 +73,28 @@ const generateSummary = (name: string, result?: string, error?: string): string 
   // Grep/Glob - 文件数量摘要，并显示前几个匹配的文件
   if (name === 'Grep' || name === 'Glob') {
     const fileCount = lines.length;
-    if (fileCount === 0) return 'No matches found';
-    if (fileCount === 1) return `Found 1 file: ${lines[0].slice(0, 60)}`;
-    if (fileCount <= 3) return `Found ${fileCount} files: ${lines.slice(0, 3).join(', ').slice(0, 100)}`;
-    return `Found ${fileCount} files`;
+    if (fileCount === 0) return t('tool.noMatches');
+    if (fileCount === 1) return t('tool.foundOneFile', { file: lines[0].slice(0, 60) });
+    if (fileCount <= 3) return t('tool.foundFilesDetail', { count: fileCount, files: lines.slice(0, 3).join(', ').slice(0, 100) });
+    return t('tool.foundFiles', { count: fileCount });
   }
 
   // Read - 行数摘要
   if (name === 'Read') {
     const lineCount = result.split('\n').length;
-    if (lineCount === 0) return 'Empty file';
-    if (lineCount === 1) return 'Read 1 line';
-    return `Read ${lineCount} lines`;
+    if (lineCount === 0) return t('tool.emptyFile');
+    if (lineCount === 1) return t('tool.readOneLine');
+    return t('tool.readLines', { count: lineCount });
   }
 
   // Write/Edit - 成功提示
   if (name === 'Write' || name === 'Edit' || name === 'MultiEdit') {
-    return 'Done';
+    return t('tool.done');
   }
 
   // Bash - 显示第一行输出（增加长度限制）
   if (name === 'Bash') {
-    if (result.trim() === '') return 'No output';
+    if (result.trim() === '') return t('tool.noOutput');
     // 显示更多内容
     return firstLine.slice(0, 120) + (firstLine.length > 120 ? '...' : '');
   }
@@ -76,7 +104,7 @@ const generateSummary = (name: string, result?: string, error?: string): string 
     return `${result.slice(0, 120)}...`;
   }
 
-  return firstLine || 'Done';
+  return firstLine || t('tool.done');
 };
 
 /**
@@ -134,6 +162,14 @@ const formatToolInput = (name: string, input?: Record<string, unknown>): string 
     case 'Task':
       return input.description ? `(${input.description})` : '';
 
+    case '[Server] web_search':
+      // 对齐官方: 显示 "query text"
+      if (input.query) {
+        const query = String(input.query);
+        return `("${query.slice(0, 60)}${query.length > 60 ? '...' : ''}")`;
+      }
+      return '';
+
     default:
       // 默认显示第一个参数
       const firstKey = Object.keys(input)[0];
@@ -170,7 +206,9 @@ export const ToolCall: React.FC<ToolCallProps> = React.memo(({
   const statusIcon = '•';
 
   // 工具名称和参数
-  const toolSignature = `${name}${formatToolInput(name, input)}`;
+  // 对齐官方: [Server] web_search → Web Search
+  const displayName = name === '[Server] web_search' ? t('tool.webSearch') : name;
+  const toolSignature = `${displayName}${formatToolInput(name, input)}`;
 
   // 结果摘要
   const summary = generateSummary(name, result, error);

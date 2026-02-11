@@ -10,6 +10,7 @@ import { readFile } from 'fs/promises';
 import { pathToFileURL } from 'url';
 import * as path from 'path';
 import { getCurrentCwd } from '../core/cwd-context.js';
+import { t } from '../i18n/index.js';
 
 /**
  * LSP 操作类型
@@ -992,7 +993,7 @@ Note: LSP servers must be configured for the file type. If no server is availabl
       const message = error instanceof Error ? error.message : String(error);
       return {
         success: false,
-        error: `Error performing ${input.operation}: ${message}`,
+        error: t('lsp.operationError', { operation: input.operation, error: message }),
         operation: input.operation,
         filePath: input.filePath,
       };

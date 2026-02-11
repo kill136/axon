@@ -30,6 +30,7 @@ import { getCurrentSessionId } from '../core/session.js';
 import type { BashInput, BashResult, ToolDefinition } from '../types/index.js';
 import { needsElevation, getElevationReason, executeElevated } from '../permissions/elevated-commands.js';
 import { truncateString } from '../utils/truncated-buffer.js';
+import { t } from '../i18n/index.js';
 
 const execAsync = promisify(exec);
 
@@ -1085,7 +1086,7 @@ Important:
       if (cleaned === 0 && backgroundTasks.size >= MAX_BACKGROUND_SHELLS) {
         return {
           success: false,
-          error: `Maximum number of background tasks (${MAX_BACKGROUND_SHELLS}) reached. Clean up completed tasks first.`,
+          error: t('bash.maxBackgroundTasks', { max: MAX_BACKGROUND_SHELLS }),
         };
       }
     }
@@ -1578,10 +1579,10 @@ export class KillShellTool extends BaseTool<{ shell_id: string }, BashResult> {
       // v2.1.30: 显示被停止任务的命令/描述，而不是通用消息
       return {
         success: true,
-        output: `Successfully stopped task: ${input.shell_id} (${task.command})`,
+        output: t('bash.taskStopped', { id: input.shell_id, command: task.command }),
       };
     } catch (err) {
-      return { success: false, error: `Failed to kill task: ${err}` };
+      return { success: false, error: t('bash.taskStopFailed', { error: err }) };
     }
   }
 }

@@ -13,6 +13,7 @@
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
+import { t } from '../../i18n/index.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -88,14 +89,14 @@ export interface ClaudeMdImportDialogProps {
  */
 function getSourceDisplay(source: ClaudeMdSource): { label: string; color: string } {
   const displays: Record<ClaudeMdSource, { label: string; color: string }> = {
-    'project': { label: 'Project', color: 'cyan' },
-    'project-dir': { label: 'Project/.claude', color: 'cyan' },
-    'local': { label: 'Local', color: 'green' },
-    'user-global': { label: 'User Global', color: 'blue' },
-    'rules': { label: 'Rules', color: 'magenta' },
-    'external': { label: 'External', color: 'yellow' },
+    'project': { label: t('claudemd.source.project'), color: 'cyan' },
+    'project-dir': { label: t('claudemd.source.projectDir'), color: 'cyan' },
+    'local': { label: t('claudemd.source.local'), color: 'green' },
+    'user-global': { label: t('claudemd.source.userGlobal'), color: 'blue' },
+    'rules': { label: t('claudemd.source.rules'), color: 'magenta' },
+    'external': { label: t('claudemd.source.external'), color: 'yellow' },
   };
-  return displays[source] || { label: 'Unknown', color: 'white' };
+  return displays[source] || { label: t('claudemd.source.unknown'), color: 'white' };
 }
 
 /**
@@ -177,7 +178,7 @@ const FileItem: React.FC<{
 
         {/* 存在状态 */}
         {!file.exists && (
-          <Text color="red"> [NOT FOUND]</Text>
+          <Text color="red"> [{t('claudemd.notFound')}]</Text>
         )}
       </Box>
 
@@ -191,12 +192,12 @@ const FileItem: React.FC<{
       {/* 包含的文件 */}
       {file.includes && file.includes.length > 0 && isSelected && (
         <Box marginLeft={4} flexDirection="column">
-          <Text color="gray" dimColor>Includes:</Text>
+          <Text color="gray" dimColor>{t('claudemd.includes')}</Text>
           {file.includes.slice(0, 3).map((inc, i) => (
             <Text key={i} color="gray" dimColor>  @{inc}</Text>
           ))}
           {file.includes.length > 3 && (
-            <Text color="gray" dimColor>  ...and {file.includes.length - 3} more</Text>
+            <Text color="gray" dimColor>  {t('claudemd.andMore', { count: file.includes.length - 3 })}</Text>
           )}
         </Box>
       )}
@@ -211,7 +212,7 @@ const FileItem: React.FC<{
           paddingX={1}
           flexDirection="column"
         >
-          <Text color="gray" dimColor>Preview:</Text>
+          <Text color="gray" dimColor>{t('claudemd.preview')}</Text>
           {file.preview.split('\n').slice(0, 5).map((line, i) => (
             <Text key={i} color="gray" dimColor>
               {line.length > 60 ? line.slice(0, 57) + '...' : line}
@@ -348,23 +349,21 @@ export const ClaudeMdImportDialog: React.FC<ClaudeMdImportDialogProps> = ({
         paddingY={1}
       >
         <Box marginBottom={1}>
-          <Text color="yellow" bold>Confirm Import</Text>
+          <Text color="yellow" bold>{t('claudemd.confirmTitle')}</Text>
         </Box>
 
         <Box flexDirection="column" marginBottom={1}>
           <Text>
-            You are about to import{' '}
-            <Text color="cyan" bold>{approvedCount}</Text>
-            {' '}CLAUDE.md file{approvedCount !== 1 ? 's' : ''}.
+            {approvedCount !== 1 ? t('claudemd.confirmBodyPlural', { count: approvedCount }) : t('claudemd.confirmBody', { count: approvedCount })}
           </Text>
           <Text color="gray" dimColor>
-            These files will be loaded and their instructions will be followed.
+            {t('claudemd.confirmHint')}
           </Text>
         </Box>
 
         {/* 已批准文件列表 */}
         <Box flexDirection="column" marginBottom={1}>
-          <Text color="gray">Files to import:</Text>
+          <Text color="gray">{t('claudemd.filesToImport')}</Text>
           {Array.from(fileApprovals.entries())
             .filter(([_, approved]) => approved)
             .slice(0, 5)
@@ -372,7 +371,7 @@ export const ClaudeMdImportDialog: React.FC<ClaudeMdImportDialogProps> = ({
               <Text key={i} color="green">  + {getRelativePath(filePath, cwd)}</Text>
             ))}
           {approvedCount > 5 && (
-            <Text color="gray">  ...and {approvedCount - 5} more</Text>
+            <Text color="gray">  {t('claudemd.andMoreFiles', { count: approvedCount - 5 })}</Text>
           )}
         </Box>
 
@@ -382,14 +381,14 @@ export const ClaudeMdImportDialog: React.FC<ClaudeMdImportDialogProps> = ({
             <Text color={rememberChoice ? 'green' : 'gray'}>
               [{rememberChoice ? 'x' : ' '}]
             </Text>
-            <Text> Remember this choice </Text>
+            <Text> {t('claudemd.rememberChoice')} </Text>
             <Text color="gray" dimColor>(r)</Text>
           </Box>
           {rememberChoice && (
             <Box marginLeft={2}>
-              <Text color="gray">Scope: </Text>
+              <Text color="gray">{t('claudemd.scope')}</Text>
               <Text color="cyan">{rememberScope}</Text>
-              <Text color="gray" dimColor> (s to toggle)</Text>
+              <Text color="gray" dimColor> ({t('claudemd.toggleScope')})</Text>
             </Box>
           )}
         </Box>
@@ -397,14 +396,14 @@ export const ClaudeMdImportDialog: React.FC<ClaudeMdImportDialogProps> = ({
         {/* 操作提示 */}
         <Box marginTop={1}>
           <Text color="green">[y]</Text>
-          <Text> Yes, import </Text>
+          <Text> {t('claudemd.yesImport')} </Text>
           <Text color="gray">|</Text>
           <Text color="red"> [n]</Text>
-          <Text> No, go back </Text>
+          <Text> {t('claudemd.noGoBack')} </Text>
           <Text color="gray">|</Text>
-          <Text color="gray"> [r] toggle remember </Text>
+          <Text color="gray"> [r] {t('claudemd.toggleRemember')} </Text>
           <Text color="gray">|</Text>
-          <Text color="gray"> [s] toggle scope</Text>
+          <Text color="gray"> [s] {t('claudemd.toggleScopeLabel')}</Text>
         </Box>
       </Box>
     );
@@ -422,11 +421,11 @@ export const ClaudeMdImportDialog: React.FC<ClaudeMdImportDialogProps> = ({
       {/* 标题 */}
       <Box marginBottom={1}>
         <Text color="cyan" bold>
-          {title || 'Import CLAUDE.md Files'}
+          {title || t('claudemd.title')}
         </Text>
         {files.length > 0 && (
           <Text color="gray" dimColor>
-            {' '}({approvedCount}/{validFiles.length} selected)
+            {' '}({t('claudemd.selected', { approved: approvedCount, total: validFiles.length })})
           </Text>
         )}
       </Box>
@@ -434,14 +433,14 @@ export const ClaudeMdImportDialog: React.FC<ClaudeMdImportDialogProps> = ({
       {/* 说明文字 */}
       <Box marginBottom={1}>
         <Text color="gray" dimColor>
-          The following CLAUDE.md files were found. Select which files to import.
+          {t('claudemd.description')}
         </Text>
       </Box>
 
       {/* 文件列表 */}
       <Box flexDirection="column" marginBottom={1}>
         {processedFiles.length === 0 ? (
-          <Text color="gray">No CLAUDE.md files found.</Text>
+          <Text color="gray">{t('claudemd.noFiles')}</Text>
         ) : (
           processedFiles.map((file, index) => (
             <FileItem
@@ -464,22 +463,22 @@ export const ClaudeMdImportDialog: React.FC<ClaudeMdImportDialogProps> = ({
       <Box flexDirection="column">
         <Box>
           <Text color="gray">
-            <Text color="cyan">space/enter</Text> toggle
+            <Text color="cyan">space/enter</Text> {t('claudemd.toggle')}
             <Text> | </Text>
-            <Text color="cyan">a</Text> approve all
+            <Text color="cyan">a</Text> {t('claudemd.approveAll')}
             <Text> | </Text>
-            <Text color="cyan">d</Text> deny all
+            <Text color="cyan">d</Text> {t('claudemd.denyAll')}
             <Text> | </Text>
-            <Text color="cyan">v</Text> {detailMode ? 'hide' : 'show'} details
+            <Text color="cyan">v</Text> {detailMode ? t('claudemd.hideDetails') : t('claudemd.showDetails')}
           </Text>
         </Box>
         <Box>
           <Text color="gray">
-            <Text color="cyan">c</Text> confirm
+            <Text color="cyan">c</Text> {t('claudemd.confirm')}
             <Text> | </Text>
-            <Text color="cyan">q/esc</Text> cancel
+            <Text color="cyan">q/esc</Text> {t('claudemd.cancel')}
             <Text> | </Text>
-            <Text color="cyan">j/k</Text> navigate
+            <Text color="cyan">j/k</Text> {t('claudemd.navigate')}
           </Text>
         </Box>
       </Box>
@@ -488,7 +487,7 @@ export const ClaudeMdImportDialog: React.FC<ClaudeMdImportDialogProps> = ({
       {processedFiles.some(f => f.source === 'external') && (
         <Box marginTop={1} borderStyle="single" borderColor="yellow" paddingX={1}>
           <Text color="yellow">
-            Warning: External file references require explicit approval.
+            {t('claudemd.externalWarning')}
           </Text>
         </Box>
       )}

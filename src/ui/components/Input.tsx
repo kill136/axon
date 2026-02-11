@@ -16,6 +16,7 @@ import {
   isShiftTab,
   parseKittyKey,
 } from '../utils/kitty-keyboard.js';
+import { t } from '../../i18n/index.js';
 
 // 官方 claude 颜色
 const CLAUDE_COLOR = '#D77757';
@@ -1239,7 +1240,7 @@ export const Input: React.FC<InputProps> = ({
         {/* 显示建议文本或实际输入 */}
         {showSuggestion ? (
           <Text dimColor>
-            Try "{suggestion}"
+            {t('input.trySuggestion', { suggestion })}
           </Text>
         ) : !disabled && value === '' ? (
           <Text backgroundColor="gray" color="black">

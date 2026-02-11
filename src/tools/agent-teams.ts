@@ -11,6 +11,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { BaseTool } from './base.js';
 import type { ToolResult, ToolDefinition } from '../types/index.js';
+import { t } from '../i18n/index.js';
 import {
   isAgentTeamsEnabled,
   getAgentId,
@@ -98,7 +99,7 @@ When in doubt about whether a task warrants a team, prefer spawning a team.
     if (!isAgentTeamsEnabled()) {
       return {
         success: false,
-        error: 'Agent Teams feature is not enabled. Set CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 to enable.',
+        error: t('agentTeams.notEnabled'),
       };
     }
 
@@ -110,7 +111,7 @@ When in doubt about whether a task warrants a team, prefer spawning a team.
       default:
         return {
           success: false,
-          error: `Unknown operation: ${input.operation}. Use 'spawnTeam' or 'cleanup'.`,
+          error: t('agentTeams.unknownOperation', { operation: input.operation }),
         };
     }
   }
@@ -118,7 +119,7 @@ When in doubt about whether a task warrants a team, prefer spawning a team.
   private spawnTeam(input: TeammateToolInput): ToolResult {
     const teamName = input.team_name;
     if (!teamName) {
-      return { success: false, error: 'team_name is required for spawnTeam operation' };
+      return { success: false, error: t('agentTeams.teamNameRequired') };
     }
 
     // 检查团队是否已存在（使用统一存储层）
@@ -126,7 +127,7 @@ When in doubt about whether a task warrants a team, prefer spawning a team.
     if (existing) {
       return {
         success: false,
-        error: `Team '${teamName}' already exists. Use 'cleanup' first to remove it.`,
+        error: t('agentTeams.teamAlreadyExists', { teamName }),
       };
     }
 
@@ -152,19 +153,12 @@ When in doubt about whether a task warrants a team, prefer spawning a team.
 
       return {
         success: true,
-        output: `Team '${teamName}' created successfully.
-Team ID: ${config.teamId}
-Task List: ${config.taskListId}
-
-Next steps:
-1. Spawn teammates using the Task tool with team_name="${teamName}" and name="<agent-name>"
-2. Create tasks using TaskCreate
-3. Assign tasks to teammates using TaskUpdate with owner="<teammate-name>"`,
+        output: t('agentTeams.createSuccess', { teamName, teamId: config.teamId, taskListId: config.taskListId }),
       };
     } catch (error) {
       return {
         success: false,
-        error: `Failed to create team: ${error instanceof Error ? error.message : String(error)}`,
+        error: t('agentTeams.createFailed', { error: error instanceof Error ? error.message : String(error) }),
       };
     }
   }
@@ -174,7 +168,7 @@ Next steps:
     if (!teamName) {
       return {
         success: false,
-        error: 'No active team context. Create a team first with spawnTeam.',
+        error: t('agentTeams.noActiveTeam'),
       };
     }
 
@@ -183,7 +177,7 @@ Next steps:
     if (!config) {
       return {
         success: false,
-        error: `Team '${teamName}' not found.`,
+        error: t('agentTeams.teamNotFound', { teamName }),
       };
     }
 
@@ -192,7 +186,7 @@ Next steps:
     if (activeMembers.length > 0) {
       return {
         success: false,
-        error: `Team '${teamName}' still has ${activeMembers.length} active member(s): ${activeMembers.map(m => m.name).join(', ')}. Send shutdown_request to all members first.`,
+        error: t('agentTeams.activeMembers', { teamName, count: activeMembers.length, names: activeMembers.map(m => m.name).join(', ') }),
       };
     }
 
@@ -201,7 +195,7 @@ Next steps:
     if (!deleted) {
       return {
         success: false,
-        error: `Failed to cleanup team '${teamName}'.`,
+        error: t('agentTeams.cleanupFailed', { teamName }),
       };
     }
 
@@ -210,7 +204,7 @@ Next steps:
 
     return {
       success: true,
-      output: `Team '${teamName}' cleaned up successfully. Team config and task directories removed.`,
+      output: t('agentTeams.cleanupSuccess', { teamName }),
     };
   }
 }

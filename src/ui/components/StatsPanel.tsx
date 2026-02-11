@@ -9,17 +9,20 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { Spinner } from './Spinner.js';
+import { t } from '../../i18n/index.js';
 import { convertFullwidthToHalfwidth } from '../../utils/index.js';
 
 // 日期范围类型
 type DateRangeType = 'all' | '7d' | '30d';
 
 // 日期范围标签
-const DATE_RANGE_LABELS: Record<DateRangeType, string> = {
-  '7d': 'Last 7 days',
-  '30d': 'Last 30 days',
-  'all': 'All time',
-};
+function getDateRangeLabels(): Record<DateRangeType, string> {
+  return {
+    '7d': t('stats.last7days'),
+    '30d': t('stats.last30days'),
+    'all': t('stats.allTime'),
+  };
+}
 
 // 日期范围循环顺序 (官方实现: ["all", "7d", "30d"])
 const DATE_RANGE_ORDER: DateRangeType[] = ['all', '7d', '30d'];
@@ -429,6 +432,7 @@ const DateRangeSelector: React.FC<{
   dateRange: DateRangeType;
   isLoading: boolean;
 }> = ({ dateRange, isLoading }) => {
+  const labels = getDateRangeLabels();
   return (
     <Box marginBottom={1} gap={1}>
       <Box>
@@ -436,9 +440,9 @@ const DateRangeSelector: React.FC<{
           <Text key={range}>
             {index > 0 && <Text dimColor> {'\u00B7'} </Text>}
             {range === dateRange ? (
-              <Text bold color="magenta">{DATE_RANGE_LABELS[range]}</Text>
+              <Text bold color="magenta">{labels[range]}</Text>
             ) : (
-              <Text dimColor>{DATE_RANGE_LABELS[range]}</Text>
+              <Text dimColor>{labels[range]}</Text>
             )}
           </Text>
         ))}
@@ -487,14 +491,14 @@ const OverviewTab: React.FC<{
         <Box flexDirection="column" width={28}>
           {favoriteModel && (
             <Text wrap="truncate">
-              Favorite model:{' '}
+              {t('stats.favoriteModel')}{' '}
               <Text color="magenta" bold>{shortModelName(favoriteModel[0])}</Text>
             </Text>
           )}
         </Box>
         <Box flexDirection="column" width={28}>
           <Text wrap="truncate">
-            Total tokens:{' '}
+            {t('stats.totalTokens')}{' '}
             <Text color="magenta">{formatTokens(totalTokens)}</Text>
           </Text>
         </Box>
@@ -504,14 +508,14 @@ const OverviewTab: React.FC<{
       <Box flexDirection="row" gap={4}>
         <Box flexDirection="column" width={28}>
           <Text wrap="truncate">
-            Sessions:{' '}
+            {t('stats.sessions')}{' '}
             <Text color="magenta">{formatTokens(stats.totalSessions)}</Text>
           </Text>
         </Box>
         <Box flexDirection="column" width={28}>
           {stats.longestSession && (
             <Text wrap="truncate">
-              Longest session:{' '}
+              {t('stats.longestSession')}{' '}
               <Text color="magenta">{formatDuration(stats.longestSession.duration)}</Text>
             </Text>
           )}
@@ -522,15 +526,15 @@ const OverviewTab: React.FC<{
       <Box flexDirection="row" gap={4}>
         <Box flexDirection="column" width={28}>
           <Text wrap="truncate">
-            Active days: <Text color="magenta">{stats.activeDays}</Text>
+            {t('stats.activeDays')} <Text color="magenta">{stats.activeDays}</Text>
             <Text color="gray">/{displayDays}</Text>
           </Text>
         </Box>
         <Box flexDirection="column" width={28}>
           <Text wrap="truncate">
-            Longest streak:{' '}
+            {t('stats.longestStreak')}{' '}
             <Text color="magenta" bold>{stats.streaks.longestStreak}</Text>
-            {' '}{stats.streaks.longestStreak === 1 ? 'day' : 'days'}
+            {' '}{stats.streaks.longestStreak === 1 ? t('stats.day') : t('stats.days')}
           </Text>
         </Box>
       </Box>
@@ -540,16 +544,16 @@ const OverviewTab: React.FC<{
         <Box flexDirection="column" width={28}>
           {stats.peakActivityDay && (
             <Text wrap="truncate">
-              Most active day:{' '}
+              {t('stats.mostActiveDay')}{' '}
               <Text color="magenta">{formatDate(stats.peakActivityDay)}</Text>
             </Text>
           )}
         </Box>
         <Box flexDirection="column" width={28}>
           <Text wrap="truncate">
-            Current streak:{' '}
+            {t('stats.currentStreak')}{' '}
             <Text color="magenta" bold>{allTimeStats.streaks.currentStreak}</Text>
-            {' '}{allTimeStats.streaks.currentStreak === 1 ? 'day' : 'days'}
+            {' '}{allTimeStats.streaks.currentStreak === 1 ? t('stats.day') : t('stats.days')}
           </Text>
         </Box>
       </Box>
@@ -592,7 +596,7 @@ const ModelsTab: React.FC<{
   if (modelEntries.length === 0) {
     return (
       <Box>
-        <Text color="gray">No model usage data available</Text>
+        <Text color="gray">{t('stats.noModelData')}</Text>
       </Box>
     );
   }
@@ -655,8 +659,8 @@ const ModelsTab: React.FC<{
         <Box marginTop={1}>
           <Text color="gray">
             {canScrollUp ? '\u2191' : ' '} {canScrollDown ? '\u2193' : ' '}{' '}
-            {scrollOffset + 1}-{Math.min(scrollOffset + maxVisible, modelEntries.length)} of {modelEntries.length} models
-            {' '}({'\u2191\u2193'} to scroll)
+            {t('stats.ofModels', { start: scrollOffset + 1, end: Math.min(scrollOffset + maxVisible, modelEntries.length), total: modelEntries.length })}
+            {' '}({'\u2191\u2193'} {t('stats.toScroll')})
           </Text>
         </Box>
       )}
@@ -703,7 +707,7 @@ export const StatsPanel: React.FC<StatsPanelProps> = ({ onDone }) => {
 
     // Escape 或 Ctrl+C/D 关闭
     if (key.escape || (key.ctrl && (normalizedInput === 'c' || normalizedInput === 'd'))) {
-      onDone?.('Stats dialog dismissed', { display: 'system' });
+      onDone?.(t('stats.dismissed'), { display: 'system' });
     }
 
     // Tab 切换 Overview/Models
@@ -735,11 +739,11 @@ export const StatsPanel: React.FC<StatsPanelProps> = ({ onDone }) => {
           paddingY={1}
         >
           <Box marginBottom={1}>
-            <Text bold color="cyan">Claude Code Statistics</Text>
+            <Text bold color="cyan">{t('stats.title')}</Text>
           </Box>
-          <Text color="yellow">No stats available yet. Start using Claude Code!</Text>
+          <Text color="yellow">{t('stats.noStats')}</Text>
           <Box marginTop={1}>
-            <Text dimColor italic>Esc to close</Text>
+            <Text dimColor italic>{t('stats.escToClose')}</Text>
           </Box>
         </Box>
       </Box>
@@ -751,7 +755,7 @@ export const StatsPanel: React.FC<StatsPanelProps> = ({ onDone }) => {
     return (
       <Box flexDirection="column" marginX={1} marginTop={1}>
         <Box marginTop={1}>
-          <Spinner type="dots" color="yellow" label="Loading stats..." />
+          <Spinner type="dots" color="yellow" label={t('stats.loadingStats')} />
         </Box>
       </Box>
     );
@@ -776,7 +780,7 @@ export const StatsPanel: React.FC<StatsPanelProps> = ({ onDone }) => {
               color={activeTab === 'Overview' ? 'magenta' : 'gray'}
               underline={activeTab === 'Overview'}
             >
-              Overview
+              {t('stats.overview')}
             </Text>
             <Text> </Text>
             <Text
@@ -784,7 +788,7 @@ export const StatsPanel: React.FC<StatsPanelProps> = ({ onDone }) => {
               color={activeTab === 'Models' ? 'magenta' : 'gray'}
               underline={activeTab === 'Models'}
             >
-              Models
+              {t('stats.models')}
             </Text>
           </Box>
 
@@ -809,7 +813,7 @@ export const StatsPanel: React.FC<StatsPanelProps> = ({ onDone }) => {
       {/* 底部提示 */}
       <Box paddingLeft={1}>
         <Text dimColor>
-          Esc to cancel {'\u00B7'} r to cycle dates
+          {t('stats.escToCancel')} {'\u00B7'} {t('stats.cycleDates')}
           {copyStatus && <Text> {'\u00B7'} {copyStatus}</Text>}
         </Text>
       </Box>

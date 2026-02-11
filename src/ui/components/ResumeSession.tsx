@@ -6,6 +6,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Box, Text, useInput, useStdout } from 'ink';
 import { Spinner } from './Spinner.js';
+import { t } from '../../i18n/index.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -42,11 +43,11 @@ function getTimeAgo(date: Date): string {
   const hours = Math.floor(diff / 3600000);
   const days = Math.floor(diff / 86400000);
 
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes}m ago`;
-  if (hours < 24) return `${hours}h ago`;
-  if (days < 7) return `${days}d ago`;
-  if (days < 30) return `${Math.floor(days / 7)}w ago`;
+  if (minutes < 1) return t('resume.justNow');
+  if (minutes < 60) return t('resume.minutesAgo', { count: minutes });
+  if (hours < 24) return t('resume.hoursAgo', { count: hours });
+  if (days < 7) return t('resume.daysAgo', { count: days });
+  if (days < 30) return t('resume.weeksAgo', { count: Math.floor(days / 7) });
   return date.toLocaleDateString();
 }
 
@@ -77,7 +78,7 @@ function parseSessionFile(filePath: string): SessionData | null {
     }
     const firstPrompt = rawFirstPrompt || null;
 
-    const summary = customTitle || firstPrompt?.slice(0, 60) || 'No messages';
+    const summary = customTitle || firstPrompt?.slice(0, 60) || t('resume.noMessages');
 
     return {
       id: metadata.id || data.state?.sessionId || fileName,
@@ -146,7 +147,7 @@ export const ResumeSession: React.FC<ResumeSessionProps> = ({
       const allSessions = allProjects ? await loadSessions() : await loadSessions(projectPaths);
 
       if (allSessions.length === 0) {
-        onDone('No conversations found to resume');
+        onDone(t('resume.noConversations'));
         return;
       }
 
@@ -199,7 +200,7 @@ export const ResumeSession: React.FC<ResumeSessionProps> = ({
   // 选择会话
   const handleSelect = useCallback(async (session: SessionData) => {
     if (!session) {
-      onDone('Failed to resume conversation');
+      onDone(t('resume.failed'));
       return;
     }
 
@@ -209,9 +210,9 @@ export const ResumeSession: React.FC<ResumeSessionProps> = ({
       const command = `cd "${session.projectPath}" && claude --resume ${session.id.slice(0, 8)}`;
       const message = [
         '',
-        'This conversation is from a different directory.',
+        t('resume.differentDir'),
         '',
-        'To resume, run:',
+        t('resume.toResume'),
         `  ${command}`,
         '',
       ].join('\n');
@@ -227,7 +228,7 @@ export const ResumeSession: React.FC<ResumeSessionProps> = ({
         // onResume 成功后，调用 onDone 关闭组件并跳过消息显示
         onDone(undefined, { display: 'skip' });
       } catch (error) {
-        onDone(`Failed to resume session: ${error}`, { display: 'assistant' });
+        onDone(t('resume.failedSession', { error: String(error) }), { display: 'assistant' });
       }
     } else {
       // 如果没有提供 onResume，显示恢复指令
@@ -235,10 +236,10 @@ export const ResumeSession: React.FC<ResumeSessionProps> = ({
         '',
         `To resume session "${session.summary.slice(0, 40)}${session.summary.length > 40 ? '...' : ''}"`,
         '',
-        'Run:',
+        t('resume.run'),
         `  claude --resume ${session.id}`,
         '',
-        'Or with short form:',
+        t('resume.orShortForm'),
         `  claude -r ${session.id.slice(0, 8)}`,
         '',
       ].join('\n');
@@ -252,13 +253,13 @@ export const ResumeSession: React.FC<ResumeSessionProps> = ({
 
     // Escape - 取消
     if (key.escape) {
-      onDone('Resume cancelled', { display: 'system' });
+      onDone(t('resume.cancelled'), { display: 'system' });
       return;
     }
 
     // Ctrl+C - 退出
     if (key.ctrl && input === 'c') {
-      onDone('Resume cancelled', { display: 'system' });
+      onDone(t('resume.cancelled'), { display: 'system' });
       return;
     }
 
@@ -332,7 +333,7 @@ export const ResumeSession: React.FC<ResumeSessionProps> = ({
   if (loading) {
     return (
       <Box>
-        <Spinner label=" Loading conversations…" />
+        <Spinner label={` ${t('resume.loading')}`} />
       </Box>
     );
   }
@@ -341,7 +342,7 @@ export const ResumeSession: React.FC<ResumeSessionProps> = ({
   if (resuming) {
     return (
       <Box>
-        <Spinner label=" Resuming conversation…" />
+        <Spinner label={` ${t('resume.resuming')}`} />
       </Box>
     );
   }
@@ -360,12 +361,12 @@ export const ResumeSession: React.FC<ResumeSessionProps> = ({
 
       {/* 标题 */}
       <Box marginTop={1}>
-        <Text bold color="cyan">Resume Session</Text>
+        <Text bold color="cyan">{t('resume.title')}</Text>
       </Box>
 
       {/* 搜索框 */}
       <Box marginTop={1}>
-        <Text dimColor>⌕ Search</Text>
+        <Text dimColor>⌕ {t('resume.search')}</Text>
         <Text color={searchQuery ? 'yellow' : 'gray'}>
           {searchQuery ? `: ${searchQuery}` : ''}
         </Text>
@@ -376,7 +377,7 @@ export const ResumeSession: React.FC<ResumeSessionProps> = ({
       {searchQuery && (
         <Box paddingLeft={2}>
           <Text dimColor italic>
-            {filteredSessions.length} result{filteredSessions.length !== 1 ? 's' : ''} for "{searchQuery}"
+            {filteredSessions.length !== 1 ? t('resume.resultsForPlural', { count: filteredSessions.length, query: searchQuery }) : t('resume.resultsFor', { count: filteredSessions.length, query: searchQuery })}
           </Text>
         </Box>
       )}
@@ -384,7 +385,7 @@ export const ResumeSession: React.FC<ResumeSessionProps> = ({
       {/* 向上滚动指示 */}
       {hasMoreAbove && (
         <Box paddingLeft={2}>
-          <Text dimColor>↑ {scrollOffset} more above</Text>
+          <Text dimColor>{t('resume.moreAbove', { count: scrollOffset })}</Text>
         </Box>
       )}
 
@@ -409,7 +410,7 @@ export const ResumeSession: React.FC<ResumeSessionProps> = ({
               </Box>
               <Box paddingLeft={2}>
                 <Text dimColor>
-                  {timeAgo} · {session.messageCount} msgs
+                  {timeAgo} · {session.messageCount} {t('resume.msgs')}
                   {session.gitBranch && ` · ${session.gitBranch}`}
                   {isDifferentProject && showAllProjects && ` · 📁 ${shortPath}`}
                 </Text>
@@ -422,7 +423,7 @@ export const ResumeSession: React.FC<ResumeSessionProps> = ({
       {/* 向下滚动指示 */}
       {hasMoreBelow && (
         <Box paddingLeft={2}>
-          <Text dimColor>↓ {filteredSessions.length - scrollOffset - visibleCount} more below</Text>
+          <Text dimColor>{t('resume.moreBelow', { count: filteredSessions.length - scrollOffset - visibleCount })}</Text>
         </Box>
       )}
 
@@ -431,8 +432,8 @@ export const ResumeSession: React.FC<ResumeSessionProps> = ({
         <Box marginTop={1} paddingLeft={2}>
           <Text dimColor italic>
             {searchQuery
-              ? `No sessions found matching "${searchQuery}"`
-              : 'No sessions available'
+              ? t('resume.noSessionsMatch', { query: searchQuery })
+              : t('resume.noSessions')
             }
           </Text>
         </Box>
@@ -441,7 +442,7 @@ export const ResumeSession: React.FC<ResumeSessionProps> = ({
       {/* 底部快捷键提示 */}
       <Box marginTop={1}>
         <Text dimColor>
-          A to show all projects · Type to search · ↑↓ to navigate · Enter to select · Esc to cancel
+          {t('resume.footerHint')}
         </Text>
       </Box>
     </Box>

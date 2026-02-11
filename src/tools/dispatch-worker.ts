@@ -12,6 +12,7 @@
 
 import { BaseTool } from './base.js';
 import type { ToolResult, ToolDefinition } from '../types/index.js';
+import { t } from '../i18n/index.js';
 import type {
   Blueprint,
   SmartTask,
@@ -130,7 +131,7 @@ Worker 执行的完整结果，包括：
     if (!ctx) {
       return {
         success: false,
-        output: 'DispatchWorker 工具尚未配置上下文。此工具仅供 LeadAgent 使用。',
+        output: t('dispatchWorker.noContext'),
       };
     }
 
@@ -302,7 +303,7 @@ Worker 执行的完整结果，包括：
 
       return {
         success: false,
-        output: `Worker 执行异常: ${taskId}\n\n错误: ${errorMsg}`,
+        output: t('dispatchWorker.executionError', { taskId, error: errorMsg }),
       };
     }
   }

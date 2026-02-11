@@ -114,8 +114,25 @@ export function useSessionManager({
 
         case 'session_created':
           if (payload.sessionId) {
-            refreshSessions();
+            // 直接将新会话插入列表头部，不依赖 refreshSessions
+            // 因为 session_created 在第一条消息处理前就发出，此时 messageCount=0，
+            // 服务端 handleSessionList 会过滤掉 messageCount=0 的会话，导致刷新后看不到
+            const newSession: Session = {
+              id: payload.sessionId as string,
+              name: (payload.name as string) || '新会话',
+              updatedAt: (payload.createdAt as number) || Date.now(),
+              messageCount: 1,
+            };
+            setSessions(prev => {
+              if (prev.some(s => s.id === newSession.id)) return prev;
+              return [newSession, ...prev];
+            });
           }
+          break;
+
+        case 'message_complete':
+          // 对话完成后刷新列表，更新 messageCount 和 updatedAt
+          refreshSessions();
           break;
       }
     });

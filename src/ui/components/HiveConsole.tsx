@@ -5,6 +5,7 @@
 
 import React from 'react';
 import { Box, Text } from 'ink';
+import { t } from '../../i18n/index.js';
 
 /**
  * 时间线事件类型
@@ -91,7 +92,7 @@ function WorkerPanel({ worker }: { worker: WorkerInfo }) {
         <Text color={statusColor}>{worker.status}</Text>
         <Text>]</Text>
       </Text>
-      <Text dimColor>任务: {worker.taskId}</Text>
+      <Text dimColor>{t('hive.task')}{worker.taskId}</Text>
       <ProgressBar percent={Math.round(worker.progress)} width={15} />
     </Box>
   );
@@ -148,15 +149,15 @@ export function HiveConsole({
     // 紧凑模式
     return (
       <Box flexDirection="column" borderStyle="single" paddingX={1}>
-        <Text bold color="magenta">🐝 蜂群控制台</Text>
+        <Text bold color="magenta">🐝 {t('hive.title')}</Text>
         <Box>
           <Text>Queen: </Text>
           <Text color="cyan">{queenId}</Text>
           <Text> [</Text>
           <Text color={statusColor}>{queenStatus}</Text>
           <Text>] </Text>
-          <Text>| 蓝图: {blueprintName} </Text>
-          <Text>| 进度: {completedCount}/{taskCount} ({progressPercent}%)</Text>
+          <Text>| {t('hive.blueprint')}{blueprintName} </Text>
+          <Text>| {t('hive.progress')}{completedCount}/{taskCount} ({progressPercent}%)</Text>
         </Box>
       </Box>
     );
@@ -167,33 +168,33 @@ export function HiveConsole({
     <Box flexDirection="column" borderStyle="single" paddingX={1}>
       {/* 标题 */}
       <Box justifyContent="center" marginBottom={1}>
-        <Text bold color="magenta">🐝 蜂群控制台</Text>
+        <Text bold color="magenta">🐝 {t('hive.title')}</Text>
       </Box>
 
       {/* Queen Agent 信息 */}
       <Box flexDirection="column" marginBottom={1}>
-        <Text bold color="yellow">━━━ Queen Agent ━━━</Text>
+        <Text bold color="yellow">━━━ {t('hive.queenAgent')} ━━━</Text>
         <Box>
-          <Text>ID: </Text>
+          <Text>{t('hive.id')}</Text>
           <Text color="cyan">{queenId}</Text>
         </Box>
         <Box>
-          <Text>状态: </Text>
+          <Text>{t('hive.status')}</Text>
           <Text color={statusColor}>{queenStatus}</Text>
         </Box>
         <Box>
-          <Text>蓝图: </Text>
+          <Text>{t('hive.blueprint')}</Text>
           <Text color="white">{blueprintName}</Text>
         </Box>
       </Box>
 
       {/* 任务统计 */}
       <Box flexDirection="column" marginBottom={1}>
-        <Text bold color="yellow">━━━ 任务进度 ━━━</Text>
+        <Text bold color="yellow">━━━ {t('hive.taskProgress')} ━━━</Text>
         <Box>
-          <Text>总任务: </Text>
+          <Text>{t('hive.totalTasks')}</Text>
           <Text color="cyan">{taskCount}</Text>
-          <Text> | 已完成: </Text>
+          <Text> | {t('hive.completed')}</Text>
           <Text color="green">{completedCount}</Text>
         </Box>
         <ProgressBar percent={progressPercent} width={30} />
@@ -201,11 +202,11 @@ export function HiveConsole({
 
       {/* Worker 统计 */}
       <Box flexDirection="column" marginBottom={1}>
-        <Text bold color="yellow">━━━ Worker Agents ━━━</Text>
+        <Text bold color="yellow">━━━ {t('hive.workerAgents')} ━━━</Text>
         <Box>
-          <Text>总数: </Text>
+          <Text>{t('hive.total')}</Text>
           <Text color="cyan">{workerCount}</Text>
-          <Text> | 活跃: </Text>
+          <Text> | {t('hive.active')}</Text>
           <Text color="green">{activeWorkers}</Text>
         </Box>
 
@@ -221,13 +222,13 @@ export function HiveConsole({
 
       {/* 时间线 */}
       <Box flexDirection="column">
-        <Text bold color="yellow">━━━ 时间线 ━━━</Text>
+        <Text bold color="yellow">━━━ {t('hive.timeline')} ━━━</Text>
         {displayEvents.length > 0 ? (
           displayEvents.map((event) => (
             <TimelineItem key={event.id} event={event} />
           ))
         ) : (
-          <Text dimColor>暂无事件</Text>
+          <Text dimColor>{t('hive.noEvents')}</Text>
         )}
       </Box>
     </Box>

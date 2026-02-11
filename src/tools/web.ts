@@ -14,6 +14,7 @@ import { BaseTool, type ToolOptions } from './base.js';
 import type { WebFetchInput, ToolResult, ToolDefinition } from '../types/index.js';
 import { ErrorCode } from '../types/errors.js';
 import { persistLargeOutputSync } from './output-persistence.js';
+import { t } from '../i18n/index.js';
 
 /**
  * 响应体大小限制 (10MB)
@@ -432,7 +433,7 @@ Usage notes:
       if (err.response && [301, 302, 307, 308].includes(err.response.status)) {
         const location = err.response.headers.location;
         if (!location) {
-          throw new Error(`Redirect detected but no location header provided`);
+          throw new Error(t('web.redirectNoLocation'));
         }
 
         const redirectUrl = this.resolveRedirectUrl(url, location);
@@ -442,7 +443,7 @@ Usage notes:
         if (this.isSameOrigin(baseUrl, redirectUrl)) {
           // 同源，自动跟随重定向（最多5次）
           if (redirectCount >= 5) {
-            throw new Error('Too many redirects (maximum 5)');
+            throw new Error(t('web.tooManyRedirects', { max: 5 }));
           }
           return this.fetchUrl(redirectUrl, {
             originalUrl: baseUrl,
@@ -482,7 +483,7 @@ Usage notes:
       } catch (err) {
         return {
           success: false,
-          error: `Invalid URL: ${url}`,
+          error: t('web.invalidUrl', { url }),
         };
       }
 
@@ -491,7 +492,7 @@ Usage notes:
       if (!isSafe) {
         return {
           success: false,
-          error: `Domain safety check failed: ${parsedUrl.hostname} is not allowed for security reasons (localhost, private IP, or metadata service)`,
+          error: t('web.domainBlocked', { hostname: parsedUrl.hostname }),
           errorCode: 3,
         };
       }

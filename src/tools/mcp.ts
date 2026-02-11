@@ -17,6 +17,7 @@ import type {
 import type { MCPSearchToolResult } from '../types/results.js';
 import { MAX_MCP_OUTPUT_TOKENS, truncateMcpOutput } from '../utils/index.js';
 import { persistLargeOutputSync } from './output-persistence.js';
+import { t } from '../i18n/index.js';
 
 // MCP 服务器状态管理
 interface McpServerState {
@@ -574,7 +575,7 @@ async function sendMcpMessage(
         // 尝试重新连接
         const reconnected = await connectMcpServer(serverName);
         if (!reconnected || !server?.process?.stdin || !server.process.stdout) {
-          throw new Error(`MCP server ${serverName} is not connected`);
+          throw new Error(t('mcp.serverNotConnected', { name: serverName }));
         }
       }
 
@@ -691,7 +692,7 @@ export async function callMcpTool(
   if (!server) {
     return {
       success: false,
-      error: `MCP server not found: ${serverName}. Available servers: ${Array.from(mcpServers.keys()).join(', ') || 'none'}`
+      error: t('mcp.serverNotFound', { name: serverName, available: Array.from(mcpServers.keys()).join(', ') || 'none' })
     };
   }
 
@@ -701,7 +702,7 @@ export async function callMcpTool(
     if (!connected) {
       return {
         success: false,
-        error: `Failed to connect to MCP server: ${serverName}. Please check server configuration.`
+        error: t('mcp.connectFailed', { name: serverName })
       };
     }
   }
@@ -710,16 +711,16 @@ export async function callMcpTool(
   if (!server.capabilities.tools) {
     return {
       success: false,
-      error: `MCP server ${serverName} does not support tools.`
+      error: t('mcp.noToolSupport', { name: serverName })
     };
   }
 
   // 验证工具是否存在
-  const toolExists = server.tools.some((t) => t.name === toolName);
+  const toolExists = server.tools.some((tt) => tt.name === toolName);
   if (!toolExists) {
     return {
       success: false,
-      error: `Tool not found: ${toolName}. Available tools: ${server.tools.map((t) => t.name).join(', ') || 'none'}`
+      error: t('mcp.toolNotFound', { name: toolName, available: server.tools.map((tt) => tt.name).join(', ') || 'none' })
     };
   }
 
@@ -765,7 +766,7 @@ export async function callMcpTool(
   } catch (err) {
     return {
       success: false,
-      error: `Error calling MCP tool: ${err instanceof Error ? err.message : 'Unknown error'}`
+      error: t('mcp.callError', { error: err instanceof Error ? err.message : 'Unknown error' })
     };
   }
 }
@@ -1288,7 +1289,7 @@ ${tools.join('\n')}`;
       if (!found) {
         return {
           success: true,
-          output: `Tool not found: ${toolName}\n\nAvailable tools:\n${this.getAvailableMcpTools()}`,
+          output: `${t('mcp.toolNotFound', { name: toolName, available: '' })}\n\nAvailable tools:\n${this.getAvailableMcpTools()}`,
           matches: [],
           query,
           total_mcp_tools: totalMcpTools,
@@ -1297,7 +1298,7 @@ ${tools.join('\n')}`;
 
       return {
         success: true,
-        output: `Selected and loaded MCP tool: ${toolName}\n\nYou can now call this tool directly.`,
+        output: t('mcp.toolSelected', { name: toolName }),
         matches: [toolName],
         query,
         total_mcp_tools: totalMcpTools,
@@ -1310,7 +1311,7 @@ ${tools.join('\n')}`;
     if (matches.length === 0) {
       return {
         success: true,
-        output: `No matching MCP tools found for query: "${query}"\n\nAvailable tools:\n${this.getAvailableMcpTools()}`,
+        output: `${t('mcp.noMatchingTools', { query })}\n\nAvailable tools:\n${this.getAvailableMcpTools()}`,
         matches: [],
         query,
         total_mcp_tools: totalMcpTools,
@@ -1467,7 +1468,7 @@ Parameters:
       if (!mcpServers.has(server)) {
         return {
           success: false,
-          error: `MCP server not found: ${server}. Available servers: ${Array.from(mcpServers.keys()).join(', ') || 'none'}`,
+          error: t('mcp.serverNotFound', { name: server, available: Array.from(mcpServers.keys()).join(', ') || 'none' }),
         };
       }
       serversToQuery.push(server);
@@ -1533,7 +1534,7 @@ Parameters:
 
     return {
       success: true,
-      output: `Found ${results.length} resource(s):\n\n${output}`,
+      output: `${t('mcp.resourcesFound', { count: results.length })}:\n\n${output}`,
     };
   }
 }
@@ -1583,7 +1584,7 @@ Parameters:
     if (!serverState) {
       return {
         success: false,
-        error: `MCP server not found: ${server}. Available servers: ${Array.from(mcpServers.keys()).join(', ') || 'none'}`,
+        error: t('mcp.resourceServerNotFound', { name: server, available: Array.from(mcpServers.keys()).join(', ') || 'none' }),
       };
     }
 
@@ -1593,7 +1594,7 @@ Parameters:
       if (!connected) {
         return {
           success: false,
-          error: `Failed to connect to MCP server: ${server}`,
+          error: t('mcp.resourceConnectFailed', { name: server }),
         };
       }
     }
@@ -1602,7 +1603,7 @@ Parameters:
     if (!serverState.capabilities.resources) {
       return {
         success: false,
-        error: `MCP server ${server} does not support resources.`,
+        error: t('mcp.noResourceSupport', { name: server }),
       };
     }
 
@@ -1615,7 +1616,7 @@ Parameters:
       if (!result) {
         return {
           success: false,
-          error: `Failed to read resource: ${uri} from server ${server}`,
+          error: t('mcp.resourceReadFailed', { uri, server }),
         };
       }
 
@@ -1662,7 +1663,7 @@ Parameters:
     } catch (err) {
       return {
         success: false,
-        error: `Error reading MCP resource: ${err instanceof Error ? err.message : 'Unknown error'}`,
+        error: t('mcp.resourceReadError', { error: err instanceof Error ? err.message : 'Unknown error' }),
       };
     }
   }

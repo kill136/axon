@@ -1823,6 +1823,14 @@ async function handleClientMessage(
       await handleSessionRename(client, message.payload.sessionId, message.payload.name, conversationManager);
       break;
 
+    case 'rewind_preview':
+      await handleRewindPreview(client, message.payload, conversationManager);
+      break;
+
+    case 'rewind_execute':
+      await handleRewindExecute(client, message.payload, conversationManager);
+      break;
+
     case 'session_export':
       await handleSessionExport(client, message.payload.sessionId, message.payload.format, conversationManager);
       break;
@@ -2326,23 +2334,33 @@ async function handleChatMessage(
     return conversationManager.getWebSocket(chatSessionId) || ws;
   };
 
-  // 发送消息开始
-  sendMessage(getActiveWs(), {
-    type: 'message_start',
-    payload: { messageId, sessionId: chatSessionId },
-  });
+  // 服务端消息闸门：只有当本会话是客户端当前活跃会话时才发送流式消息
+  // 用户切换会话后 client.sessionId 会同步更新，旧会话的回调立即失效
+  // 这从源头阻止了消息混串，比客户端软隔离更可靠
+  const isActiveSession = (): boolean => {
+    return client.sessionId === chatSessionId;
+  };
 
-  // 发送状态更新
-  sendMessage(getActiveWs(), {
-    type: 'status',
-    payload: { status: 'thinking', sessionId: chatSessionId },
-  });
+  // 发送消息开始（仅活跃会话）
+  if (isActiveSession()) {
+    sendMessage(getActiveWs(), {
+      type: 'message_start',
+      payload: { messageId, sessionId: chatSessionId },
+    });
+
+    // 发送状态更新
+    sendMessage(getActiveWs(), {
+      type: 'status',
+      payload: { status: 'thinking', sessionId: chatSessionId },
+    });
+  }
 
   try {
     // 调用对话管理器，传入流式回调（媒体附件包含 mimeType 和类型）
     // 所有回调使用 getActiveWs() 动态获取 WebSocket，确保刷新后消息仍能送达
     await conversationManager.chat(chatSessionId, enhancedContent, mediaAttachments, model, {
       onThinkingStart: () => {
+        if (!isActiveSession()) return;
         sendMessage(getActiveWs(), {
           type: 'thinking_start',
           payload: { messageId, sessionId: chatSessionId },
@@ -2350,6 +2368,7 @@ async function handleChatMessage(
       },
 
       onThinkingDelta: (text: string) => {
+        if (!isActiveSession()) return;
         sendMessage(getActiveWs(), {
           type: 'thinking_delta',
           payload: { messageId, text, sessionId: chatSessionId },
@@ -2357,6 +2376,7 @@ async function handleChatMessage(
       },
 
       onThinkingComplete: () => {
+        if (!isActiveSession()) return;
         sendMessage(getActiveWs(), {
           type: 'thinking_complete',
           payload: { messageId, sessionId: chatSessionId },
@@ -2364,6 +2384,7 @@ async function handleChatMessage(
       },
 
       onTextDelta: (text: string) => {
+        if (!isActiveSession()) return;
         sendMessage(getActiveWs(), {
           type: 'text_delta',
           payload: { messageId, text, sessionId: chatSessionId },
@@ -2371,6 +2392,7 @@ async function handleChatMessage(
       },
 
       onToolUseStart: (toolUseId: string, toolName: string, input: unknown) => {
+        if (!isActiveSession()) return;
         sendMessage(getActiveWs(), {
           type: 'tool_use_start',
           payload: { messageId, toolUseId, toolName, input, sessionId: chatSessionId },
@@ -2382,6 +2404,7 @@ async function handleChatMessage(
       },
 
       onToolUseDelta: (toolUseId: string, partialJson: string) => {
+        if (!isActiveSession()) return;
         sendMessage(getActiveWs(), {
           type: 'tool_use_delta',
           payload: { toolUseId, partialJson, sessionId: chatSessionId },
@@ -2389,6 +2412,7 @@ async function handleChatMessage(
       },
 
       onToolResult: (toolUseId: string, success: boolean, output?: string, error?: string, data?: unknown) => {
+        if (!isActiveSession()) return;
         sendMessage(getActiveWs(), {
           type: 'tool_result',
           payload: {
@@ -2460,6 +2484,7 @@ async function handleChatMessage(
       },
 
       onContextUpdate: (usage: { usedTokens: number; maxTokens: number; percentage: number; model: string }) => {
+        if (!isActiveSession()) return;
         sendMessage(getActiveWs(), {
           type: 'context_update',
           payload: { ...usage, sessionId: chatSessionId },
@@ -2467,6 +2492,7 @@ async function handleChatMessage(
       },
 
       onContextCompact: (phase: 'start' | 'end' | 'error', info?: Record<string, any>) => {
+        if (!isActiveSession()) return;
         sendMessage(getActiveWs(), {
           type: 'context_compact',
           payload: {
@@ -6457,7 +6483,7 @@ async function handleContinuousDevApprove(client: ClientConnection): Promise<voi
  * 处理回滚
  */
 async function handleContinuousDevRollback(
-  client: ClientConnection, 
+  client: ClientConnection,
   payload: { checkpointId?: string }
 ): Promise<void> {
   // 目前编排器还未完全公开回滚 API，这里作为预留接口
@@ -6466,4 +6492,81 @@ async function handleContinuousDevRollback(
     type: 'error',
     payload: { message: '回滚功能正在开发中' }
   });
+}
+
+// ============================================================================
+// Rewind 功能处理
+// ============================================================================
+
+/**
+ * 处理回滚预览请求
+ */
+async function handleRewindPreview(
+  client: ClientConnection,
+  payload: { messageId: string; option: 'code' | 'conversation' | 'both' },
+  conversationManager: ConversationManager
+): Promise<void> {
+  try {
+    const preview = conversationManager.getRewindPreview(
+      client.sessionId,
+      payload.messageId,
+      payload.option
+    );
+
+    sendMessage(client.ws, {
+      type: 'rewind_preview',
+      payload: {
+        success: true,
+        preview,
+      },
+    });
+  } catch (error) {
+    sendMessage(client.ws, {
+      type: 'error',
+      payload: { message: error instanceof Error ? error.message : '获取预览失败' },
+    });
+  }
+}
+
+/**
+ * 处理回滚执行请求
+ */
+async function handleRewindExecute(
+  client: ClientConnection,
+  payload: { messageId: string; option: 'code' | 'conversation' | 'both' },
+  conversationManager: ConversationManager
+): Promise<void> {
+  try {
+    console.log(`[WebSocket] 执行回滚: sessionId=${client.sessionId}, messageId=${payload.messageId}, option=${payload.option}`);
+
+    const result = await conversationManager.rewind(
+      client.sessionId,
+      payload.messageId,
+      payload.option
+    );
+
+    if (result.success) {
+      // 回滚成功，发送更新后的历史记录
+      const history = conversationManager.getHistory(client.sessionId);
+      sendMessage(client.ws, {
+        type: 'rewind_success',
+        payload: {
+          success: true,
+          result,
+          messages: history,
+        },
+      });
+    } else {
+      sendMessage(client.ws, {
+        type: 'error',
+        payload: { message: result.error || '回滚失败' },
+      });
+    }
+  } catch (error) {
+    console.error('[WebSocket] 回滚执行失败:', error);
+    sendMessage(client.ws, {
+      type: 'error',
+      payload: { message: error instanceof Error ? error.message : '回滚失败' },
+    });
+  }
 }

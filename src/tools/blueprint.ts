@@ -18,6 +18,7 @@
 
 import { BaseTool } from './base.js';
 import type { ToolResult, ToolDefinition } from '../types/index.js';
+import { t } from '../i18n/index.js';
 import { getCurrentCwd } from '../core/cwd-context.js';
 import {
   SmartPlanner,
@@ -307,7 +308,7 @@ export class BlueprintTool extends BaseTool<BlueprintToolInput, ToolResult> {
         case 'cancel':
           return this.handleCancel();
         default:
-          return { success: false, error: `未知操作: ${input.action}` };
+          return { success: false, error: t('blueprint.unknownAction', { action: String(input.action) }) };
       }
     } catch (error: any) {
       return { success: false, error: error.message };
@@ -416,40 +417,40 @@ export class BlueprintTool extends BaseTool<BlueprintToolInput, ToolResult> {
 
       // 格式化输出
       const lines: string[] = [];
-      lines.push('蓝图已生成！');
+      lines.push(t('blueprint.generated'));
       lines.push('');
       lines.push('========================================');
-      lines.push(`蓝图名称: ${blueprint.name}`);
-      lines.push(`蓝图 ID: ${blueprint.id}`);
-      lines.push(`项目路径: ${blueprint.projectPath}`);
+      lines.push(t('blueprint.name', { name: blueprint.name }));
+      lines.push(t('blueprint.id', { id: blueprint.id }));
+      lines.push(t('blueprint.projectPath', { path: blueprint.projectPath }));
       lines.push('');
-      lines.push('需求清单:');
+      lines.push(t('blueprint.requirementsList'));
       blueprint.requirements.forEach((req, i) => {
         lines.push(`  ${i + 1}. ${req}`);
       });
       lines.push('');
-      lines.push('技术栈:');
-      lines.push(`  语言: ${blueprint.techStack.language}`);
+      lines.push(t('blueprint.techStack'));
+      lines.push(t('blueprint.language', { language: blueprint.techStack.language }));
       if (blueprint.techStack.framework) {
-        lines.push(`  框架: ${blueprint.techStack.framework}`);
+        lines.push(t('blueprint.framework', { framework: blueprint.techStack.framework }));
       }
-      lines.push(`  包管理器: ${blueprint.techStack.packageManager}`);
+      lines.push(t('blueprint.packageManager', { packageManager: blueprint.techStack.packageManager }));
       if (blueprint.techStack.testFramework) {
-        lines.push(`  测试框架: ${blueprint.techStack.testFramework}`);
+        lines.push(t('blueprint.testFramework', { testFramework: blueprint.techStack.testFramework }));
       }
       lines.push('');
-      lines.push('模块划分:');
+      lines.push(t('blueprint.modules'));
       blueprint.modules.forEach((mod) => {
         lines.push(`  - ${mod.name} (${mod.type}): ${mod.description}`);
       });
       if (blueprint.apiContract) {
         lines.push('');
-        lines.push(`API 契约: ${blueprint.apiContract.endpoints.length} 个端点`);
+        lines.push(t('blueprint.apiContract', { count: blueprint.apiContract.endpoints.length }));
       }
       lines.push('');
       lines.push('========================================');
       lines.push('');
-      lines.push('下一步: 调用 execute 开始执行（LeadAgent 将自动规划和执行任务）');
+      lines.push(t('blueprint.nextStep'));
 
       return {
         success: true,
@@ -458,7 +459,7 @@ export class BlueprintTool extends BaseTool<BlueprintToolInput, ToolResult> {
     } catch (error: any) {
       return {
         success: false,
-        error: `蓝图生成失败: ${error.message}`,
+        error: t('blueprint.generateFailed', { error: error.message }),
       };
     }
   }
@@ -468,14 +469,14 @@ export class BlueprintTool extends BaseTool<BlueprintToolInput, ToolResult> {
    */
   private formatDialogResponse(state: DialogState, message: string): string {
     const lines: string[] = [];
-    lines.push(`[对话阶段: ${this.translatePhase(state.phase)}]`);
+    lines.push(t('blueprint.dialogPhase', { phase: this.translatePhase(state.phase) }));
     lines.push('');
     lines.push(message);
 
     // 如果已收集到需求，显示摘要
     if (state.collectedRequirements.length > 0) {
       lines.push('');
-      lines.push('--- 已收集的需求 ---');
+      lines.push(t('blueprint.collectedRequirements'));
       state.collectedRequirements.forEach((req, i) => {
         lines.push(`${i + 1}. ${req}`);
       });
@@ -488,15 +489,16 @@ export class BlueprintTool extends BaseTool<BlueprintToolInput, ToolResult> {
    * 翻译对话阶段
    */
   private translatePhase(phase: string): string {
-    const translations: Record<string, string> = {
-      greeting: '打招呼',
-      requirements: '收集需求',
-      clarification: '澄清细节',
-      tech_choice: '技术选择',
-      confirmation: '确认蓝图',
-      done: '完成',
+    const phaseKeys: Record<string, string> = {
+      greeting: 'blueprint.phaseGreeting',
+      requirements: 'blueprint.phaseRequirements',
+      clarification: 'blueprint.phaseClarification',
+      tech_choice: 'blueprint.phaseTechChoice',
+      confirmation: 'blueprint.phaseConfirmation',
+      done: 'blueprint.phaseDone',
     };
-    return translations[phase] || phase;
+    const key = phaseKeys[phase];
+    return key ? t(key as any) : phase;
   }
 
   /**
@@ -519,7 +521,7 @@ export class BlueprintTool extends BaseTool<BlueprintToolInput, ToolResult> {
     if (!plan) {
       return {
         success: false,
-        error: '没有可执行的计划。请先使用 plan 操作生成蓝图和执行计划。',
+        error: t('blueprint.noPlan'),
       };
     }
 
@@ -528,7 +530,7 @@ export class BlueprintTool extends BaseTool<BlueprintToolInput, ToolResult> {
     if (!blueprint) {
       return {
         success: false,
-        error: '没有活跃的蓝图。请先使用 plan 操作生成蓝图。',
+        error: t('blueprint.noBlueprint'),
       };
     }
 
@@ -537,19 +539,19 @@ export class BlueprintTool extends BaseTool<BlueprintToolInput, ToolResult> {
 
     // 启动执行（异步，不等待完成）
     const lines: string[] = [];
-    lines.push('执行已启动！');
+    lines.push(t('blueprint.executeStarted'));
     lines.push('');
-    lines.push(`蓝图: ${blueprint.name}`);
-    lines.push(`计划 ID: ${plan.id}`);
-    lines.push(`任务数: ${plan.tasks.length}`);
-    lines.push(`最大并发: ${input.config?.maxWorkers || DEFAULT_SWARM_CONFIG.maxWorkers} Worker`);
+    lines.push(t('blueprint.blueprintLabel', { name: blueprint.name }));
+    lines.push(t('blueprint.planId', { id: plan.id }));
+    lines.push(t('blueprint.taskCount', { count: plan.tasks.length }));
+    lines.push(t('blueprint.maxWorkers', { count: input.config?.maxWorkers || DEFAULT_SWARM_CONFIG.maxWorkers }));
     lines.push('');
-    lines.push('蜂群正在并行执行任务...');
+    lines.push(t('blueprint.executingTasks'));
     lines.push('');
-    lines.push('使用以下命令监控执行:');
-    lines.push('  - status: 查看执行状态');
-    lines.push('  - pause: 暂停执行');
-    lines.push('  - cancel: 取消执行');
+    lines.push(t('blueprint.monitorCommands'));
+    lines.push(t('blueprint.monitorStatus'));
+    lines.push(t('blueprint.monitorPause'));
+    lines.push(t('blueprint.monitorCancel'));
 
     // 异步启动执行
     coordinator.start(plan).then((result) => {
@@ -580,54 +582,54 @@ export class BlueprintTool extends BaseTool<BlueprintToolInput, ToolResult> {
 
     const lines: string[] = [];
     lines.push('========================================');
-    lines.push('蜂群状态');
+    lines.push(t('blueprint.statusTitle'));
     lines.push('========================================');
     lines.push('');
 
     // 对话状态
     if (dialogState) {
-      lines.push('[对话进行中]');
-      lines.push(`  阶段: ${this.translatePhase(dialogState.state.phase)}`);
-      lines.push(`  已收集需求: ${dialogState.state.collectedRequirements.length} 条`);
+      lines.push(t('blueprint.dialogInProgress'));
+      lines.push(t('blueprint.statusPhase', { phase: this.translatePhase(dialogState.state.phase) }));
+      lines.push(t('blueprint.statusRequirements', { count: dialogState.state.collectedRequirements.length }));
       lines.push('');
     }
 
     // 蓝图信息
     if (blueprint) {
-      lines.push('[当前蓝图]');
-      lines.push(`  名称: ${blueprint.name}`);
-      lines.push(`  ID: ${blueprint.id}`);
-      lines.push(`  状态: ${blueprint.status}`);
-      lines.push(`  模块数: ${blueprint.modules.length}`);
+      lines.push(t('blueprint.currentBlueprint'));
+      lines.push(t('blueprint.statusName', { name: blueprint.name }));
+      lines.push(t('blueprint.statusId', { id: blueprint.id }));
+      lines.push(t('blueprint.statusState', { status: blueprint.status }));
+      lines.push(t('blueprint.statusModules', { count: blueprint.modules.length }));
       lines.push('');
     } else {
-      lines.push('[当前蓝图] 无');
+      lines.push(t('blueprint.noBlueprint2'));
       lines.push('');
     }
 
     // 执行计划信息
     if (plan) {
-      lines.push('[执行计划]');
-      lines.push(`  ID: ${plan.id}`);
-      lines.push(`  总任务: ${plan.tasks.length}`);
-      lines.push(`  状态: ${plan.status}`);
+      lines.push(t('blueprint.executionPlan'));
+      lines.push(t('blueprint.statusPlanId', { id: plan.id }));
+      lines.push(t('blueprint.statusTotalTasks', { count: plan.tasks.length }));
+      lines.push(t('blueprint.statusPlanState', { status: plan.status }));
       lines.push('');
     }
 
     // 执行状态
     if (coordinator) {
       const status = coordinator.getStatus();
-      lines.push('[执行状态]');
-      lines.push(`  完成任务: ${status.completedTasks} / ${status.totalTasks}`);
-      lines.push(`  失败任务: ${status.failedTasks}`);
-      lines.push(`  执行中: ${status.runningTasks}`);
-      lines.push(`  活跃 Worker: ${status.activeWorkers}`);
+      lines.push(t('blueprint.executionStatus'));
+      lines.push(t('blueprint.completedTasks', { completed: status.completedTasks, total: status.totalTasks }));
+      lines.push(t('blueprint.failedTasks', { count: status.failedTasks }));
+      lines.push(t('blueprint.runningTasks', { count: status.runningTasks }));
+      lines.push(t('blueprint.activeWorkers', { count: status.activeWorkers }));
       lines.push('');
-      lines.push('[成本和时间]');
-      lines.push(`  当前成本: $${status.currentCost.toFixed(4)}`);
-      lines.push(`  预估总成本: $${status.estimatedTotalCost.toFixed(4)}`);
+      lines.push(t('blueprint.costAndTime'));
+      lines.push(t('blueprint.currentCost', { cost: status.currentCost.toFixed(4) }));
+      lines.push(t('blueprint.estimatedCost', { cost: status.estimatedTotalCost.toFixed(4) }));
       if (status.estimatedCompletion) {
-        lines.push(`  预计完成: ${status.estimatedCompletion.toLocaleString()}`);
+        lines.push(t('blueprint.estimatedCompletion', { time: status.estimatedCompletion.toLocaleString() }));
       }
 
       // 进度条
@@ -636,22 +638,22 @@ export class BlueprintTool extends BaseTool<BlueprintToolInput, ToolResult> {
         : 0;
       const progressBar = this.renderProgressBar(progress);
       lines.push('');
-      lines.push(`  进度: ${progressBar} ${progress}%`);
+      lines.push(t('blueprint.progress', { bar: progressBar, percent: progress }));
 
       // 问题列表
       if (status.issues.length > 0) {
         lines.push('');
-        lines.push('[问题记录]');
+        lines.push(t('blueprint.issues'));
         status.issues.slice(0, 5).forEach((issue) => {
-          const icon = issue.resolved ? '[已解决]' : '[待处理]';
+          const icon = issue.resolved ? t('blueprint.issueResolved') : t('blueprint.issuePending');
           lines.push(`  ${icon} ${issue.type}: ${issue.description}`);
         });
         if (status.issues.length > 5) {
-          lines.push(`  ... 还有 ${status.issues.length - 5} 个问题`);
+          lines.push(t('blueprint.moreIssues', { count: status.issues.length - 5 }));
         }
       }
     } else {
-      lines.push('[执行状态] 未启动');
+      lines.push(t('blueprint.notStarted'));
     }
 
     lines.push('');
@@ -686,7 +688,7 @@ export class BlueprintTool extends BaseTool<BlueprintToolInput, ToolResult> {
     if (!coordinator) {
       return {
         success: false,
-        error: '没有正在执行的任务。',
+        error: t('blueprint.noExecution'),
       };
     }
 
@@ -694,11 +696,7 @@ export class BlueprintTool extends BaseTool<BlueprintToolInput, ToolResult> {
 
     return {
       success: true,
-      output: `执行已暂停。
-
-当前状态已保存，可以随时使用 resume 恢复执行。
-
-注意：已启动的 Worker 会完成当前任务后暂停。`,
+      output: t('blueprint.paused'),
     };
   }
 
@@ -715,7 +713,7 @@ export class BlueprintTool extends BaseTool<BlueprintToolInput, ToolResult> {
     if (!coordinator) {
       return {
         success: false,
-        error: '没有可恢复的执行。请先使用 execute 启动执行。',
+        error: t('blueprint.noResumable'),
       };
     }
 
@@ -723,11 +721,7 @@ export class BlueprintTool extends BaseTool<BlueprintToolInput, ToolResult> {
 
     return {
       success: true,
-      output: `执行已恢复。
-
-蜂群继续并行执行任务...
-
-使用 status 查看执行进度。`,
+      output: t('blueprint.resumed'),
     };
   }
 
@@ -744,7 +738,7 @@ export class BlueprintTool extends BaseTool<BlueprintToolInput, ToolResult> {
     if (!coordinator) {
       return {
         success: false,
-        error: '没有正在执行的任务。',
+        error: t('blueprint.noExecution'),
       };
     }
 
@@ -755,12 +749,7 @@ export class BlueprintTool extends BaseTool<BlueprintToolInput, ToolResult> {
 
     return {
       success: true,
-      output: `执行已取消。
-
-所有活跃的 Worker 将在当前任务完成后停止。
-已完成的任务不会回滚。
-
-使用 status 查看最终状态。`,
+      output: t('blueprint.cancelled'),
     };
   }
 }

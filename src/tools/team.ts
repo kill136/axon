@@ -10,6 +10,7 @@
 
 import { BaseTool } from './base.js';
 import type { ToolResult, ToolDefinition } from '../types/index.js';
+import { t } from '../i18n/index.js';
 import {
   createTeam,
   getTeam,
@@ -86,7 +87,7 @@ export class TeamCreateTool extends BaseTool<TeamCreateInput, ToolResult> {
     if (!isAgentTeamsEnabled()) {
       return {
         success: false,
-        error: 'Agent Teams feature is not enabled. Set CLAUDE_CODE_ENABLE_AGENT_TEAMS=true to enable.',
+        error: t('team.notEnabled'),
       };
     }
 
@@ -94,7 +95,7 @@ export class TeamCreateTool extends BaseTool<TeamCreateInput, ToolResult> {
     if (isInTeamMode()) {
       return {
         success: false,
-        error: 'Already in a team. Use TeamDelete to clean up the current team first.',
+        error: t('team.alreadyInTeam'),
       };
     }
 
@@ -126,30 +127,30 @@ export class TeamCreateTool extends BaseTool<TeamCreateInput, ToolResult> {
           const backend = createTmuxBackend(`claude-team-${team_name}`);
           if (isInsideTmux()) {
             await backend.createInternalSwarmSession();
-            tmuxInfo = '\nTmux: Using current session for teammate panes.';
+            tmuxInfo = t('team.tmuxCurrentSession');
           } else {
             await backend.createExternalSwarmSession();
-            tmuxInfo = `\nTmux: Created session "claude-team-${team_name}" for teammate panes.`;
+            tmuxInfo = t('team.tmuxCreatedSession', { teamName: team_name });
           }
         } catch (e) {
-          tmuxInfo = `\nTmux: Warning - Could not initialize tmux backend: ${e}`;
+          tmuxInfo = t('team.tmuxWarning', { error: String(e) });
         }
       }
 
       const output = [
-        `Team "${team_name}" created successfully.`,
-        `Team ID: ${config.teamId}`,
-        `Task List: ${config.taskListId}`,
-        description ? `Description: ${description}` : '',
-        `Role: team-lead`,
+        t('team.createSuccess', { teamName: team_name }),
+        t('team.teamId', { teamId: config.teamId }),
+        t('team.taskList', { taskListId: config.taskListId }),
+        description ? t('team.description', { description }) : '',
+        t('team.roleTeamLead'),
         tmuxInfo,
         '',
-        'Next steps:',
-        '1. Use TaskCreate to create tasks for the team',
-        '2. Use Task tool to spawn teammate agents',
-        '3. Use SendMessage to communicate with teammates',
-        '4. Use TaskUpdate to track task progress',
-        '5. Use TeamDelete when done',
+        t('team.nextSteps'),
+        t('team.step1'),
+        t('team.step2'),
+        t('team.step3'),
+        t('team.step4'),
+        t('team.step5'),
       ].filter(Boolean).join('\n');
 
       return {
@@ -164,7 +165,7 @@ export class TeamCreateTool extends BaseTool<TeamCreateInput, ToolResult> {
     } catch (error) {
       return {
         success: false,
-        error: `Failed to create team: ${error instanceof Error ? error.message : String(error)}`,
+        error: t('team.createFailed', { error: error instanceof Error ? error.message : String(error) }),
       };
     }
   }
@@ -199,7 +200,7 @@ export class TeamDeleteTool extends BaseTool<Record<string, never>, ToolResult> 
     if (!isAgentTeamsEnabled()) {
       return {
         success: false,
-        error: 'Agent Teams feature is not enabled.',
+        error: t('team.notEnabledShort'),
       };
     }
 
@@ -208,7 +209,7 @@ export class TeamDeleteTool extends BaseTool<Record<string, never>, ToolResult> 
     if (!context) {
       return {
         success: false,
-        error: 'Not in a team. Nothing to delete.',
+        error: t('team.notInTeam'),
       };
     }
 
@@ -221,7 +222,7 @@ export class TeamDeleteTool extends BaseTool<Record<string, never>, ToolResult> 
     if (activeTeammates.length > 0) {
       return {
         success: false,
-        error: `Team still has ${activeTeammates.length} active teammate(s): ${activeTeammates.map(m => m.name).join(', ')}. Send shutdown_request to all teammates first, then wait for them to finish.`,
+        error: t('team.activeTeammates', { count: activeTeammates.length, names: activeTeammates.map(m => m.name).join(', ') }),
       };
     }
 
@@ -237,12 +238,12 @@ export class TeamDeleteTool extends BaseTool<Record<string, never>, ToolResult> 
 
       return {
         success: true,
-        output: `Team "${teamName}" has been deleted. All team resources cleaned up.`,
+        output: t('team.deleteSuccess', { teamName }),
       };
     } catch (error) {
       return {
         success: false,
-        error: `Failed to delete team: ${error instanceof Error ? error.message : String(error)}`,
+        error: t('team.deleteFailed', { error: error instanceof Error ? error.message : String(error) }),
       };
     }
   }
@@ -311,7 +312,7 @@ export class TeamSendMessageTool extends BaseTool<SendMessageInput, ToolResult> 
     if (!isAgentTeamsEnabled()) {
       return {
         success: false,
-        error: 'Agent Teams feature is not enabled.',
+        error: t('team.notEnabledShort'),
       };
     }
 
@@ -320,7 +321,7 @@ export class TeamSendMessageTool extends BaseTool<SendMessageInput, ToolResult> 
     if (!context) {
       return {
         success: false,
-        error: 'Not in a team. Create a team first with TeamCreate.',
+        error: t('team.notInTeamCreate'),
       };
     }
 
@@ -347,7 +348,7 @@ export class TeamSendMessageTool extends BaseTool<SendMessageInput, ToolResult> 
       default:
         return {
           success: false,
-          error: `Unknown message type: "${type}". Valid types: message, broadcast, shutdown_request, shutdown_response, plan_approval_response`,
+          error: t('team.unknownMessageType', { type: String(type) }),
         };
     }
   }
@@ -361,25 +362,25 @@ export class TeamSendMessageTool extends BaseTool<SendMessageInput, ToolResult> 
     input: SendMessageInput,
   ): ToolResult {
     if (!input.recipient) {
-      return { success: false, error: 'recipient is required for message type' };
+      return { success: false, error: t('team.recipientRequired', { msgType: 'message' }) };
     }
     if (!input.content) {
-      return { success: false, error: 'content is required for message type' };
+      return { success: false, error: t('team.contentRequired', { msgType: 'message' }) };
     }
     if (!input.summary) {
-      return { success: false, error: 'summary is required for message type' };
+      return { success: false, error: t('team.summaryRequired', { msgType: 'message' }) };
     }
 
     // 验证收件人存在
     const team = getTeam(teamName);
     if (!team) {
-      return { success: false, error: `Team "${teamName}" not found` };
+      return { success: false, error: t('team.teamNotFound', { teamName }) };
     }
     const recipientMember = team.members.find(m => m.name === input.recipient);
     if (!recipientMember) {
       return {
         success: false,
-        error: `Recipient "${input.recipient}" not found in team. Members: ${team.members.map(m => m.name).join(', ')}`,
+        error: t('team.recipientNotFound', { recipient: input.recipient, members: team.members.map(m => m.name).join(', ') }),
       };
     }
 
@@ -397,7 +398,7 @@ export class TeamSendMessageTool extends BaseTool<SendMessageInput, ToolResult> 
 
     return {
       success: true,
-      output: `Message sent to ${input.recipient}: "${input.summary}"`,
+      output: t('team.messageSent', { recipient: input.recipient, summary: input.summary }),
     };
   }
 
@@ -410,10 +411,10 @@ export class TeamSendMessageTool extends BaseTool<SendMessageInput, ToolResult> 
     input: SendMessageInput,
   ): ToolResult {
     if (!input.content) {
-      return { success: false, error: 'content is required for broadcast type' };
+      return { success: false, error: t('team.contentRequired', { msgType: 'broadcast' }) };
     }
     if (!input.summary) {
-      return { success: false, error: 'summary is required for broadcast type' };
+      return { success: false, error: t('team.summaryRequired', { msgType: 'broadcast' }) };
     }
 
     const message: BroadcastMessage = {
@@ -429,7 +430,7 @@ export class TeamSendMessageTool extends BaseTool<SendMessageInput, ToolResult> 
 
     return {
       success: true,
-      output: `Broadcast sent to ${count} teammate(s): "${input.summary}"`,
+      output: t('team.broadcastSent', { count, summary: input.summary }),
     };
   }
 
@@ -442,7 +443,7 @@ export class TeamSendMessageTool extends BaseTool<SendMessageInput, ToolResult> 
     input: SendMessageInput,
   ): ToolResult {
     if (!input.recipient) {
-      return { success: false, error: 'recipient is required for shutdown_request type' };
+      return { success: false, error: t('team.recipientRequired', { msgType: 'shutdown_request' }) };
     }
 
     const message: ShutdownRequest = {
@@ -458,7 +459,7 @@ export class TeamSendMessageTool extends BaseTool<SendMessageInput, ToolResult> 
 
     return {
       success: true,
-      output: `Shutdown request sent to ${input.recipient}`,
+      output: t('team.shutdownRequestSent', { recipient: input.recipient }),
     };
   }
 
@@ -471,10 +472,10 @@ export class TeamSendMessageTool extends BaseTool<SendMessageInput, ToolResult> 
     input: SendMessageInput,
   ): ToolResult {
     if (!input.request_id) {
-      return { success: false, error: 'request_id is required for shutdown_response type' };
+      return { success: false, error: t('team.requestIdRequired', { msgType: 'shutdown_response' }) };
     }
     if (input.approve === undefined) {
-      return { success: false, error: 'approve is required for shutdown_response type' };
+      return { success: false, error: t('team.approveRequired', { msgType: 'shutdown_response' }) };
     }
 
     const message: ShutdownResponse = {
@@ -498,8 +499,8 @@ export class TeamSendMessageTool extends BaseTool<SendMessageInput, ToolResult> 
     return {
       success: true,
       output: input.approve
-        ? `Shutdown approved. Agent "${senderName}" is shutting down.`
-        : `Shutdown denied by ${senderName}.`,
+        ? t('team.shutdownApproved', { agentName: senderName })
+        : t('team.shutdownDenied', { agentName: senderName }),
     };
   }
 
@@ -512,13 +513,13 @@ export class TeamSendMessageTool extends BaseTool<SendMessageInput, ToolResult> 
     input: SendMessageInput,
   ): ToolResult {
     if (!input.request_id) {
-      return { success: false, error: 'request_id is required for plan_approval_response type' };
+      return { success: false, error: t('team.requestIdRequired', { msgType: 'plan_approval_response' }) };
     }
     if (!input.recipient) {
-      return { success: false, error: 'recipient is required for plan_approval_response type' };
+      return { success: false, error: t('team.recipientRequired', { msgType: 'plan_approval_response' }) };
     }
     if (input.approve === undefined) {
-      return { success: false, error: 'approve is required for plan_approval_response type' };
+      return { success: false, error: t('team.approveRequired', { msgType: 'plan_approval_response' }) };
     }
 
     const message: PlanApprovalResponse = {
@@ -537,8 +538,8 @@ export class TeamSendMessageTool extends BaseTool<SendMessageInput, ToolResult> 
     return {
       success: true,
       output: input.approve
-        ? `Plan approved for ${input.recipient}`
-        : `Plan rejected for ${input.recipient}: ${input.content || 'No reason given'}`,
+        ? t('team.planApproved', { recipient: input.recipient })
+        : t('team.planRejected', { recipient: input.recipient, reason: input.content || 'No reason given' }),
     };
   }
 }

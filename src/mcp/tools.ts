@@ -811,7 +811,123 @@ export function createToolDefinition(mcpTool: McpTool): ToolDefinition {
       properties: mcpTool.inputSchema.properties || {},
       required: mcpTool.inputSchema.required || [],
     },
+    isMcp: true,
   };
+}
+
+// ============ Deferred Tool 机制 (对齐官方 v2.1.34) ============
+
+/**
+ * 判断工具是否为 deferred 工具
+ *
+ * 对齐官方 isDeferredTool (OG) 函数：
+ * function OG(A){ if(A.isMcp===true) return true; return false; }
+ *
+ * @param tool 工具定义
+ * @returns 是否为 deferred 工具
+ */
+export function isDeferredTool(tool: ToolDefinition): boolean {
+  if (tool.isMcp === true) return true;
+  return false;
+}
+
+/**
+ * 从消息历史中提取已发现的 deferred 工具名称
+ *
+ * 对齐官方 abA 函数：扫描消息历史中 MCPSearch/ToolSearch 的 tool_result，
+ * 找出模型之前通过 ToolSearch 已选中加载的 MCP 工具名
+ *
+ * 官方实现：
+ * function abA(A){
+ *   let q=new Set;
+ *   for(let K of A){
+ *     if(K.type!=="user")continue;
+ *     let Y=K.message?.content;
+ *     if(!Array.isArray(Y))continue;
+ *     for(let z of Y)
+ *       if(k9z(z))  // 是 tool_result 类型
+ *         for(let w of z.content)
+ *           if(E9z(w))  // 是 tool_name reference
+ *             q.add(w.tool_name)
+ *   }
+ *   return q
+ * }
+ *
+ * @param messages 消息历史
+ * @returns 已发现的工具名称集合
+ */
+export function getDiscoveredToolsFromMessages(messages: Array<Record<string, any>>): Set<string> {
+  const discovered = new Set<string>();
+
+  for (const msg of messages) {
+    // 只扫描 user 消息（tool_result 在 user 消息中）
+    if (msg.role !== 'user') continue;
+
+    const content = msg.content;
+    if (!Array.isArray(content)) continue;
+
+    for (const block of content) {
+      // tool_result 块
+      if (block.type === 'tool_result') {
+        const resultContent = block.content;
+        if (!Array.isArray(resultContent)) {
+          // 如果 content 是字符串，尝试解析 MCP 工具名
+          if (typeof resultContent === 'string') {
+            extractMcpToolNames(resultContent, discovered);
+          }
+          continue;
+        }
+        for (const item of resultContent) {
+          // 检查 tool_name reference（对齐官方 E9z 检查）
+          if (item.type === 'tool_reference' && item.tool_name) {
+            discovered.add(item.tool_name);
+          }
+          // 也从文本内容中提取
+          if (item.type === 'text' && item.text) {
+            extractMcpToolNames(item.text, discovered);
+          }
+        }
+      }
+    }
+  }
+
+  return discovered;
+}
+
+/**
+ * 从文本中提取 MCP 工具名
+ * MCPSearchTool 返回的结果中包含工具名
+ */
+function extractMcpToolNames(text: string, discovered: Set<string>): void {
+  // 匹配 "mcp__server__tool" 模式的工具名
+  const mcpToolNameRegex = /\bmcp__[a-zA-Z0-9_-]+__[a-zA-Z0-9_-]+\b/g;
+  let match;
+  while ((match = mcpToolNameRegex.exec(text)) !== null) {
+    discovered.add(match[0]);
+  }
+}
+
+/**
+ * 生成 ToolSearch 工具的 prompt（包含 deferred 工具列表）
+ *
+ * 对齐官方 r$6 / getPrompt 函数
+ *
+ * @param allTools 所有工具
+ * @param basePrompt ToolSearch 工具的基础 prompt
+ * @returns 包含 deferred 工具列表的完整 prompt
+ */
+export function getToolSearchPrompt(allTools: ToolDefinition[], basePrompt: string): string {
+  const deferredTools = allTools.filter(isDeferredTool);
+
+  if (deferredTools.length === 0) {
+    return basePrompt;
+  }
+
+  const toolNames = deferredTools.map(t => t.name).join('\n');
+  return `${basePrompt}
+
+Available deferred tools (must be loaded before use):
+${toolNames}`;
 }
 
 /**

@@ -3,6 +3,10 @@ services:
     image: wbj66/claude-code-open:latest
     stdin_open: true
     tty: true
+    # Chromium 需要足够的共享内存
+    shm_size: '2gb'
+    environment:
+      - PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
     volumes:
       # 持久化会话、配置、笔记本
       - ~/.claude:/root/.claude

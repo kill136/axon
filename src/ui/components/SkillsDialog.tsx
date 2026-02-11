@@ -5,6 +5,7 @@
 
 import React, { useMemo } from 'react';
 import { Box, Text, useInput } from 'ink';
+import { t } from '../../i18n/index.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -27,15 +28,17 @@ interface SkillsDialogProps {
 }
 
 // 来源显示名称
-const SOURCE_LABELS: Record<SkillSource, string> = {
-  policySettings: 'Enterprise Policy',
-  userSettings: 'User Settings',
-  projectSettings: 'Project',
-  localSettings: 'Local',
-  flagSettings: 'Flag Settings',
-  plugin: 'Plugin skills',
-  builtin: 'Built-in',
-};
+function getSourceLabels(): Record<SkillSource, string> {
+  return {
+    policySettings: t('skills.source.enterprisePolicy'),
+    userSettings: t('skills.source.userSettings'),
+    projectSettings: t('skills.source.project'),
+    localSettings: t('skills.source.local'),
+    flagSettings: t('skills.source.flagSettings'),
+    plugin: t('skills.source.plugin'),
+    builtin: t('skills.source.builtin'),
+  };
+}
 
 // 来源路径提示
 const SOURCE_PATHS: Record<SkillSource, string> = {
@@ -233,7 +236,7 @@ export const SkillsDialog: React.FC<SkillsDialogProps> = ({ onDone, cwd }) => {
     const items = groupedSkills[source];
     if (items.length === 0) return null;
 
-    const label = SOURCE_LABELS[source];
+    const label = getSourceLabels()[source];
     const pathHint = SOURCE_PATHS[source];
 
     return (
@@ -260,14 +263,14 @@ export const SkillsDialog: React.FC<SkillsDialogProps> = ({ onDone, cwd }) => {
         paddingY={1}
       >
         <Box marginBottom={1}>
-          <Text bold color="cyan">Skills</Text>
-          <Text dimColor> · No skills found</Text>
+          <Text bold color="cyan">{t('skills.title')}</Text>
+          <Text dimColor> · {t('skills.noSkillsFound')}</Text>
         </Box>
 
-        <Text dimColor>Create skills in .claude/skills/ or ~/.claude/skills/</Text>
+        <Text dimColor>{t('skills.createHint')}</Text>
 
         <Box marginTop={1}>
-          <Text dimColor italic>Esc to close</Text>
+          <Text dimColor italic>{t('skills.escToClose')}</Text>
         </Box>
       </Box>
     );
@@ -283,8 +286,8 @@ export const SkillsDialog: React.FC<SkillsDialogProps> = ({ onDone, cwd }) => {
       paddingY={1}
     >
       <Box marginBottom={1}>
-        <Text bold color="cyan">Skills</Text>
-        <Text dimColor> · {skills.length} skill{skills.length === 1 ? '' : 's'}</Text>
+        <Text bold color="cyan">{t('skills.title')}</Text>
+        <Text dimColor> · {skills.length === 1 ? t('skills.skillCount', { count: skills.length }) : t('skills.skillsCount', { count: skills.length })}</Text>
       </Box>
 
       <Box flexDirection="column">
@@ -296,7 +299,7 @@ export const SkillsDialog: React.FC<SkillsDialogProps> = ({ onDone, cwd }) => {
       </Box>
 
       <Box marginTop={1}>
-        <Text dimColor italic>Esc to close</Text>
+        <Text dimColor italic>{t('skills.escToClose')}</Text>
       </Box>
     </Box>
   );

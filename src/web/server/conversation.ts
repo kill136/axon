@@ -24,9 +24,6 @@ import { walAppend, walCheckpoint } from '../../session/index.js';
 import { TaskManager } from './task-manager.js';
 import { McpConfigManager } from '../../mcp/config.js';
 import type { ExtendedMcpServerConfig } from '../../mcp/config.js';
-import { UnifiedMemory, getUnifiedMemory } from '../../memory/unified-memory.js';
-import { type MemoryEvent, MemoryEmotion } from '../../memory/types.js';
-import { extractExplicitMemories, mergeExtractedMemories } from '../../memory/intent-extractor.js';
 import { oauthManager } from './oauth-manager.js';
 import { blueprintStore, executionManager } from './routes/blueprint-api.js';
 import type { Blueprint } from '../../blueprint/types.js';
@@ -43,6 +40,7 @@ import { initNotebookManager, getNotebookManager } from '../../memory/notebook.j
 import { registerMcpServer, connectMcpServer, createMcpTools, getMcpServers, callMcpTool, type McpToolDefinition } from '../../tools/mcp.js';
 import { getChromeIntegrationConfig } from '../../chrome-mcp/index.js';
 import { CHROME_MCP_TOOLS } from '../../chrome-mcp/tools.js';
+import { RewindManager, type RewindOption } from '../../rewind/index.js';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -267,6 +265,7 @@ interface SessionState {
   userInteractionHandler: UserInteractionHandler;
   taskManager: TaskManager;
   permissionHandler: PermissionHandler;
+  rewindManager: RewindManager;
   ws?: WebSocket;
   toolFilterConfig: import('../shared/types.js').ToolFilterConfig;
   systemPromptConfig: SystemPromptConfig;
@@ -296,7 +295,6 @@ export class ConversationManager {
   private cwd: string;
   private defaultModel: string;
   private mcpConfigManager: McpConfigManager;
-  private unifiedMemory: UnifiedMemory;
   private options?: { verbose?: boolean };
   /** Chrome MCP 系统提示（与官方 wbA() 一致） */
   private chromeSystemPrompt?: string;
@@ -316,8 +314,6 @@ export class ConversationManager {
       validateCommands: true,
       autoSave: true,
     });
-    // 初始化统一记忆系统
-    this.unifiedMemory = getUnifiedMemory(cwd);
   }
 
   /**
@@ -606,6 +602,9 @@ export class ConversationManager {
     // 创建权限处理器：优先使用客户端传入的权限模式，确保 YOLO 等模式跨会话生效
     const permissionHandler = new PermissionHandler({ mode: (permissionMode as any) || 'default' });
 
+    // 创建 Rewind 管理器
+    const rewindManager = new RewindManager(sessionId);
+
     state = {
       session,
       client,
@@ -616,6 +615,7 @@ export class ConversationManager {
       userInteractionHandler,
       taskManager,
       permissionHandler,
+      rewindManager,
       toolFilterConfig: {
         mode: 'all', // 默认允许所有工具
       },
@@ -1007,10 +1007,22 @@ export class ConversationManager {
           console.log(`[AutoCompact] 触发压缩 (lastActualTokens: ${state.lastActualInputTokens.toLocaleString()}, threshold: ${threshold.toLocaleString()})`);
           // 通知前端：开始压缩
           callbacks.onContextCompact?.('start', { threshold, estimatedTokens: state.lastActualInputTokens });
+          // 关键：压缩前保存当前轮次的消息（最后一条非摘要 user 消息及其后的所有消息）
+          // NJ1 摘要会把所有消息压缩为一条摘要，但当前轮次的用户请求不应丢弃
+          let messagesToKeep: Message[] = [];
+          for (let i = cleanedMessages.length - 1; i >= 0; i--) {
+            const msg = cleanedMessages[i];
+            if (msg.role === 'user' && !(msg as any).isCompactSummary) {
+              messagesToKeep = cleanedMessages.slice(i);
+              break;
+            }
+          }
+
           const compactResult = await this.performAutoCompact(cleanedMessages, resolvedModel, state);
           if (compactResult.wasCompacted) {
-            cleanedMessages = compactResult.messages;
-            state.messages = compactResult.messages;
+            // 修复：压缩后保留当前轮次的消息（对齐 CLI TJ1 的 messagesToKeep 逻辑）
+            cleanedMessages = [...compactResult.messages, ...messagesToKeep];
+            state.messages = [...compactResult.messages, ...messagesToKeep];
             state.lastActualInputTokens = 0; // 压缩后重置
             // 对齐官方：保存边界 UUID 用于增量压缩
             if (compactResult.boundaryUuid) {
@@ -1336,9 +1348,18 @@ export class ConversationManager {
           justForceCompacted = true; // 防止无限循环
           try {
             callbacks.onContextCompact?.('start', { threshold: 0, estimatedTokens: 0, reason: 'prompt_too_long' });
+            // 强制压缩前保留当前轮次的消息（与上面 autoCompact 逻辑一致）
+            let forceKeepMsgs: Message[] = [];
+            for (let i = state.messages.length - 1; i >= 0; i--) {
+              const msg = state.messages[i];
+              if (msg.role === 'user' && !(msg as any).isCompactSummary) {
+                forceKeepMsgs = state.messages.slice(i);
+                break;
+              }
+            }
             const compactResult = await this.performAutoCompact(state.messages, resolvedModel, state);
             if (compactResult.wasCompacted) {
-              state.messages = compactResult.messages;
+              state.messages = [...compactResult.messages, ...forceKeepMsgs];
               state.lastActualInputTokens = 0;
               // 对齐官方：保存边界 UUID 用于增量压缩
               if (compactResult.boundaryUuid) {
@@ -1463,243 +1484,6 @@ export class ConversationManager {
       }
     }
 
-    // 记录对话到记忆系统（WebUI 独有功能）
-    if (!state.cancelled && sessionId) {
-      await this.recordConversationMemory(state, sessionId);
-    }
-  }
-
-  /**
-   * 记录对话到记忆系统
-   * 从对话内容中提取摘要、涉及的文件、话题等信息
-   */
-  private async recordConversationMemory(state: SessionState, sessionId: string): Promise<void> {
-    try {
-      // 获取最近的用户消息和助手回复
-      const recentMessages = state.messages.slice(-10); // 最近10条消息
-
-      // 提取用户问题
-      const userMessages = recentMessages
-        .filter(msg => msg.role === 'user')
-        .map(msg => {
-          if (typeof msg.content === 'string') return msg.content;
-          if (Array.isArray(msg.content)) {
-            return msg.content
-              .filter((c: any) => c.type === 'text')
-              .map((c: any) => c.text)
-              .join(' ');
-          }
-          return '';
-        })
-        .filter(text => text.length > 0);
-
-      // 提取助手回复
-      const assistantMessages = recentMessages
-        .filter(msg => msg.role === 'assistant')
-        .map(msg => {
-          if (Array.isArray(msg.content)) {
-            return msg.content
-              .filter((c: any) => c.type === 'text')
-              .map((c: any) => c.text)
-              .join(' ');
-          }
-          return '';
-        })
-        .filter(text => text.length > 0);
-
-      // 如果没有有效内容，跳过记录
-      if (userMessages.length === 0 && assistantMessages.length === 0) {
-        return;
-      }
-
-      // 从工具调用中提取涉及的文件
-      const filesModified = this.extractFilesFromMessages(recentMessages);
-
-      // 从工具调用中提取涉及的符号（函数名、类名等）
-      const symbolsDiscussed = this.extractSymbolsFromMessages(recentMessages);
-
-      // 提取话题（从用户问题中提取关键词）
-      const topics = this.extractTopicsFromMessages(userMessages);
-
-      // 生成对话摘要
-      const conversationSummary = this.generateConversationSummary(userMessages, assistantMessages);
-
-      // 【方案A】意图识别：从用户消息中提取需要永久记住的信息
-      const memoryExtraction = extractExplicitMemories(userMessages);
-      const explicitMemory = mergeExtractedMemories(memoryExtraction.memories);
-
-      if (explicitMemory) {
-        console.log(`[ConversationManager] 识别到显式记忆: ${explicitMemory}`);
-      }
-
-      // 创建记忆事件
-      const memoryEvent: MemoryEvent = {
-        type: 'conversation',
-        sessionId,
-        conversationSummary,
-        topics,
-        filesModified: filesModified.length > 0 ? filesModified : undefined,
-        symbolsDiscussed: symbolsDiscussed.length > 0 ? symbolsDiscussed : undefined,
-        emotion: MemoryEmotion.NEUTRAL,
-        timestamp: new Date().toISOString(),
-        // 如果识别到显式记忆，设置 explicitMemory 字段
-        explicitMemory,
-      };
-
-      // 记录到记忆系统
-      await this.unifiedMemory.remember(memoryEvent);
-
-      console.log(`[ConversationManager] 已记录对话到记忆系统: ${conversationSummary.slice(0, 50)}...`);
-    } catch (error) {
-      // 记忆系统失败不影响主流程
-      console.warn('[ConversationManager] 记录对话记忆失败:', error);
-    }
-  }
-
-  /**
-   * 从消息中提取涉及的文件路径
-   */
-  private extractFilesFromMessages(messages: Message[]): string[] {
-    const files = new Set<string>();
-
-    for (const msg of messages) {
-      if (msg.role === 'assistant' && Array.isArray(msg.content)) {
-        for (const block of msg.content) {
-          if (block.type === 'tool_use') {
-            const toolBlock = block as ToolUseBlock;
-            const input = toolBlock.input as Record<string, unknown>;
-
-            // 提取文件路径相关工具的参数
-            if (['Read', 'Write', 'Edit', 'MultiEdit'].includes(toolBlock.name)) {
-              if (input.file_path && typeof input.file_path === 'string') {
-                files.add(input.file_path);
-              }
-              if (input.files && Array.isArray(input.files)) {
-                for (const file of input.files) {
-                  if (typeof file === 'string') files.add(file);
-                  if (file && typeof file === 'object' && 'file_path' in file) {
-                    files.add(file.file_path as string);
-                  }
-                }
-              }
-            }
-
-            // Glob 和 Grep 的路径
-            if (['Glob', 'Grep'].includes(toolBlock.name)) {
-              if (input.path && typeof input.path === 'string') {
-                files.add(input.path);
-              }
-            }
-          }
-        }
-      }
-    }
-
-    return Array.from(files).slice(0, 20); // 限制最多20个文件
-  }
-
-  /**
-   * 从消息中提取涉及的符号（函数名、类名等）
-   */
-  private extractSymbolsFromMessages(messages: Message[]): string[] {
-    const symbols = new Set<string>();
-
-    // 从 Grep 搜索的 pattern 中提取可能的符号名
-    for (const msg of messages) {
-      if (msg.role === 'assistant' && Array.isArray(msg.content)) {
-        for (const block of msg.content) {
-          if (block.type === 'tool_use') {
-            const toolBlock = block as ToolUseBlock;
-            const input = toolBlock.input as Record<string, unknown>;
-
-            if (toolBlock.name === 'Grep' && input.pattern) {
-              const pattern = input.pattern as string;
-              // 提取可能的函数名或类名（简单的标识符）
-              const matches = pattern.match(/\b[a-zA-Z_][a-zA-Z0-9_]*\b/g);
-              if (matches) {
-                for (const match of matches) {
-                  if (match.length > 2 && match.length < 50) {
-                    symbols.add(match);
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-
-    return Array.from(symbols).slice(0, 10); // 限制最多10个符号
-  }
-
-  /**
-   * 从用户消息中提取话题
-   */
-  private extractTopicsFromMessages(userMessages: string[]): string[] {
-    const topics = new Set<string>();
-
-    // 常见的技术关键词
-    const techKeywords = [
-      'bug', 'fix', 'error', 'feature', 'implement', 'refactor', 'test', 'debug',
-      'api', 'database', 'ui', 'frontend', 'backend', 'server', 'client',
-      'auth', 'login', 'security', 'performance', 'optimization',
-      'typescript', 'javascript', 'react', 'node', 'python', 'java', 'go',
-      'git', 'commit', 'merge', 'branch', 'deploy', 'build',
-      '修复', '实现', '添加', '删除', '更新', '优化', '重构', '测试',
-      '记忆', '对话', '会话', '配置', '设置', '功能', '模块',
-    ];
-
-    const combinedText = userMessages.join(' ').toLowerCase();
-
-    for (const keyword of techKeywords) {
-      if (combinedText.includes(keyword.toLowerCase())) {
-        topics.add(keyword);
-      }
-    }
-
-    // 从用户消息中提取引号内的内容作为话题
-    for (const msg of userMessages) {
-      const quotedMatches = msg.match(/[「「『"']([^「」『』"']+)[」」』"']/g);
-      if (quotedMatches) {
-        for (const match of quotedMatches) {
-          const content = match.slice(1, -1).trim();
-          if (content.length > 1 && content.length < 30) {
-            topics.add(content);
-          }
-        }
-      }
-    }
-
-    return Array.from(topics).slice(0, 10); // 限制最多10个话题
-  }
-
-  /**
-   * 生成对话摘要
-   */
-  private generateConversationSummary(userMessages: string[], assistantMessages: string[]): string {
-    // 取最近的用户问题作为主题
-    const lastUserMessage = userMessages[userMessages.length - 1] || '';
-
-    // 截断过长的消息
-    const truncatedQuestion = lastUserMessage.length > 100
-      ? lastUserMessage.slice(0, 100) + '...'
-      : lastUserMessage;
-
-    // 取最近的助手回复的开头作为简要回答
-    const lastAssistantMessage = assistantMessages[assistantMessages.length - 1] || '';
-    const truncatedAnswer = lastAssistantMessage.length > 100
-      ? lastAssistantMessage.slice(0, 100) + '...'
-      : lastAssistantMessage;
-
-    if (truncatedQuestion && truncatedAnswer) {
-      return `用户询问: ${truncatedQuestion} | 助手回复: ${truncatedAnswer}`;
-    } else if (truncatedQuestion) {
-      return `用户询问: ${truncatedQuestion}`;
-    } else if (truncatedAnswer) {
-      return `助手回复: ${truncatedAnswer}`;
-    }
-
-    return '对话记录';
   }
 
   /**
@@ -2607,17 +2391,6 @@ export class ConversationManager {
       prompt += '\n\n' + webuiToolGuidance;
     }
 
-    // 注入记忆系统摘要（WebUI 独有功能）
-    try {
-      const memorySummary = this.unifiedMemory.getMemorySummaryForPrompt();
-      if (memorySummary) {
-        prompt += '\n\n' + memorySummary;
-      }
-    } catch (error) {
-      // 记忆系统失败不影响主流程
-      console.warn('[ConversationManager] Failed to get memory summary:', error);
-    }
-
     return prompt;
   }
 
@@ -3395,5 +3168,95 @@ Guidelines:
       console.error(`[ConversationManager] 卸载插件失败:`, error);
       return false;
     }
+  }
+
+  // ============================================================================
+  // Rewind 功能
+  // ============================================================================
+
+  /**
+   * 获取可回滚的消息列表
+   */
+  getRewindableMessages(sessionId: string) {
+    const state = this.sessions.get(sessionId);
+    if (!state) {
+      throw new Error(`会话未找到: ${sessionId}`);
+    }
+
+    // 设置消息给 RewindManager
+    state.rewindManager.setMessages(state.messages);
+
+    return state.rewindManager.getRewindableMessages();
+  }
+
+  /**
+   * 获取回滚预览信息
+   */
+  getRewindPreview(sessionId: string, messageId: string, option: RewindOption) {
+    const state = this.sessions.get(sessionId);
+    if (!state) {
+      throw new Error(`会话未找到: ${sessionId}`);
+    }
+
+    // 设置消息给 RewindManager
+    state.rewindManager.setMessages(state.messages);
+
+    return state.rewindManager.previewRewind(messageId, option);
+  }
+
+  /**
+   * 执行回滚操作
+   */
+  async rewind(sessionId: string, messageId: string, option: RewindOption) {
+    const state = this.sessions.get(sessionId);
+    if (!state) {
+      throw new Error(`会话未找到: ${sessionId}`);
+    }
+
+    console.log(`[ConversationManager] 执行回滚: sessionId=${sessionId}, messageId=${messageId}, option=${option}`);
+
+    // 设置消息变更回调
+    const onMessagesChange = (newMessages: Message[]) => {
+      state.messages = newMessages;
+      // 同步更新 chatHistory
+      // TODO: 实现 messages 到 chatHistory 的转换
+    };
+
+    state.rewindManager.setMessages(state.messages, onMessagesChange);
+
+    // 执行回滚
+    const result = await state.rewindManager.rewind(messageId, option);
+
+    if (result.success) {
+      console.log(`[ConversationManager] 回滚成功:`, result);
+    } else {
+      console.error(`[ConversationManager] 回滚失败:`, result.error);
+    }
+
+    return result;
+  }
+
+  /**
+   * 记录用户消息（创建文件快照）
+   */
+  recordUserMessage(sessionId: string, messageId: string) {
+    const state = this.sessions.get(sessionId);
+    if (!state) {
+      return;
+    }
+
+    state.rewindManager.recordUserMessage(messageId);
+  }
+
+  /**
+   * 记录文件变更（在工具执行前调用）
+   */
+  recordFileChange(sessionId: string, filePath: string) {
+    const state = this.sessions.get(sessionId);
+    if (!state) {
+      return;
+    }
+
+    state.rewindManager.recordFileChange(filePath);
   }
 }

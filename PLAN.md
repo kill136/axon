@@ -1,140 +1,109 @@
-# 国际化 (i18n) 实现方案
+# 集成 Playwright CLI 浏览器能力到 Docker 部署
 
-## 背景
-- 官方 Claude Code **没有** i18n 系统，这是自主扩展功能
-- 项目已有 `language` 配置字段（`settings.json` 中），但仅用于控制 Claude 的响应语言
-- 需要支持中文 + 英文，覆盖所有面向用户的 UI 文本
+## 目标
+让 Docker 容器中的 Claude Code 能通过 `playwright-cli` 操作 headless 浏览器，无需 MCP 协议，通过 Bash 工具直接调用 CLI 命令。
 
-## 方案：轻量级自研 i18n（不引入第三方库）
+## 实施内容
 
-### 理由
-- 项目是 CLI 工具，不需要 i18next 那种重量级方案
-- 文本量约几百条，结构简单，key-value 即可
-- 自研方便控制，零依赖
-- 保持项目简洁
+### 1. 修改 Dockerfile —— 安装 Playwright + playwright-cli
 
-### 核心设计
+当前 Dockerfile 基于 `node:18-slim`，需要：
+- 安装 Chromium 浏览器及其系统依赖（字体、音视频库等）
+- 全局安装 `@playwright/cli@latest`
+- 设置 headless 模式环境变量
 
-#### 1. 文件结构
-```
-src/i18n/
-├── index.ts          # t() 函数、初始化、语言切换
-├── types.ts          # 类型定义（所有 key 的联合类型）
-└── locales/
-    ├── en.ts         # 英文翻译（默认/fallback）
-    └── zh.ts         # 中文翻译
-```
+**具体改动**：在 Stage 2（Production）中增加 Chromium 系统依赖和 playwright-cli：
 
-#### 2. API 设计
-```typescript
-// src/i18n/index.ts
-import en from './locales/en.js';
-import zh from './locales/zh.js';
-
-type LocaleKey = keyof typeof en;
-
-const locales = { en, zh } as const;
-type LocaleName = keyof typeof locales;
-
-let currentLocale: LocaleName = 'en';
-
-// 初始化：从 settings.json 的 language 字段读取
-export function initI18n(language?: string): void {
-  if (language === 'zh' || language === 'chinese' || language === '中文') {
-    currentLocale = 'zh';
-  } else {
-    currentLocale = 'en';
-  }
-}
-
-// 核心翻译函数
-export function t(key: LocaleKey, params?: Record<string, string | number>): string {
-  const template = locales[currentLocale]?.[key] ?? locales.en[key] ?? key;
-  if (!params) return template;
-  return template.replace(/\{(\w+)\}/g, (_, name) => String(params[name] ?? `{${name}}`));
-}
-
-export function getCurrentLocale(): LocaleName {
-  return currentLocale;
-}
+```dockerfile
+# 安装 Chromium 系统依赖 + playwright-cli
+RUN apt-get update && apt-get install -y --fix-missing \
+    git \
+    # Chromium 依赖
+    libnss3 libnspr4 libdbus-1-3 libatk1.0-0 libatk-bridge2.0-0 \
+    libcups2 libdrm2 libxkbcommon0 libatspi2.0-0 libxcomposite1 \
+    libxdamage1 libxfixes3 libxrandr2 libgbm1 libpango-1.0-0 \
+    libcairo2 libasound2 libwayland-client0 \
+    # 字体
+    fonts-noto-cjk fonts-noto-color-emoji \
+    && rm -rf /var/lib/apt/lists/* \
+    && npm install -g @playwright/cli@latest \
+    && npx playwright install chromium --with-deps
 ```
 
-#### 3. 翻译文件格式
-```typescript
-// src/i18n/locales/en.ts
-export default {
-  // Header
-  'header.connected': 'Connected',
-  'header.connecting': 'Connecting...',
-  'header.disconnected': 'Disconnected',
-  'header.connectionError': 'Connection Error',
-  
-  // Shortcuts
-  'shortcut.showHelp': 'Show/hide this help',
-  'shortcut.cancel': 'Cancel current operation / Exit',
-  
-  // Permission
-  'permission.allowOnce': 'Yes, allow once',
-  'permission.deny': 'Deny this operation',
-  
-  // Tools
-  'tool.fileNotFound': 'File not found: {path}',
-  'tool.pathIsDirectory': 'Path is a directory: {path}',
-  
-  // CLI
-  'cli.description': 'Claude Code - starts an interactive session by default',
-  'cli.debugMode': 'Enable debug mode with optional category filtering',
-  
-  // ... 按模块组织
-} as const;
+### 2. 安装 playwright-cli SKILL 到镜像
+
+playwright-cli 通过 `playwright-cli install --skills` 安装 SKILL.md 文件到 `~/.claude/skills/` 目录。但 Docker 中 `~/.claude` 是 volume 挂载点，所以需要：
+
+- 在构建时，把 SKILL.md 文件直接放到 `/app/skills/playwright-cli/SKILL.md`
+- 在容器启动时，如果 `~/.claude/skills/playwright-cli/SKILL.md` 不存在，自动复制过去
+
+**更好的方案**：直接把 SKILL.md 放到项目目录的 `.claude/skills/playwright-cli/` 下，因为 skill 加载器会扫描项目目录（`projectSkillsDir`）。容器的 WORKDIR 是 `/workspace`，所以可以在镜像中预置 `/workspace/.claude/skills/playwright-cli/SKILL.md`。
+
+但 `/workspace` 是用户映射的目录，不应该污染。
+
+**最终方案**：在 Dockerfile 中构建完成后，把 SKILL.md 内容复制到 `/root/.claude/skills/playwright-cli/SKILL.md`（用户级别 skills 目录）。当用户挂载 `~/.claude` volume 时，如果他们没有这个文件，可以通过 entrypoint 脚本自动初始化。
+
+### 3. 创建 entrypoint 脚本
+
+替换当前的直接 `ENTRYPOINT ["node", "/app/dist/cli.js"]`，创建一个 shell 脚本：
+
+```bash
+#!/bin/bash
+# 确保 playwright-cli SKILL 存在
+mkdir -p /root/.claude/skills/playwright-cli
+if [ ! -f /root/.claude/skills/playwright-cli/SKILL.md ]; then
+  cp /app/skills/playwright-cli/SKILL.md /root/.claude/skills/playwright-cli/SKILL.md
+fi
+
+# 启动 Claude Code
+exec node /app/dist/cli.js "$@"
 ```
 
-#### 4. 语言检测优先级
-1. `settings.json` 的 `language` 字段
-2. 环境变量 `CLAUDE_CODE_LANG`
-3. 系统 locale（`process.env.LANG`、`process.env.LC_ALL`）
-4. 默认 `en`
+### 4. 在项目中添加 SKILL.md 文件
 
-#### 5. 初始化时机
-在 `src/cli.ts` 的启动阶段，加载配置后立即调用 `initI18n(config.language)`。
+在项目根目录创建 `skills/playwright-cli/SKILL.md`，内容从微软官方 playwright-cli 仓库获取（已获取完整内容）。
 
-### 实施步骤
+### 5. 更新 docker-compose.yml
 
-#### Phase 1: 搭建基础设施
-1. 创建 `src/i18n/index.ts` — t() 函数、initI18n、语言检测
-2. 创建 `src/i18n/locales/en.ts` — 英文翻译文件（先放空壳）
-3. 创建 `src/i18n/locales/zh.ts` — 中文翻译文件（先放空壳）
-4. 在 `src/cli.ts` 启动时调用 `initI18n()`
+添加共享内存（Chromium 需要）：
 
-#### Phase 2: 逐模块替换硬编码文本
-按优先级逐步替换，每个模块一个 PR/批次：
-
-1. **src/ui/components/** — UI 组件（Header, ShortcutHelp, PermissionPrompt, TrustDialog 等）
-2. **src/tools/** — 工具错误消息和描述
-3. **src/cli.ts** — CLI 帮助文本
-4. **src/core/** — 系统错误消息
-
-每个文件的替换模式：
-```typescript
-// Before
-return 'Connected';
-
-// After
-import { t } from '../../i18n/index.js';
-return t('header.connected');
+```yaml
+services:
+  claude:
+    image: wbj66/claude-code-open:latest
+    stdin_open: true
+    tty: true
+    shm_size: '2gb'  # Chromium 需要
+    environment:
+      - PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+    volumes:
+      - ~/.claude:/root/.claude
+      - .:/workspace
 ```
 
-#### Phase 3: 中文翻译
-- 填充 `zh.ts` 的所有翻译
+### 6. 更新 .dockerignore
 
-### 不做的事情
-- **不翻译 system prompt**（`src/prompt/`）— 这些是给 AI 读的，保持英文
-- **不翻译 debug/log 消息** — 这些是给开发者看的
-- **不引入 ICU 消息格式** — 简单的 `{param}` 替换足够
-- **不做复数处理** — 英文用简单的三元表达式，中文无复数问题
-- **不做 lazy loading** — 两个语言包加起来很小
+确保 `skills/` 目录不被忽略。
 
-### 注意事项
-- 翻译 key 按模块命名：`module.submodule.key`
-- 英文翻译文件同时作为 fallback 和 key 的文档
-- 类型安全：通过 `keyof typeof en` 确保只能用已定义的 key
+## 文件变更清单
+
+| 文件 | 操作 |
+|------|------|
+| `Dockerfile` | 修改：添加 Chromium 依赖、playwright-cli 安装、SKILL 预置、entrypoint |
+| `docker-compose.yml` | 修改：添加 shm_size、环境变量 |
+| `skills/playwright-cli/SKILL.md` | 新建：浏览器自动化 SKILL 定义 |
+| `docker-entrypoint.sh` | 新建：容器启动脚本 |
+| `.dockerignore` | 修改：确保 skills 不被忽略 |
+
+## 镜像大小预估
+
+- 当前镜像（node:18-slim + git）：约 250MB
+- 新增 Chromium + 依赖：约 +400MB
+- 总计：约 650MB（可接受，Playwright 官方镜像 1.2GB）
+
+## 不做的事
+
+- 不修改 Claude Code 源码 —— 浏览器能力完全通过 Bash 工具 + SKILL 暴露
+- 不加 MCP 服务器 —— CLI 方式更轻量、更省 token
+- 不加 VNC/noVNC —— headless 够用，AI 不需要看画面
+- 不改工具系统 —— SKILL 自动授权 `Bash(playwright-cli:*)` 模式的命令

@@ -175,8 +175,8 @@
     <section id="features" class="features">
         <div class="container">
             <div class="section-header">
-                <h2 class="section-title">12 大核心能力</h2>
-                <p class="section-subtitle">从 CLI 到 Web UI，从单体到多智能体，全面超越原版 Claude Code</p>
+                <h2 class="section-title">16 大核心能力</h2>
+                <p class="section-subtitle">从 CLI 到 Web UI，从单体到多智能体，从本地到多云 —— 全面超越原版 Claude Code</p>
             </div>
             <div class="features-grid">
                 <div class="feature-card featured-card">
@@ -238,6 +238,26 @@
                     <div class="feature-icon">⚡</div>
                     <h3>流式 & 实时通信</h3>
                     <p>JSON 流式 API、WebSocket 实时消息、tRPC 类型安全通信。从 CLI 到 Web UI 全链路实时响应</p>
+                </div>
+                <div class="feature-card featured-card">
+                    <div class="feature-icon">💬</div>
+                    <h3>微信机器人</h3>
+                    <p>基于 Wechaty 的完整微信集成。QR 码扫码登录、群聊/私聊支持、预算控制、速率限制 —— 12 亿用户的 AI 编程入口</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">☁️</div>
+                    <h3>多云提供商</h3>
+                    <p>Anthropic API / AWS Bedrock / GCP Vertex AI / Foundry 四大云平台。Provider 抽象层让你一个环境变量切换云端</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🛡️</div>
+                    <h3>四层安全沙箱</h3>
+                    <p>文件系统白名单 → Bubblewrap/Seatbelt 进程隔离 → 网络域名过滤 → Docker 容器。命令注入检测 + Ed25519 代码签名</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🩺</div>
+                    <h3>诊断 & 自更新</h3>
+                    <p><code>/doctor</code> 一键健康检查（Node/Git/API/Provider 验证）。自动更新系统支持 npm/yarn/pnpm/Docker 多种安装方式</p>
                 </div>
             </div>
         </div>
@@ -318,7 +338,7 @@
         <div class="container">
             <div class="section-header">
                 <h2 class="section-title">技术博客</h2>
-                <p class="section-subtitle">6 篇深度技术文章，记录我们从零构建 AI 编程平台的每一步</p>
+                <p class="section-subtitle">10 篇深度技术文章，记录我们从零构建 AI 编程平台的每一步</p>
             </div>
             <div class="blog-posts">
 
@@ -522,7 +542,162 @@ TeamDelete    — 任务完成后清理团队资源</code>
                     </div>
                 </article>
 
-                <!-- Blog 6: Original OAuth Blog (kept) -->
+                <!-- Blog 6: WeChat Bot -->
+                <article class="blog-post featured">
+                    <div class="blog-post-header">
+                        <span class="blog-tag">跨平台集成</span>
+                        <span class="blog-date">2026年1月</span>
+                    </div>
+                    <h3>微信机器人：让 12 亿用户通过聊天窗口使用 AI 编程助手</h3>
+                    <div class="blog-content">
+                        <h4>为什么是微信？</h4>
+                        <p>Web UI 面向开发者，CLI 面向极客，但我们想让 AI 编程触达更多人。微信是中国最大的即时通讯平台，把 Claude 搬进微信意味着：<strong>任何人在任何设备上，只需发送一条消息就能获得 AI 编程帮助</strong>。</p>
+
+                        <h4>基于 Wechaty 的完整实现</h4>
+                        <p>我们选择 Wechaty 作为底层框架，构建了完整的机器人系统：</p>
+                        <ul>
+                            <li><strong>QR 码登录</strong> — 终端直接展示二维码，扫码即登录，无需额外配置</li>
+                            <li><strong>消息路由</strong> — 支持私聊和群聊，自动识别 @机器人 的消息</li>
+                            <li><strong>会话管理</strong> — 每个用户/群组独立会话，互不干扰</li>
+                            <li><strong>预算控制</strong> — 可配置每日 USD 消费上限，防止 API 费用失控</li>
+                            <li><strong>速率限制</strong> — 每分钟请求数限制，保护 API 配额</li>
+                            <li><strong>工具白名单</strong> — 精细控制微信用户可以调用哪些工具</li>
+                        </ul>
+
+                        <h4>内置命令系统</h4>
+                        <div class="code-block" style="margin: 1rem 0;">
+                            <code>/help  — 查看帮助<br>
+/reset — 重置当前会话<br>
+/mode  — 切换模式（代码/对话）<br>
+/cost  — 查看今日消费统计</code>
+                        </div>
+
+                        <p style="margin-top: 1.5rem; padding: 1rem; background: linear-gradient(135deg, rgba(34, 197, 94, 0.1), rgba(99, 102, 241, 0.1)); border-radius: 8px;">
+                            <strong>核心能力：</strong>QR 码扫码登录 · 私聊/群聊 · 预算控制 · 速率限制 · 工具白名单 · 多语言支持
+                        </p>
+                    </div>
+                    <div class="blog-footer">
+                        <a href="https://github.com/kill136/claude-code-open/tree/main/src/wechat" target="_blank" class="btn btn-outline btn-small">
+                            查看微信机器人源码 →
+                        </a>
+                    </div>
+                </article>
+
+                <!-- Blog 7: Checkpoint + Teleport -->
+                <article class="blog-post">
+                    <div class="blog-post-header">
+                        <span class="blog-tag">版本控制</span>
+                        <span class="blog-date">2026年1月</span>
+                    </div>
+                    <h3>文件检查点 + 远程传送：给 AI 编辑加上「时间旅行」和「任意门」</h3>
+                    <div class="blog-content">
+                        <h4>检查点系统：比 Git 更细粒度的版本控制</h4>
+                        <p>Git 记录的是提交级别的变更，但 AI 编辑过程中你需要更细粒度的控制。我们的 Checkpoint 系统在<strong>每次文件编辑时自动创建快照</strong>，支持：</p>
+                        <ul>
+                            <li><strong>增量 Diff 存储</strong> — 不存全量文件，只记录变更，节省空间</li>
+                            <li><strong>Gzip 压缩</strong> — 超过 1KB 的内容自动压缩</li>
+                            <li><strong>时间范围检索</strong> — 按时间、标签、Git 提交检索历史快照</li>
+                            <li><strong>多文件恢复</strong> — 一次操作回滚到任意历史状态</li>
+                            <li><strong>会话导入/导出</strong> — 跨机器迁移编辑历史</li>
+                            <li><strong>500MB 存储上限</strong> — 自动清理过期检查点，30 天保留策略</li>
+                        </ul>
+
+                        <h4>远程会话传送 (Teleport)</h4>
+                        <p>想在另一台机器上继续当前的 Claude Code 会话？Teleport 系统通过 WebSocket 实现实时会话同步：</p>
+                        <ul>
+                            <li><strong>仓库验证</strong> — 自动检查目标机器的 Git 分支和工作区状态</li>
+                            <li><strong>断线重连</strong> — 网络中断后自动重新建立连接</li>
+                            <li><strong>认证管理</strong> — Token 安全传输，保护会话数据</li>
+                        </ul>
+
+                        <p style="margin-top: 1.5rem; padding: 1rem; background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(34, 211, 238, 0.1)); border-radius: 8px;">
+                            <strong>时间旅行 + 任意门：</strong>增量快照 · Gzip 压缩 · 多文件回滚 · WebSocket 远程同步 · 断线重连 · 仓库验证
+                        </p>
+                    </div>
+                    <div class="blog-footer">
+                        <a href="https://github.com/kill136/claude-code-open/tree/main/src/checkpoint" target="_blank" class="btn btn-outline btn-small">
+                            查看 Checkpoint 源码 →
+                        </a>
+                    </div>
+                </article>
+
+                <!-- Blog 8: Multi-Cloud -->
+                <article class="blog-post">
+                    <div class="blog-post-header">
+                        <span class="blog-tag">企业级</span>
+                        <span class="blog-date">2026年1月</span>
+                    </div>
+                    <h3>多云提供商：一套代码跑遍 Anthropic / AWS Bedrock / GCP Vertex / Foundry</h3>
+                    <div class="blog-content">
+                        <h4>为什么需要多云支持？</h4>
+                        <p>企业用户的基础设施各不相同：有的用 AWS Bedrock 享受统一计费，有的用 GCP Vertex 集成现有 ML Pipeline，有的部署了 Anthropic Foundry 私有实例。我们的目标是：<strong>不改一行代码，切换环境变量就能无缝切换云提供商</strong>。</p>
+
+                        <h4>Provider 抽象层</h4>
+                        <ul>
+                            <li><strong>Anthropic API</strong> — 默认提供商，直连 Anthropic 官方 API</li>
+                            <li><strong>AWS Bedrock</strong> — Model ARN 解析、跨区域推理、Profile 认证、IAM 角色支持</li>
+                            <li><strong>GCP Vertex AI</strong> — OAuth 集成、区域端点路由、Service Account 认证</li>
+                            <li><strong>Anthropic Foundry</strong> — 自定义模型部署、私有端点支持</li>
+                        </ul>
+
+                        <h4>自动检测与切换</h4>
+                        <p><code>/doctor</code> 诊断命令自动检测当前配置的 Provider，验证凭证有效性，报告连接状态。切换只需修改一个环境变量。</p>
+
+                        <p style="margin-top: 1.5rem; padding: 1rem; background: linear-gradient(135deg, rgba(249, 115, 22, 0.1), rgba(234, 179, 8, 0.1)); border-radius: 8px;">
+                            <strong>一套代码，四朵云：</strong>Anthropic API · AWS Bedrock · GCP Vertex AI · Foundry —— 环境变量切换，零代码改动
+                        </p>
+                    </div>
+                    <div class="blog-footer">
+                        <a href="https://github.com/kill136/claude-code-open/tree/main/src/providers" target="_blank" class="btn btn-outline btn-small">
+                            查看 Providers 源码 →
+                        </a>
+                    </div>
+                </article>
+
+                <!-- Blog 9: Sandboxing & Security -->
+                <article class="blog-post featured">
+                    <div class="blog-post-header">
+                        <span class="blog-tag">安全体系</span>
+                        <span class="blog-date">2026年2月</span>
+                    </div>
+                    <h3>四层安全沙箱：让 AI 执行代码时你依然睡得安稳</h3>
+                    <div class="blog-content">
+                        <h4>AI 执行代码的风险</h4>
+                        <p>AI 编程助手最大的风险是：<strong>它会执行代码</strong>。一个 <code>rm -rf /</code> 或一个恶意依赖就能造成灾难。我们构建了四层安全防线，确保 AI 操作在受控环境中运行。</p>
+
+                        <h4>四层沙箱架构</h4>
+                        <p><strong>第 1 层：文件系统沙箱</strong></p>
+                        <p>路径白名单/黑名单机制，只允许 AI 访问指定目录。尝试访问 <code>/etc/passwd</code>？直接拒绝。</p>
+
+                        <p><strong>第 2 层：进程沙箱 (Linux: Bubblewrap / macOS: Seatbelt)</strong></p>
+                        <p>Linux 上使用 Bubblewrap 实现完整的进程隔离，限制 capabilities 和系统调用。macOS 上使用 Seatbelt sandbox profile 实现同等保护。</p>
+
+                        <p><strong>第 3 层：网络沙箱</strong></p>
+                        <p>HTTP/HTTPS 请求按域名过滤。AI 只能访问白名单域名，防止数据外泄和恶意下载。</p>
+
+                        <p><strong>第 4 层：Docker 沙箱</strong></p>
+                        <p>终极隔离方案：在 Docker 容器中运行所有 AI 操作，宿主机完全不受影响。</p>
+
+                        <h4>补充安全设施</h4>
+                        <ul>
+                            <li><strong>命令注入检测</strong> — 分析 Shell 命令，拦截危险模式</li>
+                            <li><strong>敏感数据遮蔽</strong> — 自动检测并掩盖 API Key、密码、PII</li>
+                            <li><strong>Ed25519 代码签名</strong> — 验证代码完整性，防止篡改</li>
+                            <li><strong>权限审计日志</strong> — 每一次权限决策都有记录可追溯</li>
+                        </ul>
+
+                        <p style="margin-top: 1.5rem; padding: 1rem; background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(168, 85, 247, 0.1)); border-radius: 8px;">
+                            <strong>四层防线：</strong>文件系统白名单 → 进程隔离 (Bubblewrap/Seatbelt) → 网络域名过滤 → Docker 容器 + 命令注入检测 + 代码签名
+                        </p>
+                    </div>
+                    <div class="blog-footer">
+                        <a href="https://github.com/kill136/claude-code-open/tree/main/src/sandbox" target="_blank" class="btn btn-outline btn-small">
+                            查看沙箱系统源码 →
+                        </a>
+                    </div>
+                </article>
+
+                <!-- Blog 10: Original OAuth Blog (kept) -->
                 <article class="blog-post featured">
                     <div class="blog-post-header">
                         <span class="blog-tag">深度解析</span>

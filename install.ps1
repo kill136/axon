@@ -64,6 +64,53 @@ function Test-Git {
     return $false
 }
 
+# --- Create Desktop Shortcut ---
+function New-DesktopShortcut {
+    param([string]$Type)
+
+    Write-Info "Creating desktop shortcut..."
+
+    $DesktopPath = [Environment]::GetFolderPath("Desktop")
+    $ShortcutPath = Join-Path $DesktopPath "Claude Code WebUI.lnk"
+
+    try {
+        $WshShell = New-Object -ComObject WScript.Shell
+        $Shortcut = $WshShell.CreateShortcut($ShortcutPath)
+
+        if ($Type -eq "npm") {
+            # npm installation: use claude-web command
+            $Shortcut.TargetPath = "cmd.exe"
+            $Shortcut.Arguments = "/k claude-web"
+            $Shortcut.Description = "Launch Claude Code Web Interface"
+            $Shortcut.WorkingDirectory = "$env:USERPROFILE"
+        }
+        elseif ($Type -eq "docker") {
+            # Docker installation: create a batch file and shortcut to it
+            $BatPath = Join-Path $env:USERPROFILE ".local\bin\claude-web.bat"
+            $BatContent = @"
+@echo off
+cd /d "%USERPROFILE%"
+echo Starting Claude Code WebUI...
+echo Press Ctrl+C to stop the server
+echo.
+docker run -it --rm -p 3456:3456 -e ANTHROPIC_API_KEY=%ANTHROPIC_API_KEY% -v "%USERPROFILE%\.claude:/root/.claude" -v "%cd%:/workspace" $DockerImage claude-web
+pause
+"@
+            Set-Content -Path $BatPath -Value $BatContent -Encoding ASCII
+
+            $Shortcut.TargetPath = $BatPath
+            $Shortcut.Description = "Launch Claude Code Web Interface (Docker)"
+            $Shortcut.WorkingDirectory = "$env:USERPROFILE"
+        }
+
+        $Shortcut.Save()
+        Write-Ok "Desktop shortcut created: $ShortcutPath"
+    }
+    catch {
+        Write-Warn "Failed to create desktop shortcut: $_"
+    }
+}
+
 # --- Install via npm ---
 function Install-Npm {
     Write-Info "Installing via npm (from source)..."
@@ -89,17 +136,25 @@ function Install-Npm {
 
     Pop-Location
 
+    # Create desktop shortcut
+    New-DesktopShortcut -Type "npm"
+
     Write-Ok "Installation complete via npm!"
     Write-Host ""
     Write-Host "  Usage:" -ForegroundColor White
     Write-Host "    claude                        " -ForegroundColor Green -NoNewline; Write-Host "# Interactive mode"
     Write-Host "    claude `"your prompt`"           " -ForegroundColor Green -NoNewline; Write-Host "# With prompt"
     Write-Host "    claude -p `"your prompt`"        " -ForegroundColor Green -NoNewline; Write-Host "# Print mode"
+    Write-Host "    claude-web                    " -ForegroundColor Green -NoNewline; Write-Host "# Start WebUI"
     Write-Host ""
     Write-Host "  Set your API key:" -ForegroundColor White
     Write-Host '    $env:ANTHROPIC_API_KEY = "sk-..."' -ForegroundColor Yellow
     Write-Host '    # Or permanently:' -ForegroundColor DarkGray
     Write-Host '    [Environment]::SetEnvironmentVariable("ANTHROPIC_API_KEY", "sk-...", "User")' -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  Desktop Shortcut:" -ForegroundColor White
+    Write-Host "    A shortcut has been created on your desktop" -ForegroundColor Cyan
+    Write-Host "    Double-click it to start Claude Code WebUI" -ForegroundColor Cyan
     Write-Host ""
 }
 
@@ -135,6 +190,9 @@ docker run -it --rm ^
         Write-Warn "Added $BinDir to user PATH. Please restart your terminal."
     }
 
+    # Create desktop shortcut
+    New-DesktopShortcut -Type "docker"
+
     Write-Ok "Installation complete via Docker!"
     Write-Host ""
     Write-Host "  Usage:" -ForegroundColor White
@@ -143,6 +201,10 @@ docker run -it --rm ^
     Write-Host ""
     Write-Host "  Set your API key:" -ForegroundColor White
     Write-Host '    $env:ANTHROPIC_API_KEY = "sk-..."' -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  Desktop Shortcut:" -ForegroundColor White
+    Write-Host "    A shortcut has been created on your desktop" -ForegroundColor Cyan
+    Write-Host "    Double-click it to start Claude Code WebUI" -ForegroundColor Cyan
     Write-Host ""
 }
 

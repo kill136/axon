@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useMessageHandler } from './hooks/useMessageHandler';
 import { useSessionManager } from './hooks/useSessionManager';
@@ -11,6 +11,7 @@ import {
   SettingsPanel,
   DebugPanel,
 } from './components';
+import { RewindOption } from './components/RewindMenu';
 import { InputArea } from './components/InputArea';
 import { useProject } from './contexts/ProjectContext';
 import { BlueprintDetailContent } from './components/swarm/BlueprintDetailPanel/BlueprintDetailContent';
@@ -50,6 +51,7 @@ function AppContent({
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [showTerminal, setShowTerminal] = useState(false);
   const [terminalHeight, setTerminalHeight] = useState(280);
+  const [isInputVisible, setIsInputVisible] = useState(true);
   const chatContainerRef = React.useRef<HTMLDivElement>(null);
 
   const { connected, sessionId, model, setModel, send, addMessageHandler } = useWebSocket(getWebSocketUrl());
@@ -109,6 +111,7 @@ function AppContent({
     userQuestion,
     setUserQuestion,
     setPermissionMode,
+    sessionId: sessionId ?? null,
   });
 
   // 自动滚动到底部
@@ -181,6 +184,86 @@ function AppContent({
 
   const hasCompactBoundary = useMemo(() => messages.some(m => m.isCompactBoundary), [messages]);
 
+  // ========================================================================
+  // Rewind 功能
+  // ========================================================================
+
+  // 获取回滚预览信息（通过后端）
+  const getRewindPreview = useCallback((messageId: string) => {
+    const messageIndex = messages.findIndex(m => m.id === messageId);
+    if (messageIndex === -1) {
+      return { filesWillChange: [], messagesWillRemove: 0, insertions: 0, deletions: 0 };
+    }
+
+    // 计算将要删除的消息数（当前消息之后的所有消息）
+    const messagesWillRemove = messages.length - messageIndex - 1;
+
+    // 简单预览：统计消息数，文件变化由后端实时计算
+    return {
+      filesWillChange: [],
+      messagesWillRemove,
+      insertions: 0,
+      deletions: 0,
+    };
+  }, [messages]);
+
+  // 执行回滚（通过 WebSocket）
+  const handleRewind = useCallback(async (messageId: string, option: RewindOption) => {
+    if (!send) {
+      throw new Error('WebSocket 未连接');
+    }
+
+    console.log(`[App] 发送回滚请求: messageId=${messageId}, option=${option}`);
+
+    // 发送回滚请求
+    send({
+      type: 'rewind_execute',
+      payload: {
+        messageId,
+        option,
+      },
+    });
+
+    // 等待回滚完成（监听 rewind_success 消息）
+    return new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('回滚超时'));
+      }, 30000);
+
+      const successHandler = (data: any) => {
+        if (data.type === 'rewind_success') {
+          clearTimeout(timeout);
+          // 更新消息列表
+          if (data.payload?.messages) {
+            setMessages(data.payload.messages);
+          }
+          resolve();
+        }
+      };
+
+      const errorHandler = (data: any) => {
+        if (data.type === 'error') {
+          clearTimeout(timeout);
+          reject(new Error(data.payload?.message || '回滚失败'));
+        }
+      };
+
+      // 临时添加监听器
+      addMessageHandler(successHandler);
+      addMessageHandler(errorHandler);
+
+      // 清理监听器
+      setTimeout(() => {
+        // TODO: 实现 removeMessageHandler
+      }, 30000);
+    });
+  }, [send, setMessages, addMessageHandler]);
+
+  // 是否可以回滚（至少有2条消息）
+  const canRewind = messages.length >= 2;
+
+  // ========================================================================
+
   return (
     <div style={{ display: 'flex', height: '100%', width: '100%', flex: 1 }}>
       <div className="main-content" style={{ flex: 1, ...(showCodePanel ? { flexDirection: 'row' as const } : {}) }}>
@@ -192,7 +275,7 @@ function AppContent({
 
         <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, minHeight: 0 }}>
           <div className={`chat-panel ${showCodePanel ? 'chat-panel-split' : ''}`} style={{ flex: 1, minHeight: 0 }}>
-            <div className="chat-container" ref={chatContainerRef}>
+            <div className={`chat-container ${!isInputVisible ? 'input-hidden' : ''}`} ref={chatContainerRef}>
               {visibleMessages.length === 0 && messages.length === 0 ? (
                 <WelcomeScreen onBlueprintCreated={onNavigateToBlueprint} />
               ) : (
@@ -206,6 +289,9 @@ function AppContent({
                     onDevAction={chatInput.handleDevAction}
                     isStreaming={currentMessageRef.current?.id === msg.id && status !== 'idle'}
                     isTranscriptMode={isTranscriptMode}
+                    onRewind={handleRewind}
+                    getRewindPreview={getRewindPreview}
+                    canRewind={canRewind}
                   />
                 ))
               )}
@@ -240,6 +326,9 @@ function AppContent({
               showTerminal={showTerminal}
               onToggleTerminal={() => setShowTerminal(!showTerminal)}
               onOpenDebugPanel={() => setShowDebugPanel(true)}
+              isPinned={chatInput.isPinned}
+              onTogglePin={chatInput.togglePin}
+              onVisibilityChange={setIsInputVisible}
             />
           </div>
 

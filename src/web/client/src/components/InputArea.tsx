@@ -38,6 +38,10 @@ interface InputAreaProps {
   onSend: () => void;
   onCancel: () => void;
 
+  // 输入框锁定
+  isPinned: boolean;
+  onTogglePin: () => void;
+
   // Context
   contextUsage: ContextUsage | null;
   compactState: CompactState;
@@ -53,6 +57,9 @@ interface InputAreaProps {
 
   // Debug
   onOpenDebugPanel: () => void;
+
+  // 可见性回调
+  onVisibilityChange?: (isVisible: boolean) => void;
 }
 
 export function InputArea({
@@ -84,6 +91,9 @@ export function InputArea({
   showTerminal,
   onToggleTerminal,
   onOpenDebugPanel,
+  isPinned,
+  onTogglePin,
+  onVisibilityChange,
 }: InputAreaProps) {
   const [isAutoHidden, setIsAutoHidden] = useState(false);
   const inputAreaRef = useRef<HTMLDivElement>(null);
@@ -102,10 +112,12 @@ export function InputArea({
   const show = useCallback(() => {
     clearHideTimer();
     setIsAutoHidden(false);
-  }, [clearHideTimer]);
+    onVisibilityChange?.(true);
+  }, [clearHideTimer, onVisibilityChange]);
 
   const scheduleHide = useCallback(() => {
     // 以下情况不隐藏
+    if (isPinned) return;                    // 输入框被锁定
     if (isInputFocusedRef.current) return;  // 输入框有焦点
     if (status !== 'idle') return;           // AI 正在生成
     if (input.trim()) return;                // 输入框有内容
@@ -114,11 +126,12 @@ export function InputArea({
 
     clearHideTimer();
     hideTimerRef.current = setTimeout(() => {
-      if (!isInputFocusedRef.current) {
+      if (!isInputFocusedRef.current && !isPinned) {
         setIsAutoHidden(true);
+        onVisibilityChange?.(false);
       }
     }, 800);
-  }, [clearHideTimer, status, input, attachments.length]);
+  }, [clearHideTimer, status, input, attachments.length, isPinned, onVisibilityChange]);
 
   // 鼠标位置检测：靠近窗口底部时显示
   useEffect(() => {
@@ -257,6 +270,13 @@ export function InputArea({
             <ContextBar usage={contextUsage} compactState={compactState} />
             <button className="attach-btn" onClick={() => fileInputRef.current?.click()}>
               {'📎'}
+            </button>
+            <button
+              className={`pin-toggle-btn ${isPinned ? 'pinned' : ''}`}
+              onClick={onTogglePin}
+              title={isPinned ? '取消锁定 - 允许自动隐藏输入框' : '锁定输入框 - 防止自动隐藏'}
+            >
+              {isPinned ? '📌' : '📍'}
             </button>
             <button
               className="debug-trigger-btn"
