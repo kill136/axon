@@ -3266,6 +3266,12 @@ Guidelines:
       throw new Error(`会话未找到: ${sessionId}`);
     }
 
+    // 防御性检查：如果旧 session 没有 rewindManager，创建一个新的
+    if (!state.rewindManager) {
+      console.warn(`[ConversationManager] 会话 ${sessionId} 缺少 rewindManager，正在创建新实例`);
+      state.rewindManager = new RewindManager(sessionId);
+    }
+
     // 设置消息给 RewindManager
     state.rewindManager.setMessages(state.messages);
 
@@ -3283,11 +3289,17 @@ Guidelines:
 
     console.log(`[ConversationManager] 执行回滚: sessionId=${sessionId}, messageId=${messageId}, option=${option}`);
 
+    // 防御性检查：如果旧 session 没有 rewindManager，创建一个新的
+    if (!state.rewindManager) {
+      console.warn(`[ConversationManager] 会话 ${sessionId} 缺少 rewindManager，正在创建新实例`);
+      state.rewindManager = new RewindManager(sessionId);
+    }
+
     // 设置消息变更回调
     const onMessagesChange = (newMessages: Message[]) => {
       state.messages = newMessages;
       // 同步更新 chatHistory
-      // TODO: 实现 messages 到 chatHistory 的转换
+      state.chatHistory = this.convertMessagesToChatHistory(newMessages);
     };
 
     state.rewindManager.setMessages(state.messages, onMessagesChange);

@@ -149,8 +149,8 @@ export class RewindManager {
    * 注意：会删除包括指定消息在内的所有后续消息（回到该消息发送之前的状态）
    */
   private rewindConversation(messageId: string): { messagesRemoved: number; newMessageCount: number } {
-    // 找到消息索引
-    const index = this.messages.findIndex(m => (m as any).uuid === messageId);
+    // 找到消息索引（兼容 uuid 和 id 两种字段）
+    const index = this.messages.findIndex(m => (m as any).uuid === messageId || (m as any).id === messageId);
     if (index < 0) {
       return { messagesRemoved: -1, newMessageCount: this.messages.length };
     }
@@ -199,9 +199,9 @@ export class RewindManager {
 
     // 预览对话回退
     if (option === 'conversation' || option === 'both') {
-      const index = this.messages.findIndex(m => (m as any).uuid === messageId);
+      const index = this.messages.findIndex(m => (m as any).uuid === messageId || (m as any).id === messageId);
       if (index >= 0) {
-        messagesWillRemove = this.messages.length - index - 1;
+        messagesWillRemove = this.messages.length - index;
       }
     }
 

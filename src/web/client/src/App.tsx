@@ -217,6 +217,19 @@ function AppContent({
 
     console.log(`[App] 发送回滚请求: messageId=${messageId}, option=${option}`);
 
+    // 如果是删除消息的操作，提取被删除消息的文本内容，准备填充到输入框
+    let deletedMessageText = '';
+    if (option === 'conversation' || option === 'both') {
+      const targetMessage = messages.find(m => m.id === messageId);
+      if (targetMessage && targetMessage.role === 'user') {
+        // 提取用户消息的文本内容
+        const textContents = targetMessage.content
+          .filter((c: any) => c.type === 'text')
+          .map((c: any) => c.text);
+        deletedMessageText = textContents.join('\n\n');
+      }
+    }
+
     // 发送回滚请求
     send({
       type: 'rewind_execute',
@@ -239,6 +252,12 @@ function AppContent({
           if (data.payload?.messages) {
             setMessages(data.payload.messages);
           }
+          // 如果有被删除的消息文本，填充到输入框
+          if (deletedMessageText && chatInput.setInput) {
+            chatInput.setInput(deletedMessageText);
+            // 聚焦到输入框
+            chatInput.inputRef.current?.focus();
+          }
           resolve();
         }
       };
@@ -259,7 +278,7 @@ function AppContent({
         // TODO: 实现 removeMessageHandler
       }, 30000);
     });
-  }, [send, setMessages, addMessageHandler]);
+  }, [send, setMessages, addMessageHandler, messages, chatInput]);
 
   // 是否可以回滚（至少有2条消息）
   const canRewind = messages.length >= 2;

@@ -87,9 +87,11 @@ function New-DesktopShortcut {
 
             $BatPath = Join-Path $BatDir "claude-web-launch.bat"
             $WebCliPath = Join-Path $InstallPath "dist\web-cli.js"
+
+            # Build batch file content with proper path substitution
             $BatContent = @"
 @echo off
-cd /d "%USERPROFILE%"
+cd /d "$env:USERPROFILE"
 echo Starting Claude Code WebUI...
 echo Press Ctrl+C to stop the server
 echo.
