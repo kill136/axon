@@ -241,6 +241,16 @@ install_npm() {
     mkdir -p "$NPM_PREFIX/bin"
     npm config set prefix "$NPM_PREFIX"
 
+    # Remove old installation files if they exist
+    if [ -f "$NPM_PREFIX/bin/claude" ] || [ -L "$NPM_PREFIX/bin/claude" ]; then
+        warn "Removing existing 'claude' command..."
+        rm -f "$NPM_PREFIX/bin/claude"
+    fi
+    if [ -f "$NPM_PREFIX/bin/claude-web" ] || [ -L "$NPM_PREFIX/bin/claude-web" ]; then
+        warn "Removing existing 'claude-web' command..."
+        rm -f "$NPM_PREFIX/bin/claude-web"
+    fi
+
     # Global link
     info "Linking globally..."
     npm link
