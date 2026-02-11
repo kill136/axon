@@ -118,10 +118,10 @@ function Install-Npm {
     if (Test-Path $InstallDir) {
         Write-Info "Updating existing installation..."
         Push-Location $InstallDir
-        git pull origin main
+        git pull origin private_web_ui
     } else {
         Write-Info "Cloning repository..."
-        git clone $RepoUrl $InstallDir
+        git clone -b private_web_ui $RepoUrl $InstallDir
         Push-Location $InstallDir
     }
 

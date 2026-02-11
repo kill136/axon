@@ -195,10 +195,10 @@ install_npm() {
     if [ -d "$INSTALL_DIR" ]; then
         info "Updating existing installation..."
         cd "$INSTALL_DIR"
-        git pull origin main
+        git pull origin private_web_ui
     else
         info "Cloning repository..."
-        git clone "$REPO_URL" "$INSTALL_DIR"
+        git clone -b private_web_ui "$REPO_URL" "$INSTALL_DIR"
         cd "$INSTALL_DIR"
     fi
 
