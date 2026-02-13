@@ -31,6 +31,7 @@ import type { BashInput, BashResult, ToolDefinition } from '../types/index.js';
 import { needsElevation, getElevationReason, executeElevated } from '../permissions/elevated-commands.js';
 import { truncateString } from '../utils/truncated-buffer.js';
 import { t } from '../i18n/index.js';
+import { openTerminalForTask } from '../utils/terminal-tab.js';
 
 // WebUI 模式下的 WebSocket 广播（可选依赖）
 let broadcastMessage: ((message: any) => void) | null = null;
@@ -1300,6 +1301,9 @@ Important:
 
     backgroundTasks.set(taskId, taskState);
 
+    // 在新终端 tab 中打开输出查看器（如果终端支持）
+    const terminalOpened = openTerminalForTask({ taskId, command, logFile: outputFile });
+
     // WebUI: 向前端发送任务启动消息
     if (broadcastMessage) {
       broadcastMessage({
@@ -1313,11 +1317,12 @@ Important:
     }
 
     // 返回与官方一致的格式（使用 task_id）
+    const terminalNote = terminalOpened ? '\nOutput is streaming in a new terminal tab.' : '';
     const statusMsg = `<task-id>${taskId}</task-id>
 <task-type>bash</task-type>
 <output-file>${outputFile}</output-file>
 <status>running</status>
-<summary>Background command "${command.substring(0, 50)}${command.length > 50 ? '...' : ''}" started.</summary>
+<summary>Background command "${command.substring(0, 50)}${command.length > 50 ? '...' : ''}" started.${terminalNote}</summary>
 Use TaskOutput tool with task_id="${taskId}" to retrieve the output.`;
 
     return {

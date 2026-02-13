@@ -947,6 +947,37 @@ async function runTextInterface(
   isInteractiveMode = !options.print;
   sessionPersistenceDisabled = options.sessionPersistence === false;
 
+  // 自动启动 daemon（如果未运行且存在动态任务或配置文件）
+  if (isInteractiveMode) {
+    try {
+      const { isDaemonRunning } = await import('./daemon/index.js');
+      const { TaskStore } = await import('./daemon/store.js');
+      const daemonFs = await import('fs');
+      const daemonPath = await import('path');
+
+      if (!isDaemonRunning()) {
+        const store = new TaskStore();
+        const hasTasks = store.listTasks().length > 0;
+        const hasConfig = daemonFs.existsSync(daemonPath.join(process.cwd(), '.claude', 'daemon.yml'))
+          || daemonFs.existsSync(daemonPath.join((await import('os')).homedir(), '.claude', 'daemon.yml'));
+
+        if (hasTasks || hasConfig) {
+          // 后台启动 daemon（fork 子进程）
+          const { spawn } = await import('child_process');
+          const daemonProcess = spawn(process.execPath, [daemonPath.join(import.meta.dirname, '..', 'dist', 'cli.js'), 'daemon', 'start'], {
+            detached: true,
+            stdio: 'ignore',
+            cwd: process.cwd(),
+          });
+          daemonProcess.unref();
+          console.log(chalk.gray(`[Daemon auto-started, PID: ${daemonProcess.pid}]`));
+        }
+      }
+    } catch {
+      // daemon 自动启动失败不影响主程序
+    }
+  }
+
   // 如果有初始 prompt
   if (prompt) {
     console.log(chalk.blue('> ') + prompt);
@@ -1424,6 +1455,91 @@ mcpCommand
 
 // Plugin 子命令 - 使用完整实现
 program.addCommand(createPluginCommand());
+
+// Daemon 子命令
+const daemonCmd = program
+  .command('daemon')
+  .description('Manage daemon process for scheduled tasks and file watching');
+
+daemonCmd
+  .command('start')
+  .description('Start the daemon process (foreground)')
+  .option('-c, --config <path>', 'Path to daemon config file')
+  .action(async () => {
+    const { DaemonManager } = await import('./daemon/index.js');
+    const manager = new DaemonManager({ cwd: process.cwd() });
+    try {
+      await manager.start();
+      // 保持进程运行
+      await new Promise(() => {});
+    } catch (err) {
+      console.error(chalk.red(`Daemon start failed: ${err instanceof Error ? err.message : err}`));
+      process.exit(1);
+    }
+  });
+
+daemonCmd
+  .command('stop')
+  .description('Stop the running daemon')
+  .action(async () => {
+    const { stopDaemon, isDaemonRunning } = await import('./daemon/index.js');
+    if (!isDaemonRunning()) {
+      console.log(chalk.yellow('No daemon is running.'));
+      return;
+    }
+    if (stopDaemon()) {
+      console.log(chalk.green('Daemon stopped.'));
+    } else {
+      console.log(chalk.red('Failed to stop daemon.'));
+    }
+  });
+
+daemonCmd
+  .command('status')
+  .description('Show daemon status')
+  .action(async () => {
+    const { getDaemonStatus } = await import('./daemon/index.js');
+    const status = getDaemonStatus();
+    if (!status.running) {
+      console.log(chalk.yellow('Daemon is not running.'));
+      console.log(chalk.gray('Start with: claude daemon start'));
+      return;
+    }
+    console.log(chalk.green('Daemon is running.'));
+    console.log(chalk.gray(`  PID: ${status.pid}`));
+    console.log(chalk.gray(`  Dynamic tasks: ${status.dynamicTaskCount}`));
+  });
+
+daemonCmd
+  .command('tasks')
+  .description('List all scheduled tasks')
+  .action(async () => {
+    const { TaskStore } = await import('./daemon/store.js');
+    const store = new TaskStore();
+    const tasks = store.listTasks();
+    if (tasks.length === 0) {
+      console.log(chalk.yellow('No scheduled tasks.'));
+      return;
+    }
+    console.log(chalk.bold(`\nScheduled Tasks (${tasks.length}):\n`));
+    for (const t of tasks) {
+      console.log(chalk.cyan(`  [${t.type}] ${t.name}`));
+      console.log(chalk.gray(`    ID: ${t.id}`));
+      if (t.type === 'once' && t.triggerAt) {
+        console.log(chalk.gray(`    Trigger: ${new Date(t.triggerAt).toLocaleString()}`));
+      }
+      if (t.type === 'interval' && t.intervalMs) {
+        console.log(chalk.gray(`    Every: ${Math.round(t.intervalMs / 60000)} min`));
+      }
+      if (t.type === 'watch' && t.watchPaths) {
+        console.log(chalk.gray(`    Watch: ${t.watchPaths.join(', ')}`));
+      }
+      console.log(chalk.gray(`    Prompt: ${t.prompt.slice(0, 80)}${t.prompt.length > 80 ? '...' : ''}`));
+      console.log(chalk.gray(`    Notify: ${t.notify.join(', ')}`));
+      console.log(chalk.gray(`    Enabled: ${t.enabled}`));
+      console.log();
+    }
+  });
 
 // 工具子命令
 program

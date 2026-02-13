@@ -103,6 +103,7 @@ export function getDefaultConfig(): FeishuBotConfig {
       'WebFetch',
       'WebSearch',
       'TodoWrite',
+      'ScheduleTask',
     ],
 
     maxMessageLength: 4000,

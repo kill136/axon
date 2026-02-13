@@ -388,9 +388,9 @@ class BlueprintStore {
       }
     }
 
-    // 状态校验：confirmed 状态必须有实质内容
-    if (blueprint.status === 'confirmed' && !this.hasContent(blueprint)) {
-      throw new Error('蓝图状态不能为 confirmed：没有任何实质内容（模块、流程、需求或NFR）');
+    // 状态校验：confirmed 状态至少需要 name + description（v10.0: 不再强制要求 modules 等旧字段）
+    if (blueprint.status === 'confirmed' && !blueprint.name && !blueprint.description) {
+      throw new Error('蓝图状态不能为 confirmed：至少需要 name 或 description');
     }
 
     // 版本号逻辑：空内容的蓝图版本号应为 0.1.0

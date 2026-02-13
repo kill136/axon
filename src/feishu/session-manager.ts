@@ -105,10 +105,16 @@ export class SessionManager {
     }
 
     if (!entry) {
+      // 注入飞书 chat_id 到 system prompt，让模型创建定时任务时自动关联当前会话
+      let systemPrompt = this.config.systemPrompt;
+      if (chatId) {
+        systemPrompt += `\n\n## 飞书会话上下文\n当前飞书会话 chat_id: ${chatId}\n当你使用 ScheduleTask 工具创建任务时，请始终设置 feishuChatId 为 "${chatId}"，并确保 notify 包含 "feishu"，这样任务执行结果会发回当前对话。`;
+      }
+
       const loop = new ConversationLoop({
         model: this.config.model,
         maxTokens: this.config.maxTokens,
-        systemPrompt: this.config.systemPrompt,
+        systemPrompt,
         permissionMode: 'bypassPermissions',
         allowedTools: this.config.allowedTools,
         workingDir: this.config.workingDir,

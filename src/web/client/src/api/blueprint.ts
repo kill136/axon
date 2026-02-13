@@ -338,6 +338,31 @@ export const coordinatorApi = {
     return handleResponse(response);
   },
 
+  /**
+   * 启动蓝图执行（新建执行会话）
+   * 本质上和 resume 调用相同的后端接口，后端自动判断是新建还是恢复
+   */
+  startExecution: async (blueprintId: string): Promise<{
+    started?: boolean;
+    resumed?: boolean;
+    recovered?: boolean;
+    blueprintId: string;
+    executionId: string;
+    planId?: string;
+    totalTasks?: number;
+    parallelGroups?: number;
+    estimatedMinutes?: number;
+    estimatedCost?: number;
+    message?: string;
+  }> => {
+    const response = await fetch('/api/blueprint/coordinator/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ blueprintId }),
+    });
+    return handleResponse(response);
+  },
+
   // ============ v2.0 新增接口 ============
 
   /**

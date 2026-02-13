@@ -22,7 +22,9 @@ npm install -g @anthropic-ai/claude-code
 
 ## Features at a Glance
 
-- **29+ Built-in Tools** - File ops, search, execution, web access, task management, and more
+- **30+ Built-in Tools** - File ops, search, execution, web access, task management, scheduled tasks, and more
+- **One-Click Installer** - Automated installation scripts for Windows, macOS, and Linux with desktop shortcut creation
+- **Scheduled Task Daemon** - Background daemon for time-based tasks, interval jobs, file watching, and notifications
 - **Web UI** - Full-featured browser interface with React frontend and WebSocket communication
 - **Blueprint Multi-Agent System** - Lead agent, autonomous workers, task queue, and real-time coordination
 - **Internationalization (i18n)** - Chinese and English language support
@@ -375,7 +377,7 @@ src/
 └── utils/                  # Utility functions
 ```
 
-## Implemented Tools (29+)
+## Implemented Tools (30+)
 
 | Tool | Status | Description |
 | --- | --- | --- |
@@ -397,6 +399,7 @@ src/
 | **Task Management** | | |
 | TodoWrite | Complete | Task management with auto-reminder system |
 | Task | Complete | Sub-agents (explore, plan, guide, etc.) |
+| ScheduleTask | Complete | Create/cancel/list scheduled tasks with daemon execution |
 | **Planning** | | |
 | EnterPlanMode | Complete | Enter plan mode with permission system |
 | ExitPlanMode | Complete | Exit plan mode |
@@ -528,6 +531,34 @@ Events: `PreToolUse`, `PostToolUse`, `PrePromptSubmit`, `PostPromptSubmit`, `Not
 ### Extended Thinking
 
 Support for Claude's extended reasoning mode, enabling deeper analysis and more thorough problem-solving.
+
+### Scheduled Task Daemon
+
+A powerful background daemon system for automated task execution:
+
+**Features:**
+- **Time-based Tasks** - Schedule one-time or recurring tasks using natural language ("tomorrow 3pm", "every day at 9am", "in 2 hours")
+- **File Watching** - Monitor file changes and trigger AI tasks automatically
+- **Multi-channel Notifications** - Desktop notifications and Feishu (Lark) messaging support
+- **Persistent Storage** - SQLite-based task storage survives restarts
+- **Model Selection** - Choose different Claude models per task
+
+**Usage:**
+```bash
+# Start daemon
+claude daemon start
+
+# Schedule a task via conversation
+"Schedule a daily code review at 9am and notify me on Feishu"
+
+# Or use the ScheduleTask tool directly
+# Action: create, Type: interval, Trigger: "every day at 9am"
+```
+
+**Supported Task Types:**
+- `once` - Execute at a specific time
+- `interval` - Recurring execution (hourly, daily, weekly)
+- `watch` - File/directory change monitoring
 
 ### Fast Mode
 

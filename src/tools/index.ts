@@ -27,6 +27,7 @@ export * from './task-v2.js';
 export * from './agent-teams.js';
 export * from './notebook-write.js';
 export * from './team.js';
+export * from './schedule.js';
 
 // 蓝图工具不通过此处 re-export
 // 蓝图模块直接 import 各自需要的工具文件 (如 ../tools/dispatch-worker.js)
@@ -52,6 +53,7 @@ import { NotebookWriteTool } from './notebook-write.js';
 import { TeammateTool } from './agent-teams.js';
 import { isAgentTeamsEnabled } from '../agents/teammate-context.js';
 import { TeamCreateTool, TeamDeleteTool, TeamSendMessageTool } from './team.js';
+import { ScheduleTaskTool } from './schedule.js';
 
 // ============ 蓝图工具 imports (lazy) ============
 import { BlueprintTool } from './blueprint.js';
@@ -162,6 +164,9 @@ export function registerCoreTools(): void {
   // 12. 项目扩展工具 (非官方，但 CLI 模式也用)
   toolRegistry.register(new LSPTool());
   toolRegistry.register(new NotebookWriteTool());
+
+  // 13. Daemon 定时任务工具
+  toolRegistry.register(new ScheduleTaskTool());
 }
 
 /**
