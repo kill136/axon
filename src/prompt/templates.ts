@@ -27,8 +27,11 @@ ${SECURITY_RULES}
 IMPORTANT: You must NEVER generate or guess URLs for the user unless you are confident that the URLs are for helping the user with programming. You may use URLs provided by the user in their messages or local files.`;
 
 /**
- * 系统说明（对齐官方 K3z 函数）
+ * 系统说明（对齐官方新路径 pwq 中的 mqz 函数）
  * 关于工具权限、system-reminder、hooks 等系统级说明
+ *
+ * 注意：当前 builder.ts 走的是旧路径 aV 风格，此函数暂未使用。
+ * 保留供未来迁移到新路径时使用。
  */
 export function getSystemSection(toolNames: Set<string>, askToolName: string): string {
   const items: string[] = [
@@ -42,20 +45,6 @@ export function getSystemSection(toolNames: Set<string>, askToolName: string): s
 
   return ['# System', ...items.map(item => ` - ${item}`)].join('\n');
 }
-
-/**
- * 文档查询指南
- */
-export const DOCUMENTATION_LOOKUP = `# Looking up your own documentation:
-
-When the user directly asks about any of the following:
-- how to use Claude Code (eg. "can Claude Code do...", "does Claude Code have...")
-- what you're able to do as Claude Code in second person (eg. "are you able...", "can you do...")
-- about how they might do something with Claude Code (eg. "how do I...", "how can I...")
-- how to use a specific Claude Code feature (eg. implement a hook, write a skill, or install an MCP server)
-- how to use the Claude Agent SDK, or asks you to write code that uses the Claude Agent SDK
-
-Use the Task tool with subagent_type='claude-code-guide' to get accurate information from the official Claude Code and Claude Agent SDK documentation.`;
 
 /**
  * 生成工具使用指南（对齐官方 w3z 函数）
@@ -96,6 +85,7 @@ export function getToolGuidelines(
     `Do NOT use the ${bash} to run commands when a relevant dedicated tool is provided. Using dedicated tools allows the user to better understand and review your work. This is CRITICAL to assisting the user:`,
     bashAlternatives,
     hasTodo ? `Break down and manage your work with the ${todoWrite} tool. These tools are helpful for planning your work and helping the user track your progress. Mark each task as completed as soon as you are done with the task. Do not batch up multiple tasks before marking them as completed.` : null,
+    hasTodo && toolNames.has('TaskCreate') ? `Important: use ${todoWrite} for task progress tracking in conversations. TaskCreate/TaskUpdate are for internal multi-agent coordination only — do not use them directly in normal conversations.` : null,
     hasTask ? `Use the ${task} tool with specialized agents when the task at hand matches the agent's description. Subagents are valuable for parallelizing independent queries or for protecting the main context window from excessive results, but they should not be used excessively when not needed. Importantly, avoid duplicating work that subagents are already doing - if you delegate research to a subagent, do not also perform the same searches yourself.` : null,
     `For simple, directed codebase searches (e.g. for a specific file/class/function) use the ${glob} or ${grep} directly.`,
     `For broader codebase exploration and deep research, use the ${task} tool with subagent_type=${exploreAgentType}. This is slower than calling ${glob} or ${grep} directly so use this only when a simple, directed search proves to be insufficient or when your task will clearly require more than 3 queries.`,
@@ -231,7 +221,26 @@ I'm going to search for any existing metrics or telemetry code in the project.
 I've found some existing telemetry code. Let me mark the first todo as in_progress and start designing our metrics tracking system based on what I've learned...
 
 [Assistant continues implementing the feature step by step, marking todos as in_progress and completed as they go]
-</example>`;
+</example>
+
+## Task Tool Selection Guide
+
+Match your task to the RIGHT tool:
+
+| Complexity | Tool | When |
+|-----------|------|------|
+| Simple (1-3 steps) | Just do it | No task tool needed |
+| Medium (multi-step, single agent) | TodoWrite | Track progress for user visibility |
+| Complex (needs exploration first) | EnterPlanMode | Explore → plan → get approval → implement |
+| Large project (multi-file, multi-module) | GenerateBlueprint → StartLeadAgent | Generate blueprint, delegate to LeadAgent |
+
+Key distinctions:
+- TodoWrite = progress tracking for the current session (in-memory, flat list)
+- TaskCreate/Update = structured task management with dependencies (file-persisted, used internally by LeadAgent)
+- EnterPlanMode = "I need to think before I act" (enters read-only exploration mode)
+- GenerateBlueprint = "This is too big for one agent" (generates structured blueprint for multi-agent execution)
+
+Do NOT use TaskCreate/TaskUpdate directly unless you are a LeadAgent managing worker tasks. For normal conversations, use TodoWrite.`;
 
 
 
@@ -970,7 +979,6 @@ export const PromptTemplates = {
   TASK_MANAGEMENT,
   EXECUTING_WITH_CARE,
   PERMISSION_MODES,
-  DOCUMENTATION_LOOKUP,
   // Agent 提示词
   GENERAL_PURPOSE_AGENT_PROMPT,
   EXPLORE_AGENT_PROMPT,

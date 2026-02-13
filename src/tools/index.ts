@@ -141,14 +141,6 @@ export function registerCoreTools(): void {
     }
   }
 
-  // MCP 工具通过动态注册机制添加
-  // MCPSearchTool 作为 MCP 桥接工具保留
-  toolRegistry.register(new MCPSearchTool());
-
-  // 12. MCP 资源工具 (2个) - v2.1.6 新增
-  toolRegistry.register(new ListMcpResourcesTool());
-  toolRegistry.register(new ReadMcpResourceTool());
-
   // 19. Agent Teams 工具 (1个) - v2.1.32 TeammateTool
   // v2.1.34: 添加 try-catch 保护
   try {

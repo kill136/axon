@@ -536,6 +536,7 @@ export function initBlueprintStore(cwd: string): void {
 interface ExecutionSession {
   id: string;
   blueprintId: string;
+  blueprintName?: string;  // v12.1: 蓝图/TaskPlan 名称（用于 tp- 临时蓝图的 UI 显示）
   plan: ExecutionPlan;
   coordinator: RealtimeCoordinator;
   projectPath: string;  // 项目路径（串行执行，无需 Git 并发控制）
@@ -1556,6 +1557,7 @@ class ExecutionManager {
     const session: ExecutionSession = {
       id: plan.id,
       blueprintId: blueprint.id,
+      blueprintName: blueprint.name,  // v12.1: 保存名称供 tp- 临时蓝图 UI 显示
       plan,
       coordinator,
       projectPath: blueprint.projectPath,
@@ -2149,6 +2151,7 @@ class ExecutionManager {
       const session: ExecutionSession = {
         id: `session-${Date.now()}`,
         blueprintId: blueprint.id,
+        blueprintName: blueprint.name,
         plan: restoredPlan,
         coordinator,
         projectPath: blueprint.projectPath,

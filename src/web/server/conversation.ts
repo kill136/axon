@@ -1799,6 +1799,9 @@ export class ConversationManager {
         }
 
         try {
+          // 获取主 agent 的认证信息，传递给子 agent 复用（避免子 agent initAuth 拿到不同凭证导致 403）
+          const mainClientConfig = this.buildClientConfig(input.model || state.model);
+
           // WebUI 始终使用同步执行：await 拿结果，中间过程由 TaskManager 通过 WebSocket 实时推送
           const result = await state.taskManager.executeTaskSync(
             description,
@@ -1808,6 +1811,11 @@ export class ConversationManager {
               model: input.model || state.model,
               parentMessages: state.messages,
               workingDirectory: state.session.cwd,
+              clientConfig: {
+                apiKey: mainClientConfig.apiKey,
+                authToken: mainClientConfig.authToken,
+                baseUrl: mainClientConfig.baseUrl,
+              },
             }
           );
 

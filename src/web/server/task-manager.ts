@@ -10,6 +10,8 @@ import type { WebSocket } from 'ws';
 import {
   getAgentTypeDefinition,
   getAllActiveAgents,
+  resolveAgentModel,
+  parseToolsWithAgentTypeRestriction,
   type AgentTypeDefinition,
   BUILT_IN_AGENT_TYPES,
 } from '../../tools/agent.js';
@@ -17,6 +19,7 @@ import {
   runSubagentStartHooks,
   runSubagentStopHooks,
 } from '../../hooks/index.js';
+import { configManager } from '../../config/index.js';
 
 /**
  * 子 agent 工具调用信息
@@ -79,6 +82,8 @@ interface TaskExecutionContext {
   messages: Message[];
   loop?: ConversationLoop;
   abortController?: AbortController;
+  /** 主 agent 的认证信息，供子 agent 复用 */
+  clientConfig?: { apiKey?: string; authToken?: string; baseUrl?: string };
 }
 
 /**
@@ -245,6 +250,8 @@ export class TaskManager {
       runInBackground?: boolean;
       parentMessages?: Message[];
       workingDirectory?: string;
+      /** 主 agent 的认证信息，传递给子 agent 复用 */
+      clientConfig?: { apiKey?: string; authToken?: string; baseUrl?: string };
     }
   ): Promise<string> {
     // 验证代理类型
@@ -296,6 +303,7 @@ export class TaskManager {
       agentDef,
       messages: initialMessages,
       abortController: new AbortController(),
+      clientConfig: options?.clientConfig,
     };
 
     this.tasks.set(taskId, context);
@@ -405,15 +413,42 @@ export class TaskManager {
       // 调用 SubagentStart Hook
       await runSubagentStartHooks(task.id, task.agentType);
 
-      // 构建 LoopOptions
+      // 解析模型参数（对齐 CLI agent.ts 的 resolveAgentModel）
+      const resolvedModel = resolveAgentModel(task.model, agentDef.model);
+
+      // 从配置管理器获取完整配置（对齐 CLI agent.ts）
+      const config = configManager.getAll();
+      const fallbackModel = config.fallbackModel as string | undefined;
+      const debug = config.debug as boolean | undefined;
+
+      // 解析 tools 中的 Task(agent_type) 语法（对齐 CLI agent.ts）
+      let effectiveTools = agentDef.tools;
+      let childAllowedSubagentTypes = agentDef.allowedSubagentTypes;
+      if (effectiveTools && !childAllowedSubagentTypes) {
+        const parsed = parseToolsWithAgentTypeRestriction(effectiveTools);
+        effectiveTools = parsed.tools;
+        childAllowedSubagentTypes = parsed.allowedSubagentTypes;
+      }
+
+      // 构建 LoopOptions（对齐 CLI agent.ts 的 executeAgentLoop）
       const loopOptions: LoopOptions = {
-        model: task.model,
-        maxTurns: 30,
+        model: resolvedModel,
+        maxTurns: agentDef.maxTurns || 30,
         verbose: process.env.CLAUDE_VERBOSE === 'true',
         permissionMode: agentDef.permissionMode || 'default',
-        allowedTools: agentDef.tools,
+        allowedTools: effectiveTools,
         workingDir: task.workingDirectory,
         systemPrompt: agentDef.getSystemPrompt?.(),
+        thinking: config.thinking,
+        fallbackModel,
+        debug,
+        isSubAgent: true,
+        mcpTools: [],
+        allowedSubagentTypes: childAllowedSubagentTypes,
+        // 传递主 agent 的认证信息，让子 agent 复用（避免子 agent 自己 initAuth 拿到不同凭证）
+        apiKey: context.clientConfig?.apiKey,
+        authToken: context.clientConfig?.authToken,
+        baseUrl: context.clientConfig?.baseUrl,
       };
 
       // 创建对话循环
@@ -584,6 +619,8 @@ export class TaskManager {
       model?: string;
       parentMessages?: Message[];
       workingDirectory?: string;
+      /** 主 agent 的认证信息，传递给子 agent 复用 */
+      clientConfig?: { apiKey?: string; authToken?: string; baseUrl?: string };
     }
   ): Promise<{ success: boolean; output?: string; error?: string; taskId: string; structuredError?: TaskInfo['structuredError'] }> {
     const taskId = await this.createTask(description, prompt, agentType, {

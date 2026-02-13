@@ -210,13 +210,15 @@ function supportsStructuredOutputs(model: string): boolean {
 }
 
 /**
- * v2.1.29: 检查模型是否支持 interleaved thinking (对应官方 XOK 函数)
+ * v2.1.41: 检查模型是否支持 interleaved thinking (对应官方 G15 函数)
+ * 注意：haiku 不支持 interleaved thinking（官方 2.1.41 确认）
  */
 function supportsInterleavedThinking(model: string): boolean {
-  // 大多数 Claude 4 模型支持 interleaved thinking
-  return model.includes('claude-sonnet-4') ||
-         model.includes('claude-opus-4') ||
-         model.includes('claude-haiku-4');
+  const providerType = getProviderType();
+  if (providerType === 'foundry') return true;
+  if (providerType === 'firstParty') return !model.includes('claude-3-');
+  return model.includes('claude-opus-4') ||
+         model.includes('claude-sonnet-4');
 }
 
 /**
@@ -473,10 +475,10 @@ function buildBetas(model: string, isOAuth: boolean, fastMode?: boolean): string
     betas.push(THINKING_BETA);
   }
 
-  // 5. 实验性 betas 启用时，添加 structured outputs beta（如果模型支持）
-  // （官方: let O=BY("tengu_tool_pear"); if(zu6(A)&&O)q.push(ad)）
-  // 注意：这里简化了 feature flag 检查，默认启用
-  if (supportsStructuredOutputs(model)) {
+  // 5. structured outputs beta（官方需要 feature flag tengu_tool_pear）
+  // 由于我们没有 Anthropic 的 feature flag 系统，默认不启用
+  // 通过环境变量 CLAUDE_CODE_ENABLE_STRUCTURED_OUTPUTS=1 手动启用
+  if (supportsStructuredOutputs(model) && isEnvEnabled(process.env.CLAUDE_CODE_ENABLE_STRUCTURED_OUTPUTS)) {
     betas.push(STRUCTURED_OUTPUTS_BETA);
   }
 
@@ -1134,8 +1136,12 @@ export class ClaudeClient {
       const apiTools = buildApiTools(tools, options?.toolSearchEnabled);
 
       if (this.debug) {
+        console.log('[ClaudeClient] isOAuth:', this.isOAuth, '| apiKey:', this.client.apiKey ? 'set' : 'null', '| authToken:', (this.client as any).authToken ? 'set' : 'null');
         console.log('[ClaudeClient] Using beta.messages.stream with betas:', betas);
         console.log('[ClaudeClient] System prompt format:', Array.isArray(formattedSystem) ? `array(${formattedSystem.length} blocks)` : 'string');
+        if (Array.isArray(formattedSystem) && formattedSystem.length > 0) {
+          console.log('[ClaudeClient] System prompt block[0] starts with:', formattedSystem[0].text.substring(0, 80));
+        }
         if (apiTools?.some(t => t.type === 'web_search_20250305')) {
           console.log('[ClaudeClient] WebSearch Server Tool enabled');
         }

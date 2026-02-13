@@ -4923,17 +4923,33 @@ async function handleSwarmSubscribe(
     console.log(`[Swarm] 客户端 ${clientId} 订阅 blueprint ${blueprintId}`);
 
     // 发送当前状态
-    const blueprint = blueprintManager.getBlueprint(blueprintId);
+    let blueprint = blueprintManager.getBlueprint(blueprintId);
     if (!blueprint) {
-      sendMessage(ws, {
-        type: 'swarm:error',
-        payload: {
-          blueprintId,
-          error: 'Blueprint 不存在',
-          timestamp: new Date().toISOString(),
-        },
-      });
-      return;
+      // v12.1: TaskPlan 模式的 tp- 临时蓝图不存入 BlueprintStore，
+      // 但 executionManager 中有活跃 session，从 session 构造最小蓝图对象
+      const session = executionManager.getSessionByBlueprint(blueprintId);
+      if (session) {
+        blueprint = {
+          id: blueprintId,
+          name: session.blueprintName || 'TaskPlan 执行',
+          description: '',
+          status: session.completedAt ? 'completed' : 'executing',
+          projectPath: session.projectPath,
+          createdAt: session.startedAt,
+          updatedAt: new Date(),
+        };
+        console.log(`[Swarm] tp- 临时蓝图 ${blueprintId} 从 executionManager session 恢复`);
+      } else {
+        sendMessage(ws, {
+          type: 'swarm:error',
+          payload: {
+            blueprintId,
+            error: 'Blueprint 不存在',
+            timestamp: new Date().toISOString(),
+          },
+        });
+        return;
+      }
     }
 
     // v2.0: 不再使用任务树和蜂王，改用 ExecutionPlan 和自治 Worker

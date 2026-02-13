@@ -1579,6 +1579,13 @@ export interface LoopOptions {
   debug?: boolean;
   /** 是否为 sub-agent（用于防止覆盖全局父模型上下文） */
   isSubAgent?: boolean;
+  /**
+   * 外部传入的认证信息（用于 WebUI 等场景，让子 agent 复用主 agent 的认证）
+   * 如果提供，跳过 initAuth()/getAuth()，直接使用这些凭证
+   */
+  apiKey?: string;
+  authToken?: string;
+  baseUrl?: string;
   /** v2.1.30: SDK 提供的 MCP 工具（传递给子代理） */
   mcpTools?: ToolDefinition[];
   /**
@@ -1818,10 +1825,6 @@ export class ConversationLoop {
       setParentModelContext(resolvedModel);
     }
 
-    // 初始化认证并获取凭据
-    initAuth();
-    const auth = getAuth();
-
     // 构建 ClaudeClient 配置
     const clientConfig: ClientConfig = {
       model: resolvedModel,
@@ -1832,27 +1835,40 @@ export class ConversationLoop {
       timeout: 300000,  // 5分钟 API 请求超时
     };
 
-    // 根据认证类型设置凭据
-    if (auth) {
-      if (auth.type === 'api_key' && auth.apiKey) {
-        clientConfig.apiKey = auth.apiKey;
-      } else if (auth.type === 'oauth') {
-        // 检查是否有 user:inference scope (Claude.ai 订阅用户)
-        // 注意：auth.scopes 是数组形式，auth.scope 是旧格式
-        const scopes = auth.scopes || auth.scope || [];
-        const hasInferenceScope = scopes.includes('user:inference');
+    // 如果外部传入了认证信息（如 WebUI 子 agent 复用主 agent 的认证），直接使用
+    if (options.apiKey || options.authToken) {
+      if (options.apiKey) {
+        clientConfig.apiKey = options.apiKey;
+      }
+      if (options.authToken) {
+        clientConfig.authToken = options.authToken;
+      }
+      if (options.baseUrl) {
+        clientConfig.baseUrl = options.baseUrl;
+      }
+    } else {
+      // 默认路径：从本地凭证文件/环境变量初始化认证
+      initAuth();
+      const auth = getAuth();
 
-        // 获取 OAuth token（可能是 authToken 或 accessToken）
-        const oauthToken = auth.authToken || auth.accessToken;
+      // 根据认证类型设置凭据
+      if (auth) {
+        if (auth.type === 'api_key' && auth.apiKey) {
+          clientConfig.apiKey = auth.apiKey;
+        } else if (auth.type === 'oauth') {
+          // 检查是否有 user:inference scope (Claude.ai 订阅用户)
+          const scopes = auth.scopes || auth.scope || [];
+          const hasInferenceScope = scopes.includes('user:inference');
 
-        if (hasInferenceScope && oauthToken) {
-          // Claude.ai 订阅用户可以直接使用 OAuth token
-          clientConfig.authToken = oauthToken;
-        } else if (auth.oauthApiKey) {
-          // Console 用户使用创建的 API Key
-          clientConfig.apiKey = auth.oauthApiKey;
+          // 获取 OAuth token（可能是 authToken 或 accessToken）
+          const oauthToken = auth.authToken || auth.accessToken;
+
+          if (hasInferenceScope && oauthToken) {
+            clientConfig.authToken = oauthToken;
+          } else if (auth.oauthApiKey) {
+            clientConfig.apiKey = auth.oauthApiKey;
+          }
         }
-        // 如果两者都没有，ensureAuthenticated() 会处理
       }
     }
 
