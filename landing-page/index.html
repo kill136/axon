@@ -18,7 +18,7 @@
     <!-- SEO Meta Tags -->
     <title>Claude Code Open - Open Source AI Coding Platform | CLI + Web UI + Multi-Agent</title>
     <meta name="description"
-        content="Claude Code Open is an open-source AI coding platform with Web UI IDE, Agent Teams multi-agent collaboration, Blueprint workflow engine, 35+ tools, plugin system, and i18n support.">
+        content="Claude Code Open is an open-source AI coding platform with Web UI IDE, scheduled task daemon, Agent Teams multi-agent collaboration, Blueprint workflow engine, 36+ tools, plugin system, and i18n support.">
     <meta name="keywords"
         content="Claude Code, AI Coding Assistant, CLI Tool, Web UI, Agent Teams, Multi-Agent, Blueprint, Open Source, TypeScript, Anthropic, MCP Protocol, Plugin System">
     <meta name="author" content="Claude Code Open Community">
@@ -30,7 +30,7 @@
     <meta property="og:url" content="https://www.chatbi.site/">
     <meta property="og:title" content="Claude Code Open - AI Coding Platform | CLI + Web UI + Multi-Agent">
     <meta property="og:description"
-        content="Full-featured AI coding platform: Web UI IDE, Agent Teams collaboration, Blueprint workflow engine, 35+ tools, plugin system, and more.">
+        content="Full-featured AI coding platform: Web UI IDE, scheduled task daemon, Agent Teams collaboration, Blueprint workflow engine, 36+ tools, plugin system, and more.">
     <meta property="og:image" content="https://www.chatbi.site/og-image.png">
     <meta property="og:locale" content="en_US">
 
@@ -39,7 +39,7 @@
     <meta name="twitter:url" content="https://www.chatbi.site/">
     <meta name="twitter:title" content="Claude Code Open - AI Coding Platform | CLI + Web UI + Multi-Agent">
     <meta name="twitter:description"
-        content="Full-featured AI coding platform: Web UI IDE, Agent Teams collaboration, Blueprint workflow engine, 35+ tools, plugin system, and more.">
+        content="Full-featured AI coding platform: Web UI IDE, scheduled task daemon, Agent Teams collaboration, Blueprint workflow engine, 36+ tools, plugin system, and more.">
     <meta name="twitter:image" content="https://www.chatbi.site/og-image.png">
 
     <!-- Structured Data -->
@@ -50,7 +50,7 @@
         "name": "Claude Code Open",
         "applicationCategory": "DeveloperApplication",
         "operatingSystem": "Windows, macOS, Linux",
-        "description": "Open-source AI coding platform with Web UI, multi-agent collaboration, workflow engine, and 35+ built-in tools",
+        "description": "Open-source AI coding platform with Web UI, scheduled task daemon, multi-agent collaboration, workflow engine, and 36+ built-in tools",
         "offers": {
             "@type": "Offer",
             "price": "0",
@@ -112,9 +112,9 @@
                     <span class="gradient-text">A Complete AI Coding Platform</span>
                 </h1>
                 <p class="hero-description">
-                    Starting from a faithful re-implementation of Claude Code CLI v2.1.33, we've built capabilities
-                    far beyond the original: Web UI IDE, Agent Teams multi-agent collaboration, Blueprint workflow
-                    engine, 35+ built-in tools, plugin system, i18n — a ready-to-use AI coding platform.
+                    Starting from a faithful re-implementation of Claude Code CLI v2.1.37, we've built capabilities
+                    far beyond the original: Web UI IDE, scheduled task daemon, Agent Teams multi-agent collaboration, Blueprint workflow
+                    engine, 36+ built-in tools, plugin system, i18n — a ready-to-use AI coding platform.
                 </p>
                 <div class="hero-buttons">
                     <a href="#quickstart" class="btn btn-primary">
@@ -131,7 +131,7 @@
                 </div>
                 <div class="hero-stats">
                     <div class="stat">
-                        <span class="stat-value">35+</span>
+                        <span class="stat-value">36+</span>
                         <span class="stat-label">Built-in Tools</span>
                     </div>
                     <div class="stat">
@@ -179,7 +179,7 @@
     <section id="features" class="features">
         <div class="container">
             <div class="section-header">
-                <h2 class="section-title">16 Core Capabilities</h2>
+                <h2 class="section-title">17 Core Capabilities</h2>
                 <p class="section-subtitle">From CLI to Web UI, from single-agent to multi-agent, from local to multi-cloud — going far beyond the original Claude Code</p>
             </div>
             <div class="features-grid">
@@ -200,8 +200,13 @@
                 </div>
                 <div class="feature-card">
                     <div class="feature-icon">🛠️</div>
-                    <h3>35+ Built-in Tools</h3>
-                    <p>File operations, search & analysis, Shell execution, web fetching, task management, Notebook, Plan mode, Skill system, LSP integration — a comprehensive toolchain</p>
+                    <h3>36+ Built-in Tools</h3>
+                    <p>File operations, search & analysis, Shell execution, web fetching, task management, scheduled tasks, Notebook, Plan mode, Skill system, LSP integration — a comprehensive toolchain</p>
+                </div>
+                <div class="feature-card featured-card">
+                    <div class="feature-icon">⏰</div>
+                    <h3>Scheduled Task Daemon</h3>
+                    <p>Background daemon for automated AI tasks. Time-based scheduling (natural language support), file watching triggers, multi-channel notifications (Desktop + Feishu), persistent SQLite storage — your 7×24 AI automation assistant</p>
                 </div>
                 <div class="feature-card">
                     <div class="feature-icon">🔌</div>
@@ -342,7 +347,7 @@
         <div class="container">
             <div class="section-header">
                 <h2 class="section-title">Technical Blog</h2>
-                <p class="section-subtitle">10 in-depth articles documenting every step of building an AI coding platform from scratch</p>
+                <p class="section-subtitle">11 in-depth articles documenting every step of building an AI coding platform from scratch</p>
             </div>
             <div class="blog-posts">
 
@@ -762,6 +767,70 @@ system.splice(insertIdx, 0, { type: 'text', text: IDENTITY });</code>
                     <div class="blog-footer">
                         <a href="https://github.com/kill136/claude-code-open/blob/main/src/proxy/server.ts#L598-L632" target="_blank" class="btn btn-outline btn-small">
                             View Source Code Changes →
+                        </a>
+                    </div>
+                </article>
+
+                <!-- Blog 11: Scheduled Task Daemon -->
+                <article class="blog-post featured">
+                    <div class="blog-post-header">
+                        <span class="blog-tag">Automation</span>
+                        <span class="blog-date">February 2026</span>
+                    </div>
+                    <h3>Scheduled Task Daemon: Your 7×24 AI Automation Assistant</h3>
+                    <div class="blog-content">
+                        <h4>The Challenge: AI That Never Sleeps</h4>
+                        <p>AI coding assistants are great for interactive tasks, but what about <strong>scheduled automation</strong>? Daily code reviews, file watching for auto-testing, periodic API health checks — these require an AI that runs in the background, triggered by time or events. Enter the <strong>Scheduled Task Daemon</strong>.</p>
+
+                        <h4>Three Task Types</h4>
+                        <ul>
+                            <li><strong>Time-based Tasks</strong> — Natural language scheduling: "every day at 9am", "tomorrow 3pm", "2 hours later". Supports one-time and recurring cron-style jobs</li>
+                            <li><strong>File Watching</strong> — Monitor files/directories for changes. When <code>server.log</code> contains "ERROR", Claude analyzes it and sends you a desktop notification</li>
+                            <li><strong>Interval Tasks</strong> — Execute at fixed intervals: "every 5 minutes check API response time"</li>
+                        </ul>
+
+                        <h4>Architecture Highlights</h4>
+                        <p>Built with industrial-grade reliability in mind:</p>
+                        <div class="code-block" style="margin: 1rem 0;">
+                            <code>DaemonManager       — Orchestrator, process lifecycle, auto-restart<br>
+TaskStore (SQLite) — Persistent storage, tasks survive restarts<br>
+Scheduler          — Cron-style time matching, priority queue<br>
+FileWatcher        — chokidar integration, debouncing, batch processing<br>
+Notifier           — Desktop (node-notifier) + Feishu webhooks</code>
+                        </div>
+
+                        <h4>Natural Language Time Parsing</h4>
+                        <p>No need to learn cron syntax. Our time parser understands Chinese/English natural language:</p>
+                        <ul>
+                            <li>"明天下午3点" → <code>Date: 2026-02-14 15:00</code></li>
+                            <li>"每天早上9点" → <code>Cron: 0 9 * * *</code></li>
+                            <li>"2小时后" → <code>Date: now + 2 hours</code></li>
+                        </ul>
+
+                        <h4>Multi-Channel Notifications</h4>
+                        <p>Task results are delivered via:</p>
+                        <ul>
+                            <li><strong>Desktop</strong> — Native toast notifications (Windows/macOS/Linux)</li>
+                            <li><strong>Feishu Bot</strong> — Rich interactive cards with markdown formatting</li>
+                        </ul>
+
+                        <h4>Usage Example</h4>
+                        <div class="code-block" style="margin: 1rem 0;">
+                            <code># Start daemon<br>
+claude daemon start<br>
+<br>
+# Create task via conversation<br>
+User: "每天早上9点，分析昨天的git提交，检查代码质量，并通过飞书通知我"<br>
+Claude: ✓ 任务已创建 (ID: task_abc123)</code>
+                        </div>
+
+                        <p style="margin-top: 1.5rem; padding: 1rem; background: linear-gradient(135deg, rgba(34, 211, 238, 0.1), rgba(99, 102, 241, 0.1)); border-radius: 8px;">
+                            <strong>Core Features:</strong> Natural language scheduling · File watching · SQLite persistence · Multi-channel notifications · Model selection · Auto-restart · 中英文支持
+                        </p>
+                    </div>
+                    <div class="blog-footer">
+                        <a href="/blogs/scheduled-task-daemon.md" target="_blank" class="btn btn-outline btn-small">
+                            Read Full Article →
                         </a>
                     </div>
                 </article>
