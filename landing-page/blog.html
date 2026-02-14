@@ -5,8 +5,58 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>一键部署你的专属 Claude AI 助手 | Claude Code Open</title>
     <meta name="description" content="无需复杂配置，一行命令即可在本地部署完整的 Claude AI 助手。支持 Web UI、自动打开浏览器、预设 API 配置，让 AI 助手触手可及。">
+    <link rel="canonical" href="https://www.chatbi.site/blog">
+    
+    <!-- Google Analytics -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-PCKYKBDRNM"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag() { dataLayer.push(arguments); }
+        gtag('js', new Date());
+        gtag('config', 'G-PCKYKBDRNM');
+    </script>
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="article">
+    <meta property="og:url" content="https://www.chatbi.site/blog">
+    <meta property="og:title" content="一键部署你的专属 Claude AI 助手 | Claude Code Open">
+    <meta property="og:description" content="无需复杂配置，一行命令即可在本地部署完整的 Claude AI 助手。支持 Web UI、自动打开浏览器、预设 API 配置。">
+    <meta property="og:image" content="https://www.chatbi.site/og-image.png">
+    
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:url" content="https://www.chatbi.site/blog">
+    <meta name="twitter:title" content="一键部署你的专属 Claude AI 助手 | Claude Code Open">
+    <meta name="twitter:description" content="无需复杂配置，一行命令即可在本地部署完整的 Claude AI 助手。支持 Web UI、自动打开浏览器、预设 API 配置。">
+    <meta name="twitter:image" content="https://www.chatbi.site/og-image.png">
+    
+    <!-- Structured Data (JSON-LD) -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "Article",
+        "headline": "一键部署你的专属 Claude AI 助手",
+        "description": "无需复杂配置，一行命令即可在本地部署完整的 Claude AI 助手。支持 Web UI、自动打开浏览器、预设 API 配置。",
+        "datePublished": "2026-02-11",
+        "dateModified": "2026-02-14",
+        "author": {
+            "@type": "Organization",
+            "name": "Claude Code Team"
+        },
+        "publisher": {
+            "@type": "Organization",
+            "name": "Claude Code Open"
+        }
+    }
+    </script>
+    
     <link rel="stylesheet" href="style.css">
     <style>
+        body {
+            background: var(--bg);
+            color: var(--text-muted);
+        }
+
         .blog-container {
             max-width: 800px;
             margin: 0 auto;
@@ -22,13 +72,13 @@
         .blog-title {
             font-size: 2.5rem;
             font-weight: 700;
-            color: #191919;
+            color: var(--text);
             margin-bottom: 20px;
             line-height: 1.2;
         }
 
         .blog-meta {
-            color: #666;
+            color: var(--text-muted);
             font-size: 0.95rem;
             margin-bottom: 10px;
         }
@@ -52,22 +102,22 @@
 
         .blog-content {
             font-size: 1.1rem;
-            color: #333;
+            color: var(--text-muted);
         }
 
         .blog-content h2 {
             font-size: 1.8rem;
-            color: #191919;
+            color: var(--text);
             margin-top: 50px;
             margin-bottom: 20px;
             font-weight: 600;
-            border-left: 4px solid #667eea;
+            border-left: 4px solid var(--primary);
             padding-left: 16px;
         }
 
         .blog-content h3 {
             font-size: 1.4rem;
-            color: #333;
+            color: var(--text);
             margin-top: 35px;
             margin-bottom: 15px;
             font-weight: 600;
@@ -87,22 +137,23 @@
         }
 
         .blog-content code {
-            background: #f5f5f5;
+            background: rgba(99, 102, 241, 0.15);
             padding: 2px 8px;
             border-radius: 4px;
-            font-family: 'Monaco', 'Menlo', monospace;
+            font-family: var(--font-mono);
             font-size: 0.9em;
-            color: #e83e8c;
+            color: var(--primary-light);
         }
 
         .blog-content pre {
-            background: #1e1e1e;
-            color: #d4d4d4;
+            background: #0d1117;
+            color: var(--text-muted);
             padding: 20px;
-            border-radius: 8px;
+            border-radius: var(--radius);
             overflow-x: auto;
             margin: 25px 0;
             line-height: 1.6;
+            border: 1px solid var(--border);
         }
 
         .blog-content pre code {
@@ -113,10 +164,10 @@
         }
 
         .highlight-box {
-            background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
-            border-left: 4px solid #667eea;
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(34, 211, 238, 0.05));
+            border-left: 3px solid var(--primary);
             padding: 20px;
-            border-radius: 8px;
+            border-radius: var(--radius-sm);
             margin: 30px 0;
         }
 
@@ -140,17 +191,17 @@
         }
 
         .feature-card {
-            background: white;
-            border: 2px solid #f0f0f0;
-            border-radius: 12px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
             padding: 25px;
-            transition: all 0.3s ease;
+            transition: var(--transition);
         }
 
         .feature-card:hover {
-            border-color: #667eea;
+            border-color: var(--primary);
             transform: translateY(-4px);
-            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.2);
+            box-shadow: 0 8px 25px rgba(99, 102, 241, 0.2);
         }
 
         .feature-icon {
@@ -161,12 +212,12 @@
         .feature-title {
             font-size: 1.2rem;
             font-weight: 600;
-            color: #191919;
+            color: var(--text);
             margin-bottom: 10px;
         }
 
         .feature-desc {
-            color: #666;
+            color: var(--text-muted);
             font-size: 0.95rem;
             line-height: 1.6;
         }
@@ -221,14 +272,14 @@
             width: 100%;
             border-collapse: collapse;
             margin: 30px 0;
-            background: white;
-            border-radius: 8px;
+            background: var(--bg-card);
+            border-radius: var(--radius);
             overflow: hidden;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border: 1px solid var(--border);
         }
 
         .comparison-table th {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: var(--gradient);
             color: white;
             padding: 15px;
             text-align: left;
@@ -237,7 +288,12 @@
 
         .comparison-table td {
             padding: 15px;
-            border-bottom: 1px solid #f0f0f0;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-muted);
+        }
+        
+        .comparison-table td strong {
+            color: var(--text);
         }
 
         .comparison-table tr:last-child td {
@@ -489,18 +545,19 @@
                 <p><strong>🎁 限时彩蛋：</strong>早期用户可以免费获得技术支持和优先功能建议权。立即安装，加入我们的社区！</p>
             </div>
 
-            <p style="text-align: center; margin-top: 50px; color: #666;">
+            <p style="text-align: center; margin-top: 50px; color: var(--text-muted);">
                 <em>让 AI 为你工作，而不是你为 AI 工作。</em>
             </p>
         </article>
     </div>
 
-    <footer style="text-align: center; padding: 40px 20px; background: #f9f9f9; margin-top: 60px;">
-        <p style="color: #666; margin-bottom: 10px;">© 2026 Claude Code Open. All rights reserved.</p>
-        <p style="color: #999; font-size: 0.9rem;">
-            <a href="https://github.com/kill136/claude-code-open" style="color: #667eea; text-decoration: none;">GitHub</a> ·
-            <a href="https://www.chatbi.site" style="color: #667eea; text-decoration: none;">Official Website</a> ·
-            <a href="https://github.com/kill136/claude-code-open/blob/main/LICENSE" style="color: #667eea; text-decoration: none;">MIT License</a>
+    <footer style="text-align: center; padding: 40px 20px; background: var(--bg-card); border-top: 1px solid var(--border); margin-top: 60px;">
+        <p style="color: var(--text-muted); margin-bottom: 10px;">© 2026 Claude Code Open. All rights reserved.</p>
+        <p style="color: var(--text-muted); font-size: 0.9rem;">
+            <a href="index.html" style="color: var(--primary-light); text-decoration: none;">返回首页</a> ·
+            <a href="https://github.com/kill136/claude-code-open" style="color: var(--primary-light); text-decoration: none;">GitHub</a> ·
+            <a href="https://www.chatbi.site" style="color: var(--primary-light); text-decoration: none;">Official Website</a> ·
+            <a href="https://github.com/kill136/claude-code-open/blob/main/LICENSE" style="color: var(--primary-light); text-decoration: none;">MIT License</a>
         </p>
     </footer>
 </body>
