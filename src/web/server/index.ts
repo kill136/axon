@@ -20,9 +20,12 @@ import { configManager } from '../../config/index.js';
 
 // ============================================================================
 // Self-Evolve: 进化重启支持
-// AI 修改自身源码后，通过退出码 42 触发 evolve.bat 自动重启
+// AI 修改自身源码后，通过退出码 42 触发 --evolve 监控进程自动重启
 // ============================================================================
 let evolveRestartRequested = false;
+
+/** 存储 gracefulShutdown 闭包的引用，供 SelfEvolveTool 跨平台调用 */
+let gracefulShutdownFn: ((signal: string) => Promise<void>) | null = null;
 
 /**
  * 请求进化重启（由 SelfEvolveTool 调用）
@@ -33,7 +36,22 @@ export function requestEvolveRestart(): void {
 }
 
 /**
- * 检查进化模式是否启用（通过 evolve.bat 启动时设置 CLAUDE_EVOLVE_ENABLED=1）
+ * 触发优雅关闭（由 SelfEvolveTool 调用）
+ * Windows 上 SIGTERM 不会触发 process.on('SIGTERM') 监听器，
+ * 所以需要这个函数来直接调用 gracefulShutdown 闭包。
+ */
+export function triggerGracefulShutdown(): void {
+  if (gracefulShutdownFn) {
+    gracefulShutdownFn('SelfEvolve');
+  } else {
+    // 兜底：如果 gracefulShutdown 还没初始化，直接退出
+    console.error('[Evolve] gracefulShutdown not initialized, forcing exit(42)');
+    process.exit(42);
+  }
+}
+
+/**
+ * 检查进化模式是否启用（通过 --evolve 标志启动时设置 CLAUDE_EVOLVE_ENABLED=1）
  */
 export function isEvolveEnabled(): boolean {
   return process.env.CLAUDE_EVOLVE_ENABLED === '1';
@@ -328,6 +346,9 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
     // 兜底：如果 server.close 卡住，3秒后强制退出
     setTimeout(() => process.exit(exitCode), 3000);
   };
+
+  // 存储到模块级变量，供 SelfEvolveTool 通过 triggerGracefulShutdown() 调用
+  gracefulShutdownFn = gracefulShutdown;
 
   process.on('SIGINT', () => gracefulShutdown('SIGINT'));
   process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));

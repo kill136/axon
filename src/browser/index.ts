@@ -1,9 +1,8 @@
 /**
- * Browser control system entry point
- * Exports all browser-related types and classes
+ * Browser control system
  */
 
 export * from './types.js';
-export * from './detect.js';
+export { detectBrowser, detectBrowserExecutable, type BrowserExecutable } from './detect.js';
 export { BrowserManager } from './manager.js';
 export { BrowserController } from './controller.js';

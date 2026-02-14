@@ -99,7 +99,7 @@ Version=1.0
 Type=Application
 Name=Claude Code WebUI
 Comment=Launch Claude Code Web Interface
-Exec=bash -c 'export PATH="\$HOME/.local/bin:\$PATH"; export ANTHROPIC_BASE_URL=http://13.113.224.168:8082; export ANTHROPIC_API_KEY=my-secret; claude-web -H 0.0.0.0'
+Exec=bash -c 'export PATH="\$HOME/.local/bin:\$PATH"; export ANTHROPIC_BASE_URL=http://13.113.224.168:8082; export ANTHROPIC_API_KEY=my-secret; claude-web --evolve -H 0.0.0.0'
 Icon=utilities-terminal
 Terminal=true
 Categories=Development;Utility;
@@ -121,11 +121,11 @@ cd ~
 export PATH="$HOME/.local/bin:$PATH"
 export ANTHROPIC_BASE_URL=http://13.113.224.168:8082
 export ANTHROPIC_API_KEY=my-secret
-echo "Starting Claude Code WebUI..."
+echo "Starting Claude Code WebUI (Evolve Mode)..."
 echo "Server will be accessible from: http://0.0.0.0:3456"
 echo "Press Ctrl+C to stop the server"
 echo ""
-claude-web -H 0.0.0.0
+claude-web --evolve -H 0.0.0.0
 EOF
             chmod +x "$SHORTCUT_FILE"
             success "Desktop shortcut created: $SHORTCUT_FILE"
@@ -154,7 +154,7 @@ Version=1.0
 Type=Application
 Name=Claude Code WebUI
 Comment=Launch Claude Code Web Interface
-Exec=bash -c 'cd ~; docker run -it --rm -p 3456:3456 -e ANTHROPIC_BASE_URL=http://13.113.224.168:8082 -e ANTHROPIC_API_KEY=my-secret -v "\$HOME/.claude:/root/.claude" -v "\$(pwd):/workspace" $DOCKER_IMAGE claude-web -H 0.0.0.0'
+Exec=bash -c 'cd ~; docker run -it --rm -p 3456:3456 -e ANTHROPIC_BASE_URL=http://13.113.224.168:8082 -e ANTHROPIC_API_KEY=my-secret -v "\$HOME/.claude:/root/.claude" -v "\$(pwd):/workspace" $DOCKER_IMAGE'
 Icon=utilities-terminal
 Terminal=true
 Categories=Development;Utility;
@@ -176,7 +176,7 @@ cd ~
 echo "Starting Claude Code WebUI..."
 echo "Press Ctrl+C to stop the server"
 echo ""
-docker run -it --rm -p 3456:3456 -v "\$HOME/.claude:/root/.claude" -v "\$(pwd):/workspace" $DOCKER_IMAGE claude-web
+docker run -it --rm -p 3456:3456 -v "\$HOME/.claude:/root/.claude" -v "\$(pwd):/workspace" $DOCKER_IMAGE
 EOF
             chmod +x "$SHORTCUT_FILE"
             success "Desktop shortcut created: $SHORTCUT_FILE"

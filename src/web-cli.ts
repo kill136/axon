@@ -91,6 +91,29 @@ async function runEvolveMode(options: any) {
 
   const MAX_RESTARTS = 10;
   let restartCount = 0;
+  let currentChild: ReturnType<typeof spawn> | null = null;
+
+  // 信号转发（只注册一次，通过 currentChild 引用当前子进程）
+  const forwardSignal = (signal: NodeJS.Signals) => {
+    if (currentChild && !currentChild.killed) {
+      currentChild.kill(signal);
+    }
+  };
+  process.on('SIGINT', () => forwardSignal('SIGINT'));
+  process.on('SIGTERM', () => forwardSignal('SIGTERM'));
+
+  // 查找 tsx 可执行路径，避免通过 npx + shell 中转（Windows 上退出码不可靠）
+  function findTsxPath(): string {
+    const nodeModulesBin = path.join(process.cwd(), 'node_modules', '.bin', 'tsx');
+    // Windows 上 .bin 下有 tsx.cmd
+    if (process.platform === 'win32') {
+      const cmdPath = nodeModulesBin + '.cmd';
+      if (fs.existsSync(cmdPath)) return cmdPath;
+    }
+    if (fs.existsSync(nodeModulesBin)) return nodeModulesBin;
+    // 兜底：用 npx tsx
+    return '';
+  }
 
   function startChild(): void {
     printBanner(true, restartCount);
@@ -102,18 +125,41 @@ async function runEvolveMode(options: any) {
     if (options.model) childArgs.push('-m', options.model);
     if (options.dir) childArgs.push('-d', options.dir);
     if (options.ngrok) childArgs.push('--ngrok');
-    if (options.open === false) childArgs.push('--no-open');
+    // 重启后不再自动打开浏览器
+    if (options.open === false || restartCount > 0) childArgs.push('--no-open');
 
-    const child = spawn('npx', ['tsx', ...childArgs], {
-      stdio: 'inherit',
-      env: {
-        ...process.env,
-        CLAUDE_EVOLVE_ENABLED: '1',
-      },
-      shell: true,
-    });
+    const tsxPath = findTsxPath();
+    let child: ReturnType<typeof spawn>;
 
-    child.on('exit', (code) => {
+    if (tsxPath) {
+      // 直接用 tsx 可执行文件，不经过 npx 层
+      // Windows 上 .cmd 文件必须用 shell: true 运行
+      const useShell = process.platform === 'win32' && tsxPath.endsWith('.cmd');
+      child = spawn(tsxPath, childArgs, {
+        stdio: 'inherit',
+        env: {
+          ...process.env,
+          CLAUDE_EVOLVE_ENABLED: '1',
+        },
+        shell: useShell,
+      });
+    } else {
+      // 兜底：npx tsx
+      child = spawn('npx', ['tsx', ...childArgs], {
+        stdio: 'inherit',
+        env: {
+          ...process.env,
+          CLAUDE_EVOLVE_ENABLED: '1',
+        },
+        shell: true,
+      });
+    }
+
+    currentChild = child;
+
+    child.on('exit', (code, signal) => {
+      currentChild = null;
+
       if (code === 42) {
         restartCount++;
         if (restartCount >= MAX_RESTARTS) {
@@ -128,18 +174,17 @@ async function runEvolveMode(options: any) {
         console.log(`[Evolve] Waiting 2 seconds for port release...\n`);
         setTimeout(startChild, 2000);
       } else {
+        if (code !== 0 && code !== null) {
+          console.error(`[Evolve] Child process exited with code ${code}${signal ? `, signal ${signal}` : ''}`);
+        }
         process.exit(code ?? 0);
       }
     });
 
-    // 父进程收到信号时转发给子进程
-    const forwardSignal = (signal: NodeJS.Signals) => {
-      if (!child.killed) {
-        child.kill(signal);
-      }
-    };
-    process.on('SIGINT', () => forwardSignal('SIGINT'));
-    process.on('SIGTERM', () => forwardSignal('SIGTERM'));
+    child.on('error', (err) => {
+      console.error(`[Evolve] Failed to start child process:`, err.message);
+      currentChild = null;
+    });
   }
 
   startChild();

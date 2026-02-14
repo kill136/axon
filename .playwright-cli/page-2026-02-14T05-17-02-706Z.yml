@@ -1,0 +1,149 @@
+- generic [ref=e2]:
+  - generic:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - dialog:
+                - group [active] [ref=e120]:
+                  - dialog [ref=e122]:
+                    - progressbar [ref=e125]:
+                      - img [ref=e127]
+      - main [ref=e4]:
+        - generic [ref=e6]:
+          - generic [ref=e7]:
+            - generic [ref=e9]:
+              - generic [ref=e10]: 正发生
+              - generic [ref=e11]: 现在就加入。
+              - generic [ref=e12]:
+                - iframe [ref=e119]:
+                  - button "使用 Google 账号注册。在新标签页中打开" [ref=f6e3] [cursor=pointer]:
+                    - generic [ref=f6e5]:
+                      - img [ref=f6e7]
+                      - generic [ref=f6e14]: 使用 Google 账号注册
+                - button [ref=e130] [cursor=pointer]:
+                  - generic [ref=e19]:
+                    - img [ref=e20]
+                    - generic [ref=e24]: 使用 Apple 注册
+                - generic [ref=e30]: 或
+                - link [ref=e131] [cursor=pointer]:
+                  - /url: /i/flow/signup
+                  - generic [ref=e36]: 创建账号
+                - generic [ref=e37]:
+                  - text: 注册即表示同意
+                  - link [ref=e132] [cursor=pointer]:
+                    - /url: https://x.com/tos
+                    - text: 服务条款
+                  - text: 及
+                  - link [ref=e133] [cursor=pointer]:
+                    - /url: https://x.com/privacy
+                    - text: 隐私政策
+                  - text: ，其中包括
+                  - link [ref=e134] [cursor=pointer]:
+                    - /url: https://help.x.com/rules-and-policies/twitter-cookies
+                    - text: Cookie 使用条款
+                  - text: 。
+                - generic [ref=e41]:
+                  - generic [ref=e42]: 已有账号?
+                  - link [ref=e135] [cursor=pointer]:
+                    - /url: /login
+                    - generic [ref=e46]: 登录
+              - link [ref=e136] [cursor=pointer]:
+                - /url: https://grok.com/
+                - generic [ref=e48]:
+                  - img [ref=e49]
+                  - generic [ref=e54]: 获取 Grok
+            - img [ref=e57]
+          - navigation [ref=e137]:
+            - generic [ref=e62]:
+              - link [ref=e138] [cursor=pointer]:
+                - /url: https://about.x.com
+                - text: 关于
+              - generic [ref=e64]: "|"
+            - generic [ref=e65]:
+              - link [ref=e139] [cursor=pointer]:
+                - /url: https://help.x.com/using-x/download-the-x-app
+                - text: 下载 X 应用
+              - generic [ref=e67]: "|"
+            - generic [ref=e68]:
+              - link [ref=e140] [cursor=pointer]:
+                - /url: https://grok.com/
+                - text: Grok
+              - generic [ref=e70]: "|"
+            - generic [ref=e71]:
+              - link [ref=e141] [cursor=pointer]:
+                - /url: https://help.x.com
+                - text: 帮助中心
+              - generic [ref=e73]: "|"
+            - generic [ref=e74]:
+              - link [ref=e142] [cursor=pointer]:
+                - /url: https://x.com/tos
+                - text: 服务条款
+              - generic [ref=e76]: "|"
+            - generic [ref=e77]:
+              - link [ref=e143] [cursor=pointer]:
+                - /url: https://x.com/privacy
+                - text: 隐私政策
+              - generic [ref=e79]: "|"
+            - generic [ref=e80]:
+              - link [ref=e144] [cursor=pointer]:
+                - /url: https://support.x.com/articles/20170514
+                - text: Cookie 政策
+              - generic [ref=e82]: "|"
+            - generic [ref=e83]:
+              - link [ref=e145] [cursor=pointer]:
+                - /url: https://help.x.com/resources/accessibility
+                - text: 辅助功能
+              - generic [ref=e85]: "|"
+            - generic [ref=e86]:
+              - link [ref=e146] [cursor=pointer]:
+                - /url: https://business.x.com/en/help/troubleshooting/how-twitter-ads-work.html?ref=web-twc-ao-gbl-adsinfo&utm_source=twc&utm_medium=web&utm_campaign=ao&utm_content=adsinfo
+                - text: 广告信息
+              - generic [ref=e88]: "|"
+            - generic [ref=e89]:
+              - link [ref=e147] [cursor=pointer]:
+                - /url: https://blog.x.com
+                - text: 博客
+              - generic [ref=e91]: "|"
+            - generic [ref=e92]:
+              - link [ref=e148] [cursor=pointer]:
+                - /url: https://careers.x.com
+                - text: 职业
+              - generic [ref=e94]: "|"
+            - generic [ref=e95]:
+              - link [ref=e149] [cursor=pointer]:
+                - /url: https://about.x.com/press/brand-assets
+                - text: 品牌资源
+              - generic [ref=e97]: "|"
+            - generic [ref=e98]:
+              - link [ref=e150] [cursor=pointer]:
+                - /url: https://ads.x.com/?ref=gl-tw-tw-twitter-advertise
+                - text: 广告
+              - generic [ref=e100]: "|"
+            - generic [ref=e101]:
+              - link [ref=e151] [cursor=pointer]:
+                - /url: https://marketing.x.com
+                - text: 市场营销
+              - generic [ref=e103]: "|"
+            - generic [ref=e104]:
+              - link [ref=e152] [cursor=pointer]:
+                - /url: https://business.x.com/?ref=web-twc-ao-gbl-twitterforbusiness&utm_source=twc&utm_medium=web&utm_campaign=ao&utm_content=twitterforbusiness
+                - text: 企业版 X
+              - generic [ref=e106]: "|"
+            - generic [ref=e107]:
+              - link [ref=e153] [cursor=pointer]:
+                - /url: https://developer.x.com
+                - text: 开发者
+              - generic [ref=e109]: "|"
+            - generic [ref=e110]:
+              - link [ref=e154] [cursor=pointer]:
+                - /url: https://x.com/i/jf/stories/home
+                - text: 新闻
+              - generic [ref=e112]: "|"
+            - generic [ref=e113]:
+              - link [ref=e155] [cursor=pointer]:
+                - /url: /settings
+                - text: 设置
+              - generic [ref=e115]: "|"
+            - generic [ref=e116]: © 2026 X Corp.

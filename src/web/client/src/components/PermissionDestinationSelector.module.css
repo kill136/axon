@@ -8,8 +8,8 @@
 .container {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 14px;
+  gap: 6px;
+  padding: 10px;
   background: var(--bg-primary, #0f172a);
   border: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
   border-radius: var(--radius-md, 12px);
@@ -19,8 +19,8 @@
 }
 
 .container.compact {
-  padding: 10px;
-  gap: 6px;
+  padding: 8px;
+  gap: 4px;
 }
 
 .container.horizontal {
@@ -43,19 +43,19 @@
 .header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding-bottom: 10px;
+  gap: 6px;
+  padding-bottom: 6px;
   border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
-  margin-bottom: 2px;
+  margin-bottom: 0;
 }
 
 .headerIcon {
-  font-size: 15px;
+  font-size: 13px;
 }
 
 .headerText {
   font-weight: 600;
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-secondary, #cbd5e1);
 }
 
@@ -64,16 +64,16 @@
 .optionsContainer {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 
 /* ============ 选项按钮 ============ */
 
 .option {
   display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 12px 14px;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
   background: var(--bg-secondary, #1e293b);
   border: 1px solid transparent;
   border-radius: var(--radius-sm, 6px);
@@ -110,9 +110,8 @@
 /* ============ 选项图标 ============ */
 
 .optionIcon {
-  font-size: 18px;
+  font-size: 14px;
   flex-shrink: 0;
-  margin-top: 1px;
 }
 
 /* ============ 选项内容 ============ */
@@ -120,7 +119,7 @@
 .optionContent {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 1px;
   flex: 1;
   min-width: 0;
 }
@@ -128,26 +127,26 @@
 .optionLabel {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   font-weight: 600;
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-primary, #f8fafc);
 }
 
 .optionDescription {
   font-size: 11px;
   color: var(--text-muted, #64748b);
-  line-height: 1.4;
+  line-height: 1.3;
 }
 
 .optionPath {
-  font-size: 11px;
+  font-size: 10px;
   font-family: 'JetBrains Mono', Consolas, monospace;
   color: var(--accent-light, #818cf8);
   background: var(--code-bg, #020617);
-  padding: 3px 8px;
+  padding: 2px 6px;
   border-radius: 4px;
-  margin-top: 4px;
+  margin-top: 2px;
   display: inline-block;
   border: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
 }
@@ -175,9 +174,9 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  padding-top: 10px;
+  padding-top: 6px;
   border-top: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
-  margin-top: 4px;
+  margin-top: 2px;
   font-size: 11px;
   color: var(--text-muted, #64748b);
 }

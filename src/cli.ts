@@ -964,7 +964,8 @@ async function runTextInterface(
         if (hasTasks || hasConfig) {
           // 后台启动 daemon（fork 子进程）
           const { spawn } = await import('child_process');
-          const daemonProcess = spawn(process.execPath, [daemonPath.join(import.meta.dirname, '..', 'dist', 'cli.js'), 'daemon', 'start'], {
+          // import.meta.dirname 在编译后已经在 dist/ 下，所以向上一层就是项目根，再进 dist/
+          const daemonProcess = spawn(process.execPath, [daemonPath.join(import.meta.dirname, 'cli.js'), 'daemon', 'start'], {
             detached: true,
             stdio: 'ignore',
             cwd: process.cwd(),

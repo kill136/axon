@@ -59,7 +59,6 @@ export function Message({
   const userContentRef = useRef<HTMLDivElement>(null);
   const [showRewindMenu, setShowRewindMenu] = useState(false);
   const [rewindMenuPosition, setRewindMenuPosition] = useState({ x: 0, y: 0 });
-  const [isHovering, setIsHovering] = useState(false);
   const [copyButtonText, setCopyButtonText] = useState('📋');
   const [isUserMessageExpanded, setIsUserMessageExpanded] = useState(false);
   const { t } = useLanguage();
@@ -382,8 +381,6 @@ export function Message({
       <div
         ref={messageRef}
         className={`message ${role}`}
-        onMouseEnter={() => setIsHovering(true)}
-        onMouseLeave={() => setIsHovering(false)}
       >
         <div className="message-main">
           <div className="message-content-wrapper">
@@ -414,29 +411,27 @@ export function Message({
             )}
           </div>
 
-          {/* 右侧按钮区域 */}
-          {isHovering && (
-            <div className="message-actions-sidebar">
-              {/* 回滚按钮 */}
-              {showRewindButton && (
-                <button
-                  className="message-action-button message-rewind-button"
-                  onClick={handleRewindClick}
-                  title={t('message.rewindTooltip')}
-                >
-                  ↻
-                </button>
-              )}
-              {/* 复制按钮 */}
+          {/* 右侧按钮区域 - 用 CSS hover 控制显隐，避免鼠标移向按钮时消失 */}
+          <div className="message-actions-sidebar">
+            {/* 回滚按钮 */}
+            {showRewindButton && (
               <button
-                className="message-action-button message-copy-button"
-                onClick={handleCopyMessage}
-                title={t('message.copyTooltip')}
+                className="message-action-button message-rewind-button"
+                onClick={handleRewindClick}
+                title={t('message.rewindTooltip')}
               >
-                {copyButtonText}
+                ↻
               </button>
-            </div>
-          )}
+            )}
+            {/* 复制按钮 */}
+            <button
+              className="message-action-button message-copy-button"
+              onClick={handleCopyMessage}
+              title={t('message.copyTooltip')}
+            >
+              {copyButtonText}
+            </button>
+          </div>
         </div>
       </div>
 

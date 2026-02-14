@@ -103,8 +103,9 @@ echo Server will be accessible from: http://0.0.0.0:3456
 echo Press Ctrl+C to stop the server
 echo.
 
-REM Run the script directly with node
-node "%USERPROFILE%\.claude-code-open\dist\web-cli.js" -H 0.0.0.0
+REM Run in evolve mode: tsx runs TypeScript source directly, --evolve enables auto-restart on code changes
+cd /d "%USERPROFILE%\.claude-code-open"
+node_modules\.bin\tsx.cmd src\web-cli.ts --evolve -H 0.0.0.0
 
 pause
 "@
@@ -123,7 +124,7 @@ cd /d "%USERPROFILE%"
 echo Starting Claude Code WebUI...
 echo Press Ctrl+C to stop the server
 echo.
-docker run -it --rm -p 3456:3456 -e ANTHROPIC_API_KEY=%ANTHROPIC_API_KEY% -v "%USERPROFILE%\.claude:/root/.claude" -v "%cd%:/workspace" $DockerImage claude-web
+docker run -it --rm -p 3456:3456 -e ANTHROPIC_API_KEY=%ANTHROPIC_API_KEY% -v "%USERPROFILE%\.claude:/root/.claude" -v "%cd%:/workspace" $DockerImage
 pause
 "@
             Set-Content -Path $BatPath -Value $BatContent -Encoding ASCII

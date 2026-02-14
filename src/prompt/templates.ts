@@ -616,7 +616,6 @@ export function getEnvironmentInfo(context: {
   osVersion?: string;
   model?: string;
   additionalWorkingDirs?: string[];
-  // 扩展：硬件与系统资源
   hostname?: string;
   osName?: string;
   arch?: string;
@@ -641,61 +640,14 @@ export function getEnvironmentInfo(context: {
     `Is directory a git repo: ${context.isGitRepo ? 'Yes' : 'No'}`,
   ];
 
-  // 添加额外的工作目录（如果有）
   if (context.additionalWorkingDirs && context.additionalWorkingDirs.length > 0) {
     lines.push(`Additional working directories: ${context.additionalWorkingDirs.join(', ')}`);
   }
 
   lines.push(`Platform: ${context.platform}`);
-
-  if (context.osName) {
-    lines.push(`OS Name: ${context.osName}`);
-  }
   if (context.osVersion) {
     lines.push(`OS Version: ${context.osVersion}`);
   }
-  if (context.arch) {
-    lines.push(`Architecture: ${context.arch}`);
-  }
-  if (context.hostname) {
-    lines.push(`Hostname: ${context.hostname}`);
-  }
-  if (context.uptime) {
-    lines.push(`System Uptime: ${context.uptime}`);
-  }
-
-  // 硬件资源
-  if (context.cpuModel) {
-    lines.push(`CPU: ${context.cpuModel}${context.cpuCores ? ` (${context.cpuCores} cores, ${context.cpuLogical ?? context.cpuCores} threads)` : ''}`);
-  }
-  if (context.totalMemoryGB != null) {
-    const used = context.freeMemoryGB != null ? (context.totalMemoryGB - context.freeMemoryGB).toFixed(1) : '?';
-    lines.push(`Memory: ${used}GB used / ${context.totalMemoryGB.toFixed(1)}GB total${context.freeMemoryGB != null ? ` (${context.freeMemoryGB.toFixed(1)}GB free)` : ''}`);
-  }
-  if (context.gpuInfo) {
-    lines.push(`GPU: ${context.gpuInfo}`);
-  }
-  if (context.diskInfo) {
-    lines.push(`Disks: ${context.diskInfo}`);
-  }
-  if (context.networkAdapters) {
-    lines.push(`Network: ${context.networkAdapters}`);
-  }
-
-  // 开发工具版本
-  if (context.nodeVersion || context.npmVersion || context.shellVersion) {
-    const parts: string[] = [];
-    if (context.nodeVersion) parts.push(`Node ${context.nodeVersion}`);
-    if (context.npmVersion) parts.push(`npm ${context.npmVersion}`);
-    if (context.shellVersion) parts.push(`Shell: ${context.shellVersion}`);
-    lines.push(`Dev Tools: ${parts.join(', ')}`);
-  }
-
-  // 活动进程摘要
-  if (context.activeProcesses) {
-    lines.push(`Active Processes (top by memory): ${context.activeProcesses}`);
-  }
-
   lines.push(`Today's date: ${context.todayDate}`);
   lines.push(`</env>`);
 
@@ -707,7 +659,6 @@ export function getEnvironmentInfo(context: {
       lines.push(`You are powered by the model ${context.model}.`);
     }
 
-    // 只为特定模型显示知识截止日期
     const cutoff = getKnowledgeCutoff(context.model);
     if (cutoff) {
       lines.push('');
@@ -715,7 +666,6 @@ export function getEnvironmentInfo(context: {
     }
   }
 
-  // 添加 Claude 背景信息
   lines.push('');
   lines.push('<claude_background_info>');
   lines.push('The most recent frontier Claude model is Claude Opus 4.6 (model ID: \'claude-opus-4-6\').');

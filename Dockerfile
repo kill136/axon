@@ -28,7 +28,7 @@ COPY . .
 RUN npm run build
 
 # ============================================
-# Stage 2: Production
+# Stage 2: Production (with Self-Evolve support)
 # ============================================
 ARG REGISTRY=docker.io
 FROM ${REGISTRY}/library/node:18-slim
@@ -52,9 +52,15 @@ RUN apt-get update && apt-get install -y --fix-missing \
 
 WORKDIR /app
 
+# 复制编译产物 + 完整 node_modules（含 tsx、typescript）
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./
+
+# 自进化模式需要：源码 + tsconfig（tsx 直接运行 .ts，tsc --noEmit 做编译检查）
+COPY --from=builder /app/src ./src
+COPY --from=builder /app/tsconfig.json ./
+
 COPY .claude/skills /app/.claude/skills
 
 # 安装 playwright-cli 并下载 Chromium

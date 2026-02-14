@@ -411,7 +411,7 @@ export function isShellId(id: string): boolean {
 }
 
 // 获取任务输出文件路径（使用官方的 tasks 目录）
-function getTaskOutputPath(taskId: string): string {
+export function getTaskOutputPath(taskId: string): string {
   const homeDir = process.env.HOME || process.env.USERPROFILE || '/tmp';
   const tasksDir = path.join(homeDir, '.claude', 'tasks');
 
@@ -421,6 +421,59 @@ function getTaskOutputPath(taskId: string): string {
   }
 
   return path.join(tasksDir, `${taskId}.log`);
+}
+
+// 获取任务元数据文件路径
+export function getTaskMetaPath(taskId: string): string {
+  const logPath = getTaskOutputPath(taskId);
+  return logPath.replace(/\.log$/, '.meta.json');
+}
+
+// 保存后台任务元数据到磁盘（进程重启后可恢复）
+function saveTaskMeta(taskId: string, meta: {
+  command: string;
+  startTime: number;
+  outputFile: string;
+  status: string;
+  endTime?: number;
+  exitCode?: number;
+}): void {
+  try {
+    const metaPath = getTaskMetaPath(taskId);
+    fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2));
+  } catch {
+    // 写入失败不影响主流程
+  }
+}
+
+// 更新磁盘上的任务元数据状态
+function updateTaskMeta(taskId: string, updates: Record<string, unknown>): void {
+  try {
+    const metaPath = getTaskMetaPath(taskId);
+    if (!fs.existsSync(metaPath)) return;
+    const existing = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
+    fs.writeFileSync(metaPath, JSON.stringify({ ...existing, ...updates }, null, 2));
+  } catch {
+    // 更新失败不影响主流程
+  }
+}
+
+// 从磁盘加载后台任务元数据（进程重启后的 fallback）
+export function loadTaskMeta(taskId: string): {
+  command: string;
+  startTime: number;
+  outputFile: string;
+  status: string;
+  endTime?: number;
+  exitCode?: number;
+} | null {
+  try {
+    const metaPath = getTaskMetaPath(taskId);
+    if (!fs.existsSync(metaPath)) return null;
+    return JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
+  } catch {
+    return null;
+  }
 }
 
 // 向后兼容：保留旧的函数名
@@ -1253,6 +1306,13 @@ Important:
       taskState.exitCode = code ?? undefined;
       taskState.endTime = Date.now();
 
+      // 同步更新磁盘元数据
+      updateTaskMeta(taskId, {
+        status: taskState.status,
+        exitCode: taskState.exitCode,
+        endTime: taskState.endTime,
+      });
+
       if (taskState.timeout) {
         clearTimeout(taskState.timeout);
       }
@@ -1300,6 +1360,14 @@ Important:
     });
 
     backgroundTasks.set(taskId, taskState);
+
+    // 持久化元数据到磁盘（进程重启后 TaskOutput 可通过 fallback 恢复）
+    saveTaskMeta(taskId, {
+      command,
+      startTime: taskState.startTime,
+      outputFile,
+      status: 'running',
+    });
 
     // 在新终端 tab 中打开输出查看器（如果终端支持）
     const terminalOpened = openTerminalForTask({ taskId, command, logFile: outputFile });
@@ -1523,6 +1591,13 @@ Use TaskOutput tool with task_id="${taskId}" to retrieve the output.`;
       taskState.endTime = Date.now();
       outputStream.end();
 
+      // 同步更新磁盘元数据
+      updateTaskMeta(taskId, {
+        status: taskState.status,
+        exitCode: taskState.exitCode,
+        endTime: taskState.endTime,
+      });
+
       const duration = Date.now() - startTime;
       recordAudit({
         timestamp: Date.now(),
@@ -1542,6 +1617,7 @@ Use TaskOutput tool with task_id="${taskId}" to retrieve the output.`;
       taskState.endTime = Date.now();
       outputStream.write(`\nERROR: ${err.message}\n`);
       outputStream.end();
+      updateTaskMeta(taskId, { status: 'failed', endTime: taskState.endTime });
     });
 
     // 设置后台最大运行时间超时
@@ -1562,6 +1638,14 @@ Use TaskOutput tool with task_id="${taskId}" to retrieve the output.`;
     }, BACKGROUND_SHELL_MAX_RUNTIME);
 
     backgroundTasks.set(taskId, taskState);
+
+    // 持久化元数据到磁盘（进程重启后 TaskOutput 可通过 fallback 恢复）
+    saveTaskMeta(taskId, {
+      command,
+      startTime,
+      outputFile,
+      status: 'running',
+    });
 
     // 记录审计日志
     const duration = Date.now() - startTime;

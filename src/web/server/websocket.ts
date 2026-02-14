@@ -2375,33 +2375,25 @@ async function handleChatMessage(
     return conversationManager.getWebSocket(chatSessionId) || ws;
   };
 
-  // 服务端消息闸门：只有当本会话是客户端当前活跃会话时才发送流式消息
-  // 用户切换会话后 client.sessionId 会同步更新，旧会话的回调立即失效
-  // 这从源头阻止了消息混串，比客户端软隔离更可靠
-  const isActiveSession = (): boolean => {
-    return client.sessionId === chatSessionId;
-  };
+  // 始终发送流式消息到 WebSocket，不做服务端门控
+  // 客户端已有基于 sessionId 的会话隔离过滤（useMessageHandler），
+  // 服务端门控（isActiveSession）会导致用户切换会话或刷新页面时消息永久丢失，
+  // 而 streamingContent 只累积 thinking/text，工具调用等事件无法恢复
+  sendMessage(getActiveWs(), {
+    type: 'message_start',
+    payload: { messageId, sessionId: chatSessionId },
+  });
 
-  // 发送消息开始（仅活跃会话）
-  if (isActiveSession()) {
-    sendMessage(getActiveWs(), {
-      type: 'message_start',
-      payload: { messageId, sessionId: chatSessionId },
-    });
-
-    // 发送状态更新
-    sendMessage(getActiveWs(), {
-      type: 'status',
-      payload: { status: 'thinking', sessionId: chatSessionId },
-    });
-  }
+  sendMessage(getActiveWs(), {
+    type: 'status',
+    payload: { status: 'thinking', sessionId: chatSessionId },
+  });
 
   try {
     // 调用对话管理器，传入流式回调（媒体附件包含 mimeType 和类型）
     // 所有回调使用 getActiveWs() 动态获取 WebSocket，确保刷新后消息仍能送达
     await conversationManager.chat(chatSessionId, enhancedContent, mediaAttachments, model, {
       onThinkingStart: () => {
-        if (!isActiveSession()) return;
         sendMessage(getActiveWs(), {
           type: 'thinking_start',
           payload: { messageId, sessionId: chatSessionId },
@@ -2409,7 +2401,6 @@ async function handleChatMessage(
       },
 
       onThinkingDelta: (text: string) => {
-        if (!isActiveSession()) return;
         sendMessage(getActiveWs(), {
           type: 'thinking_delta',
           payload: { messageId, text, sessionId: chatSessionId },
@@ -2417,7 +2408,6 @@ async function handleChatMessage(
       },
 
       onThinkingComplete: () => {
-        if (!isActiveSession()) return;
         sendMessage(getActiveWs(), {
           type: 'thinking_complete',
           payload: { messageId, sessionId: chatSessionId },
@@ -2425,7 +2415,6 @@ async function handleChatMessage(
       },
 
       onTextDelta: (text: string) => {
-        if (!isActiveSession()) return;
         sendMessage(getActiveWs(), {
           type: 'text_delta',
           payload: { messageId, text, sessionId: chatSessionId },
@@ -2433,7 +2422,6 @@ async function handleChatMessage(
       },
 
       onToolUseStart: (toolUseId: string, toolName: string, input: unknown) => {
-        if (!isActiveSession()) return;
         sendMessage(getActiveWs(), {
           type: 'tool_use_start',
           payload: { messageId, toolUseId, toolName, input, sessionId: chatSessionId },
@@ -2445,7 +2433,6 @@ async function handleChatMessage(
       },
 
       onToolUseDelta: (toolUseId: string, partialJson: string) => {
-        if (!isActiveSession()) return;
         sendMessage(getActiveWs(), {
           type: 'tool_use_delta',
           payload: { toolUseId, partialJson, sessionId: chatSessionId },
@@ -2453,7 +2440,6 @@ async function handleChatMessage(
       },
 
       onToolResult: (toolUseId: string, success: boolean, output?: string, error?: string, data?: unknown) => {
-        if (!isActiveSession()) return;
         sendMessage(getActiveWs(), {
           type: 'tool_result',
           payload: {
@@ -2525,7 +2511,6 @@ async function handleChatMessage(
       },
 
       onContextUpdate: (usage: { usedTokens: number; maxTokens: number; percentage: number; model: string }) => {
-        if (!isActiveSession()) return;
         sendMessage(getActiveWs(), {
           type: 'context_update',
           payload: { ...usage, sessionId: chatSessionId },
@@ -2533,7 +2518,6 @@ async function handleChatMessage(
       },
 
       onContextCompact: (phase: 'start' | 'end' | 'error', info?: Record<string, any>) => {
-        if (!isActiveSession()) return;
         sendMessage(getActiveWs(), {
           type: 'context_compact',
           payload: {
@@ -2789,6 +2773,11 @@ async function handleSessionSwitch(
   const { ws } = client;
 
   try {
+    // 提前更新 ws：如果目标会话已在内存中（正在处理），立即将其 ws 指向新连接
+    // 这样在 await resumeSession() 期间，流式回调就能通过 getActiveWs() 获取到新 ws，
+    // 避免消息发送到已关闭的旧连接而丢失
+    conversationManager.setWebSocket(sessionId, ws);
+
     // 保存当前会话
     await conversationManager.persistSession(client.sessionId);
 
@@ -2799,7 +2788,7 @@ async function handleSessionSwitch(
       // 更新客户端会话ID
       client.sessionId = sessionId;
 
-      // 重要：更新会话的 WebSocket 连接，确保 UserInteractionHandler 和 TaskManager 使用新连接
+      // 恢复后再次更新 ws（resumeSession 可能从磁盘新建了 SessionState）
       conversationManager.setWebSocket(sessionId, ws);
 
       // 更新客户端项目路径（从会话元数据中获取）

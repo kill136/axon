@@ -9,11 +9,11 @@
  * 3. tsc --noEmit 编译检查（失败则中止，不重启）
  * 4. 持久化所有活跃会话
  * 5. 以退出码 42 退出进程
- * 6. 外层 evolve.bat 检测到 42，自动重启
+ * 6. 外层 --evolve 监控进程检测到 42，自动重启
  * 7. 前端 WebSocket 自动重连，session 自动恢复
  *
  * 安全机制：
- * - 仅在 CLAUDE_EVOLVE_ENABLED=1 时可用（evolve.bat 设置）
+ * - 仅在 CLAUDE_EVOLVE_ENABLED=1 时可用（--evolve 标志设置）
  * - tsc 编译检查通过才允许重启
  * - dryRun 模式只检查不重启
  * - 重启日志追加到 ~/.claude/evolve-log.jsonl
@@ -25,7 +25,7 @@ import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { requestEvolveRestart, isEvolveEnabled } from '../web/server/index.js';
+import { requestEvolveRestart, isEvolveEnabled, triggerGracefulShutdown } from '../web/server/index.js';
 
 export interface SelfEvolveInput {
   /** 重启原因（记录到日志） */
@@ -46,7 +46,7 @@ interface EvolveLogEntry {
 
 export class SelfEvolveTool extends BaseTool<SelfEvolveInput, ToolResult> {
   name = 'SelfEvolve';
-  description = 'Trigger a controlled process restart after modifying source code. Only available when running via evolve.bat (CLAUDE_EVOLVE_ENABLED=1). Runs TypeScript compilation check before restarting to prevent broken restarts.';
+  description = 'Trigger a controlled process restart after modifying source code. Only available when running with --evolve flag (CLAUDE_EVOLVE_ENABLED=1). Runs TypeScript compilation check before restarting to prevent broken restarts.';
 
   getInputSchema(): ToolDefinition['inputSchema'] {
     return {
@@ -71,8 +71,8 @@ export class SelfEvolveTool extends BaseTool<SelfEvolveInput, ToolResult> {
     // 1. 检查进化模式是否启用
     if (!isEvolveEnabled()) {
       return this.error(
-        'Self-evolve is not enabled. Start the server with evolve.bat to enable this feature.\n' +
-        'Usage: evolve.bat -H 0.0.0.0'
+        'Self-evolve is not enabled. Start the server with --evolve flag to enable this feature.\n' +
+        'Usage: claude-web --evolve -H 0.0.0.0'
       );
     }
 
@@ -124,11 +124,13 @@ export class SelfEvolveTool extends BaseTool<SelfEvolveInput, ToolResult> {
     // 6. 请求进化重启（设置退出码 42 标志）
     requestEvolveRestart();
 
-    // 7. 触发 gracefulShutdown（通过 SIGTERM）
-    // gracefulShutdown 会自动：persistAllSessions → 关闭 WebSocket → exit(42)
+    // 7. 触发 gracefulShutdown
+    // 直接调用 gracefulShutdown 闭包，而非 SIGTERM
+    // 原因：Windows 上 process.kill(pid, 'SIGTERM') 会直接终止进程，
+    //       不触发 process.on('SIGTERM') 监听器，导致退出码不是 42
     setTimeout(() => {
-      console.log('[SelfEvolve] Sending SIGTERM to self...');
-      process.kill(process.pid, 'SIGTERM');
+      console.log('[SelfEvolve] Triggering graceful shutdown...');
+      triggerGracefulShutdown();
     }, 100);
 
     return this.success(

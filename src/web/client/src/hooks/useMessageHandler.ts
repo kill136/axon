@@ -396,6 +396,10 @@ export function useMessageHandler({
           if (payload.messages && Array.isArray(payload.messages)) {
             const historyMessages = payload.messages as ChatMessage[];
             console.log('[useMessageHandler] history details:', historyMessages.map(m => `${m.role}: ${m.content?.[0]?.type}/${(m.content?.[0] as any)?.text?.substring(0, 40) || '...'}`));
+            // 清理流式状态：history 替换了全部消息，旧的 currentMessageRef 已过时
+            // 典型场景：onComplete 通过 consumeHistoryResendFlag 发送完整 history，
+            // 此时客户端可能还持有刷新前的恢复消息引用，必须清理
+            currentMessageRef.current = null;
             setMessages(historyMessages);
           }
           break;
@@ -412,7 +416,10 @@ export function useMessageHandler({
         case 'session_created':
           if (payload.sessionId) {
             sessionIdRef.current = payload.sessionId as string;
-            refreshSessionsRef.current();
+            // 不在此处调用 refreshSessions()：
+            // session_created 发出时 messageCount=0，服务端 handleSessionList 会过滤掉它，
+            // 导致 session_list_response 覆盖 useSessionManager 的乐观插入。
+            // 列表刷新由 message_complete 事件负责，届时 messageCount>0。
           }
           break;
 

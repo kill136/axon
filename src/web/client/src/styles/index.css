@@ -674,15 +674,24 @@ body {
   min-width: 0;
 }
 
-/* 右侧按钮栏 - 绝对定位，不参与布局流，避免 hover 时导致内容区域收缩 */
+/* 右侧按钮栏 - 绝对定位在消息内容右上角内侧 */
 .message-actions-sidebar {
   position: absolute;
   top: 28px;
-  right: -44px; /* 放在消息块右侧外部 */
+  right: 8px;
   display: flex;
   flex-direction: column;
   gap: 6px;
   z-index: 10;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+/* 鼠标悬停在消息区域时显示按钮 */
+.message:hover .message-actions-sidebar {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 /* 对齐官方 Hh4: compact_boundary 分隔线 */
@@ -850,7 +859,7 @@ body {
   width: 32px;
   height: 32px;
   padding: 0;
-  background: transparent;
+  background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   color: var(--text-muted);
@@ -1481,22 +1490,22 @@ body {
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
-  padding: 24px;
-  max-width: 600px;
+  padding: 16px 20px;
+  max-width: 560px;
   width: 90%;
   box-shadow: var(--shadow-lg);
   animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   display: flex;
   flex-direction: column;
-  max-height: 85vh;
+  max-height: 80vh;
 }
 
 /* v2.1.28: 管理员权限提示样式 */
 .permission-elevated-warning {
   display: flex;
-  gap: 12px;
-  padding: 16px;
-  margin: 12px 0;
+  gap: 10px;
+  padding: 10px 12px;
+  margin: 8px 0;
   background: linear-gradient(135deg, rgba(255, 193, 7, 0.1), rgba(255, 152, 0, 0.1));
   border: 1px solid rgba(255, 193, 7, 0.4);
   border-radius: var(--radius-md);
@@ -1545,15 +1554,15 @@ body {
 .permission-header {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 20px;
-  padding-bottom: 16px;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
   border-bottom: 1px solid var(--border-color);
 }
 
 .permission-header h3 {
   margin: 0;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
   color: var(--text-primary);
   letter-spacing: -0.01em;
@@ -1595,16 +1604,16 @@ body {
 .permission-content {
   flex: 1;
   overflow-y: auto;
-  margin-bottom: 16px;
+  margin-bottom: 10px;
 }
 
 .permission-content .tool-name {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 14px;
+  font-size: 13px;
   color: var(--text-secondary);
-  margin-bottom: 10px;
+  margin-bottom: 6px;
 }
 
 .permission-content .tool-name strong {
@@ -1616,8 +1625,8 @@ body {
 .permission-content .description {
   font-size: 13px;
   color: var(--text-secondary);
-  line-height: 1.5;
-  margin-bottom: 12px;
+  line-height: 1.4;
+  margin-bottom: 8px;
   word-break: break-word;
 }
 
@@ -1625,14 +1634,14 @@ body {
   background: var(--code-bg);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
-  padding: 14px 16px;
+  padding: 10px 12px;
   font-family: 'JetBrains Mono', Consolas, monospace;
   font-size: 12px;
-  line-height: 1.6;
+  line-height: 1.5;
   color: var(--text-secondary);
   overflow-x: auto;
   overflow-y: auto;
-  max-height: 240px;
+  max-height: 160px;
   white-space: pre-wrap;
   word-break: break-all;
   margin: 0;
@@ -1640,7 +1649,7 @@ body {
 
 /* Destination selector area */
 .permission-destination {
-  margin-bottom: 16px;
+  margin-bottom: 10px;
 }
 
 .permission-destination-inline {
@@ -1660,8 +1669,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding-top: 16px;
+  gap: 10px;
+  padding-top: 10px;
   border-top: 1px solid var(--border-color);
 }
 

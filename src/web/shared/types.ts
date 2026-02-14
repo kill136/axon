@@ -472,6 +472,8 @@ export interface ChatMessage {
   isVisibleInTranscriptOnly?: boolean;
   /** 附件信息（仅用户消息） */
   attachments?: Array<{ name: string; type: string }>;
+  /** 创建此条目时 state.messages 的长度，用于 rewind 时同步截断 messages */
+  _messagesLen?: number;
 }
 
 /**
@@ -491,8 +493,13 @@ export interface TextContent {
 
 export interface ImageContent {
   type: 'image';
-  mediaType: string;
-  data: string; // base64
+  source: {
+    type: 'base64';
+    media_type: string;
+    data: string;
+  };
+  fileName?: string;
+  url?: string;
 }
 
 export interface ThinkingContent {

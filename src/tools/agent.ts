@@ -10,7 +10,7 @@ import { v4 as uuidv4 } from 'uuid';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { getBackgroundShell, isShellId } from './bash.js';
+import { getBackgroundShell, isShellId, loadTaskMeta, getTaskOutputPath } from './bash.js';
 import { getCurrentCwd } from '../core/cwd-context.js';
 // 使用动态导入避免循环依赖：agent.ts -> loop.ts -> tools/index.ts -> agent.ts
 import type { LoopOptions } from '../core/loop.js';
@@ -1514,12 +1514,18 @@ Usage notes:
     // 检查是否是 Bash shell ID
     if (isShellId(input.task_id)) {
       const shell = getBackgroundShell(input.task_id);
-      if (!shell) {
-        return { success: false, error: `Task ${input.task_id} not found` };
+      if (shell) {
+        // 内存中找到 → 正常处理
+        return this.handleBashTask(input.task_id, shell, input.block, input.timeout);
       }
 
-      // 委托给 Bash shell 处理逻辑
-      return this.handleBashTask(input.task_id, shell, input.block, input.timeout);
+      // 内存中没有 → fallback 到磁盘（进程重启后的恢复路径）
+      const meta = loadTaskMeta(input.task_id);
+      if (meta) {
+        return this.handleBashTaskFromDisk(input.task_id, meta);
+      }
+
+      return { success: false, error: `Task ${input.task_id} not found` };
     }
 
     // 处理 Agent 任务
@@ -1691,6 +1697,70 @@ Usage notes:
     } else if (shell.status === 'running') {
       output.push('\n=== Status ===');
       output.push('Command is still running. Use block=true to wait for completion.');
+    }
+
+    return {
+      success: true,
+      output: output.join('\n'),
+    };
+  }
+
+  /**
+   * 从磁盘元数据恢复后台任务信息（进程重启后的 fallback 路径）
+   * 进程重启后内存中的 backgroundTasks Map 已清空，但 .meta.json 和 .log 文件仍在磁盘上
+   */
+  private async handleBashTaskFromDisk(
+    taskId: string,
+    meta: { command: string; startTime: number; outputFile: string; status: string; endTime?: number; exitCode?: number }
+  ): Promise<ToolResult> {
+    const output: string[] = [];
+    output.push(`=== Bash Task ${taskId} (recovered from disk) ===`);
+    output.push(`Command: ${meta.command}`);
+    output.push(`Status: ${meta.status}`);
+    output.push(`Started: ${new Date(meta.startTime).toISOString()}`);
+
+    if (meta.endTime) {
+      output.push(`Ended: ${new Date(meta.endTime).toISOString()}`);
+      output.push(`Duration: ${((meta.endTime - meta.startTime) / 1000).toFixed(2)}s`);
+    }
+
+    if (meta.exitCode !== undefined) {
+      output.push(`Exit Code: ${meta.exitCode}`);
+    }
+
+    output.push(`Output File: ${meta.outputFile}`);
+
+    // 读取 .log 文件内容
+    const logPath = meta.outputFile || getTaskOutputPath(taskId);
+    try {
+      if (fs.existsSync(logPath)) {
+        const logContent = fs.readFileSync(logPath, 'utf-8');
+        if (logContent.trim()) {
+          output.push('\n=== Output ===');
+          // 截断过长的输出
+          const maxLen = 30000;
+          if (logContent.length > maxLen) {
+            output.push(logContent.substring(0, maxLen));
+            output.push(`\n[Output truncated, full output in ${logPath}]`);
+          } else {
+            output.push(logContent);
+          }
+        } else {
+          output.push('\n=== Output ===');
+          output.push('(no output)');
+        }
+      } else {
+        output.push('\n=== Output ===');
+        output.push('(output file not found)');
+      }
+    } catch {
+      output.push('\n=== Output ===');
+      output.push('(failed to read output file)');
+    }
+
+    // 状态信息
+    if (meta.status === 'running') {
+      output.push('\nNote: This task was running when the process restarted. The background process may have been terminated.');
     }
 
     return {

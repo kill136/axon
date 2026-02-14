@@ -458,7 +458,7 @@ assistant: Clients are marked as failed in the \`connectToServer\` function in s
 Hot-reload version: v0.5.0-hot-test
 
 Your runtime source code is located at the following paths. You can Read these files to understand your own behavior, or Edit them to improve yourself when needed:
-
+你可以给自己增加skills，去网络上寻找MCP并安装，可以修改自己的提示词，可以增加删除自己的工具，可以调整自己的UI,甚至自己的执行架构，从而不断完善进化自己
 ### Source code
 - Project root: ${codeProjectRoot}
 - Core engine: ${srcRoot}/core/ (loop.ts, client.ts, session.ts - conversation orchestration)
@@ -471,12 +471,12 @@ Your runtime source code is located at the following paths. You can Read these f
 ${memoryPaths}
 
 ### Self-Evolve (自我进化)
-${process.env.CLAUDE_EVOLVE_ENABLED === '1' ? `- Status: ENABLED (running via evolve.bat)
+${process.env.CLAUDE_EVOLVE_ENABLED === '1' ? `- Status: ENABLED (running with --evolve flag)
 - You can modify your own source code and call the SelfEvolve tool to restart with the new code
 - Flow: Edit .ts files → SelfEvolve({ reason: "..." }) → tsc check → auto-restart → session restored
 - Evolve log: ${claudeConfigDir}/evolve-log.jsonl
-- IMPORTANT: Always use dryRun first to verify compilation before actual restart` : `- Status: DISABLED (not running via evolve.bat)
-- To enable: start the server with evolve.bat instead of npm run web`}`);
+- IMPORTANT: Always use dryRun first to verify compilation before actual restart` : `- Status: DISABLED (not running with --evolve flag)
+- To enable: start the server with claude-web --evolve instead of claude-web`}`);
 
     // 13. 语言设置
     if (context.language) {

@@ -1,6 +1,10 @@
 /**
  * Browser control tool for AI agents
- * Provides unified browser automation through CDP + Playwright
+ *
+ * Architecture: spawn Chrome + connectOverCDP
+ * Supports two modes:
+ * - Launch mode (default): spawns a new Chrome with dedicated profile
+ * - Connect mode: connects to user's existing Chrome (shares login state)
  */
 
 import { BaseTool } from './base.js';
@@ -155,27 +159,46 @@ USAGE NOTES:
     };
   }
 
-  async execute(input: BrowserToolInput): Promise<ToolResult> {
-    try {
+  private controller: any = null;
+
+  private async getController(): Promise<any> {
+    if (!this.controller) {
       const { BrowserManager } = await import('../browser/manager.js');
       const { BrowserController } = await import('../browser/controller.js');
-
       const manager = BrowserManager.getInstance();
-      const controller = new BrowserController(manager);
+      this.controller = new BrowserController(manager);
+    }
+    return this.controller;
+  }
+
+  private async getManager(): Promise<any> {
+    const { BrowserManager } = await import('../browser/manager.js');
+    return BrowserManager.getInstance();
+  }
+
+  async execute(input: BrowserToolInput): Promise<ToolResult> {
+    try {
+      const manager = await this.getManager();
+      const controller = await this.getController();
 
       switch (input.action) {
         case 'start': {
-          await manager.start({
-            headless: false,
-            executablePath: input.url, // Allow override via url parameter
-          });
+          await manager.start({ headless: false });
+          const mode = manager.getMode();
+          const cdpUrl = manager.getCdpUrl();
+          const profileDir = manager.getProfileDir();
+          const info = mode === 'connected'
+            ? `Connected to existing Chrome at ${cdpUrl}`
+            : `Launched Chrome (profile: ${profileDir})`;
           return this.success(
-            `Browser started successfully. Profile: ${manager.getProfileDir()}\nUse "snapshot" action to get page structure.`
+            `Browser started successfully. ${info}\n` +
+            `Use "snapshot" action to get page structure.`
           );
         }
 
         case 'stop': {
           await manager.stop();
+          this.controller = null;
           return this.success('Browser stopped successfully.');
         }
 
@@ -185,16 +208,18 @@ USAGE NOTES:
           }
 
           const page = await manager.getPage();
-          const context = await manager.getContext();
+          const pages = manager.getAllPages();
           const status = {
             running: true,
             url: page.url(),
             title: await page.title(),
-            tabCount: context.pages().length,
+            tabCount: pages.length,
+            mode: manager.getMode(),
+            cdpUrl: manager.getCdpUrl(),
           };
 
           return this.success(
-            `Browser Status:\n- Running: ${status.running}\n- URL: ${status.url}\n- Title: ${status.title}\n- Tabs: ${status.tabCount}`
+            `Browser Status:\n- Running: ${status.running}\n- Mode: ${status.mode}\n- CDP: ${status.cdpUrl}\n- URL: ${status.url}\n- Title: ${status.title}\n- Tabs: ${status.tabCount}`
           );
         }
 
@@ -289,7 +314,7 @@ USAGE NOTES:
           const tabs = await controller.tabList();
           const tabList = tabs
             .map(
-              (tab) =>
+              (tab: any) =>
                 `[${tab.index}]${tab.active ? ' *' : '  '} ${tab.title}\n    ${tab.url}`
             )
             .join('\n');
@@ -362,7 +387,7 @@ USAGE NOTES:
         );
       }
 
-      if (error.message?.includes('Invalid ref')) {
+      if (error.message?.includes('Unknown ref')) {
         return this.error(
           `${error.message}\nPlease use "snapshot" action to get current page structure and valid ref IDs.`
         );

@@ -1,97 +1,100 @@
 /**
  * Browser executable detection
- * Cross-platform browser auto-detection
+ * Cross-platform Chrome/Edge/Brave/Chromium auto-detection
  */
 
-import { existsSync } from 'fs';
-import { execSync } from 'child_process';
-import { platform } from 'os';
+import { existsSync } from 'node:fs';
+import { execSync } from 'node:child_process';
+import { platform } from 'node:os';
 
-export interface BrowserCandidate {
-  name: string;
-  paths: string[];
-  command?: string;
+export interface BrowserExecutable {
+  kind: 'chrome' | 'edge' | 'brave' | 'chromium';
+  path: string;
 }
 
-export const BROWSER_CANDIDATES: BrowserCandidate[] = [
+const WINDOWS_CANDIDATES: { kind: BrowserExecutable['kind']; paths: string[] }[] = [
   {
-    name: 'Chrome',
-    paths:
-      platform() === 'win32'
-        ? [
-            'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-            'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-          ]
-        : platform() === 'darwin'
-          ? ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome']
-          : [],
-    command: platform() === 'linux' ? 'google-chrome' : undefined,
+    kind: 'chrome',
+    paths: [
+      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+    ],
   },
   {
-    name: 'Brave',
-    paths:
-      platform() === 'win32'
-        ? [
-            'C:\\Program Files\\BraveSoftware\\Brave-Browser\\Application\\brave.exe',
-            'C:\\Program Files (x86)\\BraveSoftware\\Brave-Browser\\Application\\brave.exe',
-          ]
-        : platform() === 'darwin'
-          ? ['/Applications/Brave Browser.app/Contents/MacOS/Brave Browser']
-          : [],
-    command: platform() === 'linux' ? 'brave-browser' : undefined,
+    kind: 'edge',
+    paths: [
+      'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+      'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+    ],
   },
   {
-    name: 'Edge',
-    paths:
-      platform() === 'win32'
-        ? [
-            'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
-            'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
-          ]
-        : platform() === 'darwin'
-          ? ['/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge']
-          : [],
-    command: platform() === 'linux' ? 'microsoft-edge' : undefined,
+    kind: 'brave',
+    paths: [
+      'C:\\Program Files\\BraveSoftware\\Brave-Browser\\Application\\brave.exe',
+      'C:\\Program Files (x86)\\BraveSoftware\\Brave-Browser\\Application\\brave.exe',
+    ],
   },
   {
-    name: 'Chromium',
-    paths:
-      platform() === 'win32'
-        ? [
-            'C:\\Program Files\\Chromium\\Application\\chrome.exe',
-            'C:\\Program Files (x86)\\Chromium\\Application\\chrome.exe',
-          ]
-        : platform() === 'darwin'
-          ? ['/Applications/Chromium.app/Contents/MacOS/Chromium']
-          : [],
-    command: platform() === 'linux' ? 'chromium-browser' : 'chromium',
+    kind: 'chromium',
+    paths: [
+      'C:\\Program Files\\Chromium\\Application\\chrome.exe',
+      'C:\\Program Files (x86)\\Chromium\\Application\\chrome.exe',
+    ],
   },
 ];
 
-export async function detectBrowser(): Promise<string | null> {
-  const currentPlatform = platform();
+const DARWIN_CANDIDATES: { kind: BrowserExecutable['kind']; paths: string[] }[] = [
+  { kind: 'chrome', paths: ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'] },
+  { kind: 'edge', paths: ['/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge'] },
+  { kind: 'brave', paths: ['/Applications/Brave Browser.app/Contents/MacOS/Brave Browser'] },
+  { kind: 'chromium', paths: ['/Applications/Chromium.app/Contents/MacOS/Chromium'] },
+];
 
-  for (const candidate of BROWSER_CANDIDATES) {
-    if (currentPlatform === 'linux' && candidate.command) {
-      try {
-        const result = execSync(`which ${candidate.command}`, {
-          encoding: 'utf8',
-          stdio: ['pipe', 'pipe', 'ignore'],
-        }).trim();
-        if (result) {
-          return result;
-        }
-      } catch {
-        continue;
+const LINUX_COMMANDS: { kind: BrowserExecutable['kind']; commands: string[] }[] = [
+  { kind: 'chrome', commands: ['google-chrome', 'google-chrome-stable'] },
+  { kind: 'edge', commands: ['microsoft-edge', 'microsoft-edge-stable'] },
+  { kind: 'brave', commands: ['brave-browser'] },
+  { kind: 'chromium', commands: ['chromium-browser', 'chromium'] },
+];
+
+function whichSync(command: string): string | null {
+  try {
+    return execSync(`which ${command}`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] }).trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+export function detectBrowserExecutable(): BrowserExecutable | null {
+  const plat = platform();
+
+  if (plat === 'win32') {
+    for (const candidate of WINDOWS_CANDIDATES) {
+      for (const p of candidate.paths) {
+        if (existsSync(p)) return { kind: candidate.kind, path: p };
       }
-    } else {
-      for (const path of candidate.paths) {
-        if (existsSync(path)) {
-          return path;
-        }
+    }
+  } else if (plat === 'darwin') {
+    for (const candidate of DARWIN_CANDIDATES) {
+      for (const p of candidate.paths) {
+        if (existsSync(p)) return { kind: candidate.kind, path: p };
+      }
+    }
+  } else if (plat === 'linux') {
+    for (const candidate of LINUX_COMMANDS) {
+      for (const cmd of candidate.commands) {
+        const found = whichSync(cmd);
+        if (found) return { kind: candidate.kind, path: found };
       }
     }
   }
 
   return null;
+}
+
+/**
+ * Legacy API — returns path string or null.
+ */
+export async function detectBrowser(): Promise<string | null> {
+  return detectBrowserExecutable()?.path ?? null;
 }

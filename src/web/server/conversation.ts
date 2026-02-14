@@ -1006,8 +1006,11 @@ export class ConversationManager {
         for (const attachment of mediaAttachments) {
           chatContentItems.push({
             type: 'image' as const,
-            mediaType: attachment.mimeType,
-            data: attachment.data,
+            source: {
+              type: 'base64' as const,
+              media_type: attachment.mimeType,
+              data: attachment.data,
+            },
           });
         }
       }
@@ -1017,6 +1020,7 @@ export class ConversationManager {
         role: 'user' as const,
         timestamp: Date.now(),
         content: chatContentItems,
+        _messagesLen: state.messages.length,
       };
       state.chatHistory.push(chatEntry);
 
@@ -1191,6 +1195,7 @@ export class ConversationManager {
               timestamp: Date.now(),
               content: [{ type: 'text' as const, text: `对话已压缩，节省约 ${(compactResult.savedTokens || 0).toLocaleString()} tokens` }],
               isCompactBoundary: true,
+              _messagesLen: state.messages.length,
             };
             state.chatHistory.push(compactBoundaryEntry);
             // 对齐官方：追加 summary 消息（isCompactSummary + isVisibleInTranscriptOnly）
@@ -1203,6 +1208,7 @@ export class ConversationManager {
                 content: [{ type: 'text' as const, text: compactResult.summaryText }],
                 isCompactSummary: true,
                 isVisibleInTranscriptOnly: true,
+                _messagesLen: state.messages.length,
               };
               state.chatHistory.push(summaryEntry);
             }
@@ -1469,6 +1475,7 @@ export class ConversationManager {
               inputTokens: totalInputTokens,
               outputTokens: totalOutputTokens,
             },
+            _messagesLen: state.messages.length,
           };
           state.chatHistory.push(assistantChatEntry);
 
@@ -1535,6 +1542,7 @@ export class ConversationManager {
                 timestamp: Date.now(),
                 content: [{ type: 'text' as const, text: `对话已压缩，节省约 ${(compactResult.savedTokens || 0).toLocaleString()} tokens` }],
                 isCompactBoundary: true,
+                _messagesLen: state.messages.length,
               };
               state.chatHistory.push(forceBoundaryEntry);
               if (compactResult.summaryText) {
@@ -1545,6 +1553,7 @@ export class ConversationManager {
                   content: [{ type: 'text' as const, text: compactResult.summaryText }],
                   isCompactSummary: true,
                   isVisibleInTranscriptOnly: true,
+                  _messagesLen: state.messages.length,
                 };
                 state.chatHistory.push(summaryEntry);
               }
@@ -3002,9 +3011,15 @@ Guidelines:
   private convertMessagesToChatHistory(messages: Message[]): ChatMessage[] {
     const chatHistory: ChatMessage[] = [];
 
-    for (const msg of messages) {
+    for (let i = 0; i < messages.length; i++) {
+      const msg = messages[i];
       // 跳过 tool_result 消息（它们会被合并到工具调用中）
       if (Array.isArray(msg.content) && msg.content.some((c: any) => c.type === 'tool_result')) {
+        continue;
+      }
+
+      // 跳过 isMeta 消息（skill 内容等）
+      if (msg.isMeta) {
         continue;
       }
 
@@ -3013,6 +3028,8 @@ Guidelines:
         role: msg.role as 'user' | 'assistant',
         timestamp: Date.now(),
         content: [],
+        // 记录此 chatEntry 对应的 messages 位置（i+1 表示包含当前消息）
+        _messagesLen: i + 1,
       };
 
       // 转换内容
@@ -3027,8 +3044,11 @@ Guidelines:
             const imgBlock = block as any;
             chatMsg.content.push({
               type: 'image',
-              mediaType: imgBlock.source?.media_type || 'image/png',
-              data: imgBlock.source?.data || '',
+              source: {
+                type: 'base64' as const,
+                media_type: imgBlock.source?.media_type || 'image/png',
+                data: imgBlock.source?.data || '',
+              },
             });
           } else if (block.type === 'tool_use') {
             const toolBlock = block as ToolUseBlock;
@@ -3810,7 +3830,7 @@ Guidelines:
 
     const result: any = { success: true, option };
 
-    // 回滚对话（操作 chatHistory，因为前端传来的是 chatHistory 的 ID）
+    // 回滚对话（同时操作 chatHistory 和 messages，保持两者同步）
     if (option === 'conversation' || option === 'both') {
       const messageIndex = state.chatHistory.findIndex(m => m.id === messageId);
       if (messageIndex < 0) {
@@ -3818,15 +3838,61 @@ Guidelines:
         return { success: false, option, error: '未找到要回滚的消息' };
       }
 
-      const originalCount = state.chatHistory.length;
+      const originalChatCount = state.chatHistory.length;
+      const originalMsgCount = state.messages.length;
+
       // 删除该消息及之后的所有消息（回到消息发送之前的状态）
       state.chatHistory = state.chatHistory.slice(0, messageIndex);
-      const messagesRemoved = originalCount - state.chatHistory.length;
 
-      console.log(`[ConversationManager] 回滚对话成功: 删除了 ${messagesRemoved} 条消息, 剩余 ${state.chatHistory.length} 条`);
+      // 同步截断 messages（核心修复：之前只截断了 chatHistory 没有截断 messages）
+      // 使用 _messagesLen 字段找到 messages 中对应的截断位置
+      if (state.chatHistory.length > 0) {
+        const lastKeptChat = state.chatHistory[state.chatHistory.length - 1];
+        if (lastKeptChat._messagesLen != null) {
+          state.messages = state.messages.slice(0, lastKeptChat._messagesLen);
+        } else {
+          // 旧会话没有 _messagesLen，fallback：根据 chatHistory 中的用户消息数量定位
+          // 统计截断后 chatHistory 中真实用户消息数（排除 compact boundary/summary）
+          const userMsgCount = state.chatHistory.filter(
+            m => m.role === 'user' && !m.isCompactBoundary && !m.isCompactSummary
+          ).length;
+          // 在 messages 中找到第 N 个真实用户消息之后的位置
+          let count = 0;
+          let cutIndex = state.messages.length;
+          for (let i = 0; i < state.messages.length; i++) {
+            const msg = state.messages[i];
+            if (msg.role === 'user') {
+              // 判断是否为真实用户消息（非 tool_result）
+              const isToolResult = Array.isArray(msg.content) &&
+                msg.content.some((c: any) => c.type === 'tool_result');
+              if (!isToolResult && !msg.isMeta) {
+                count++;
+                if (count > userMsgCount) {
+                  cutIndex = i;
+                  break;
+                }
+              }
+            }
+          }
+          state.messages = state.messages.slice(0, cutIndex);
+          console.log(`[ConversationManager] fallback 截断 messages: userMsgCount=${userMsgCount}, cutIndex=${cutIndex}`);
+        }
+      } else {
+        // chatHistory 被清空，messages 也清空
+        state.messages = [];
+      }
+
+      // 确保 messages 最后不是一个包含 tool_use 的 assistant 消息（否则 API 会报错）
+      state.messages = this.ensureMessagesConsistency(state.messages);
+
+      const chatRemoved = originalChatCount - state.chatHistory.length;
+      const msgRemoved = originalMsgCount - state.messages.length;
+      console.log(`[ConversationManager] 回滚对话成功: chatHistory 删除 ${chatRemoved} 条(剩余 ${state.chatHistory.length}), messages 删除 ${msgRemoved} 条(剩余 ${state.messages.length})`);
       result.conversationResult = {
-        messagesRemoved,
+        messagesRemoved: chatRemoved,
         newMessageCount: state.chatHistory.length,
+        apiMessagesRemoved: msgRemoved,
+        newApiMessageCount: state.messages.length,
       };
     }
 
@@ -3851,6 +3917,41 @@ Guidelines:
 
     console.log(`[ConversationManager] 回滚完成:`, result);
     return result;
+  }
+
+  /**
+   * 确保 messages 数组的一致性：
+   * - 最后一条消息不能是包含 tool_use 的 assistant（缺少对应 tool_result 会导致 API 400）
+   * - 如果发现这种情况，从末尾逐条移除直到 messages 结构合法
+   */
+  private ensureMessagesConsistency(messages: Message[]): Message[] {
+    while (messages.length > 0) {
+      const last = messages[messages.length - 1];
+      if (last.role === 'assistant' && Array.isArray(last.content)) {
+        const hasToolUse = last.content.some(
+          (block: any) => block.type === 'tool_use'
+        );
+        if (hasToolUse) {
+          // 这条 assistant 消息包含 tool_use 但后面没有 tool_result，移除它
+          messages = messages.slice(0, -1);
+          console.log(`[ConversationManager] ensureMessagesConsistency: 移除末尾含 tool_use 的 assistant 消息`);
+          continue;
+        }
+      }
+      // 如果最后一条是 tool_result（user role），也需要移除（孤立的 tool_result）
+      if (last.role === 'user' && Array.isArray(last.content)) {
+        const hasToolResult = last.content.some(
+          (block: any) => block.type === 'tool_result'
+        );
+        if (hasToolResult) {
+          messages = messages.slice(0, -1);
+          console.log(`[ConversationManager] ensureMessagesConsistency: 移除末尾孤立的 tool_result 消息`);
+          continue;
+        }
+      }
+      break;
+    }
+    return messages;
   }
 
   /**

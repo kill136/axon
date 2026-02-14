@@ -177,7 +177,8 @@ export class ScheduleTaskTool extends BaseTool<ScheduleTaskInput> {
     let daemonAutoStarted = false;
     if (!isDaemonRunning()) {
       try {
-        const cliPath = path.join(import.meta.dirname, '..', 'dist', 'cli.js');
+        // import.meta.dirname 在编译后已经在 dist/tools/ 下，所以向上一层就是 dist/
+        const cliPath = path.join(import.meta.dirname, '..', 'cli.js');
         const daemonProcess = spawn(process.execPath, [cliPath, 'daemon', 'start'], {
           detached: true,
           stdio: 'ignore',

@@ -1,28 +1,42 @@
 /**
  * Browser page controller
- * Provides high-level page control and interaction methods
+ *
+ * Provides high-level page interaction methods.
+ * Uses role-based ref system from ariaSnapshot (like openclaw).
+ *
+ * Ref resolution: ariaSnapshot YAML → parse role+name → getByRole(role, { name, exact }).nth(n)
  */
 
-import type { Locator } from 'playwright-core';
+import type { Locator, Page } from 'playwright-core';
 import type { BrowserManager } from './manager.js';
-import type { SnapshotResult, TabInfo, CookieOptions } from './types.js';
+import type { SnapshotResult, TabInfo, CookieOptions, RefEntry } from './types.js';
+
+const INTERACTIVE_ROLES = new Set([
+  'button', 'link', 'textbox', 'checkbox', 'radio', 'combobox',
+  'listbox', 'menuitem', 'tab', 'searchbox', 'slider',
+  'spinbutton', 'switch', 'option', 'menuitemcheckbox',
+  'menuitemradio', 'treeitem',
+]);
 
 export class BrowserController {
   private manager: BrowserManager;
-  private refsMap: Map<string, Locator> = new Map();
+  private refsMap: Map<string, RefEntry> = new Map();
   private refCounter: number = 0;
 
   constructor(manager: BrowserManager) {
     this.manager = manager;
   }
 
+  // --- Snapshot ---
+
   async snapshot(options?: { interactive?: boolean }): Promise<SnapshotResult> {
     const page = await this.manager.getPage();
     this.refsMap.clear();
     this.refCounter = 0;
 
-    const tree = await page.accessibility.snapshot({ interestingOnly: true });
-    if (!tree) {
+    const ariaYaml = await page.locator('body').ariaSnapshot({ timeout: 10000 });
+
+    if (!ariaYaml) {
       return {
         title: await page.title(),
         url: page.url(),
@@ -31,110 +45,57 @@ export class BrowserController {
       };
     }
 
-    const interactiveRoles = new Set([
-      'button',
-      'link',
-      'textbox',
-      'checkbox',
-      'radio',
-      'combobox',
-      'listbox',
-      'menuitem',
-      'tab',
-      'searchbox',
-      'slider',
-      'spinbutton',
-      'switch',
-    ]);
+    // Parse ariaSnapshot YAML and assign ref IDs
+    // Format: "  - role "name" [extra]" or "  - role [extra]"
+    const roleNameCount = new Map<string, number>();
+    const lines = ariaYaml.split('\n');
+    const outputLines: string[] = [];
 
-    const formatNode = (node: any, depth: number): string => {
-      const shouldInclude = !options?.interactive || interactiveRoles.has(node.role);
+    for (const line of lines) {
+      // Match: indent + "- " + role + optional ' "name"' + optional rest
+      const match = line.match(/^(\s*- )(\w+)(?:\s+"([^"]*)")?(.*)$/);
 
-      if (!shouldInclude) {
-        const childrenText = node.children
-          ? node.children.map((child: any) => formatNode(child, depth)).filter(Boolean).join('\n')
-          : '';
-        return childrenText;
-      }
+      if (match) {
+        const [, prefix, role, name, rest] = match;
+        const isInteractive = INTERACTIVE_ROLES.has(role);
 
-      const indent = '  '.repeat(depth);
-      let refId = '';
+        if (options?.interactive && !isInteractive) {
+          continue; // Skip non-interactive in interactive mode
+        }
 
-      if (node.role && node.name) {
-        this.refCounter++;
-        refId = `e${this.refCounter}`;
+        if (name !== undefined) {
+          const key = `${role}:${name}`;
+          const count = roleNameCount.get(key) || 0;
+          roleNameCount.set(key, count + 1);
 
-        try {
-          const locator = page.getByRole(node.role as any, { name: node.name });
-          this.refsMap.set(refId, locator);
-        } catch {
-          // Fallback: try to create a locator by text
-          try {
-            const locator = page.getByText(node.name, { exact: true });
-            this.refsMap.set(refId, locator);
-          } catch {
-            // If all fails, skip ref
-            refId = '';
-            this.refCounter--;
-          }
+          this.refCounter++;
+          const refId = `e${this.refCounter}`;
+          this.refsMap.set(refId, { role, name, nth: count });
+
+          outputLines.push(`${prefix}${role} "${name}" [ref=${refId}]${rest}`);
+        } else {
+          outputLines.push(line);
+        }
+      } else {
+        if (!options?.interactive) {
+          outputLines.push(line);
         }
       }
-
-      const parts: string[] = [];
-      parts.push(`${indent}- ${node.role}`);
-
-      if (node.name) {
-        parts.push(`"${node.name}"`);
-      }
-
-      if (refId) {
-        parts.push(`[ref=${refId}]`);
-      }
-
-      if (node.value) {
-        parts.push(`value="${node.value}"`);
-      }
-
-      if (node.description) {
-        parts.push(`description="${node.description}"`);
-      }
-
-      if (node.checked !== undefined) {
-        parts.push(`checked=${node.checked}`);
-      }
-
-      if (node.selected !== undefined) {
-        parts.push(`selected=${node.selected}`);
-      }
-
-      let result = parts.join(' ');
-
-      if (node.children && node.children.length > 0) {
-        const childrenText = node.children
-          .map((child: any) => formatNode(child, depth + 1))
-          .filter(Boolean)
-          .join('\n');
-        if (childrenText) {
-          result += '\n' + childrenText;
-        }
-      }
-
-      return result;
-    };
-
-    const content = formatNode(tree, 0);
+    }
 
     return {
       title: await page.title(),
       url: page.url(),
-      content,
+      content: outputLines.join('\n'),
       refs: this.refsMap,
     };
   }
 
+  // --- Navigation ---
+
   async goto(url: string): Promise<SnapshotResult> {
     const page = await this.manager.getPage();
-    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForTimeout(500);
     return this.snapshot();
   }
@@ -154,24 +115,39 @@ export class BrowserController {
     await page.reload({ waitUntil: 'domcontentloaded' });
   }
 
-  private resolveRef(ref: string): Locator {
-    const locator = this.refsMap.get(ref);
-    if (!locator) {
+  // --- Ref resolution ---
+
+  private async resolveLocator(ref: string): Promise<Locator> {
+    const entry = this.refsMap.get(ref);
+    if (!entry) {
       throw new Error(
-        `Invalid ref "${ref}". Please run snapshot action first to get valid refs.`
+        `Unknown ref "${ref}". Run a new snapshot and use a ref from that snapshot.`
       );
     }
+
+    const page = await this.manager.getPage();
+    let locator = page.getByRole(entry.role as any, {
+      name: entry.name,
+      exact: true,
+    });
+
+    if (entry.nth > 0) {
+      locator = locator.nth(entry.nth);
+    }
+
     return locator;
   }
 
+  // --- Interactions ---
+
   async click(ref: string): Promise<void> {
-    const locator = this.resolveRef(ref);
-    await locator.click();
+    const locator = await this.resolveLocator(ref);
+    await locator.click({ timeout: 5000 });
   }
 
   async fill(ref: string, value: string): Promise<void> {
-    const locator = this.resolveRef(ref);
-    await locator.fill(value);
+    const locator = await this.resolveLocator(ref);
+    await locator.fill(value, { timeout: 5000 });
   }
 
   async type(text: string): Promise<void> {
@@ -185,24 +161,27 @@ export class BrowserController {
   }
 
   async hover(ref: string): Promise<void> {
-    const locator = this.resolveRef(ref);
-    await locator.hover();
+    const locator = await this.resolveLocator(ref);
+    await locator.hover({ timeout: 5000 });
   }
 
   async select(ref: string, values: string[]): Promise<void> {
-    const locator = this.resolveRef(ref);
-    await locator.selectOption(values);
+    const locator = await this.resolveLocator(ref);
+    await locator.selectOption(values, { timeout: 5000 });
   }
+
+  // --- Screenshot ---
 
   async screenshot(options?: { fullPage?: boolean }): Promise<Buffer> {
     const page = await this.manager.getPage();
     return await page.screenshot({ fullPage: options?.fullPage ?? false });
   }
 
+  // --- Tab management ---
+
   async tabList(): Promise<TabInfo[]> {
-    const context = await this.manager.getContext();
+    const pages = this.manager.getAllPages();
     const currentPage = await this.manager.getPage();
-    const pages = context.pages();
 
     return Promise.all(
       pages.map(async (page, index) => ({
@@ -215,19 +194,22 @@ export class BrowserController {
   }
 
   async tabNew(url?: string): Promise<void> {
-    const context = await this.manager.getContext();
+    const browser = this.manager.getBrowser();
+    if (!browser) throw new Error('Browser is not running.');
+
+    const context = browser.contexts()[0];
+    if (!context) throw new Error('No browser context available.');
+
     const newPage = await context.newPage();
     this.manager.setCurrentPage(newPage);
 
     if (url) {
-      await newPage.goto(url, { waitUntil: 'domcontentloaded' });
+      await newPage.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
     }
   }
 
   async tabSelect(index: number): Promise<void> {
-    const context = await this.manager.getContext();
-    const pages = context.pages();
-
+    const pages = this.manager.getAllPages();
     if (index < 0 || index >= pages.length) {
       throw new Error(`Invalid tab index ${index}. Valid range: 0-${pages.length - 1}`);
     }
@@ -238,69 +220,63 @@ export class BrowserController {
   }
 
   async tabClose(index?: number): Promise<void> {
-    const context = await this.manager.getContext();
-    const pages = context.pages();
+    const pages = this.manager.getAllPages();
 
     if (index === undefined) {
       const currentPage = await this.manager.getPage();
       await currentPage.close();
-
-      if (pages.length > 1) {
-        const remainingPages = context.pages();
-        this.manager.setCurrentPage(remainingPages[0]);
+      const remaining = this.manager.getAllPages();
+      if (remaining.length > 0) {
+        this.manager.setCurrentPage(remaining[0]);
       }
     } else {
       if (index < 0 || index >= pages.length) {
         throw new Error(`Invalid tab index ${index}. Valid range: 0-${pages.length - 1}`);
       }
-
       const pageToClose = pages[index];
       const currentPage = await this.manager.getPage();
       await pageToClose.close();
 
       if (pageToClose === currentPage) {
-        const remainingPages = context.pages();
-        if (remainingPages.length > 0) {
-          this.manager.setCurrentPage(remainingPages[0]);
+        const remaining = this.manager.getAllPages();
+        if (remaining.length > 0) {
+          this.manager.setCurrentPage(remaining[0]);
         }
       }
     }
   }
 
+  // --- Cookies ---
+
   async getCookies(domain?: string): Promise<any[]> {
-    const context = await this.manager.getContext();
-    const cookies = await context.cookies();
-
+    const page = await this.manager.getPage();
+    const cookies = await page.context().cookies();
     if (domain) {
-      return cookies.filter((cookie) => cookie.domain.includes(domain));
+      return cookies.filter(c => c.domain.includes(domain));
     }
-
     return cookies;
   }
 
   async setCookie(name: string, value: string, options?: CookieOptions): Promise<void> {
-    const context = await this.manager.getContext();
     const page = await this.manager.getPage();
-    const url = page.url();
-
-    await context.addCookies([
-      {
-        name,
-        value,
-        domain: options?.domain,
-        path: options?.path ?? '/',
-        httpOnly: options?.httpOnly,
-        secure: options?.secure,
-        expires: options?.expires,
-        url,
-      },
-    ]);
+    await page.context().addCookies([{
+      name,
+      value,
+      domain: options?.domain,
+      path: options?.path ?? '/',
+      httpOnly: options?.httpOnly,
+      secure: options?.secure,
+      expires: options?.expires,
+      url: page.url(),
+    }]);
   }
 
   async clearCookies(): Promise<void> {
-    const context = await this.manager.getContext();
-    await context.clearCookies();
+    const page = await this.manager.getPage();
+    await page.context().clearCookies();
   }
+
+  // --- Evaluate ---
 
   async evaluate(expression: string): Promise<any> {
     const page = await this.manager.getPage();
