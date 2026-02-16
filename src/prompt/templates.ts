@@ -806,29 +806,62 @@ export function getGitStatusInfo(status: {
   untracked?: string[];
   ahead?: number;
   behind?: number;
+  recentCommits?: Array<{ hash: string; message: string; author: string; date: string }>;
+  stashCount?: number;
+  conflictFiles?: string[];
+  remoteStatus?: { tracking: string | null; ahead: number; behind: number };
+  tags?: string[];
 }): string {
-  const parts: string[] = [`gitStatus: Current branch: ${status.branch}`];
+  const parts: string[] = [];
 
-  if (status.ahead && status.ahead > 0) {
-    parts.push(`Your branch is ahead by ${status.ahead} commits`);
-  }
-  if (status.behind && status.behind > 0) {
-    parts.push(`Your branch is behind by ${status.behind} commits`);
+  // 分支和远程跟踪信息
+  if (status.remoteStatus?.tracking) {
+    parts.push(`gitStatus: Current branch: ${status.branch} (tracking ${status.remoteStatus.tracking}, ahead ${status.remoteStatus.ahead}, behind ${status.remoteStatus.behind})`);
+  } else {
+    parts.push(`gitStatus: Current branch: ${status.branch}`);
   }
 
+  // 最近的 commits（最多5条）
+  if (status.recentCommits && status.recentCommits.length > 0) {
+    parts.push('Recent commits:');
+    for (const commit of status.recentCommits.slice(0, 5)) {
+      const shortHash = commit.hash.substring(0, 7);
+      // 简化时间显示（如 "2h ago"）
+      parts.push(`  ${shortHash} - ${commit.message} (${commit.date})`);
+    }
+  }
+
+  // 工作区状态
   if (status.isClean) {
     parts.push('Status: (clean)');
   } else {
     parts.push('Status:');
     if (status.staged && status.staged.length > 0) {
-      parts.push(`Staged: ${status.staged.join(', ')}`);
+      parts.push(`  Staged: ${status.staged.join(', ')}`);
     }
     if (status.unstaged && status.unstaged.length > 0) {
-      parts.push(`Modified: ${status.unstaged.join(', ')}`);
+      parts.push(`  Modified: ${status.unstaged.join(', ')}`);
     }
     if (status.untracked && status.untracked.length > 0) {
-      parts.push(`Untracked: ${status.untracked.join(', ')}`);
+      parts.push(`  Untracked: ${status.untracked.join(', ')}`);
     }
+    if (status.conflictFiles && status.conflictFiles.length > 0) {
+      parts.push(`  Conflicts: ${status.conflictFiles.join(', ')}`);
+    } else {
+      parts.push('  Conflicts: NONE');
+    }
+  }
+
+  // Stash 信息
+  if (status.stashCount !== undefined) {
+    if (status.stashCount > 0) {
+      parts.push(`Stash: ${status.stashCount} ${status.stashCount === 1 ? 'entry' : 'entries'}`);
+    }
+  }
+
+  // 最近的 tags（可选）
+  if (status.tags && status.tags.length > 0) {
+    parts.push(`Recent tags: ${status.tags.slice(0, 3).join(', ')}`);
   }
 
   const result = parts.join('\n');

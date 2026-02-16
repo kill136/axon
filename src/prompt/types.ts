@@ -114,6 +114,25 @@ export interface TodoItem {
 }
 
 /**
+ * Git 提交信息
+ */
+export interface GitCommitInfo {
+  hash: string;
+  message: string;
+  author: string;
+  date: string;
+}
+
+/**
+ * Git 远程跟踪状态
+ */
+export interface GitRemoteStatus {
+  tracking: string | null;
+  ahead: number;
+  behind: number;
+}
+
+/**
  * Git 状态信息
  */
 export interface GitStatusInfo {
@@ -124,6 +143,11 @@ export interface GitStatusInfo {
   untracked: string[];
   ahead: number;
   behind: number;
+  recentCommits: GitCommitInfo[];
+  stashCount: number;
+  conflictFiles: string[];
+  remoteStatus: GitRemoteStatus;
+  tags: string[];
 }
 
 /**
