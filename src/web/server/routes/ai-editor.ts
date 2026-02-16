@@ -180,6 +180,7 @@ function createClient(): ClaudeClient | null {
       apiKey,
       authToken,
       baseUrl: process.env.ANTHROPIC_BASE_URL,
+      model: 'claude-haiku-4-5-20251001', // AI Editor 使用 haiku 以节省成本
     });
   } catch (error) {
     console.error('[AI Editor] 初始化客户端失败:', error);
@@ -204,8 +205,8 @@ async function callClaude(prompt: string): Promise<string | null> {
           content: [{ type: 'text', text: prompt }],
         },
       ],
-      'claude-3-5-haiku-20241022', // 使用 haiku 模型以节省成本和提高速度
-      undefined,
+      undefined, // 无工具
+      undefined, // 无 system prompt
       {
         enableThinking: false, // 快速响应
       }

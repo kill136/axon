@@ -107,7 +107,6 @@ export const AGENT_TOOL_CONFIGS: Record<string, AgentToolConfig> = {
     agentType: 'lead-agent',
     allowedTools: [
       'Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep',
-      'Task', 'TaskOutput',
       'UpdateTaskPlan', 'DispatchWorker', 'TriggerE2ETest',
       'AskUserQuestion',
     ],

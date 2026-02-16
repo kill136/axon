@@ -46,7 +46,13 @@
   max-width: 240px;
 }
 
-/* ===================== 会话选择器 ===================== */
+/* ===================== 会话选择器组（选择器 + 新建按钮） ===================== */
+.sessionGroup {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .sessionSelector {
   position: relative;
   min-width: 180px;

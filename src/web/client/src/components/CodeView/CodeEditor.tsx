@@ -12,6 +12,8 @@ import { useMonacoDecorations } from '../../hooks/useMonacoDecorations';
  */
 export interface CodeEditorProps {
   onSelectionChange?: (selection: string, filePath: string, startLine: number, endLine: number) => void;
+  onActiveFileChange?: (filePath: string | null, content: string, language: string) => void;
+  onCursorLineChange?: (line: number) => void;
 }
 
 /**
@@ -21,6 +23,7 @@ export interface CodeEditorRef {
   openFile: (path: string) => void;
   getActiveFilePath: () => string | null;
   getCurrentContent: () => string | null;
+  goToLine: (line: number) => void;
 }
 
 /**
@@ -89,7 +92,7 @@ const CloseIcon: React.FC = () => (
  * Monaco Editor 包装器，支持多 Tab、文件打开/保存，集成 AI 增强功能
  */
 export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
-  ({ onSelectionChange }, ref) => {
+  ({ onSelectionChange, onActiveFileChange, onCursorLineChange }, ref) => {
     const [tabs, setTabs] = useState<EditorTab[]>([]);
     const [activeTabIndex, setActiveTabIndex] = useState<number>(-1);
     const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -192,6 +195,13 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
       },
       getActiveFilePath: () => currentTab?.path || null,
       getCurrentContent: () => currentTab?.content || null,
+      goToLine: (line: number) => {
+        if (editorRef.current) {
+          editorRef.current.revealLineInCenter(line);
+          editorRef.current.setPosition({ lineNumber: line, column: 1 });
+          editorRef.current.focus();
+        }
+      },
     }));
 
     // ========================================================================
@@ -222,6 +232,11 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
             selection.endLineNumber
           );
         }
+      });
+
+      // 监听光标位置变化（用于 Outline 面板高亮）
+      editor.onDidChangeCursorPosition((e) => {
+        onCursorLineChange?.(e.position.lineNumber);
       });
 
       // 监听 Ctrl+S 保存
@@ -330,6 +345,15 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
         editorRef.current.setValue(currentTab.content);
       }
     }, [activeTabIndex, currentTab?.content]);
+
+    // 通知父组件活跃文件变化
+    useEffect(() => {
+      onActiveFileChange?.(
+        currentTab?.path || null,
+        currentTab?.content || '',
+        currentTab?.language || ''
+      );
+    }, [activeTabIndex, currentTab?.path, currentTab?.content, currentTab?.language]);
 
     // ========================================================================
     // 渲染辅助：获取当前导游步骤
@@ -457,14 +481,18 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
                   {lineAnalysis.aiAnalysis.returns && (
                     <div className={styles.aiAnalysisReturns}>
                       <span className={styles.returnsLabel}>返回：</span>
-                      {lineAnalysis.aiAnalysis.returns}
+                      {typeof lineAnalysis.aiAnalysis.returns === 'string'
+                        ? lineAnalysis.aiAnalysis.returns
+                        : `${lineAnalysis.aiAnalysis.returns.type}: ${lineAnalysis.aiAnalysis.returns.description}`}
                     </div>
                   )}
                   {lineAnalysis.aiAnalysis.examples && lineAnalysis.aiAnalysis.examples.length > 0 && (
                     <div className={styles.aiAnalysisExamples}>
                       <div className={styles.aiAnalysisExamplesTitle}>示例：</div>
-                      {lineAnalysis.aiAnalysis.examples.map((example: string, idx: number) => (
-                        <pre key={idx} className={styles.aiAnalysisExample}>{example}</pre>
+                      {lineAnalysis.aiAnalysis.examples.map((example: any, idx: number) => (
+                        <pre key={idx} className={styles.aiAnalysisExample}>
+                          {typeof example === 'string' ? example : (example.code || JSON.stringify(example))}
+                        </pre>
                       ))}
                     </div>
                   )}
@@ -689,7 +717,11 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
               {askAIState.answer && (
                 <div className={styles.askAIAnswer}>
                   <div className={styles.askAIAnswerLabel}>💡 AI 回答：</div>
-                  <div className={styles.askAIAnswerContent}>{askAIState.answer}</div>
+                  <div className={styles.askAIAnswerContent}>
+                    {typeof askAIState.answer === 'string'
+                      ? askAIState.answer
+                      : JSON.stringify(askAIState.answer)}
+                  </div>
                 </div>
               )}
 

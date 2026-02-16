@@ -170,8 +170,9 @@ export default function TopNavBar({
           />
         </div>
 
-        {/* 中间：会话选择器 */}
+        {/* 中间：会话选择器 + 新建按钮 */}
         <div className={styles.contextCenter}>
+          <div className={styles.sessionGroup}>
           <div className={styles.sessionSelector} ref={sessionDropdownRef}>
             <button
               className={`${styles.sessionTrigger} ${sessionDropdownOpen ? styles.open : ''}`}
@@ -255,16 +256,17 @@ export default function TopNavBar({
               </div>
             )}
           </div>
+          <button className={styles.newSessionButton} onClick={onNewSession} title={t('nav.newSession')}>
+            +
+          </button>
+          </div>
         </div>
 
-        {/* 右侧：连接状态 + 新会话按钮 + 设置按钮 */}
+        {/* 右侧：连接状态 + 设置按钮 */}
         <div className={styles.contextRight}>
           {connected !== undefined && (
             <span className={`${styles.connectionDot} ${connected ? styles.connected : ''}`} title={connected ? t('nav.connected') : t('nav.disconnected')} />
           )}
-          <button className={styles.newSessionButton} onClick={onNewSession} title={t('nav.newSession')}>
-            +
-          </button>
           <button className={styles.settingsButton} onClick={onSettingsClick} title={t('nav.settings')}>
             <SettingsIcon />
           </button>

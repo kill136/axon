@@ -1,7 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { FileTree } from './FileTree';
 import { CodeEditor, CodeEditorRef } from './CodeEditor';
 import { CompactChatPanel } from './CompactChatPanel';
+import { useOutlineSymbols } from '../../hooks/useOutlineSymbols';
 import type { ChatMessage } from '../../types';
 import styles from './CodeView.module.css';
 
@@ -44,12 +45,17 @@ export const CodeView: React.FC<CodeViewProps> = ({
   const [chatPanelWidth, setChatPanelWidth] = useState(360);
   const [isChatPanelCollapsed, setIsChatPanelCollapsed] = useState(false);
   const [currentFile, setCurrentFile] = useState<string | undefined>(undefined);
-  
+
   // Refs
   const codeEditorRef = useRef<CodeEditorRef>(null);
   const chatInputRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  
+
+  // Outline 数据（传给 FileTree）
+  const [activeFileContent, setActiveFileContent] = useState('');
+  const [activeFileLanguage, setActiveFileLanguage] = useState('');
+  const [cursorLine, setCursorLine] = useState(1);
+
   // 拖拽状态
   const [isResizingFileTree, setIsResizingFileTree] = useState(false);
   const [isResizingChatPanel, setIsResizingChatPanel] = useState(false);
@@ -81,6 +87,34 @@ export const CodeView: React.FC<CodeViewProps> = ({
   ) => {
     setEditorSelection({ text, filePath, startLine, endLine });
   };
+
+  // 接收编辑器活跃文件变化
+  const handleActiveFileChange = useCallback((
+    filePath: string | null,
+    content: string,
+    language: string
+  ) => {
+    setCurrentFile(filePath ?? undefined);
+    setActiveFileContent(content);
+    setActiveFileLanguage(language);
+  }, []);
+
+  // 接收光标行变化
+  const handleCursorLineChange = useCallback((line: number) => {
+    setCursorLine(line);
+  }, []);
+
+  // 符号点击跳转
+  const handleSymbolClick = useCallback((line: number) => {
+    codeEditorRef.current?.goToLine(line);
+  }, []);
+
+  // 解析符号（传入 FileTree）
+  const { symbols: outlineSymbols } = useOutlineSymbols({
+    content: activeFileContent,
+    language: activeFileLanguage,
+    filePath: currentFile ?? null,
+  });
 
   // FileTree 拖拽逻辑
   useEffect(() => {
@@ -134,7 +168,7 @@ export const CodeView: React.FC<CodeViewProps> = ({
       // Ctrl+L (Windows/Linux) 或 Cmd+L (macOS)
       if ((e.ctrlKey || e.metaKey) && e.key === 'l') {
         e.preventDefault();
-        
+
         // 展开聊天面板（如果已收起）
         if (isChatPanelCollapsed) {
           setIsChatPanelCollapsed(false);
@@ -149,13 +183,13 @@ export const CodeView: React.FC<CodeViewProps> = ({
         if (editorSelection && editorSelection.text.trim()) {
           const { text, filePath, startLine, endLine } = editorSelection;
           const codeRef = `\`\`\`${filePath}:${startLine}-${endLine}\n${text}\n\`\`\``;
-          
+
           // 触发插入到输入框
           if (chatInputRef.current) {
             const currentValue = chatInputRef.current.value;
             const newValue = currentValue ? `${currentValue}\n\n${codeRef}` : codeRef;
             chatInputRef.current.value = newValue;
-            
+
             // 触发 change 事件以更新 CompactChatPanel 的状态
             const event = new Event('input', { bubbles: true });
             chatInputRef.current.dispatchEvent(event);
@@ -188,6 +222,9 @@ export const CodeView: React.FC<CodeViewProps> = ({
           projectName={projectPath.split(/[\\/]/).pop() || 'Project'}
           currentFile={currentFile}
           onFileSelect={handleFileSelect}
+          outlineSymbols={outlineSymbols}
+          cursorLine={cursorLine}
+          onSymbolClick={handleSymbolClick}
         />
       </div>
 
@@ -202,6 +239,8 @@ export const CodeView: React.FC<CodeViewProps> = ({
         <CodeEditor
           ref={codeEditorRef}
           onSelectionChange={handleSelectionChange}
+          onActiveFileChange={handleActiveFileChange}
+          onCursorLineChange={handleCursorLineChange}
         />
       </div>
 
