@@ -13,6 +13,7 @@ import type {
   SlashCommand,
 } from '../types';
 import type { Status, PermissionMode } from './useMessageHandler';
+import type { Project } from '../contexts/ProjectContext';
 
 interface UseChatInputParams {
   connected: boolean;
@@ -31,6 +32,7 @@ interface UseChatInputParams {
   setUserQuestion: React.Dispatch<React.SetStateAction<UserQuestion | null>>;
   setPermissionMode: React.Dispatch<React.SetStateAction<PermissionMode>>;
   sessionId: string | null;
+  openFolder: () => Promise<Project | null>;
 }
 
 interface UseChatInputReturn {
@@ -43,7 +45,7 @@ interface UseChatInputReturn {
   togglePin: () => void;
   inputRef: React.RefObject<HTMLTextAreaElement>;
   fileInputRef: React.RefObject<HTMLInputElement>;
-  handleSend: () => void;
+  handleSend: () => Promise<void>;
   handleInputChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
   handleKeyDown: (e: React.KeyboardEvent) => void;
   handlePaste: (e: React.ClipboardEvent) => void;
@@ -75,6 +77,7 @@ export function useChatInput({
   setUserQuestion,
   setPermissionMode,
   sessionId,
+  openFolder,
 }: UseChatInputParams): UseChatInputReturn {
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -182,8 +185,21 @@ export function useChatInput({
   };
 
   // 发送消息
-  const handleSend = () => {
+  const handleSend = async () => {
     if ((!input.trim() && attachments.length === 0) || !connected) return;
+
+    // 未选择项目时，弹出目录选择对话框
+    let effectiveProjectPath = currentProjectPath;
+    if (!effectiveProjectPath) {
+      try {
+        const project = await openFolder();
+        if (!project) return; // 用户取消了选择
+        effectiveProjectPath = project.path;
+      } catch (err) {
+        console.error('打开文件夹失败:', err);
+        return;
+      }
+    }
 
     // 如果正在处理中，先取消当前回复（插话模式）
     if (status !== 'idle') {
@@ -208,7 +224,7 @@ export function useChatInput({
         type: 'chat',
         payload: {
           content: trimmedInput,
-          projectPath: currentProjectPath,
+          projectPath: effectiveProjectPath,
         },
       });
       setInput('');
@@ -265,7 +281,7 @@ export function useChatInput({
           mimeType: att.mimeType,
           data: att.data.includes(',') ? att.data.split(',')[1] : att.data,
         })),
-        projectPath: currentProjectPath,
+        projectPath: effectiveProjectPath,
       },
     });
 
