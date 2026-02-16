@@ -30,6 +30,10 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
   // 注册 Agent API 路由（提供 agent 元数据）
   app.use('/api/agents', agentApiRouter);
 
+  // ============ 文件系统 API ============
+  // 注册文件 API 路由（供 CodeView 文件树使用）
+  app.use('/api/files', fileApiRouter);
+
   // 健康检查
   app.get('/api/health', (req: Request, res: Response) => {
     res.json({

@@ -82,40 +82,71 @@ export class SelfEvolveTool extends BaseTool<SelfEvolveInput, ToolResult> {
       return this.error('Cannot determine project root directory.');
     }
 
-    // 3. TypeScript 编译检查
-    console.log('[SelfEvolve] Running TypeScript compilation check...');
+    // 3. TypeScript 编译检查（后端）
+    console.log('[SelfEvolve] Running backend TypeScript compilation check...');
     const tscResult = this.runTypeCheck(projectRoot);
 
-    // 4. 记录日志
-    const logEntry: EvolveLogEntry = {
-      timestamp: new Date().toISOString(),
-      reason,
-      dryRun,
-      tscResult: tscResult.success ? 'pass' : 'fail',
-      tscErrors: tscResult.errors || undefined,
-      restarted: false,
-    };
-
     if (!tscResult.success) {
+      const logEntry: EvolveLogEntry = {
+        timestamp: new Date().toISOString(),
+        reason,
+        dryRun,
+        tscResult: 'fail',
+        tscErrors: tscResult.errors || undefined,
+        restarted: false,
+      };
       this.appendLog(logEntry);
       return this.error(
-        `TypeScript compilation failed. Restart aborted.\n\n` +
+        `Backend TypeScript compilation failed. Restart aborted.\n\n` +
         `Errors:\n${tscResult.errors}\n\n` +
         `Fix the errors and try again.`
       );
     }
 
+    // 4. 前端构建检查
+    const webClientDir = path.join(projectRoot, 'src', 'web', 'client');
+    if (fs.existsSync(webClientDir)) {
+      console.log('[SelfEvolve] Running web client build check...');
+      const webResult = this.runWebClientCheck(webClientDir);
+      if (!webResult.success) {
+        const logEntry: EvolveLogEntry = {
+          timestamp: new Date().toISOString(),
+          reason,
+          dryRun,
+          tscResult: 'fail',
+          tscErrors: `[Web Client Build Failed]\n${webResult.errors}`,
+          restarted: false,
+        };
+        this.appendLog(logEntry);
+        return this.error(
+          `Web client build check failed. Restart aborted.\n\n` +
+          `Errors:\n${webResult.errors}\n\n` +
+          `Fix the frontend errors and try again.`
+        );
+      }
+      console.log('[SelfEvolve] Web client build check passed.');
+    }
+
+    // 5. 记录日志
+    const logEntry: EvolveLogEntry = {
+      timestamp: new Date().toISOString(),
+      reason,
+      dryRun,
+      tscResult: 'pass',
+      restarted: false,
+    };
+
     if (dryRun) {
       this.appendLog(logEntry);
       return this.success(
-        `Dry run complete. TypeScript compilation passed.\n` +
+        `Dry run complete. All checks passed (backend tsc + web client build).\n` +
         `The code changes are valid and safe to restart.\n` +
         `Call SelfEvolve again without dryRun to actually restart.`
       );
     }
 
-    // 5. 实际重启流程
-    console.log(`[SelfEvolve] Compilation passed. Initiating restart...`);
+    // 6. 实际重启流程
+    console.log(`[SelfEvolve] All checks passed. Initiating restart...`);
     console.log(`[SelfEvolve] Reason: ${reason}`);
 
     logEntry.restarted = true;
@@ -158,6 +189,34 @@ export class SelfEvolveTool extends BaseTool<SelfEvolveInput, ToolResult> {
       const stdout = err.stdout || '';
       const errors = (stderr + '\n' + stdout).trim();
       return { success: false, errors: errors || 'Unknown compilation error' };
+    }
+  }
+
+  /**
+   * 运行前端构建检查（tsc + vite build）
+   */
+  private runWebClientCheck(webClientDir: string): { success: boolean; errors?: string } {
+    // 检查 node_modules 是否存在，不存在则跳过（未安装依赖时不阻塞）
+    const nodeModulesDir = path.join(webClientDir, 'node_modules');
+    if (!fs.existsSync(nodeModulesDir)) {
+      console.log('[SelfEvolve] Web client node_modules not found, skipping web check.');
+      return { success: true };
+    }
+
+    try {
+      // 执行 npm run build（内部是 tsc && vite build）
+      execSync('npm run build', {
+        cwd: webClientDir,
+        timeout: 120000, // 前端构建可能较慢，给 120 秒
+        stdio: 'pipe',
+        encoding: 'utf-8',
+      });
+      return { success: true };
+    } catch (err: any) {
+      const stderr = err.stderr || '';
+      const stdout = err.stdout || '';
+      const errors = (stderr + '\n' + stdout).trim();
+      return { success: false, errors: errors || 'Unknown web client build error' };
     }
   }
 

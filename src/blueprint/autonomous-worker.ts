@@ -25,6 +25,7 @@ import type {
 } from './types.js';
 import { ConversationLoop } from '../core/loop.js';
 import { AGENT_TOOL_CONFIGS } from '../agents/tools.js';
+import { findClaudeMd } from '../rules/index.js';
 // v10.0: collectWorkerSummary 不再需要 — Worker 的 raw text 直接返回给 LeadAgent
 
 // ============================================================================
@@ -575,17 +576,48 @@ ${techStack.language}${techStack.framework ? ' + ' + techStack.framework : ''}`;
   private buildSystemPrompt(task: SmartTask, context: WorkerContext): string {
     // v4.0 Token 优化：精简 System Prompt，移除重复信息
     // 如果有共享的基础 Prompt，直接使用
+    let base: string;
     if (context.sharedSystemPromptBase) {
-      return context.sharedSystemPromptBase + this.buildTaskSpecificPrompt(task, context);
+      base = context.sharedSystemPromptBase;
+    } else {
+      // v5.6: 复用静态方法构建基础 Prompt
+      base = AutonomousWorkerExecutor.buildSharedSystemPromptBase(
+        context.techStack,
+        context.projectPath
+      );
     }
 
-    // v5.6: 复用静态方法构建基础 Prompt
-    const basePrompt = AutonomousWorkerExecutor.buildSharedSystemPromptBase(
-      context.techStack,
-      context.projectPath
-    );
+    const taskSpecific = this.buildTaskSpecificPrompt(task, context);
 
-    return basePrompt + this.buildTaskSpecificPrompt(task, context);
+    // 注入 CLAUDE.md 项目规则，让 Worker 知道项目特定的命令、约束等
+    const claudeMdSection = this.loadClaudeMdSection(context.projectPath);
+
+    return base + taskSpecific + claudeMdSection;
+  }
+
+  /**
+   * 读取项目 CLAUDE.md，返回可附加到系统提示词的摘要
+   * Worker 需要这些信息来了解项目特定的构建命令、约束等
+   */
+  private loadClaudeMdSection(projectPath?: string): string {
+    try {
+      const claudeMdPath = findClaudeMd(projectPath);
+      if (!claudeMdPath) return '';
+
+      const content = fs.readFileSync(claudeMdPath, 'utf-8').trim();
+      if (!content) return '';
+
+      // 限制大小，避免过长的 CLAUDE.md 撑爆 token
+      const maxLen = 4000;
+      const truncated = content.length > maxLen
+        ? content.slice(0, maxLen) + '\n... (truncated)'
+        : content;
+
+      return `\n\n## 项目规则 (CLAUDE.md)
+${truncated}`;
+    } catch {
+      return '';
+    }
   }
 
   /**

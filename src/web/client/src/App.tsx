@@ -373,7 +373,8 @@ function AppContent({
         />
       ) : (
         // 对话视图模式（原有的全屏聊天界面）
-        <div className="main-content" style={{ flex: 1, ...(showSplitLayout ? { flexDirection: 'row' as const } : {}) }}>
+        <div className="main-content" style={{ flex: 1, flexDirection: showSplitLayout ? 'row' : 'column' }}>
+          {/* 左侧：聊天 + 输入 + 终端 */}
           <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, minHeight: 0 }}>
             <div className="chat-panel" style={{ flex: 1, minHeight: 0 }}>
               <div className={`chat-container ${!isInputVisible ? 'input-hidden' : ''}`} ref={chatContainerRef}>
@@ -433,17 +434,19 @@ function AppContent({
             />
           </div>
 
-          <TerminalPanel
-            send={send}
-            addMessageHandler={addMessageHandler}
-            connected={connected}
-            visible={showTerminal}
-            height={terminalHeight}
-            onClose={() => setShowTerminal(false)}
-            onHeightChange={setTerminalHeight}
-            projectPath={currentProjectPath}
-          />
+            <TerminalPanel
+              send={send}
+              addMessageHandler={addMessageHandler}
+              connected={connected}
+              visible={showTerminal}
+              height={terminalHeight}
+              onClose={() => setShowTerminal(false)}
+              onHeightChange={setTerminalHeight}
+              projectPath={currentProjectPath}
+            />
+          </div>
 
+          {/* 右侧：产物面板 */}
           {artifactsState.isPanelOpen && (
             <ArtifactsPanel
               groups={artifactsState.groups}
