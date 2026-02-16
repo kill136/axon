@@ -1,0 +1,126 @@
+/* CodeView 容器 */
+.codeView {
+  display: flex;
+  flex-direction: row;
+  height: 100%;
+  width: 100%;
+  background: #09090b;
+  font-family: 'Inter', sans-serif;
+  overflow: hidden;
+}
+
+/* FileTree 面板 */
+.fileTreePanel {
+  flex-shrink: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #0a0a0c;
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* CodeEditor 面板 */
+.editorPanel {
+  flex: 1;
+  height: 100%;
+  overflow: hidden;
+  background: #09090b;
+}
+
+/* ChatPanel 面板 */
+.chatPanel {
+  flex-shrink: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #0a0a0c;
+  border-left: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* 分割线 + 拖拽手柄 */
+.resizer {
+  width: 4px;
+  height: 100%;
+  background: transparent;
+  cursor: col-resize;
+  flex-shrink: 0;
+  position: relative;
+  transition: background 0.15s;
+  user-select: none;
+}
+
+.resizer::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.resizer:hover {
+  background: var(--accent-primary, #6366f1);
+}
+
+.resizer:hover::before {
+  opacity: 0;
+}
+
+/* 收起状态的展开按钮 */
+.collapsedChatButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 100%;
+  background: #0a0a0c;
+  border-left: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+}
+
+.expandButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: rgba(99, 102, 241, 0.1);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  border-radius: 4px;
+  color: #6366f1;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.expandButton:hover {
+  background: rgba(99, 102, 241, 0.15);
+  border-color: rgba(99, 102, 241, 0.3);
+  color: #7c7ff5;
+  transform: translateX(-2px);
+}
+
+.expandButton:active {
+  transform: translateX(-2px) scale(0.95);
+}
+
+/* CSS 变量定义 */
+:root {
+  --accent-primary: #6366f1;
+  --bg-primary: #09090b;
+  --bg-secondary: #111113;
+  --bg-tertiary: #1a1a1f;
+  --bg-quaternary: #242428;
+}
+
+/* 响应式调整 */
+@media (max-width: 1200px) {
+  .chatPanel {
+    min-width: 280px;
+  }
+}
+
+@media (max-width: 900px) {
+  .fileTreePanel {
+    min-width: 80px;
+  }
+}
