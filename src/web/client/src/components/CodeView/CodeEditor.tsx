@@ -2,6 +2,10 @@ import React, { useState, useRef, useImperativeHandle, forwardRef, useEffect } f
 import Editor, { OnMount } from '@monaco-editor/react';
 import type * as Monaco from 'monaco-editor';
 import styles from './CodeEditor.module.css';
+import { useAIHover, type LineAnalysisData } from '../../hooks/useAIHover';
+import { useCodeTour } from '../../hooks/useCodeTour';
+import { useAskAI } from '../../hooks/useAskAI';
+import { useMonacoDecorations } from '../../hooks/useMonacoDecorations';
 
 /**
  * CodeEditor Props
@@ -15,6 +19,8 @@ export interface CodeEditorProps {
  */
 export interface CodeEditorRef {
   openFile: (path: string) => void;
+  getActiveFilePath: () => string | null;
+  getCurrentContent: () => string | null;
 }
 
 /**
@@ -80,7 +86,7 @@ const CloseIcon: React.FC = () => (
 
 /**
  * CodeEditor 组件
- * Monaco Editor 包装器，支持多 Tab、文件打开/保存
+ * Monaco Editor 包装器，支持多 Tab、文件打开/保存，集成 AI 增强功能
  */
 export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
   ({ onSelectionChange }, ref) => {
@@ -89,7 +95,62 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
     const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
     const monacoRef = useRef<typeof Monaco | null>(null);
 
+    // AI 功能开关
+    const [beginnerMode, setBeginnerMode] = useState(false);
+    const [showMinimap, setShowMinimap] = useState(true);
+
+    // 编辑器就绪标志
+    const [editorReady, setEditorReady] = useState(false);
+
+    // 语法详情面板
+    const [showLineDetails, setShowLineDetails] = useState(false);
+    const [lineAnalysis, setLineAnalysis] = useState<LineAnalysisData | null>(null);
+
+    // 当前活跃的 Tab
+    const currentTab = activeTabIndex >= 0 ? tabs[activeTabIndex] : null;
+
+    // ========================================================================
+    // 集成 AI Hooks
+    // ========================================================================
+
+    // AI Hover（三层悬浮提示）
+    const { dispose: disposeAIHover } = useAIHover({
+      enabled: beginnerMode,
+      filePath: currentTab?.path || null,
+      editorRef,
+      monacoRef,
+      onLineAnalysis: (analysis) => {
+        setLineAnalysis(analysis);
+        setShowLineDetails(analysis !== null);
+      },
+    });
+
+    // 代码导游
+    const { tourState, startTour, stopTour, navigate, goToStep } = useCodeTour({
+      filePath: currentTab?.path || null,
+      content: currentTab?.content || '',
+      editorRef,
+    });
+
+    // 选中即问 AI
+    const { askAIState, openAskAI, submitQuestion, closeAskAI, setQuestion } = useAskAI({
+      filePath: currentTab?.path || null,
+      editorRef,
+    });
+
+    // Monaco 装饰器（热力图、重构建议、AI气泡）
+    const { heatmap, refactor, bubbles } = useMonacoDecorations({
+      filePath: currentTab?.path || null,
+      content: currentTab?.content || '',
+      editorRef,
+      monacoRef,
+      editorReady,
+    });
+
+    // ========================================================================
     // 暴露给父组件的方法
+    // ========================================================================
+
     useImperativeHandle(ref, () => ({
       openFile: async (path: string) => {
         // 检查是否已打开
@@ -129,15 +190,19 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
           alert(`读取文件异常: ${err instanceof Error ? err.message : '未知错误'}`);
         }
       },
+      getActiveFilePath: () => currentTab?.path || null,
+      getCurrentContent: () => currentTab?.content || null,
     }));
 
-    // 当前活跃的 Tab
-    const currentTab = activeTabIndex >= 0 ? tabs[activeTabIndex] : null;
+    // ========================================================================
+    // Monaco Editor 事件处理
+    // ========================================================================
 
     // Monaco Editor 挂载回调
     const handleEditorDidMount: OnMount = (editor, monaco) => {
       editorRef.current = editor;
       monacoRef.current = monaco;
+      setEditorReady(true);
 
       // 监听选择变化
       editor.onDidChangeCursorSelection((e) => {
@@ -162,6 +227,17 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
       // 监听 Ctrl+S 保存
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
         handleSaveCurrentFile();
+      });
+
+      // 注册右键菜单 "问 AI" action
+      editor.addAction({
+        id: 'ask-ai-about-selection',
+        label: '\u{1F916} 问 AI 关于这段代码',
+        contextMenuGroupId: 'navigation',
+        contextMenuOrder: 0,
+        run: () => {
+          openAskAI();
+        },
       });
     };
 
@@ -255,6 +331,155 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
       }
     }, [activeTabIndex, currentTab?.content]);
 
+    // ========================================================================
+    // 渲染辅助：获取当前导游步骤
+    // ========================================================================
+
+    const currentTourStep = tourState.active && tourState.steps[tourState.currentStep]
+      ? tourState.steps[tourState.currentStep]
+      : null;
+
+    // ========================================================================
+    // 渲染 - 编辑器主体（Monaco + 语法详情面板）
+    // ========================================================================
+
+    const renderEditorBody = () => {
+      if (!currentTab) {
+        return (
+          <div className={styles.emptyState}>
+            <p className={styles.emptyText}>No file open</p>
+            <p className={styles.emptyHint}>Select a file from the tree to start editing</p>
+          </div>
+        );
+      }
+
+      return (
+        <div className={showLineDetails ? styles.editorWithPanel : styles.editorFull}>
+          {/* Monaco 编辑器 */}
+          <div className={styles.monacoContainer}>
+            <Editor
+              height="100%"
+              language={currentTab.language}
+              value={currentTab.content}
+              theme="vs-dark"
+              onMount={handleEditorDidMount}
+              onChange={handleEditorChange}
+              options={{
+                fontSize: 13,
+                fontFamily: 'JetBrains Mono, Consolas, monospace',
+                lineHeight: 20,
+                minimap: { enabled: showMinimap },
+                scrollBeyondLastLine: false,
+                automaticLayout: true,
+                tabSize: 2,
+                insertSpaces: true,
+                wordWrap: 'off',
+                cursorBlinking: 'smooth',
+                smoothScrolling: true,
+                renderWhitespace: 'selection',
+                bracketPairColorization: { enabled: true },
+                glyphMargin: true,
+                guides: {
+                  indentation: true,
+                  bracketPairs: true,
+                },
+                suggest: {
+                  showKeywords: true,
+                  showSnippets: true,
+                },
+                hover: {
+                  enabled: true,
+                  delay: 300,
+                },
+              }}
+            />
+          </div>
+
+          {/* 语法详情面板 */}
+          {showLineDetails && lineAnalysis && (
+            <div className={styles.lineDetailPanel}>
+              <div className={styles.lineDetailHeader}>
+                <span className={styles.lineDetailTitle}>
+                  第 {lineAnalysis.lineNumber} 行
+                </span>
+                <button
+                  className={styles.lineDetailClose}
+                  onClick={() => setShowLineDetails(false)}
+                >
+                  ×
+                </button>
+              </div>
+
+              {/* 代码行 */}
+              <div className={styles.lineDetailCode}>
+                {lineAnalysis.lineContent}
+              </div>
+
+              {/* 关键字解释 */}
+              {lineAnalysis.keywords.length > 0 && (
+                <div className={styles.lineDetailSection}>
+                  <div className={styles.lineDetailSectionTitle}>🔑 语法关键字</div>
+                  {lineAnalysis.keywords.map((kw, i) => (
+                    <div key={i} className={styles.lineDetailKeyword}>
+                      <span className={styles.keywordName}>{kw.keyword}</span>
+                      <span className={styles.keywordBrief}>{kw.brief}</span>
+                      {kw.detail && <div className={styles.keywordDetail}>{kw.detail}</div>}
+                      {kw.example && <pre className={styles.keywordExample}>{kw.example}</pre>}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* AI 分析结果 */}
+              {lineAnalysis.loading && (
+                <div className={styles.lineDetailLoading}>🤖 AI 分析中...</div>
+              )}
+              {lineAnalysis.aiAnalysis && (
+                <div className={styles.lineDetailSection}>
+                  <div className={styles.lineDetailSectionTitle}>🤖 AI 分析</div>
+                  {lineAnalysis.aiAnalysis.brief && (
+                    <div className={styles.aiAnalysisBrief}>{lineAnalysis.aiAnalysis.brief}</div>
+                  )}
+                  {lineAnalysis.aiAnalysis.detail && (
+                    <div className={styles.aiAnalysisDetail}>{lineAnalysis.aiAnalysis.detail}</div>
+                  )}
+                  {lineAnalysis.aiAnalysis.params && lineAnalysis.aiAnalysis.params.length > 0 && (
+                    <div className={styles.aiAnalysisParams}>
+                      <div className={styles.aiAnalysisParamsTitle}>参数：</div>
+                      {lineAnalysis.aiAnalysis.params.map((param: any, idx: number) => (
+                        <div key={idx} className={styles.aiAnalysisParam}>
+                          <span className={styles.paramName}>{param.name}</span>
+                          <span className={styles.paramDesc}>{param.description || param.type}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {lineAnalysis.aiAnalysis.returns && (
+                    <div className={styles.aiAnalysisReturns}>
+                      <span className={styles.returnsLabel}>返回：</span>
+                      {lineAnalysis.aiAnalysis.returns}
+                    </div>
+                  )}
+                  {lineAnalysis.aiAnalysis.examples && lineAnalysis.aiAnalysis.examples.length > 0 && (
+                    <div className={styles.aiAnalysisExamples}>
+                      <div className={styles.aiAnalysisExamplesTitle}>示例：</div>
+                      {lineAnalysis.aiAnalysis.examples.map((example: string, idx: number) => (
+                        <pre key={idx} className={styles.aiAnalysisExample}>{example}</pre>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    // ========================================================================
+    // 渲染
+    // ========================================================================
+
     return (
       <div className={styles.codeEditor}>
         {/* Tab 栏 */}
@@ -282,41 +507,206 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
           </div>
         )}
 
+        {/* AI 工具栏 */}
+        {currentTab && (
+          <div className={styles.aiToolbar}>
+            <div className={styles.aiToolGroup}>
+              <button
+                className={`${styles.aiBtn} ${tourState.active ? styles.active : ''}`}
+                onClick={() => tourState.active ? stopTour() : startTour()}
+                disabled={tourState.loading}
+                title="代码导游"
+              >
+                🚀 导游 {tourState.loading && '⏳'}
+              </button>
+              <button
+                className={`${styles.aiBtn} ${heatmap.enabled ? styles.active : ''}`}
+                onClick={heatmap.toggle}
+                disabled={heatmap.loading}
+                title="代码复杂度热力图"
+              >
+                🔥 热力图 {heatmap.loading && '⏳'}
+              </button>
+              <button
+                className={`${styles.aiBtn} ${refactor.enabled ? styles.active : ''}`}
+                onClick={refactor.toggle}
+                disabled={refactor.loading}
+                title="AI 重构建议"
+              >
+                ✨ 重构 {refactor.loading && '⏳'}
+              </button>
+              <button
+                className={`${styles.aiBtn} ${bubbles.enabled ? styles.active : ''}`}
+                onClick={bubbles.toggle}
+                disabled={bubbles.loading}
+                title="AI 代码气泡"
+              >
+                💬 气泡 {bubbles.loading && '⏳'}
+              </button>
+            </div>
+
+            <span className={styles.toolDivider}></span>
+
+            <div className={styles.aiToolGroup}>
+              <button
+                className={`${styles.aiBtn} ${showLineDetails ? styles.active : ''}`}
+                onClick={() => setShowLineDetails(!showLineDetails)}
+                title="语法详情面板"
+              >
+                📖 语法详情
+              </button>
+              <button
+                className={`${styles.aiBtn} ${beginnerMode ? styles.active : ''}`}
+                onClick={() => setBeginnerMode(!beginnerMode)}
+                title="新手模式（AI 悬浮提示）"
+              >
+                🎓 新手模式
+              </button>
+              <button
+                className={`${styles.aiBtn} ${showMinimap ? styles.active : ''}`}
+                onClick={() => setShowMinimap(!showMinimap)}
+                title="代码小地图"
+              >
+                🗺️ 小地图
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* 编辑器区域 */}
         <div className={styles.editorContainer}>
-          {currentTab ? (
-            <Editor
-              height="100%"
-              language={currentTab.language}
-              value={currentTab.content}
-              theme="vs-dark"
-              onMount={handleEditorDidMount}
-              onChange={handleEditorChange}
-              options={{
-                fontSize: 13,
-                fontFamily: 'JetBrains Mono, Consolas, monospace',
-                lineHeight: 20,
-                minimap: { enabled: true },
-                scrollBeyondLastLine: false,
-                automaticLayout: true,
-                tabSize: 2,
-                insertSpaces: true,
-                wordWrap: 'off',
-                cursorBlinking: 'smooth',
-                smoothScrolling: true,
-                renderWhitespace: 'selection',
-                bracketPairColorization: {
-                  enabled: true,
-                },
-              }}
-            />
-          ) : (
-            <div className={styles.emptyState}>
-              <p className={styles.emptyText}>No file open</p>
-              <p className={styles.emptyHint}>Select a file from the tree to start editing</p>
+          {tourState.active ? (
+            /* 导游模式：编辑器 + 导游面板 二栏布局 */
+            <div className={styles.codeEditorWithTour}>
+              <div className={styles.codeEditorMain}>
+                {renderEditorBody()}
+              </div>
+
+              {/* 导游面板 */}
+              <div className={styles.tourPanel}>
+                <div className={styles.tourHeader}>
+                  <span className={styles.tourTitle}>🚀 代码导游</span>
+                  <span className={styles.tourProgress}>
+                    {tourState.currentStep + 1} / {tourState.steps.length}
+                  </span>
+                  <button className={styles.tourClose} onClick={stopTour}>×</button>
+                </div>
+
+                <div className={styles.tourContent}>
+                  {currentTourStep && (
+                    <div className={styles.tourStepInfo}>
+                      <div className={styles.tourStepType}>
+                        {currentTourStep.type}
+                      </div>
+                      <div className={styles.tourStepName}>
+                        {currentTourStep.name}
+                      </div>
+                      <div className={styles.tourStepLine}>
+                        第 {currentTourStep.line} 行
+                      </div>
+                      <div className={styles.tourDescription}>
+                        {currentTourStep.description}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className={styles.tourStepsList}>
+                  <div className={styles.tourStepsTitle}>所有步骤</div>
+                  {tourState.steps.map((step, index) => (
+                    <div
+                      key={index}
+                      className={`${styles.tourStepItem} ${index === tourState.currentStep ? styles.active : ''}`}
+                      onClick={() => goToStep(index)}
+                    >
+                      <span className={styles.tourStepItemNum}>{index + 1}</span>
+                      <span className={styles.tourStepItemName}>{step.name}</span>
+                      <span className={styles.tourStepItemType}>{step.type}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className={styles.tourNav}>
+                  <button
+                    className={styles.tourNavBtn}
+                    onClick={() => navigate('prev')}
+                    disabled={tourState.currentStep === 0}
+                  >
+                    ← 上一步
+                  </button>
+                  <button
+                    className={styles.tourNavBtn}
+                    onClick={() => navigate('next')}
+                    disabled={tourState.currentStep === tourState.steps.length - 1}
+                  >
+                    下一步 →
+                  </button>
+                </div>
+              </div>
             </div>
+          ) : (
+            /* 普通模式：编辑器（可能带语法详情面板） */
+            renderEditorBody()
           )}
         </div>
+
+        {/* 选中即问 AI 对话框 */}
+        {askAIState.visible && (
+          <div className={styles.askAIOverlay}>
+            <div className={styles.askAIDialog}>
+              <div className={styles.askAIHeader}>
+                <span className={styles.askAITitle}>🤖 问 AI</span>
+                <span className={styles.askAIRange}>
+                  第 {askAIState.selectedRange?.startLine}-{askAIState.selectedRange?.endLine} 行
+                </span>
+                <button className={styles.askAIClose} onClick={closeAskAI}>×</button>
+              </div>
+
+              <pre className={styles.askAICode}>{askAIState.selectedCode}</pre>
+
+              <input
+                className={styles.askAIInput}
+                placeholder="输入你的问题（例如：这段代码做什么？）"
+                value={askAIState.question}
+                onChange={(e) => setQuestion(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    submitQuestion(askAIState.question);
+                  }
+                }}
+                autoFocus
+              />
+
+              <button
+                className={styles.askAISubmit}
+                onClick={() => submitQuestion(askAIState.question)}
+                disabled={askAIState.loading || !askAIState.question.trim()}
+              >
+                {askAIState.loading ? '⏳ AI 思考中...' : '🚀 提交问题'}
+              </button>
+
+              {askAIState.answer && (
+                <div className={styles.askAIAnswer}>
+                  <div className={styles.askAIAnswerLabel}>💡 AI 回答：</div>
+                  <div className={styles.askAIAnswerContent}>{askAIState.answer}</div>
+                </div>
+              )}
+
+              <div className={styles.askAIHints}>
+                <div className={styles.askAIHint} onClick={() => setQuestion('这段代码做什么？')}>
+                  💡 提示1：这段代码做什么？
+                </div>
+                <div className={styles.askAIHint} onClick={() => setQuestion('有什么潜在问题？')}>
+                  ⚠️ 提示2：有什么潜在问题？
+                </div>
+                <div className={styles.askAIHint} onClick={() => setQuestion('如何优化？')}>
+                  ✨ 提示3：如何优化？
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }

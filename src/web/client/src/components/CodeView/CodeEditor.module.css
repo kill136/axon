@@ -1,6 +1,6 @@
 /**
  * CodeEditor 样式
- * 深色主题，Monaco 编辑器包装器
+ * 深色主题，Monaco 编辑器包装器 + AI 增强功能
  */
 
 .codeEditor {
@@ -9,9 +9,13 @@
   height: 100%;
   background-color: #09090b;
   overflow: hidden;
+  position: relative;
 }
 
-/* Tab 栏 */
+/* ============================================================
+   Tab 栏
+   ============================================================ */
+
 .tabBar {
   display: flex;
   align-items: center;
@@ -112,14 +116,753 @@
   background-color: rgba(255, 255, 255, 0.15);
 }
 
-/* 编辑器容器 */
+/* ============================================================
+   AI 工具栏
+   ============================================================ */
+
+.aiToolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 34px;
+  padding: 0 8px;
+  background-color: #0d0d0f;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.aiToolbar::-webkit-scrollbar {
+  height: 3px;
+}
+
+.aiToolbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
+}
+
+.aiToolGroup {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.aiBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 8px;
+  font-size: 12px;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: rgba(255, 255, 255, 0.55);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.aiBtn:hover {
+  color: rgba(255, 255, 255, 0.85);
+  background-color: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.aiBtn.active {
+  color: #a5b4fc;
+  background-color: rgba(99, 102, 241, 0.12);
+  border-color: rgba(99, 102, 241, 0.3);
+}
+
+.aiBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.toolDivider {
+  width: 1px;
+  height: 18px;
+  background-color: rgba(255, 255, 255, 0.1);
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+
+/* ============================================================
+   编辑器容器
+   ============================================================ */
+
 .editorContainer {
   flex: 1;
   overflow: hidden;
   position: relative;
 }
 
-/* 空状态 */
+/* 编辑器满宽 */
+.editorFull {
+  display: flex;
+  height: 100%;
+  width: 100%;
+}
+
+/* 编辑器 + 语法面板二栏布局 */
+.editorWithPanel {
+  display: flex;
+  height: 100%;
+  width: 100%;
+}
+
+.monacoContainer {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+}
+
+/* ============================================================
+   导游模式二栏布局
+   ============================================================ */
+
+.codeEditorWithTour {
+  display: flex;
+  height: 100%;
+  width: 100%;
+}
+
+.codeEditorMain {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ============================================================
+   语法详情面板（右侧）
+   ============================================================ */
+
+.lineDetailPanel {
+  width: 280px;
+  min-width: 280px;
+  height: 100%;
+  background-color: #0d0d10;
+  border-left: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.lineDetailPanel::-webkit-scrollbar {
+  width: 4px;
+}
+
+.lineDetailPanel::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+}
+
+.lineDetailHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+}
+
+.lineDetailTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.lineDetailClose {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 16px;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all 0.15s ease;
+}
+
+.lineDetailClose:hover {
+  color: rgba(255, 255, 255, 0.9);
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.lineDetailCode {
+  padding: 8px 12px;
+  font-size: 12px;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  color: #e2e8f0;
+  background-color: rgba(0, 0, 0, 0.3);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  white-space: pre-wrap;
+  word-break: break-all;
+  line-height: 1.5;
+}
+
+.lineDetailSection {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.lineDetailSectionTitle {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.7);
+  margin-bottom: 8px;
+}
+
+.lineDetailKeyword {
+  margin-bottom: 8px;
+  padding: 6px 8px;
+  background-color: rgba(255, 255, 255, 0.03);
+  border-radius: 4px;
+}
+
+.keywordName {
+  display: inline-block;
+  font-size: 12px;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-weight: 600;
+  color: #a5b4fc;
+  background-color: rgba(99, 102, 241, 0.12);
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin-right: 6px;
+}
+
+.keywordBrief {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.keywordDetail {
+  margin-top: 4px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  line-height: 1.4;
+}
+
+.keywordExample {
+  margin-top: 4px;
+  padding: 4px 6px;
+  font-size: 11px;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  color: rgba(255, 255, 255, 0.6);
+  background-color: rgba(0, 0, 0, 0.3);
+  border-radius: 3px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+}
+
+.lineDetailLoading {
+  padding: 12px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  text-align: center;
+}
+
+/* AI 分析结果 */
+.aiAnalysisBrief {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.8);
+  margin-bottom: 6px;
+  line-height: 1.5;
+}
+
+.aiAnalysisDetail {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.55);
+  margin-bottom: 6px;
+  line-height: 1.5;
+}
+
+.aiAnalysisParams {
+  margin-top: 6px;
+}
+
+.aiAnalysisParamsTitle {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.6);
+  margin-bottom: 4px;
+}
+
+.aiAnalysisParam {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 3px;
+  font-size: 11px;
+}
+
+.paramName {
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  color: #93c5fd;
+  flex-shrink: 0;
+}
+
+.paramDesc {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.aiAnalysisReturns {
+  margin-top: 6px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.returnsLabel {
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.6);
+  margin-right: 4px;
+}
+
+.aiAnalysisExamples {
+  margin-top: 6px;
+}
+
+.aiAnalysisExamplesTitle {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.6);
+  margin-bottom: 4px;
+}
+
+.aiAnalysisExample {
+  padding: 4px 6px;
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  color: rgba(255, 255, 255, 0.6);
+  background-color: rgba(0, 0, 0, 0.3);
+  border-radius: 3px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+}
+
+/* ============================================================
+   导游面板（右侧）
+   ============================================================ */
+
+.tourPanel {
+  width: 300px;
+  min-width: 300px;
+  height: 100%;
+  background-color: #0d0d10;
+  border-left: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  flex-direction: column;
+}
+
+.tourHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+}
+
+.tourTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.tourProgress {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.45);
+  margin-left: auto;
+}
+
+.tourClose {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 16px;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all 0.15s ease;
+}
+
+.tourClose:hover {
+  color: rgba(255, 255, 255, 0.9);
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.tourContent {
+  padding: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  flex-shrink: 0;
+}
+
+.tourStepInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tourStepType {
+  display: inline-flex;
+  align-self: flex-start;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #a5b4fc;
+  background-color: rgba(99, 102, 241, 0.12);
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.tourStepName {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  font-family: 'JetBrains Mono', Consolas, monospace;
+}
+
+.tourStepLine {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.tourDescription {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.65);
+  line-height: 1.5;
+}
+
+/* 导游步骤列表 */
+.tourStepsList {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.tourStepsList::-webkit-scrollbar {
+  width: 4px;
+}
+
+.tourStepsList::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+}
+
+.tourStepsTitle {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.4);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 4px 8px;
+  margin-bottom: 4px;
+}
+
+.tourStepItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.tourStepItem:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.tourStepItem.active {
+  background-color: rgba(99, 102, 241, 0.12);
+}
+
+.tourStepItemNum {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.5);
+  background-color: rgba(255, 255, 255, 0.06);
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.tourStepItem.active .tourStepItemNum {
+  color: #a5b4fc;
+  background-color: rgba(99, 102, 241, 0.2);
+}
+
+.tourStepItemName {
+  flex: 1;
+  font-size: 12px;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  color: rgba(255, 255, 255, 0.7);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tourStepItem.active .tourStepItemName {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.tourStepItemType {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.3);
+  flex-shrink: 0;
+}
+
+/* 导游导航按钮 */
+.tourNav {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+}
+
+.tourNavBtn {
+  flex: 1;
+  height: 30px;
+  font-size: 12px;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: rgba(255, 255, 255, 0.7);
+  background-color: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tourNavBtn:hover:not(:disabled) {
+  color: rgba(255, 255, 255, 0.9);
+  background-color: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.tourNavBtn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* ============================================================
+   选中即问 AI 对话框
+   ============================================================ */
+
+.askAIOverlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  z-index: 100;
+}
+
+.askAIDialog {
+  width: 560px;
+  max-width: 90%;
+  max-height: 80%;
+  display: flex;
+  flex-direction: column;
+  background-color: #141418;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+.askAIHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+}
+
+.askAITitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.askAIRange {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+  margin-left: auto;
+}
+
+.askAIClose {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 18px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.askAIClose:hover {
+  color: rgba(255, 255, 255, 0.9);
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.askAICode {
+  margin: 0;
+  padding: 10px 16px;
+  font-size: 12px;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  color: #e2e8f0;
+  background-color: rgba(0, 0, 0, 0.3);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  max-height: 150px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+.askAICode::-webkit-scrollbar {
+  width: 4px;
+}
+
+.askAICode::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+}
+
+.askAIInput {
+  display: block;
+  width: 100%;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: rgba(255, 255, 255, 0.9);
+  background-color: transparent;
+  border: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  outline: none;
+  box-sizing: border-box;
+}
+
+.askAIInput::placeholder {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.askAIInput:focus {
+  border-bottom-color: rgba(99, 102, 241, 0.4);
+}
+
+.askAISubmit {
+  margin: 10px 16px;
+  height: 34px;
+  font-size: 13px;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-weight: 500;
+  color: #ffffff;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: opacity 0.15s ease, transform 0.1s ease;
+}
+
+.askAISubmit:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.askAISubmit:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.askAISubmit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.askAIAnswer {
+  padding: 12px 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  overflow-y: auto;
+  max-height: 200px;
+}
+
+.askAIAnswer::-webkit-scrollbar {
+  width: 4px;
+}
+
+.askAIAnswer::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+}
+
+.askAIAnswerLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.7);
+  margin-bottom: 6px;
+}
+
+.askAIAnswerContent {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.8);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.askAIHints {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.askAIHint {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+  padding: 4px 8px;
+  background-color: rgba(255, 255, 255, 0.04);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.askAIHint:hover {
+  color: rgba(255, 255, 255, 0.7);
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+/* ============================================================
+   空状态
+   ============================================================ */
+
 .emptyState {
   display: flex;
   flex-direction: column;
@@ -142,4 +885,77 @@
   font-size: 13px;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   color: rgba(255, 255, 255, 0.25);
+}
+
+/* ============================================================
+   全局装饰器样式（Monaco Editor 需要 :global）
+   ============================================================ */
+
+:global(.heatmap-glyph) {
+  background-color: rgba(255, 152, 0, 0.6);
+  width: 4px !important;
+  margin-left: 3px;
+  border-radius: 2px;
+}
+
+:global(.heatmap-line-0),
+:global(.heatmap-line-1),
+:global(.heatmap-line-2) {
+  background-color: rgba(76, 175, 80, 0.06);
+}
+
+:global(.heatmap-line-3),
+:global(.heatmap-line-4) {
+  background-color: rgba(255, 235, 59, 0.06);
+}
+
+:global(.heatmap-line-5),
+:global(.heatmap-line-6) {
+  background-color: rgba(255, 152, 0, 0.08);
+}
+
+:global(.heatmap-line-7),
+:global(.heatmap-line-8) {
+  background-color: rgba(244, 67, 54, 0.08);
+}
+
+:global(.heatmap-line-9),
+:global(.heatmap-line-10) {
+  background-color: rgba(244, 67, 54, 0.12);
+}
+
+:global(.refactor-glyph) {
+  width: 4px !important;
+  margin-left: 3px;
+  border-radius: 2px;
+}
+
+:global(.refactor-high) {
+  background-color: rgba(244, 67, 54, 0.7);
+}
+
+:global(.refactor-medium) {
+  background-color: rgba(255, 152, 0, 0.7);
+}
+
+:global(.refactor-low) {
+  background-color: rgba(76, 175, 80, 0.7);
+}
+
+:global(.bubble-glyph) {
+  width: 4px !important;
+  margin-left: 3px;
+  border-radius: 2px;
+}
+
+:global(.bubble-info) {
+  background-color: rgba(33, 150, 243, 0.6);
+}
+
+:global(.bubble-tip) {
+  background-color: rgba(76, 175, 80, 0.6);
+}
+
+:global(.bubble-warning) {
+  background-color: rgba(255, 152, 0, 0.6);
 }
