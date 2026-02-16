@@ -18,8 +18,8 @@ import { RewindOption } from './components/RewindMenu';
 import { InputArea } from './components/InputArea';
 import { ArtifactsPanel } from './components/ArtifactsPanel/ArtifactsPanel';
 import { useProject } from './contexts/ProjectContext';
-import { BlueprintDetailContent } from './components/swarm/BlueprintDetailPanel/BlueprintDetailContent';
 import { TerminalPanel } from './components/Terminal/TerminalPanel';
+import CodeView from './components/CodeView';
 import type { SessionActions } from './types';
 
 // 获取 WebSocket URL
@@ -33,8 +33,8 @@ interface AppProps {
   onNavigateToBlueprint?: (blueprintId: string) => void;
   onNavigateToSwarm?: (blueprintId?: string) => void;
   onNavigateToCode?: (context?: any) => void;
-  showCodePanel?: boolean;
-  onToggleCodePanel?: () => void;
+  codeViewActive?: boolean;
+  onToggleCodeView?: () => void;
   showSettings?: boolean;
   onCloseSettings?: () => void;
   onSessionsChange?: (sessions: any[]) => void;
@@ -45,7 +45,8 @@ interface AppProps {
 
 function AppContent({
   onNavigateToBlueprint, onNavigateToSwarm, onNavigateToCode,
-  showCodePanel,
+  codeViewActive,
+  onToggleCodeView,
   showSettings, onCloseSettings,
   onSessionsChange, onSessionIdChange, onConnectedChange,
   registerSessionActions,
@@ -191,10 +192,14 @@ function AppContent({
         e.preventDefault();
         artifactsState.setIsPanelOpen(prev => !prev);
       }
+      if (e.ctrlKey && e.shiftKey && (e.key === 'E' || e.key === 'e')) {
+        e.preventDefault();
+        onToggleCodeView?.();
+      }
     };
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [setIsTranscriptMode, artifactsState.setIsPanelOpen]);
+  }, [setIsTranscriptMode, artifactsState.setIsPanelOpen, onToggleCodeView]);
 
   // 对齐官方渲染管线
   const visibleMessages = useMemo(() => {
@@ -322,20 +327,56 @@ function AppContent({
 
   // ========================================================================
 
-  const showSplitLayout = showCodePanel || artifactsState.isPanelOpen;
+  // CodeView 发送消息处理（构造用户消息并通过 WebSocket 发送）
+  const handleCodeViewSendMessage = useCallback((text: string) => {
+    if (!text.trim() || !send || !connected) return;
+
+    const userMessage: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: 'user',
+      content: [{ type: 'text', text: text.trim() }],
+      timestamp: Date.now(),
+    };
+
+    setMessages(prev => [...prev, userMessage]);
+    setStatus('streaming');
+
+    send({
+      type: 'user_message',
+      payload: {
+        content: [{ type: 'text', text: text.trim() }],
+        model,
+      },
+    });
+  }, [send, connected, model, setMessages, setStatus]);
+
+  // ========================================================================
+
+  const showSplitLayout = artifactsState.isPanelOpen;
 
   return (
     <div style={{ display: 'flex', height: '100%', width: '100%', flex: 1 }}>
-      <div className="main-content" style={{ flex: 1, ...(showSplitLayout ? { flexDirection: 'row' as const } : {}) }}>
-        {showCodePanel && (
-          <div className="code-panel">
-            <BlueprintDetailContent blueprintId="code-browser-standalone" />
-          </div>
-        )}
-
-        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, minHeight: 0 }}>
-          <div className={`chat-panel ${showCodePanel ? 'chat-panel-split' : ''}`} style={{ flex: 1, minHeight: 0 }}>
-            <div className={`chat-container ${!isInputVisible ? 'input-hidden' : ''}`} ref={chatContainerRef}>
+      {codeViewActive ? (
+        // 代码视图模式
+        <CodeView
+          messages={messages}
+          status={status}
+          model={model}
+          permissionMode={permissionMode}
+          onModelChange={setModel}
+          onPermissionModeChange={setPermissionMode}
+          onSendMessage={handleCodeViewSendMessage}
+          connected={connected}
+          currentMessageId={currentMessageRef.current?.id}
+          isStreaming={status !== 'idle'}
+          projectPath={currentProjectPath || ''}
+        />
+      ) : (
+        // 对话视图模式（原有的全屏聊天界面）
+        <div className="main-content" style={{ flex: 1, ...(showSplitLayout ? { flexDirection: 'row' as const } : {}) }}>
+          <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, minHeight: 0 }}>
+            <div className="chat-panel" style={{ flex: 1, minHeight: 0 }}>
+              <div className={`chat-container ${!isInputVisible ? 'input-hidden' : ''}`} ref={chatContainerRef}>
               {visibleMessages.length === 0 && messages.length === 0 ? (
                 <WelcomeScreen onBlueprintCreated={onNavigateToBlueprint} />
               ) : (
@@ -402,23 +443,23 @@ function AppContent({
             onHeightChange={setTerminalHeight}
             projectPath={currentProjectPath}
           />
-        </div>
 
-        {artifactsState.isPanelOpen && (
-          <ArtifactsPanel
-            groups={artifactsState.groups}
-            artifacts={artifactsState.artifacts}
-            selectedId={artifactsState.selectedId}
-            selectedArtifact={artifactsState.selectedArtifact}
-            onSelectArtifact={artifactsState.setSelectedId}
-            onClose={() => artifactsState.setIsPanelOpen(false)}
-            scheduleArtifacts={scheduleState.scheduleArtifacts}
-            selectedScheduleId={scheduleState.selectedScheduleId}
-            selectedScheduleArtifact={scheduleState.selectedScheduleArtifact}
-            onSelectScheduleArtifact={scheduleState.setSelectedScheduleId}
-          />
-        )}
-      </div>
+          {artifactsState.isPanelOpen && (
+            <ArtifactsPanel
+              groups={artifactsState.groups}
+              artifacts={artifactsState.artifacts}
+              selectedId={artifactsState.selectedId}
+              selectedArtifact={artifactsState.selectedArtifact}
+              onSelectArtifact={artifactsState.setSelectedId}
+              onClose={() => artifactsState.setIsPanelOpen(false)}
+              scheduleArtifacts={scheduleState.scheduleArtifacts}
+              selectedScheduleId={scheduleState.selectedScheduleId}
+              selectedScheduleArtifact={scheduleState.selectedScheduleArtifact}
+              onSelectScheduleArtifact={scheduleState.setSelectedScheduleId}
+            />
+          )}
+        </div>
+      )}
 
       {userQuestion && (
         <UserQuestionDialog question={userQuestion} onAnswer={chatInput.handleAnswerQuestion} />

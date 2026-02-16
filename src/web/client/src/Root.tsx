@@ -17,7 +17,7 @@ function RootContent() {
   const [currentPage, setCurrentPage] = useState<Page>('chat');
   const [selectedBlueprintId, setSelectedBlueprintId] = useState<string | null>(null);
   const [swarmBlueprintId, setSwarmBlueprintId] = useState<string | null>(null);
-  const [showCodePanel, setShowCodePanel] = useState(false);
+  const [codeViewActive, setCodeViewActive] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
 
   // 来自 App 的会话数据（通过回调上报）
@@ -38,14 +38,18 @@ function RootContent() {
 
   const handlePageChange = (page: Page) => {
     setCurrentPage(page);
+    // 切换到非 chat 页面时自动关闭代码视图
+    if (page !== 'chat' && codeViewActive) {
+      setCodeViewActive(false);
+    }
   };
 
-  const toggleCodePanel = useCallback(() => {
+  const toggleCodeView = useCallback(() => {
     if (currentPage !== 'chat') {
       setCurrentPage('chat');
     }
-    setShowCodePanel(prev => !prev);
-  }, [currentPage]);
+    setCodeViewActive(prev => !prev);
+  }, [currentPage, codeViewActive]);
 
   const navigateToBlueprintPage = (blueprintId?: string) => {
     if (blueprintId) setSelectedBlueprintId(blueprintId);
@@ -59,7 +63,7 @@ function RootContent() {
 
   const navigateToCodePage = useCallback(() => {
     setCurrentPage('chat');
-    setShowCodePanel(true);
+    setCodeViewActive(true);
   }, []);
 
   // 项目操作（ProjectSelector 回调 -> ProjectContext）
@@ -105,8 +109,8 @@ function RootContent() {
       <TopNavBar
         currentPage={currentPage}
         onPageChange={handlePageChange}
-        codePanelActive={showCodePanel}
-        onToggleCode={toggleCodePanel}
+        codeViewActive={codeViewActive}
+        onToggleCodeView={toggleCodeView}
         connected={connected}
         onSettingsClick={() => setShowSettings(true)}
         // 项目
@@ -130,8 +134,8 @@ function RootContent() {
               onNavigateToBlueprint={navigateToBlueprintPage}
               onNavigateToSwarm={navigateToSwarmPage}
               onNavigateToCode={navigateToCodePage}
-              showCodePanel={showCodePanel}
-              onToggleCodePanel={toggleCodePanel}
+              codeViewActive={codeViewActive}
+              onToggleCodeView={toggleCodeView}
               showSettings={showSettings}
               onCloseSettings={() => setShowSettings(false)}
               onSessionsChange={setSessions}

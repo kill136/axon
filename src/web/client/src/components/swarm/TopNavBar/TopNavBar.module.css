@@ -1,91 +1,63 @@
-/* 顶部导航栏 */
+/* ===================== 顶部导航栏 - 两行布局 ===================== */
 .topNavBar {
-  height: 48px;
   background: var(--bg-secondary);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+/* ===================== 第一行：全局上下文行 ===================== */
+.contextRow {
+  height: 40px;
+  background: #0f1115;
   border-bottom: 1px solid var(--border-color);
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 12px;
-  flex-shrink: 0;
-  gap: 8px;
+  gap: 12px;
 }
 
-/* 导航标签容器 */
-.navTabs {
-  display: flex;
-  gap: 4px;
-  flex-shrink: 0;
-}
-
-/* 单个导航标签 */
-.navTab {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
-  background: transparent;
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  font-size: 13px;
-  border-radius: 6px;
-  transition: all 0.2s;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.navTab:hover {
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
-}
-
-.navTab.active {
-  background: var(--accent-primary);
-  color: var(--bg-primary);
-}
-
-.navTab .icon {
-  font-size: 14px;
-  line-height: 1;
-}
-
-/* ===================== 中央控制区 ===================== */
-.centerControls {
+.contextLeft {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex: 1;
+  flex-shrink: 0;
+}
+
+.contextCenter {
+  display: flex;
+  align-items: center;
   justify-content: center;
+  flex: 1;
   min-width: 0;
+}
+
+.contextRight {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
 }
 
 /* 项目选择器在导航栏中的紧凑样式 */
 .navProjectSelector {
-  min-width: 140px;
-  max-width: 220px;
-}
-
-/* 中央分隔线 */
-.centerDivider {
-  width: 1px;
-  height: 20px;
-  background: var(--border-color);
-  flex-shrink: 0;
+  min-width: 160px;
+  max-width: 240px;
 }
 
 /* ===================== 会话选择器 ===================== */
 .sessionSelector {
   position: relative;
-  min-width: 120px;
-  max-width: 220px;
+  min-width: 180px;
+  max-width: 280px;
 }
 
 .sessionTrigger {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
+  gap: 8px;
+  padding: 6px 12px;
   background: transparent;
   border: 1px solid var(--border-color);
   border-radius: 6px;
@@ -106,9 +78,11 @@
 }
 
 .sessionIcon {
-  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
-  line-height: 1;
+  color: var(--text-secondary);
 }
 
 .sessionName {
@@ -281,14 +255,6 @@
   outline: none;
 }
 
-/* ===================== 右侧操作区 ===================== */
-.actions {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  flex-shrink: 0;
-}
-
 /* 连接状态小圆点 */
 .connectionDot {
   width: 8px;
@@ -333,7 +299,6 @@
   color: var(--text-muted);
   cursor: pointer;
   border-radius: 6px;
-  font-size: 16px;
   transition: all 0.2s;
   display: flex;
   align-items: center;
@@ -346,31 +311,117 @@
   border-color: var(--accent-primary);
 }
 
+/* ===================== 第二行：页面导航行 ===================== */
+.navRow {
+  height: 36px;
+  background: #0a0a0c;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  gap: 12px;
+}
+
+/* 导航标签容器 */
+.navTabs {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+/* 单个导航标签 */
+.navTab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  height: 36px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+  font-weight: 500;
+  white-space: nowrap;
+  position: relative;
+}
+
+.navTab:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.navTab.active {
+  color: var(--text-primary);
+  border-bottom-color: var(--accent-primary);
+}
+
+.navTab .icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: currentColor;
+}
+
+/* 视图切换器 */
+.viewSwitcher {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.viewButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.viewButton:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--border-color);
+}
+
+.viewButton.active {
+  color: var(--accent-primary);
+  background: rgba(99, 102, 241, 0.12);
+  border-color: var(--accent-primary);
+}
+
 /* ===================== 响应式 ===================== */
 @media (max-width: 900px) {
-  .centerControls {
-    gap: 4px;
-  }
-
   .navProjectSelector {
-    min-width: 100px;
-    max-width: 160px;
+    min-width: 120px;
+    max-width: 180px;
   }
 
   .sessionSelector {
-    min-width: 100px;
-    max-width: 160px;
-  }
-
-  .centerDivider {
-    display: none;
+    min-width: 120px;
+    max-width: 200px;
   }
 }
 
 @media (max-width: 768px) {
-  .topNavBar {
+  .contextRow {
     padding: 0 8px;
-    gap: 4px;
+    gap: 8px;
+  }
+
+  .navRow {
+    padding: 0 8px;
+    gap: 8px;
   }
 
   .navTab span:not(.icon) {
@@ -378,37 +429,31 @@
   }
 
   .navTab {
-    padding: 6px 8px;
+    padding: 0 10px;
     gap: 0;
   }
 
   .navTabs {
-    gap: 2px;
-  }
-
-  .centerControls {
-    gap: 4px;
-    flex: 1;
-    min-width: 0;
+    gap: 0;
   }
 
   .navProjectSelector {
-    min-width: 0;
-    max-width: 100px;
+    min-width: 80px;
+    max-width: 120px;
   }
 
   .sessionSelector {
-    min-width: 0;
-    max-width: 100px;
+    min-width: 80px;
+    max-width: 120px;
   }
 
   .sessionName {
-    max-width: 50px;
+    max-width: 60px;
   }
 
   .sessionTrigger {
-    padding: 4px 6px;
-    gap: 4px;
+    padding: 4px 8px;
+    gap: 6px;
   }
 
   .newSessionButton {
@@ -418,72 +463,61 @@
 
   .settingsButton {
     padding: 4px 8px;
-    font-size: 14px;
   }
 
-  .actions {
-    gap: 4px;
+  .contextRight {
+    gap: 6px;
   }
 }
 
-/* 手机竖屏（< 480px）：两行布局，第一行标签+操作，第二行项目+会话选择器 */
+/* 手机竖屏（< 480px）：保持两行布局但调整间距 */
 @media (max-width: 480px) {
-  .topNavBar {
-    height: auto;
-    padding: 4px 6px;
-    gap: 0;
-    flex-wrap: wrap;
-  }
-
-  .navTabs {
-    gap: 1px;
-    order: 1;
-  }
-
-  .navTab {
-    padding: 6px 6px;
-  }
-
-  .actions {
-    order: 2;
-    margin-left: auto;
-    gap: 4px;
-  }
-
-  .centerControls {
-    order: 3;
-    width: 100%;
-    justify-content: stretch;
+  .contextRow {
+    padding: 0 6px;
     gap: 6px;
-    padding: 4px 0 2px;
-    border-top: 1px solid var(--border-color);
-    margin-top: 4px;
+    height: 36px;
+  }
+
+  .navRow {
+    padding: 0 6px;
+    gap: 6px;
+    height: 32px;
   }
 
   .navProjectSelector {
-    flex: 1;
-    min-width: 0;
-    max-width: none;
+    min-width: 60px;
+    max-width: 100px;
   }
 
   .sessionSelector {
-    flex: 1;
-    min-width: 0;
-    max-width: none;
+    min-width: 60px;
+    max-width: 100px;
   }
 
-  .centerDivider {
-    display: block;
-    height: 16px;
+  .sessionTrigger {
+    padding: 3px 6px;
+    gap: 4px;
   }
 
   .newSessionButton {
-    padding: 4px 8px;
+    padding: 3px 7px;
     font-size: 14px;
   }
 
   .settingsButton {
-    padding: 4px 6px;
-    font-size: 13px;
+    padding: 3px 6px;
+  }
+
+  .contextRight {
+    gap: 4px;
+  }
+
+  .navTab {
+    padding: 0 8px;
+  }
+
+  .viewButton {
+    width: 28px;
+    height: 28px;
   }
 }
