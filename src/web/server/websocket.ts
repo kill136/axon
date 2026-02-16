@@ -24,6 +24,8 @@ import { getSwarmLogDB, type WorkerLog, type WorkerStream } from './database/swa
 import { registerE2EAgent, unregisterE2EAgent, getE2EAgent } from '../../blueprint/e2e-agent-registry.js';
 // 终端管理器
 import { TerminalManager } from './terminal-manager.js';
+// Git 管理器
+import { GitManager } from './git-manager.js';
 
 // ============================================================================
 // 旧蓝图系统已被移除，以下是类型占位符和空函数
@@ -1862,6 +1864,87 @@ async function handleClientMessage(
 
     case 'rewind_execute':
       await handleRewindExecute(client, message.payload, conversationManager);
+      break;
+
+    // Git 操作
+    case 'git:get_status':
+      await handleGitGetStatus(client, conversationManager);
+      break;
+
+    case 'git:get_log':
+      await handleGitGetLog(client, message.payload?.limit, conversationManager);
+      break;
+
+    case 'git:get_branches':
+      await handleGitGetBranches(client, conversationManager);
+      break;
+
+    case 'git:get_stashes':
+      await handleGitGetStashes(client, conversationManager);
+      break;
+
+    case 'git:stage':
+      await handleGitStage(client, message.payload.files, conversationManager);
+      break;
+
+    case 'git:unstage':
+      await handleGitUnstage(client, message.payload.files, conversationManager);
+      break;
+
+    case 'git:commit':
+      await handleGitCommit(client, message.payload.message, conversationManager);
+      break;
+
+    case 'git:push':
+      await handleGitPush(client, conversationManager);
+      break;
+
+    case 'git:pull':
+      await handleGitPull(client, conversationManager);
+      break;
+
+    case 'git:checkout':
+      await handleGitCheckout(client, message.payload.branch, conversationManager);
+      break;
+
+    case 'git:create_branch':
+      await handleGitCreateBranch(client, message.payload.name, conversationManager);
+      break;
+
+    case 'git:delete_branch':
+      await handleGitDeleteBranch(client, message.payload.name, conversationManager);
+      break;
+
+    case 'git:stash_save':
+      await handleGitStashSave(client, message.payload?.message, conversationManager);
+      break;
+
+    case 'git:stash_pop':
+      await handleGitStashPop(client, message.payload?.index, conversationManager);
+      break;
+
+    case 'git:stash_drop':
+      await handleGitStashDrop(client, message.payload.index, conversationManager);
+      break;
+
+    case 'git:stash_apply':
+      await handleGitStashApply(client, message.payload.index, conversationManager);
+      break;
+
+    case 'git:get_diff':
+      await handleGitGetDiff(client, message.payload?.file, conversationManager);
+      break;
+
+    case 'git:smart_commit':
+      await handleGitSmartCommit(client, conversationManager);
+      break;
+
+    case 'git:smart_review':
+      await handleGitSmartReview(client, conversationManager);
+      break;
+
+    case 'git:explain_commit':
+      await handleGitExplainCommit(client, message.payload.hash, conversationManager);
       break;
 
     case 'session_export':
