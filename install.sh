@@ -200,6 +200,9 @@ install_npm() {
         if [ -d "$INSTALL_DIR/.git" ]; then
             info "Updating existing installation..."
             cd "$INSTALL_DIR"
+            # Reset local changes (e.g. package-lock.json modified by npm install)
+            git checkout -- .
+            git clean -fd
             git pull origin private_web_ui
             if [ $? -ne 0 ]; then
                 error "Git pull failed. Please check your network connection."
