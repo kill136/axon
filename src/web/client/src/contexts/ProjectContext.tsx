@@ -5,9 +5,12 @@ import React, {
   useEffect,
   useCallback,
   useMemo,
+  useState,
+  useRef,
   type ReactNode,
   type Dispatch,
 } from 'react';
+import FolderBrowserDialog from '../components/swarm/FolderBrowserDialog';
 
 // ============================================================================
 // 类型定义
@@ -239,6 +242,14 @@ export interface ProjectProviderProps {
 
 export function ProjectProvider({ children }: ProjectProviderProps) {
   const [state, dispatch] = useReducer(projectReducer, initialState);
+  
+  // FolderBrowserDialog 状态
+  const [showFolderBrowser, setShowFolderBrowser] = useState(false);
+  // 用于存储 Promise 的 resolve/reject 回调
+  const folderBrowserPromiseRef = useRef<{
+    resolve: (path: string | null) => void;
+    reject: (error: Error) => void;
+  } | null>(null);
 
   // ========================================
   // API 调用
@@ -285,7 +296,7 @@ export function ProjectProvider({ children }: ProjectProviderProps) {
   }, []);
 
   /**
-   * 浏览文件夹（调用系统对话框）
+   * 浏览文件夹（调用系统对话框，如果系统对话框不可用则回退到 Web 端目录浏览器）
    */
   const browseFolder = useCallback(async (): Promise<string | null> => {
     const response = await fetch('/api/blueprint/projects/browse', {
@@ -296,6 +307,17 @@ export function ProjectProvider({ children }: ProjectProviderProps) {
     if (!result.success) {
       throw new Error(result.error || '打开文件夹选择对话框失败');
     }
+    
+    // 检查是否需要回退到 Web 端目录浏览器
+    if (result.data?.noGui) {
+      console.log('[ProjectContext] 系统对话框不可用，使用 Web 端目录浏览器');
+      // 返回一个 Promise，通过 FolderBrowserDialog 的回调来 resolve
+      return new Promise((resolve, reject) => {
+        folderBrowserPromiseRef.current = { resolve, reject };
+        setShowFolderBrowser(true);
+      });
+    }
+    
     if (result.data?.cancelled) {
       return null;
     }
@@ -452,6 +474,32 @@ export function ProjectProvider({ children }: ProjectProviderProps) {
   }, [fetchCurrentProject]);
 
   // ========================================
+  // FolderBrowserDialog 回调
+  // ========================================
+
+  /**
+   * FolderBrowserDialog 确认回调
+   */
+  const handleFolderBrowserConfirm = useCallback((path: string) => {
+    setShowFolderBrowser(false);
+    if (folderBrowserPromiseRef.current) {
+      folderBrowserPromiseRef.current.resolve(path);
+      folderBrowserPromiseRef.current = null;
+    }
+  }, []);
+
+  /**
+   * FolderBrowserDialog 取消回调
+   */
+  const handleFolderBrowserCancel = useCallback(() => {
+    setShowFolderBrowser(false);
+    if (folderBrowserPromiseRef.current) {
+      folderBrowserPromiseRef.current.resolve(null);
+      folderBrowserPromiseRef.current = null;
+    }
+  }, []);
+
+  // ========================================
   // 初始化
   // ========================================
 
@@ -520,6 +568,12 @@ export function ProjectProvider({ children }: ProjectProviderProps) {
   return (
     <ProjectContext.Provider value={contextValue}>
       {children}
+      {/* FolderBrowserDialog: 当系统原生对话框不可用时显示 */}
+      <FolderBrowserDialog
+        visible={showFolderBrowser}
+        onConfirm={handleFolderBrowserConfirm}
+        onCancel={handleFolderBrowserCancel}
+      />
     </ProjectContext.Provider>
   );
 }

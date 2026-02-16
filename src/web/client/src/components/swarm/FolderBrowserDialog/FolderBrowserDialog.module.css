@@ -1,0 +1,383 @@
+/* FolderBrowserDialog 样式 - 文件夹浏览器对话框 */
+
+/* 遮罩层 */
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  animation: fadeIn 0.15s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* 对话框容器 */
+.dialog {
+  background: #252526;
+  border: 1px solid #454545;
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  width: 500px;
+  max-width: 90vw;
+  height: 500px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  animation: slideIn 0.15s ease;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 对话框头部 */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid #3d3d3d;
+  flex-shrink: 0;
+}
+
+.title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.titleIcon {
+  font-size: 16px;
+}
+
+.closeButton {
+  padding: 4px;
+  background: transparent;
+  border: none;
+  color: #808080;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 14px;
+  line-height: 1;
+  transition: all 0.15s ease;
+}
+
+.closeButton:hover {
+  background: #3d3d3d;
+  color: #ffffff;
+}
+
+/* 对话框内容 */
+.content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 16px;
+  min-height: 0;
+}
+
+/* 导航栏 */
+.navbar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-shrink: 0;
+}
+
+.navButton {
+  padding: 6px 12px;
+  background: #3c3c3c;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  color: #cccccc;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.navButton:hover:not(:disabled) {
+  background: #464646;
+  border-color: #007acc;
+}
+
+.navButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 地址栏表单 */
+.pathForm {
+  flex: 1;
+  display: flex;
+}
+
+.pathInput {
+  width: 100%;
+  padding: 6px 12px;
+  background: #3c3c3c;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  color: #cccccc;
+  font-size: 13px;
+  font-family: 'Consolas', 'Monaco', monospace;
+  transition: border-color 0.15s ease;
+}
+
+.pathInput:focus {
+  outline: none;
+  border-color: #007acc;
+  background: #3c3c3c;
+}
+
+.pathInput::placeholder {
+  color: #6e6e6e;
+}
+
+.pathInput:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* 错误提示横幅 */
+.errorBanner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #5a1d1d;
+  border: 1px solid #f14c4c;
+  border-radius: 4px;
+  color: #f14c4c;
+  font-size: 13px;
+  margin-bottom: 12px;
+  flex-shrink: 0;
+}
+
+.errorIcon {
+  font-size: 14px;
+}
+
+/* 目录列表 */
+.dirList {
+  flex: 1;
+  overflow-y: auto;
+  border: 1px solid #3d3d3d;
+  border-radius: 4px;
+  background: #1e1e1e;
+  min-height: 0;
+}
+
+.dirList::-webkit-scrollbar {
+  width: 8px;
+}
+
+.dirList::-webkit-scrollbar-track {
+  background: #1e1e1e;
+}
+
+.dirList::-webkit-scrollbar-thumb {
+  background: #424242;
+  border-radius: 4px;
+}
+
+.dirList::-webkit-scrollbar-thumb:hover {
+  background: #4e4e4e;
+}
+
+/* 目录项 */
+.dirItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: background 0.1s ease;
+  border-bottom: 1px solid #2d2d2d;
+}
+
+.dirItem:hover {
+  background: #2d2d2d;
+}
+
+.dirItem:active {
+  background: #383838;
+}
+
+.dirItem:last-child {
+  border-bottom: none;
+}
+
+.dirIcon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.dirName {
+  flex: 1;
+  color: #cccccc;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 加载状态 */
+.loadingState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 40px 20px;
+  color: #858585;
+  font-size: 13px;
+}
+
+.spinner {
+  width: 24px;
+  height: 24px;
+  border: 3px solid #3d3d3d;
+  border-top-color: #007acc;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 空状态 */
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 40px 20px;
+  color: #858585;
+  font-size: 13px;
+}
+
+.emptyIcon {
+  font-size: 32px;
+  opacity: 0.5;
+}
+
+/* 当前路径显示 */
+.currentPathDisplay {
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: #1e1e1e;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #858585;
+  word-break: break-all;
+  flex-shrink: 0;
+}
+
+.currentPathLabel {
+  color: #6e6e6e;
+  margin-right: 4px;
+}
+
+.currentPathValue {
+  color: #cccccc;
+  font-family: 'Consolas', 'Monaco', monospace;
+}
+
+/* 对话框底部 */
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid #3d3d3d;
+  flex-shrink: 0;
+}
+
+/* 按钮基础样式 */
+.button {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+/* 取消按钮 */
+.cancelButton {
+  background: transparent;
+  color: #cccccc;
+  border: 1px solid #3d3d3d;
+}
+
+.cancelButton:hover {
+  background: #3d3d3d;
+}
+
+/* 确认按钮 */
+.confirmButton {
+  background: #0e639c;
+  color: #ffffff;
+}
+
+.confirmButton:hover:not(:disabled) {
+  background: #1177bb;
+}
+
+.confirmButton:disabled {
+  background: #3d3d3d;
+  color: #6e6e6e;
+  cursor: not-allowed;
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+  .dialog {
+    width: 90vw;
+    height: 70vh;
+    margin: 0 16px;
+  }
+
+  .navbar {
+    flex-direction: column;
+  }
+
+  .footer {
+    flex-direction: column;
+  }
+
+  .button {
+    width: 100%;
+  }
+}
