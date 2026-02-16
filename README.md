@@ -3,11 +3,12 @@
 > The world needs an open-source Claude Code. It will become the foundational infrastructure of AI in the future, running on every PC.
 
 [![Website](https://img.shields.io/badge/Website-chatbi.site-blue?style=flat-square)](https://www.chatbi.site)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-voicegpt.site:3456-orange?style=flat-square)](http://voicegpt.site:3456/)
 [![GitHub Stars](https://img.shields.io/github/stars/kill136/claude-code-open?style=flat-square)](https://github.com/kill136/claude-code-open)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 [![Node](https://img.shields.io/badge/Node.js-%3E%3D18.0.0-brightgreen?style=flat-square)](https://nodejs.org)
 
-[Visit Website](https://www.chatbi.site) | [中文文档](README.zh-CN.md) | [Discord](https://discord.gg/bNyJKk6PVZ)
+[Visit Website](https://www.chatbi.site) | [Live Demo](http://voicegpt.site:3456/) | [中文文档](README.zh-CN.md) | [Discord](https://discord.gg/bNyJKk6PVZ)
 
 A reverse-engineered open-source reimplementation based on `@anthropic-ai/claude-code`.
 

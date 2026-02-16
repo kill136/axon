@@ -3,11 +3,12 @@
 > 世界需要一个开源的 Claude Code。它将成为未来 AI 的基础设施，运行在每台 PC 上。
 
 [![Website](https://img.shields.io/badge/Website-chatbi.site-blue?style=flat-square)](https://www.chatbi.site)
+[![在线体验](https://img.shields.io/badge/%E5%9C%A8%E7%BA%BF%E4%BD%93%E9%AA%8C-voicegpt.site:3456-orange?style=flat-square)](http://voicegpt.site:3456/)
 [![GitHub Stars](https://img.shields.io/github/stars/kill136/claude-code-open?style=flat-square)](https://github.com/kill136/claude-code-open)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 [![Node](https://img.shields.io/badge/Node.js-%3E%3D18.0.0-brightgreen?style=flat-square)](https://nodejs.org)
 
-[访问网站](https://www.chatbi.site) | [English README](README.md) | [Discord](https://discord.gg/bNyJKk6PVZ)
+[访问网站](https://www.chatbi.site) | [在线体验](http://voicegpt.site:3456/) | [English README](README.md) | [Discord](https://discord.gg/bNyJKk6PVZ)
 
 基于 `@anthropic-ai/claude-code` 的开源逆向重新实现。
 
