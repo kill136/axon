@@ -633,84 +633,140 @@ ${taskSummary}
     // 发射 LeadAgent 的 system_prompt 事件，供前端查看
     this.emit('lead:system_prompt', { systemPrompt });
 
-    // 流式处理消息：恢复模式使用恢复提示词，否则使用初始提示词
-    const initialPrompt = this.config.isResume
-      ? this.buildResumePrompt()
-      : this.buildInitialPrompt();
-    const messageStream = this.loop.processMessageStream(initialPrompt);
+    // v9.2: 自愈循环 - 当 LeadAgent 因网络错误死亡但仍有未完成任务时，自动重启
+    const maxSelfHealRetries = this.swarmConfig.maxRetries || 3;
+    let selfHealAttempts = 0;
+    let isResumeRun = this.config.isResume || false;
     let lastResponse = '';
 
-    try {
-      for await (const event of messageStream) {
-        switch (event.type) {
-          case 'text':
-            if (event.content) {
-              lastResponse += event.content;
+    while (true) {
+      // 构建提示词：首次使用初始/恢复提示词，自愈重启使用恢复提示词
+      const prompt = isResumeRun
+        ? this.buildResumePrompt()
+        : this.buildInitialPrompt();
+      const messageStream = this.loop!.processMessageStream(prompt);
+
+      let loopDiedFromError = false;
+
+      try {
+        for await (const event of messageStream) {
+          switch (event.type) {
+            case 'text':
+              if (event.content) {
+                lastResponse += event.content;
+                this.emit('lead:stream', {
+                  type: 'text',
+                  content: event.content,
+                });
+              }
+              break;
+
+            case 'tool_start':
               this.emit('lead:stream', {
-                type: 'text',
-                content: event.content,
+                type: 'tool_start',
+                toolName: event.toolName,
+                toolInput: event.toolInput,
               });
-            }
-            break;
 
-          case 'tool_start':
-            this.emit('lead:stream', {
-              type: 'tool_start',
-              toolName: event.toolName,
-              toolInput: event.toolInput,
-            });
+              // 检测关键阶段
+              if (event.toolName === 'Glob' || event.toolName === 'Read' || event.toolName === 'Grep') {
+                this.emitLeadEvent('lead:exploring', {
+                  tool: event.toolName,
+                  input: event.toolInput,
+                });
+              } else if (event.toolName === 'DispatchWorker') {
+                this.emitLeadEvent('lead:dispatch', {
+                  taskId: (event.toolInput as any)?.taskId,
+                  brief: (event.toolInput as any)?.brief?.substring(0, 200),
+                });
+              } else if (event.toolName === 'Write' || event.toolName === 'Edit') {
+                this.emitLeadEvent('lead:executing', {
+                  tool: event.toolName,
+                  file: (event.toolInput as any)?.file_path || (event.toolInput as any)?.filePath,
+                });
+              }
+              break;
 
-            // 检测关键阶段
-            if (event.toolName === 'Glob' || event.toolName === 'Read' || event.toolName === 'Grep') {
-              this.emitLeadEvent('lead:exploring', {
-                tool: event.toolName,
-                input: event.toolInput,
+            case 'tool_end':
+              this.emit('lead:stream', {
+                type: 'tool_end',
+                toolName: event.toolName,
+                toolResult: event.toolResult,
+                toolError: event.toolError,
               });
-            } else if (event.toolName === 'DispatchWorker') {
-              this.emitLeadEvent('lead:dispatch', {
-                taskId: (event.toolInput as any)?.taskId,
-                brief: (event.toolInput as any)?.brief?.substring(0, 200),
-              });
-            } else if (event.toolName === 'Write' || event.toolName === 'Edit') {
-              this.emitLeadEvent('lead:executing', {
-                tool: event.toolName,
-                file: (event.toolInput as any)?.file_path || (event.toolInput as any)?.filePath,
-              });
-            }
-            break;
+              break;
 
-          case 'tool_end':
-            this.emit('lead:stream', {
-              type: 'tool_end',
-              toolName: event.toolName,
-              toolResult: event.toolResult,
-              toolError: event.toolError,
-            });
-            break;
-
-          case 'done':
-          case 'interrupted':
-            break;
+            case 'done':
+            case 'interrupted':
+              break;
+          }
         }
-      }
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      this.emitLeadEvent('lead:completed', {
-        success: false,
-        error: errorMsg,
-      });
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        loopDiedFromError = true;
+        console.error(`[LeadAgent] Loop 异常退出: ${errorMsg}`);
 
-      return {
-        success: false,
-        completedTasks: [],
-        failedTasks: [],
-        estimatedTokens: 0,
-        estimatedCost: 0,
-        durationMs: Date.now() - this.startTime,
-        summary: `LeadAgent 执行失败: ${errorMsg}`,
-        rawResponse: lastResponse || `LeadAgent 执行失败: ${errorMsg}`,
-        taskResults: this.taskResults,
-      };
+        this.emit('lead:stream', {
+          type: 'text',
+          content: `\n⚠️ [LeadAgent] 遇到错误: ${errorMsg}，检查是否需要自愈重启...\n`,
+        });
+      }
+
+      // v9.2: 检查是否需要自愈重启
+      // 条件：Loop 异常退出 + 还有未完成的任务 + 未超过重试次数
+      const hasPendingTasks = this.executionPlan?.tasks.some(
+        t => t.status === 'pending' || t.status === 'running'
+      );
+
+      if (loopDiedFromError && hasPendingTasks && selfHealAttempts < maxSelfHealRetries) {
+        selfHealAttempts++;
+        const delay = 2000 * Math.pow(2, selfHealAttempts - 1); // 2s, 4s, 8s
+        console.log(`[LeadAgent] 自愈重启 (${selfHealAttempts}/${maxSelfHealRetries}): 还有未完成的任务，${delay}ms 后以 resume 模式重启...`);
+
+        this.emit('lead:stream', {
+          type: 'text',
+          content: `\n🔄 [LeadAgent] 自愈重启 (${selfHealAttempts}/${maxSelfHealRetries})...\n`,
+        });
+
+        await new Promise(r => setTimeout(r, delay));
+
+        // 将卡在 running 的任务重置为 pending（直接修改共享的 executionPlan 对象）
+        // 不需要 emit 事件，LeadAgent 恢复后会通过 UpdateTaskPlan(start_task) 重新通知前端
+        if (this.executionPlan) {
+          for (const task of this.executionPlan.tasks) {
+            if (task.status === 'running') {
+              task.status = 'pending';
+              task.startedAt = undefined;
+            }
+          }
+        }
+
+        // 重建 ConversationLoop（旧的可能状态已损坏）
+        this.loop = new ConversationLoop({
+          model: this.config.model || this.swarmConfig.leadAgentModel || 'sonnet',
+          maxTurns: this.config.maxTurns || this.swarmConfig.leadAgentMaxTurns || 200,
+          verbose: false,
+          permissionMode: 'bypassPermissions',
+          workingDir: this.projectPath,
+          systemPrompt: this.buildSystemPrompt(),
+          isSubAgent: true,
+          askUserHandler: this.config.askUserHandler as any,
+          allowedTools,
+        });
+
+        isResumeRun = true; // 下一轮使用恢复提示词
+        continue; // 重新进入 while 循环
+      }
+
+      // 正常退出或重试耗尽，跳出循环
+      if (loopDiedFromError && selfHealAttempts >= maxSelfHealRetries) {
+        console.error(`[LeadAgent] 自愈重试耗尽 (${maxSelfHealRetries} 次)，放弃重启`);
+        this.emit('lead:stream', {
+          type: 'text',
+          content: `\n❌ [LeadAgent] 自愈重试耗尽，无法继续执行\n`,
+        });
+      }
+      break;
     }
 
     // 执行完成

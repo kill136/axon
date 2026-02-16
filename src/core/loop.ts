@@ -2782,8 +2782,9 @@ Guidelines:
             streamStopReason = (event as any).stopReason || 'end_turn';
           } else if (event.type === 'error') {
             console.error(chalk.red(`[Loop] Stream error: ${event.error}`));
-            yield { type: 'tool_end', toolError: event.error };
-            break;
+            // v9.2: 将 stream error event 抛出为异常，复用 catch 块的重试逻辑
+            // 之前此处直接 break 会绕过重试机制，导致 LeadAgent 因暂时性网络错误直接死亡
+            throw new Error(event.error as string);
           }
         }
       } catch (streamError: any) {

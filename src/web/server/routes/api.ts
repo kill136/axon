@@ -10,6 +10,7 @@ import { authManager } from '../auth-manager.js';
 import { CheckpointManager } from '../checkpoint-manager.js';
 import blueprintApiRouter from './blueprint-api.js';
 import agentApiRouter from './agent-api.js';
+import fileApiRouter from './file-api.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
