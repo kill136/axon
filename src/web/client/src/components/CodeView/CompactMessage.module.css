@@ -1,0 +1,268 @@
+/* 消息容器 */
+.message {
+  font-size: 13px;
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+
+.message.user {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.message.assistant {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.message.system {
+  display: flex;
+  justify-content: center;
+  opacity: 0.7;
+}
+
+/* 内容区域 */
+.content {
+  max-width: 80%;
+}
+
+.message.user .content {
+  background: var(--bg-tertiary, #1a1a1f);
+  padding: 8px 12px;
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.message.assistant .content {
+  padding: 4px 0;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.message.system .content {
+  padding: 4px 8px;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 12px;
+}
+
+/* 文本内容段落间距 */
+.content :global(.message-content) p {
+  margin: 8px 0;
+}
+
+.content :global(.message-content) p:first-child {
+  margin-top: 0;
+}
+
+.content :global(.message-content) p:last-child {
+  margin-bottom: 0;
+}
+
+/* 代码预览 */
+.codePreview {
+  margin: 8px 0;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+
+.codeHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  background: rgba(0, 0, 0, 0.2);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.codeLang {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  font-family: 'JetBrains Mono', monospace;
+  text-transform: uppercase;
+}
+
+.codeOpenBtn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  font-size: 11px;
+  color: #6366f1;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  font-family: 'Inter', sans-serif;
+  transition: background 0.15s;
+}
+
+.codeOpenBtn:hover {
+  background: rgba(99, 102, 241, 0.1);
+}
+
+.codeContent {
+  margin: 0;
+  padding: 8px;
+  font-size: 12px;
+  font-family: 'JetBrains Mono', monospace;
+  max-height: 60px;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.codeContent code {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.codeExpand {
+  padding: 4px 8px;
+  background: rgba(0, 0, 0, 0.2);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  text-align: center;
+}
+
+.codeExpand button {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-family: 'Inter', sans-serif;
+  transition: color 0.15s;
+}
+
+.codeExpand button:hover {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+/* 工具调用 */
+.toolUse {
+  margin: 6px 0;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+}
+
+.toolHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.15s, background 0.15s;
+}
+
+.toolHeader:hover {
+  color: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.toolStatus {
+  font-size: 10px;
+  min-width: 12px;
+  text-align: center;
+}
+
+.toolName {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 500;
+}
+
+.toolPath {
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.toolExpandIcon,
+.toolExpandIconOpen {
+  margin-left: auto;
+  transition: transform 0.2s;
+}
+
+.toolExpandIconOpen {
+  transform: rotate(180deg);
+}
+
+.toolDetails {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.toolSection {
+  margin-bottom: 8px;
+}
+
+.toolSection:last-child {
+  margin-bottom: 0;
+}
+
+.toolSectionTitle {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  margin-bottom: 4px;
+  font-family: 'Inter', sans-serif;
+}
+
+.toolJson {
+  margin: 0;
+  padding: 6px;
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 3px;
+  color: rgba(255, 255, 255, 0.7);
+  overflow-x: auto;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+/* 思考块 */
+.thinking {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.4);
+  font-style: italic;
+}
+
+/* 内联信息（blueprint, design_image 等） */
+.inlineInfo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  margin: 6px 0;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+  border-left: 2px solid #6366f1;
+}
+
+.inlineInfo svg {
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+
+.inlineInfo span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+  .content {
+    max-width: 90%;
+  }
+}
