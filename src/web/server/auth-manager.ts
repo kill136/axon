@@ -4,6 +4,7 @@
  */
 
 import { configManager } from '../../config/index.js';
+import { getAuth } from '../../auth/index.js';
 import type { AuthStatus } from '../shared/types.js';
 import Anthropic from '@anthropic-ai/sdk';
 
@@ -33,6 +34,16 @@ export class AuthManager {
       return {
         authenticated: true,
         type: 'api_key',
+        provider: this.getProvider(),
+      };
+    }
+
+    // 检查是否通过 initAuth() 有内置认证（如内置代理配置）
+    const coreAuth = getAuth();
+    if (coreAuth && (coreAuth.apiKey || coreAuth.authToken || coreAuth.accessToken)) {
+      return {
+        authenticated: true,
+        type: coreAuth.type === 'oauth' ? 'oauth' : 'api_key',
         provider: this.getProvider(),
       };
     }

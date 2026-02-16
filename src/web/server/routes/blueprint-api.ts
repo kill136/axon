@@ -16,7 +16,7 @@ import * as fs from 'fs';
 import * as fsPromises from 'fs/promises';
 import * as crypto from 'crypto';
 import * as os from 'os';
-import { spawn } from 'child_process';
+import { spawn, execSync } from 'child_process';
 import { LRUCache } from 'lru-cache';
 import { geminiImageService } from '../services/gemini-image-service.js';
 
@@ -4221,6 +4221,7 @@ router.post('/projects/open', (req: Request, res: Response) => {
 /**
  * POST /projects/browse
  * 打开系统原生的文件夹选择对话框
+ * Linux 上如果没有可用的 GUI 对话框工具，返回 noGui 标识
  */
 router.post('/projects/browse', async (req: Request, res: Response) => {
   try {
@@ -4229,6 +4230,7 @@ router.post('/projects/browse', async (req: Request, res: Response) => {
     let args: string[];
 
     if (platform === 'win32') {
+      // Windows: 使用 PowerShell
       const psScript = `
 Add-Type -AssemblyName System.Windows.Forms
 $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
@@ -4241,11 +4243,55 @@ if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
       cmd = 'powershell';
       args = ['-NoProfile', '-NonInteractive', '-Command', psScript];
     } else if (platform === 'darwin') {
+      // macOS: 使用 osascript
       cmd = 'osascript';
       args = ['-e', 'POSIX path of (choose folder with prompt "选择项目文件夹")'];
     } else {
-      cmd = 'zenity';
-      args = ['--file-selection', '--directory', '--title=选择项目文件夹'];
+      // Linux: 检查是否有可用的 GUI 对话框工具
+      // 1. 检查 DISPLAY 或 WAYLAND_DISPLAY 环境变量
+      const hasDisplay = !!process.env.DISPLAY || !!process.env.WAYLAND_DISPLAY;
+      
+      if (!hasDisplay) {
+        console.log('[POST /projects/browse] Linux 环境无 DISPLAY，回退到 Web 端目录浏览器');
+        return res.json({
+          success: true,
+          data: { noGui: true },
+        });
+      }
+
+      // 2. 检查 zenity 或 kdialog 是否可用（使用同步方式）
+      let dialogTool: string | null = null;
+      
+      try {
+        // 尝试 zenity
+        execSync('which zenity', { stdio: 'ignore' });
+        dialogTool = 'zenity';
+      } catch {
+        // zenity 不可用，尝试 kdialog
+        try {
+          execSync('which kdialog', { stdio: 'ignore' });
+          dialogTool = 'kdialog';
+        } catch {
+          // kdialog 也不可用
+        }
+      }
+
+      if (!dialogTool) {
+        console.log('[POST /projects/browse] Linux 环境未安装 zenity 或 kdialog，回退到 Web 端目录浏览器');
+        return res.json({
+          success: true,
+          data: { noGui: true },
+        });
+      }
+
+      // 设置对应工具的命令参数
+      if (dialogTool === 'kdialog') {
+        cmd = 'kdialog';
+        args = ['--getexistingdirectory', os.homedir(), '--title', '选择项目文件夹'];
+      } else {
+        cmd = 'zenity';
+        args = ['--file-selection', '--directory', '--title=选择项目文件夹'];
+      }
     }
 
     const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -4301,6 +4347,127 @@ if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
     });
   } catch (error: any) {
     console.error('[POST /projects/browse]', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /projects/list-dirs
+ * 列出指定路径下的所有子目录（用于 Web 端目录浏览器）
+ */
+router.post('/projects/list-dirs', async (req: Request, res: Response) => {
+  try {
+    const { path: dirPath, showHidden = false } = req.body;
+    const platform = os.platform();
+
+    let targetPath: string;
+
+    // 如果未指定路径，返回默认起始路径
+    if (!dirPath) {
+      if (platform === 'win32') {
+        // Windows: 返回所有盘符
+        const drives: Array<{ name: string; path: string }> = [];
+        const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        
+        for (const letter of letters) {
+          const drivePath = `${letter}:\\`;
+          try {
+            await fsPromises.access(drivePath);
+            drives.push({ name: `${letter}:`, path: drivePath });
+          } catch {
+            // 盘符不存在，跳过
+          }
+        }
+
+        return res.json({
+          success: true,
+          data: {
+            currentPath: '',
+            parentPath: null,
+            dirs: drives,
+          },
+        });
+      } else {
+        // Linux/macOS: 使用 HOME 目录作为起始路径
+        targetPath = os.homedir();
+      }
+    } else {
+      targetPath = dirPath;
+    }
+
+    // 检查路径是否存在
+    if (!fs.existsSync(targetPath)) {
+      return res.status(400).json({
+        success: false,
+        error: '路径不存在',
+      });
+    }
+
+    // 检查是否是目录
+    const stat = await fsPromises.stat(targetPath);
+    if (!stat.isDirectory()) {
+      return res.status(400).json({
+        success: false,
+        error: '路径不是目录',
+      });
+    }
+
+    // 读取目录内容
+    let entries: string[];
+    try {
+      entries = await fsPromises.readdir(targetPath);
+    } catch (error: any) {
+      // 无权限访问
+      return res.status(403).json({
+        success: false,
+        error: '无权限访问此目录',
+      });
+    }
+
+    // 过滤并收集目录信息
+    const dirs: Array<{ name: string; path: string }> = [];
+
+    for (const entry of entries) {
+      // 隐藏以 . 开头的目录（除非 showHidden 为 true）
+      if (!showHidden && entry.startsWith('.')) {
+        continue;
+      }
+
+      const fullPath = path.join(targetPath, entry);
+
+      try {
+        const entryStat = await fsPromises.stat(fullPath);
+        if (entryStat.isDirectory()) {
+          dirs.push({
+            name: entry,
+            path: fullPath,
+          });
+        }
+      } catch {
+        // 跳过无法访问的目录
+        continue;
+      }
+    }
+
+    // 按名称排序（不区分大小写）
+    dirs.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+
+    // 计算父目录路径
+    const parentPath = path.dirname(targetPath);
+    const isRoot = platform === 'win32' 
+      ? /^[A-Z]:\\$/i.test(targetPath)
+      : targetPath === '/';
+
+    res.json({
+      success: true,
+      data: {
+        currentPath: targetPath,
+        parentPath: isRoot ? null : parentPath,
+        dirs,
+      },
+    });
+  } catch (error: any) {
+    console.error('[POST /projects/list-dirs]', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });

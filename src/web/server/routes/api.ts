@@ -1061,10 +1061,40 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
   // ============ 认证管理API ============
 
   // 获取认证状态
-  app.get('/api/auth/status', (req: Request, res: Response) => {
+  app.get('/api/auth/status', async (req: Request, res: Response) => {
     try {
-      const status = authManager.getAuthStatus();
-      res.json({ status });
+      // 使用 getAuth() + isAuthenticated() 与 auth.ts 保持一致
+      const { getAuth, isAuthenticated } = await import('../../../auth/index.js');
+      const { isDemoMode } = await import('../../../utils/env-check.js');
+      
+      const auth = getAuth();
+      const authenticated = isAuthenticated();
+
+      // 如果是内置 API 配置，返回未认证状态
+      if (auth?.isBuiltin) {
+        return res.json({
+          authenticated: false,
+          type: 'builtin',
+        });
+      }
+
+      if (!authenticated || !auth) {
+        return res.json({
+          authenticated: false,
+        });
+      }
+
+      const demoMode = isDemoMode();
+
+      res.json({
+        authenticated: true,
+        type: auth.type,
+        accountType: auth.accountType,
+        email: demoMode ? undefined : auth.email,
+        expiresAt: auth.expiresAt,
+        scopes: auth.scopes || auth.scope,
+        isDemoMode: demoMode,
+      });
     } catch (error) {
       console.error('[API] 获取认证状态失败:', error);
       res.status(500).json({

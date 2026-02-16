@@ -3,6 +3,7 @@ import App from './App';
 import SwarmConsole from './pages/SwarmConsole/index.tsx';
 import BlueprintPage from './pages/BlueprintPage';
 import TopNavBar from './components/swarm/TopNavBar';
+import { AuthDialog } from './components/AuthDialog';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ProjectProvider, useProject } from './contexts/ProjectContext';
 import { LanguageProvider } from './i18n';
@@ -19,6 +20,8 @@ function RootContent() {
   const [swarmBlueprintId, setSwarmBlueprintId] = useState<string | null>(null);
   const [codeViewActive, setCodeViewActive] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showAuthDialog, setShowAuthDialog] = useState(false);
+  const [authRefreshKey, setAuthRefreshKey] = useState(0);
 
   // 来自 App 的会话数据（通过回调上报）
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -112,7 +115,9 @@ function RootContent() {
         codeViewActive={codeViewActive}
         onToggleCodeView={toggleCodeView}
         connected={connected}
+        onLoginClick={() => setShowAuthDialog(true)}
         onSettingsClick={() => setShowSettings(true)}
+        authRefreshKey={authRefreshKey}
         // 项目
         currentProject={projectState.currentProject}
         onProjectChange={handleProjectChange}
@@ -159,6 +164,11 @@ function RootContent() {
           </ErrorBoundary>
         </div>
       </div>
+      <AuthDialog
+        isOpen={showAuthDialog}
+        onClose={() => setShowAuthDialog(false)}
+        onSuccess={() => setAuthRefreshKey(prev => prev + 1)}
+      />
     </div>
   );
 }

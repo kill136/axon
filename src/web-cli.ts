@@ -10,10 +10,16 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { fileURLToPath } from 'url';
+
+// 项目根目录（基于本文件位置，而非 cwd）
+const __filename_resolved = fileURLToPath(import.meta.url);
+const __dirname_resolved = path.dirname(__filename_resolved);
+const PROJECT_ROOT = path.resolve(__dirname_resolved, '..');
 
 // 手动加载 .env 文件（不依赖 dotenv 包）
 function loadEnvFile() {
-  const envPath = path.join(process.cwd(), '.env');
+  const envPath = path.join(PROJECT_ROOT, '.env');
   if (fs.existsSync(envPath)) {
     const content = fs.readFileSync(envPath, 'utf-8');
     for (const line of content.split('\n')) {
@@ -46,7 +52,7 @@ program
   .description('Claude Code WebUI 服务器')
   .version(VERSION_BASE)
   .option('-p, --port <port>', '服务器端口', '3456')
-  .option('-H, --host <host>', '服务器主机', process.env.CLAUDE_WEB_HOST || '127.0.0.1')
+  .option('-H, --host <host>', '服务器主机', process.env.CLAUDE_WEB_HOST || '0.0.0.0')
   .option('-m, --model <model>', '默认模型 (opus/sonnet/haiku)', 'sonnet')
   .option('-d, --dir <directory>', '工作目录', process.cwd())
   .option('--ngrok', '启用 ngrok 公网隧道 (需要 NGROK_AUTHTOKEN 环境变量)', false)
@@ -104,7 +110,7 @@ async function runEvolveMode(options: any) {
 
   // 查找 tsx 可执行路径，避免通过 npx + shell 中转（Windows 上退出码不可靠）
   function findTsxPath(): string {
-    const nodeModulesBin = path.join(process.cwd(), 'node_modules', '.bin', 'tsx');
+    const nodeModulesBin = path.join(PROJECT_ROOT, 'node_modules', '.bin', 'tsx');
     // Windows 上 .bin 下有 tsx.cmd
     if (process.platform === 'win32') {
       const cmdPath = nodeModulesBin + '.cmd';
@@ -118,8 +124,8 @@ async function runEvolveMode(options: any) {
   function startChild(): void {
     printBanner(true, restartCount);
 
-    // 构建子进程参数：去掉 --evolve，加上原始参数
-    const childArgs = ['src/web-cli.ts'];
+    // 构建子进程参数：去掉 --evolve，加上原始参数（使用绝对路径）
+    const childArgs = [path.join(PROJECT_ROOT, 'src/web-cli.ts')];
     if (options.port) childArgs.push('-p', options.port);
     if (options.host) childArgs.push('-H', options.host);
     if (options.model) childArgs.push('-m', options.model);

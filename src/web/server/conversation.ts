@@ -587,6 +587,9 @@ export class ConversationManager {
         config.authToken = oauthToken;
       } else if (auth.oauthApiKey) {
         config.apiKey = auth.oauthApiKey;
+      } else if (oauthToken) {
+        // Fallback: 内置代理等场景，没有 scopes 但有 authToken
+        config.authToken = oauthToken;
       }
     }
   }

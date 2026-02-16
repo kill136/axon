@@ -33,6 +33,7 @@ export function OAuthLogin({ onSuccess, onError }: OAuthLoginProps) {
   const [authId, setAuthId] = useState<string>('');
   const [authCode, setAuthCode] = useState<string>('');
   const [selectedAccountType, setSelectedAccountType] = useState<AccountType | null>(null);
+  const [authUrl, setAuthUrl] = useState<string>('');
 
   /**
    * 启动 OAuth 登录流程
@@ -75,7 +76,7 @@ export function OAuthLogin({ onSuccess, onError }: OAuthLoginProps) {
         setStatus(t('auth.oauth.clickToAuth'));
         setPhase('authorize');
         // 存储 authUrl 供用户手动点击
-        (window as any).__authUrl = authUrl;
+        setAuthUrl(authUrl);
         setLoading(false);
         return;
       }
@@ -144,6 +145,7 @@ export function OAuthLogin({ onSuccess, onError }: OAuthLoginProps) {
     setPhase('select');
     setAuthId('');
     setAuthCode('');
+    setAuthUrl('');
     setStatus('');
     setStatusIsError(false);
     setSelectedAccountType(null);
@@ -153,7 +155,6 @@ export function OAuthLogin({ onSuccess, onError }: OAuthLoginProps) {
    * 手动打开授权链接
    */
   const handleOpenAuthUrl = () => {
-    const authUrl = (window as any).__authUrl;
     if (authUrl) {
       window.open(authUrl, '_blank');
       setPhase('input-code');

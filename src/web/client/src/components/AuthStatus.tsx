@@ -17,9 +17,10 @@ interface AuthInfo {
 
 interface AuthStatusProps {
   onLoginClick: () => void;
+  refreshKey?: number;
 }
 
-export function AuthStatus({ onLoginClick }: AuthStatusProps) {
+export function AuthStatus({ onLoginClick, refreshKey }: AuthStatusProps) {
   const { t } = useLanguage();
   const [authInfo, setAuthInfo] = useState<AuthInfo>({ authenticated: false });
   const [loading, setLoading] = useState(true);
@@ -45,6 +46,13 @@ export function AuthStatus({ onLoginClick }: AuthStatusProps) {
     return () => clearInterval(interval);
   }, []);
 
+  // 监听 refreshKey 变化，立即刷新认证状态
+  useEffect(() => {
+    if (refreshKey !== undefined && refreshKey > 0) {
+      checkAuthStatus();
+    }
+  }, [refreshKey]);
+
   const handleLogout = async () => {
     try {
       const response = await fetch('/api/auth/oauth/logout', {
@@ -67,7 +75,8 @@ export function AuthStatus({ onLoginClick }: AuthStatusProps) {
     );
   }
 
-  if (authInfo.authenticated) {
+  // 内置 API 配置不应显示为已登录
+  if (authInfo.authenticated && authInfo.type !== 'builtin') {
     return (
       <div className="auth-status authenticated">
         <div className="auth-user-info">

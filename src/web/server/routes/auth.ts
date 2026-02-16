@@ -95,176 +95,10 @@ router.post('/start', async (req: Request, res: Response) => {
 });
 
 /**
- * GET /api/auth/oauth/callback
- * OAuth回调处理
+ * 注意：原有的 GET /api/auth/oauth/callback 路由已被移除
+ * 因为实际使用的是官方的 redirect_uri，用户通过手动输入授权码完成流程
+ * 这个路由永远不会被触发
  */
-router.get('/callback', async (req: Request, res: Response) => {
-  try {
-    const { code, state, error: oauthError } = req.query;
-
-    // 处理OAuth错误
-    if (oauthError) {
-      return res.send(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="UTF-8">
-          <title>OAuth Error</title>
-          <style>
-            body { font-family: system-ui; padding: 40px; text-align: center; }
-            .error { color: #d32f2f; font-size: 18px; margin: 20px 0; }
-            button { padding: 12px 24px; font-size: 16px; cursor: pointer; }
-          </style>
-        </head>
-        <body>
-          <h1>❌ OAuth Failed</h1>
-          <div class="error">${oauthError}</div>
-          <button onclick="window.close()">Close Window</button>
-        </body>
-        </html>
-      `);
-    }
-
-    // 验证参数
-    if (!code || !state || typeof state !== 'string') {
-      return res.status(400).send('Invalid OAuth callback parameters');
-    }
-
-    // 解析state
-    const [authId, expectedState] = state.split(':');
-    if (!authId || !expectedState) {
-      return res.status(400).send('Invalid state parameter');
-    }
-
-    // 获取OAuth会话
-    const session = oauthSessions.get(authId);
-    if (!session) {
-      return res.status(400).send('OAuth session not found or expired');
-    }
-
-    // 验证state
-    if (session.state !== expectedState) {
-      return res.status(400).send('Invalid state parameter');
-    }
-
-    // 构建回调URL（需要与授权时一致）
-    const protocol = req.protocol;
-    const host = req.get('host');
-    const callbackUrl = `${protocol}://${host}/api/auth/oauth/callback`;
-
-    // 获取OAuth配置并覆盖redirectUri
-    const oauthConfig = {
-      ...OAUTH_ENDPOINTS[session.accountType],
-      redirectUri: callbackUrl,
-    };
-
-    // 交换authorization code为access token
-    const tokenResponse = await exchangeAuthorizationCode(
-      oauthConfig,
-      code as string,
-      session.codeVerifier,
-      expectedState
-    );
-
-    // 创建认证配置
-    const authConfig: AuthConfig = {
-      type: 'oauth',
-      accountType: session.accountType,
-      authToken: tokenResponse.access_token,
-      accessToken: tokenResponse.access_token,
-      refreshToken: tokenResponse.refresh_token,
-      expiresAt: Date.now() + tokenResponse.expires_in * 1000,
-      scope: tokenResponse.scope?.split(' ') || oauthConfig.scope,
-      scopes: tokenResponse.scope?.split(' ') || oauthConfig.scope,
-    };
-
-    // 保存认证信息到文件
-    saveAuthSecure(authConfig);
-
-    // 更新会话状态
-    session.status = 'completed';
-    session.authConfig = authConfig;
-
-    // 返回成功页面
-    res.send(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8">
-        <title>OAuth Success</title>
-        <style>
-          body {
-            font-family: system-ui;
-            padding: 40px;
-            text-align: center;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-          }
-          .success { font-size: 72px; margin: 20px 0; }
-          h1 { font-size: 32px; margin: 20px 0; }
-          p { font-size: 18px; margin: 10px 0; opacity: 0.9; }
-          button {
-            margin-top: 30px;
-            padding: 12px 32px;
-            font-size: 16px;
-            cursor: pointer;
-            background: white;
-            color: #667eea;
-            border: none;
-            border-radius: 8px;
-            font-weight: 600;
-          }
-          button:hover { transform: scale(1.05); }
-        </style>
-      </head>
-      <body>
-        <div class="success">✅</div>
-        <h1>Login Successful!</h1>
-        <p>You have successfully authenticated with Claude Code.</p>
-        <p>You can now close this window and return to the application.</p>
-        <button onclick="window.close()">Close Window</button>
-        <script>
-          // 自动关闭窗口（2秒后）
-          setTimeout(() => window.close(), 2000);
-        </script>
-      </body>
-      </html>
-    `);
-  } catch (error) {
-    console.error('[OAuth] Callback error:', error);
-
-    // 更新会话状态为失败
-    const { state } = req.query;
-    if (state && typeof state === 'string') {
-      const [authId] = state.split(':');
-      const session = oauthSessions.get(authId);
-      if (session) {
-        session.status = 'failed';
-        session.error = error instanceof Error ? error.message : 'Unknown error';
-      }
-    }
-
-    res.status(500).send(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8">
-        <title>OAuth Error</title>
-        <style>
-          body { font-family: system-ui; padding: 40px; text-align: center; }
-          .error { color: #d32f2f; font-size: 18px; margin: 20px 0; }
-          button { padding: 12px 24px; font-size: 16px; cursor: pointer; }
-        </style>
-      </head>
-      <body>
-        <h1>❌ OAuth Failed</h1>
-        <div class="error">${error instanceof Error ? error.message : 'Unknown error'}</div>
-        <button onclick="window.close()">Close Window</button>
-      </body>
-      </html>
-    `);
-  }
-});
 
 /**
  * GET /api/auth/oauth/status/:authId
@@ -392,10 +226,30 @@ router.post('/submit-code', async (req: Request, res: Response) => {
  * GET /api/auth/status
  * 获取当前认证状态
  */
-router.get('/status', (req: Request, res: Response) => {
+router.get('/status', async (req: Request, res: Response) => {
   // 直接获取当前认证状态（已经在服务器启动时初始化了）
-  const auth = getAuth();
+  let auth = getAuth();
   const authenticated = isAuthenticated();
+
+  // 自动刷新即将过期的 token（5分钟内过期）
+  if (auth && auth.type === 'oauth' && auth.expiresAt && auth.refreshToken) {
+    const fiveMinutesLater = Date.now() + 5 * 60 * 1000;
+    if (auth.expiresAt < fiveMinutesLater) {
+      try {
+        console.log('[OAuth] Token expiring soon, attempting refresh...');
+        const { refreshTokenAsync } = await import('../../../auth/index.js');
+        const refreshed = await refreshTokenAsync(auth);
+        if (refreshed) {
+          console.log('[OAuth] Token refreshed successfully');
+          auth = refreshed;
+        } else {
+          console.log('[OAuth] Token refresh failed');
+        }
+      } catch (error) {
+        console.error('[OAuth] Token refresh error:', error);
+      }
+    }
+  }
 
   // 调试日志
   console.log('[OAuth] Status check:', {
@@ -409,6 +263,14 @@ router.get('/status', (req: Request, res: Response) => {
     now: Date.now(),
     expired: auth?.expiresAt ? auth.expiresAt < Date.now() : 'no-expiry',
   });
+
+  // 如果是内置 API 配置，返回未认证状态（不应显示为已登录）
+  if (auth?.isBuiltin) {
+    return res.json({
+      authenticated: false,
+      type: 'builtin',
+    });
+  }
 
   if (!authenticated || !auth) {
     return res.json({
@@ -438,9 +300,16 @@ router.get('/status', (req: Request, res: Response) => {
  * POST /api/auth/logout
  * 登出
  */
-router.post('/logout', (req: Request, res: Response) => {
+router.post('/logout', async (req: Request, res: Response) => {
   try {
     logout();
+    
+    // 额外清理 configManager 中的 OAuth 配置
+    const { configManager } = await import('../../../config/index.js');
+    configManager.set('oauthToken', undefined as any);
+    configManager.set('oauthAccount', undefined as any);
+    configManager.set('oauthRefreshToken', undefined as any);
+    
     res.json({ success: true });
   } catch (error) {
     console.error('[OAuth] Logout error:', error);

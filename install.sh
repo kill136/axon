@@ -1,7 +1,7 @@
 #!/bin/bash
 # ============================================
 # Claude Code Open - One-Click Install Script
-# Usage: curl -fsSL https://raw.githubusercontent.com/kill136/claude-code-open/main/install.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/kill136/claude-code-open/private_web_ui/install.sh | bash
 # ============================================
 set -e
 
@@ -17,6 +17,7 @@ NC='\033[0m' # No Color
 REPO_URL="https://github.com/kill136/claude-code-open.git"
 DOCKER_IMAGE="wbj66/claude-code-open:latest"
 INSTALL_DIR="$HOME/.claude-code-open"
+NODE_MAJOR_REQUIRED=18
 
 print_banner() {
     echo -e "${CYAN}"
@@ -44,51 +45,217 @@ detect_platform() {
     info "Platform: $PLATFORM ($ARCH)"
 }
 
-# --- Check Node.js ---
-check_node() {
-    if command -v node &> /dev/null; then
-        NODE_VERSION=$(node -v | sed 's/v//')
-        NODE_MAJOR=$(echo "$NODE_VERSION" | cut -d. -f1)
-        if [ "$NODE_MAJOR" -ge 18 ]; then
-            HAS_NODE=true
-            success "Node.js v$NODE_VERSION detected"
-            return
-        else
-            warn "Node.js v$NODE_VERSION found, but >= 18 required"
-        fi
+# --- Detect Linux package manager ---
+detect_pkg_manager() {
+    if [ "$PLATFORM" != "linux" ]; then
+        PKG_MGR=""
+        return
     fi
-    HAS_NODE=false
-}
-
-# --- Check Docker ---
-check_docker() {
-    if command -v docker &> /dev/null; then
-        HAS_DOCKER=true
-        success "Docker detected"
+    if command -v dnf &> /dev/null; then
+        PKG_MGR="dnf"
+    elif command -v yum &> /dev/null; then
+        PKG_MGR="yum"
+    elif command -v apt-get &> /dev/null; then
+        PKG_MGR="apt"
+    elif command -v pacman &> /dev/null; then
+        PKG_MGR="pacman"
+    elif command -v apk &> /dev/null; then
+        PKG_MGR="apk"
     else
-        HAS_DOCKER=false
+        PKG_MGR=""
     fi
 }
 
-# --- Check Git ---
-check_git() {
+# --- Generic package install helper ---
+pkg_install() {
+    local packages="$*"
+    case "$PKG_MGR" in
+        dnf)    sudo dnf install -y $packages ;;
+        yum)    sudo yum install -y $packages ;;
+        apt)    sudo apt-get update -qq && sudo apt-get install -y $packages ;;
+        pacman) sudo pacman -S --noconfirm $packages ;;
+        apk)    sudo apk add $packages ;;
+        *)      return 1 ;;
+    esac
+}
+
+# ============================================
+# Dependency checks & auto-install
+# ============================================
+
+# --- Git ---
+ensure_git() {
     if command -v git &> /dev/null; then
-        HAS_GIT=true
         success "Git detected"
+        return
+    fi
+
+    warn "Git not found, installing..."
+    if [ "$PLATFORM" = "linux" ]; then
+        pkg_install git || error "Failed to install git. Run: sudo $PKG_MGR install git"
+    elif [ "$PLATFORM" = "macos" ]; then
+        # xcode-select installs git
+        xcode-select --install 2>/dev/null || true
+        until command -v git &>/dev/null; do sleep 3; done
+    fi
+    success "Git installed"
+}
+
+# --- C++ Build Tools ---
+ensure_build_tools() {
+    local need_install=false
+    if ! command -v g++ &> /dev/null && ! command -v c++ &> /dev/null && ! command -v clang++ &> /dev/null; then
+        need_install=true
+    fi
+    if ! command -v make &> /dev/null; then
+        need_install=true
+    fi
+
+    if [ "$need_install" = false ]; then
+        success "C++ build tools detected"
+        return
+    fi
+
+    warn "C++ build tools not found, installing..."
+    if [ "$PLATFORM" = "linux" ]; then
+        case "$PKG_MGR" in
+            dnf)    pkg_install gcc-c++ make ;;
+            yum)    pkg_install gcc-c++ make ;;
+            apt)    pkg_install build-essential ;;
+            pacman) pkg_install base-devel ;;
+            apk)    pkg_install build-base python3 ;;
+            *)      error "Cannot auto-install build tools. Please install g++ and make manually." ;;
+        esac
+    elif [ "$PLATFORM" = "macos" ]; then
+        xcode-select --install 2>/dev/null || true
+        until xcode-select -p &>/dev/null; do sleep 5; done
+    fi
+    success "C++ build tools installed"
+}
+
+# --- Node.js ---
+ensure_node() {
+    if command -v node &> /dev/null; then
+        local ver
+        ver=$(node -v | sed 's/v//')
+        local major
+        major=$(echo "$ver" | cut -d. -f1)
+        if [ "$major" -ge "$NODE_MAJOR_REQUIRED" ]; then
+            success "Node.js v$ver detected"
+            return
+        fi
+        warn "Node.js v$ver found, but >= $NODE_MAJOR_REQUIRED required. Upgrading..."
     else
-        HAS_GIT=false
+        warn "Node.js not found, installing..."
+    fi
+
+    if [ "$PLATFORM" = "linux" ]; then
+        install_node_linux
+    elif [ "$PLATFORM" = "macos" ]; then
+        install_node_macos
+    fi
+
+    # Reload PATH
+    export PATH="$HOME/.local/bin:$HOME/.nvm/versions/node/$(ls -1 "$HOME/.nvm/versions/node/" 2>/dev/null | tail -1)/bin:/usr/local/bin:/usr/bin:$PATH"
+
+    # Verify
+    if command -v node &> /dev/null; then
+        success "Node.js $(node -v) installed"
+    else
+        error "Node.js installation failed. Please install Node.js >= $NODE_MAJOR_REQUIRED manually: https://nodejs.org/"
     fi
 }
 
-# --- Create Desktop Shortcut (npm) ---
+install_node_linux() {
+    # Strategy 1: NodeSource repo (works on dnf/yum/apt)
+    if [ "$PKG_MGR" = "apt" ]; then
+        info "Installing Node.js via NodeSource (apt)..."
+        if ! command -v curl &> /dev/null; then
+            pkg_install curl ca-certificates
+        fi
+        curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+        sudo apt-get install -y nodejs
+        return
+    fi
+
+    if [ "$PKG_MGR" = "dnf" ] || [ "$PKG_MGR" = "yum" ]; then
+        info "Installing Node.js via NodeSource (rpm)..."
+        if ! command -v curl &> /dev/null; then
+            pkg_install curl
+        fi
+        curl -fsSL https://rpm.nodesource.com/setup_22.x | sudo bash -
+        sudo $PKG_MGR install -y nodejs
+        return
+    fi
+
+    if [ "$PKG_MGR" = "pacman" ]; then
+        info "Installing Node.js via pacman..."
+        pkg_install nodejs npm
+        return
+    fi
+
+    if [ "$PKG_MGR" = "apk" ]; then
+        info "Installing Node.js via apk..."
+        pkg_install nodejs npm
+        return
+    fi
+
+    # Fallback: nvm
+    install_node_via_nvm
+}
+
+install_node_macos() {
+    # Strategy 1: Homebrew
+    if command -v brew &> /dev/null; then
+        info "Installing Node.js via Homebrew..."
+        brew install node@22
+        brew link --overwrite node@22
+        return
+    fi
+
+    # Strategy 2: Official installer via pkg
+    info "Installing Node.js via official installer..."
+    local node_pkg="node-v22.14.0-darwin-${ARCH}.tar.gz"
+    if [ "$ARCH" = "arm64" ]; then
+        node_pkg="node-v22.14.0-darwin-arm64.tar.gz"
+    else
+        node_pkg="node-v22.14.0-darwin-x64.tar.gz"
+    fi
+
+    local tmp_dir
+    tmp_dir=$(mktemp -d)
+    curl -fsSL "https://nodejs.org/dist/v22.14.0/$node_pkg" -o "$tmp_dir/$node_pkg"
+    tar xzf "$tmp_dir/$node_pkg" -C "$tmp_dir"
+    local extracted
+    extracted=$(ls -d "$tmp_dir"/node-v22.* | head -1)
+    sudo cp -r "$extracted"/* /usr/local/
+    rm -rf "$tmp_dir"
+}
+
+install_node_via_nvm() {
+    info "Installing Node.js via nvm (fallback)..."
+    if ! command -v curl &> /dev/null; then
+        pkg_install curl || error "curl is required but cannot be installed"
+    fi
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+    export NVM_DIR="$HOME/.nvm"
+    # shellcheck source=/dev/null
+    [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+    nvm install 22
+    nvm use 22
+}
+
+# ============================================
+# Desktop shortcuts
+# ============================================
+
 create_desktop_shortcut_npm() {
     info "Creating desktop shortcut..."
 
     if [ "$PLATFORM" = "linux" ]; then
-        # Linux: Create .desktop file
         DESKTOP_DIR="$HOME/Desktop"
         if [ ! -d "$DESKTOP_DIR" ]; then
-            DESKTOP_DIR="$HOME/桌面"  # Chinese desktop name
+            DESKTOP_DIR="$HOME/桌面"
         fi
 
         if [ -d "$DESKTOP_DIR" ]; then
@@ -111,7 +278,6 @@ EOF
         fi
 
     elif [ "$PLATFORM" = "macos" ]; then
-        # macOS: Create .command file
         DESKTOP_DIR="$HOME/Desktop"
         if [ -d "$DESKTOP_DIR" ]; then
             SHORTCUT_FILE="$DESKTOP_DIR/Claude Code WebUI.command"
@@ -135,15 +301,13 @@ EOF
     fi
 }
 
-# --- Create Desktop Shortcut (Docker) ---
 create_desktop_shortcut_docker() {
     info "Creating desktop shortcut..."
 
     if [ "$PLATFORM" = "linux" ]; then
-        # Linux: Create .desktop file
         DESKTOP_DIR="$HOME/Desktop"
         if [ ! -d "$DESKTOP_DIR" ]; then
-            DESKTOP_DIR="$HOME/桌面"  # Chinese desktop name
+            DESKTOP_DIR="$HOME/桌面"
         fi
 
         if [ -d "$DESKTOP_DIR" ]; then
@@ -166,7 +330,6 @@ EOF
         fi
 
     elif [ "$PLATFORM" = "macos" ]; then
-        # macOS: Create .command file
         DESKTOP_DIR="$HOME/Desktop"
         if [ -d "$DESKTOP_DIR" ]; then
             SHORTCUT_FILE="$DESKTOP_DIR/Claude Code WebUI.command"
@@ -186,21 +349,18 @@ EOF
     fi
 }
 
-# --- Install via npm (from source) ---
+# ============================================
+# Install methods
+# ============================================
+
 install_npm() {
     info "Installing via npm (from source)..."
 
-    if [ "$HAS_GIT" = false ]; then
-        error "Git is required for npm installation. Please install git first."
-    fi
-
     # Clone or update repo
     if [ -d "$INSTALL_DIR" ]; then
-        # Check if it's a valid git repository
         if [ -d "$INSTALL_DIR/.git" ]; then
             info "Updating existing installation..."
             cd "$INSTALL_DIR"
-            # Reset local changes (e.g. package-lock.json modified by npm install)
             git checkout -- .
             git clean -fd
             git pull origin private_web_ui
@@ -262,33 +422,15 @@ install_npm() {
     npm link
 
     # Ensure ~/.local/bin is in PATH
-    if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
-        SHELL_RC=""
-        if [ -n "$ZSH_VERSION" ] || [ "$SHELL" = "/bin/zsh" ]; then
-            SHELL_RC="$HOME/.zshrc"
-        elif [ -n "$BASH_VERSION" ] || [ "$SHELL" = "/bin/bash" ]; then
-            SHELL_RC="$HOME/.bashrc"
-        fi
-
-        if [ -n "$SHELL_RC" ]; then
-            echo "" >> "$SHELL_RC"
-            echo '# Claude Code Open' >> "$SHELL_RC"
-            echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$SHELL_RC"
-            warn "Added ~/.local/bin to PATH in $SHELL_RC"
-            warn "Run: source $SHELL_RC  (or open a new terminal)"
-        else
-            warn "Please add ~/.local/bin to your PATH manually."
-        fi
-    fi
+    ensure_path_in_shellrc "$HOME/.local/bin"
 
     # Create desktop shortcut
     create_desktop_shortcut_npm
 
-    success "Installation complete via npm!"
+    success "Installation complete!"
     echo ""
     echo -e "  ${BOLD}Usage:${NC}"
 
-    # Check if commands are available in current shell
     if command -v claude &> /dev/null; then
         echo -e "    ${GREEN}claude${NC}                        # Interactive mode"
         echo -e "    ${GREEN}claude \"your prompt\"${NC}           # With prompt"
@@ -313,15 +455,12 @@ install_npm() {
     echo ""
 }
 
-# --- Install via Docker ---
 install_docker() {
     info "Installing via Docker..."
 
-    # Pull image
     info "Pulling Docker image: $DOCKER_IMAGE"
     docker pull "$DOCKER_IMAGE"
 
-    # Create wrapper script
     WRAPPER_DIR="$HOME/.local/bin"
     mkdir -p "$WRAPPER_DIR"
     WRAPPER="$WRAPPER_DIR/claude"
@@ -339,27 +478,8 @@ WRAPPER_EOF
 
     chmod +x "$WRAPPER"
 
-    # Ensure ~/.local/bin is in PATH
-    if [[ ":$PATH:" != *":$WRAPPER_DIR:"* ]]; then
-        SHELL_RC=""
-        if [ -n "$ZSH_VERSION" ] || [ "$SHELL" = "/bin/zsh" ]; then
-            SHELL_RC="$HOME/.zshrc"
-        elif [ -n "$BASH_VERSION" ] || [ "$SHELL" = "/bin/bash" ]; then
-            SHELL_RC="$HOME/.bashrc"
-        fi
+    ensure_path_in_shellrc "$WRAPPER_DIR"
 
-        if [ -n "$SHELL_RC" ]; then
-            echo "" >> "$SHELL_RC"
-            echo '# Claude Code Open' >> "$SHELL_RC"
-            echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$SHELL_RC"
-            warn "Added ~/.local/bin to PATH in $SHELL_RC"
-            warn "Run: source $SHELL_RC  (or open a new terminal)"
-        else
-            warn "Please add ~/.local/bin to your PATH manually."
-        fi
-    fi
-
-    # Create desktop shortcut
     create_desktop_shortcut_docker
 
     success "Installation complete via Docker!"
@@ -377,21 +497,50 @@ WRAPPER_EOF
     echo ""
 }
 
+# ============================================
+# Helpers
+# ============================================
+
+ensure_path_in_shellrc() {
+    local dir="$1"
+    if [[ ":$PATH:" == *":$dir:"* ]]; then
+        return
+    fi
+
+    SHELL_RC=""
+    if [ -n "$ZSH_VERSION" ] || [ "$SHELL" = "/bin/zsh" ]; then
+        SHELL_RC="$HOME/.zshrc"
+    elif [ -n "$BASH_VERSION" ] || [ "$SHELL" = "/bin/bash" ]; then
+        SHELL_RC="$HOME/.bashrc"
+    fi
+
+    if [ -n "$SHELL_RC" ]; then
+        # Avoid duplicate entries
+        if ! grep -q 'Claude Code Open' "$SHELL_RC" 2>/dev/null; then
+            echo "" >> "$SHELL_RC"
+            echo '# Claude Code Open' >> "$SHELL_RC"
+            echo "export PATH=\"$dir:\$PATH\"" >> "$SHELL_RC"
+        fi
+        warn "Added $dir to PATH in $SHELL_RC"
+        warn "Run: source $SHELL_RC  (or open a new terminal)"
+    else
+        warn "Please add $dir to your PATH manually."
+    fi
+}
+
 # --- Uninstall ---
 uninstall() {
     info "Uninstalling Claude Code Open..."
 
-    # Remove npm link
     if [ -d "$INSTALL_DIR" ]; then
         cd "$INSTALL_DIR" && npm unlink 2>/dev/null || true
         rm -rf "$INSTALL_DIR"
         success "Removed source directory"
     fi
 
-    # Remove Docker wrapper
     rm -f "$HOME/.local/bin/claude"
+    rm -f "$HOME/.local/bin/claude-web"
 
-    # Remove Docker image
     if command -v docker &> /dev/null; then
         docker rmi "$DOCKER_IMAGE" 2>/dev/null || true
         success "Removed Docker image"
@@ -400,7 +549,10 @@ uninstall() {
     success "Uninstall complete!"
 }
 
-# --- Main ---
+# ============================================
+# Main
+# ============================================
+
 main() {
     print_banner
 
@@ -411,42 +563,45 @@ main() {
     fi
 
     detect_platform
+    detect_pkg_manager
     echo ""
 
-    info "Checking dependencies..."
-    check_node
-    check_docker
-    check_git
+    # ---- Auto-install ALL dependencies ----
+    info "Checking & installing dependencies..."
     echo ""
 
-    # Decide install method
-    if [ "$HAS_NODE" = true ] && [ "$HAS_GIT" = true ]; then
-        if [ "$HAS_DOCKER" = true ]; then
-            echo -e "${BOLD}Select installation method:${NC}"
-            echo -e "  ${GREEN}1)${NC} npm (from source)  ${CYAN}[recommended]${NC}"
-            echo -e "  ${GREEN}2)${NC} Docker"
-            echo ""
-            read -p "Choice [1]: " choice < /dev/tty
-            choice="${choice:-1}"
-            case "$choice" in
-                2) install_docker ;;
-                *) install_npm ;;
-            esac
-        else
-            install_npm
-        fi
-    elif [ "$HAS_DOCKER" = true ]; then
-        info "Node.js >= 18 not found, using Docker installation."
-        install_docker
-    else
+    # 1. Git (needed for source install)
+    ensure_git
+
+    # 2. Build tools (needed for native modules)
+    ensure_build_tools
+
+    # 3. Node.js
+    ensure_node
+
+    echo ""
+
+    # ---- Check Docker availability for alternative install ----
+    HAS_DOCKER=false
+    if command -v docker &> /dev/null; then
+        HAS_DOCKER=true
+        success "Docker detected (optional)"
+    fi
+
+    # ---- Install ----
+    if [ "$HAS_DOCKER" = true ]; then
+        echo -e "${BOLD}Select installation method:${NC}"
+        echo -e "  ${GREEN}1)${NC} npm (from source)  ${CYAN}[recommended]${NC}"
+        echo -e "  ${GREEN}2)${NC} Docker"
         echo ""
-        error "Neither Node.js (>= 18) nor Docker found.
-
-  Please install one of:
-    - Node.js >= 18: https://nodejs.org/
-    - Docker:        https://docs.docker.com/get-docker/
-
-  Then re-run this script."
+        read -p "Choice [1]: " choice < /dev/tty
+        choice="${choice:-1}"
+        case "$choice" in
+            2) install_docker ;;
+            *) install_npm ;;
+        esac
+    else
+        install_npm
     fi
 }
 

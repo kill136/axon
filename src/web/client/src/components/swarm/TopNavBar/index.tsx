@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import styles from './TopNavBar.module.css';
 import ProjectSelector from '../ProjectSelector/ProjectSelector';
+import { AuthStatus } from '../../AuthStatus';
 import { useLanguage } from '../../../i18n';
 
 interface SessionItem {
@@ -29,6 +30,10 @@ export interface TopNavBarProps {
   onToggleCodeView?: () => void;
   /** 连接状态 */
   connected?: boolean;
+  /** 点击登录按钮 */
+  onLoginClick?: () => void;
+  /** 认证刷新键（变化时触发刷新） */
+  authRefreshKey?: number;
   // 项目相关
   currentProject?: ProjectItem | null;
   onProjectChange?: (project: ProjectItem) => void;
@@ -99,6 +104,7 @@ const SettingsIcon = () => (
 export default function TopNavBar({
   currentPage, onPageChange, onSettingsClick,
   codeViewActive, onToggleCodeView, connected,
+  onLoginClick, authRefreshKey,
   currentProject, onProjectChange, onOpenFolder, onProjectRemove,
   sessions = [], currentSessionId, onSessionSelect, onNewSession,
   onSessionDelete, onSessionRename,
@@ -262,8 +268,9 @@ export default function TopNavBar({
           </div>
         </div>
 
-        {/* 右侧：连接状态 + 设置按钮 */}
+        {/* 右侧：认证状态 + 连接状态 + 设置按钮 */}
         <div className={styles.contextRight}>
+          <AuthStatus onLoginClick={onLoginClick ?? (() => {})} refreshKey={authRefreshKey} />
           {connected !== undefined && (
             <span className={`${styles.connectionDot} ${connected ? styles.connected : ''}`} title={connected ? t('nav.connected') : t('nav.disconnected')} />
           )}

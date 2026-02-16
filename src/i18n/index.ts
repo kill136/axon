@@ -40,10 +40,11 @@ function detectSystemLocale(): string {
 
 /**
  * 初始化 i18n
- * 优先级：language 参数 > 环境变量 > 系统 locale > 默认 en
+ * 优先级：language 参数 > 默认 en
+ * 只有用户在 settings.json 中显式配置了 language 才会切换语言
  */
 export async function initI18n(language?: string): Promise<void> {
-  const locale = language ? resolveLocale(language) : detectSystemLocale();
+  const locale = language ? resolveLocale(language) : 'en';
 
   await i18next.init({
     lng: locale,

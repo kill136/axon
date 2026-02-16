@@ -1,29 +1,27 @@
-/* Auth Status Component Styling */
+/* Auth Status Component Styling - 导航栏紧凑模式 */
 
 .auth-status {
-  padding: 12px 16px;
-  border-top: 1px solid var(--border-color);
-  background: var(--glass-panel);
-  backdrop-filter: blur(var(--blur-amount));
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .auth-status.loading {
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 16px;
 }
 
 .spinner-small {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   border: 2px solid var(--border-color);
   border-top-color: var(--accent-primary);
   border-radius: 50%;
-  animation: spin 0.8s linear infinite;
+  animation: auth-spin 0.8s linear infinite;
 }
 
-@keyframes spin {
+@keyframes auth-spin {
   to {
     transform: rotate(360deg);
   }
@@ -33,25 +31,21 @@
 .auth-status.authenticated {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  background: var(--glass-panel);
-  border-top: 1px solid var(--border-color);
+  gap: 8px;
 }
 
 .auth-user-info {
   display: flex;
   align-items: center;
-  gap: 12px;
-  flex: 1;
+  gap: 6px;
   min-width: 0;
 }
 
 .user-avatar {
-  font-size: 20px;
+  font-size: 14px;
   flex-shrink: 0;
-  width: 32px;
-  height: 32px;
+  width: 24px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -62,35 +56,39 @@
 }
 
 .user-details {
-  flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .user-name {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  max-width: 100px;
+  line-height: 1.2;
 }
 
 .user-type {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--text-muted);
-  margin-top: 2px;
+  line-height: 1.2;
 }
 
 .btn-logout-small {
-  padding: 6px 10px;
-  font-size: 12px;
+  padding: 3px 6px;
+  font-size: 11px;
   background: transparent;
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
+  border-radius: 4px;
   cursor: pointer;
   transition: all 0.2s;
   flex-shrink: 0;
   color: var(--text-muted);
+  line-height: 1;
 }
 
 .btn-logout-small:hover {
@@ -103,45 +101,42 @@
 .auth-status.not-authenticated {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 16px;
-  background: var(--glass-panel);
-  border-top: 1px solid var(--border-color);
+  gap: 8px;
 }
 
 .auth-warning {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: var(--text-muted);
-  flex: 1;
-}
-
-.warning-icon {
-  font-size: 14px;
-  color: var(--accent-warning);
+  display: none;
 }
 
 .btn-login-small {
-  padding: 6px 14px;
+  padding: 4px 12px;
   font-size: 12px;
   font-weight: 500;
   background: var(--accent-primary);
   color: #fff;
   border: none;
-  border-radius: var(--radius-sm);
+  border-radius: 4px;
   cursor: pointer;
   transition: all 0.2s;
   flex-shrink: 0;
+  white-space: nowrap;
+  line-height: 1.4;
 }
 
 .btn-login-small:hover {
   background: var(--accent-hover);
-  transform: translateY(-1px);
 }
 
 .btn-login-small:active {
   transform: translateY(0);
+}
+
+/* 响应式 - 小屏隐藏用户详情只显示头像 */
+@media (max-width: 768px) {
+  .user-details {
+    display: none;
+  }
+  .user-name, .user-type {
+    display: none;
+  }
 }

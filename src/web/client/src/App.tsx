@@ -51,7 +51,7 @@ function AppContent({
   onSessionsChange, onSessionIdChange, onConnectedChange,
   registerSessionActions,
 }: AppProps) {
-  const { state: projectState } = useProject();
+  const { state: projectState, openFolder } = useProject();
   const currentProjectPath = projectState.currentProject?.path;
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [showTerminal, setShowTerminal] = useState(false);
@@ -120,6 +120,7 @@ function AppContent({
     setUserQuestion,
     setPermissionMode,
     sessionId: sessionId ?? null,
+    openFolder,
   });
 
   // 产物面板

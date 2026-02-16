@@ -5,7 +5,7 @@
 
 import { ClaudeClient } from '../../core/client.js';
 import { configManager } from '../../config/index.js';
-import { getAuth } from '../../auth/index.js';
+import { initAuth, getAuth } from '../../auth/index.js';
 import { modelConfig } from '../../models/index.js';
 import type { ApiStatusPayload, ApiTestResult, ProviderInfo } from '../shared/types.js';
 
@@ -21,7 +21,11 @@ export class ApiManager {
    */
   private initializeClient(): void {
     try {
-      const auth = getAuth();
+      let auth = getAuth();
+      // 如果还没初始化过认证，先初始化（确保内置默认配置生效）
+      if (!auth) {
+        auth = initAuth();
+      }
       const apiKey = auth?.apiKey || configManager.getApiKey();
       const authToken = auth?.type === 'oauth' ? (auth.accessToken || auth.authToken) : undefined;
 
