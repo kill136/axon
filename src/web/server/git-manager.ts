@@ -108,8 +108,8 @@ export class GitManager {
       // 获取当前分支
       const currentBranch = this.execGit('branch --show-current');
 
-      // 获取状态（短格式）
-      const statusOutput = this.execGit('status --porcelain');
+      // 获取状态（短格式，-uall 展开未跟踪目录中的文件，与 VS Code 一致）
+      const statusOutput = this.execGit('status --porcelain -uall');
       
       const staged: string[] = [];
       const unstaged: string[] = [];
@@ -117,6 +117,8 @@ export class GitManager {
       const conflicts: string[] = [];
 
       // 解析 status 输出
+      // 每个文件以 "状态标记 文件名" 格式存储（如 "M src/foo.ts"、"D bar.ts"）
+      // 前端用第一个字符判断状态标记，用 substring(2) 获取文件名
       statusOutput.split('\n').forEach(line => {
         if (!line) return;
         
@@ -128,15 +130,15 @@ export class GitManager {
         if (x === 'U' || y === 'U' || (x === 'A' && y === 'A') || (x === 'D' && y === 'D')) {
           conflicts.push(file);
         }
-        // 暂存区文件
+        // 暂存区文件（带状态前缀）
         else if (x !== ' ' && x !== '?') {
-          staged.push(file);
+          staged.push(`${x} ${file}`);
         }
-        // 未暂存文件
+        // 未暂存修改文件（带状态前缀）
         if (y === 'M' || y === 'D') {
-          unstaged.push(file);
+          unstaged.push(`${y} ${file}`);
         }
-        // 未跟踪文件
+        // 未跟踪文件（不带前缀，前端统一标记为 U）
         if (x === '?' && y === '?') {
           untracked.push(file);
         }
@@ -359,11 +361,11 @@ export class GitManager {
   }
 
   /**
-   * 暂存所有修改
+   * 暂存所有文件（包括新文件和修改）
    */
   stageAll(): GitResult {
     try {
-      this.execGit('add -u');
+      this.execGit('add -A');
       return { success: true };
     } catch (error: any) {
       return { success: false, error: error.message || String(error) };

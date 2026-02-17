@@ -63,18 +63,26 @@ export function StatusView({ gitStatus, send, projectPath }: StatusViewProps) {
   ];
 
   // 获取文件状态标记（与 VS Code 一致）
+  // staged/unstaged 文件格式为 "X filename"（如 "M src/foo.ts"），untracked 文件无前缀
   const getFileStatusBadge = (file: string, type: 'staged' | 'unstaged' | 'untracked' | 'conflict') => {
     if (type === 'conflict') return 'C';
     if (type === 'untracked') return 'U';
-    if (type === 'staged' && file.startsWith('D ')) return 'D';
-    if (type === 'staged' && file.startsWith('A ')) return 'A';
-    if (type === 'unstaged' && file.startsWith('D ')) return 'D';
+    // staged 和 unstaged 文件第一个字符就是状态标记
+    const status = file[0];
+    if (status === 'D') return 'D';
+    if (status === 'A') return 'A';
+    if (status === 'R') return 'R';
     return 'M';
   };
 
-  // 清理文件名（移除状态前缀）
-  const cleanFileName = (file: string) => {
-    return file.replace(/^[AMDUR?]\s+/, '');
+  // 清理文件名
+  // staged/unstaged: "X filename" → "filename"
+  // untracked/conflict: "filename" → "filename"（无前缀）
+  const cleanFileName = (file: string, type: 'staged' | 'unstaged' | 'untracked' | 'conflict') => {
+    if (type === 'staged' || type === 'unstaged') {
+      return file.substring(2);
+    }
+    return file;
   };
 
   return (
@@ -115,9 +123,9 @@ export function StatusView({ gitStatus, send, projectPath }: StatusViewProps) {
           </div>
           {conflicts.map((file, index) => (
             <div key={`conflict-${index}`} className="git-file-item git-file-item--conflict">
-              <span className="git-file-status-badge">U</span>
-              <span className="git-file-name" onClick={() => handleFileDiff(cleanFileName(file))}>
-                {cleanFileName(file)}
+              <span className="git-file-status-badge">C</span>
+              <span className="git-file-name" onClick={() => handleFileDiff(cleanFileName(file, 'conflict'))}>
+                {cleanFileName(file, 'conflict')}
               </span>
               <div className="git-file-actions">
                 {/* Conflict 文件通常需要手动解决，这里只提供查看 diff */}
@@ -134,7 +142,7 @@ export function StatusView({ gitStatus, send, projectPath }: StatusViewProps) {
             {t('git.staged')} ({staged.length})
           </div>
           {staged.map((file, index) => {
-            const cleanFile = cleanFileName(file);
+            const cleanFile = cleanFileName(file, 'staged');
             const badge = getFileStatusBadge(file, 'staged');
             return (
               <div key={`staged-${index}`} className="git-file-item git-file-item--staged">
@@ -164,7 +172,7 @@ export function StatusView({ gitStatus, send, projectPath }: StatusViewProps) {
             {t('git.changes')} ({changes.length})
           </div>
           {changes.map(({ file, source }, index) => {
-            const cleanFile = cleanFileName(file);
+            const cleanFile = cleanFileName(file, source);
             const badge = getFileStatusBadge(file, source);
             return (
               <div key={`change-${index}`} className="git-file-item git-file-item--modified">

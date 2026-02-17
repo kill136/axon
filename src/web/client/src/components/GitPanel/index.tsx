@@ -271,7 +271,7 @@ export function GitPanel({ isOpen, onClose, send, addMessageHandler, projectPath
           <button
             className="git-ai-button"
             onClick={handleSmartCommit}
-            disabled={isGeneratingCommit || !gitStatus?.staged.length}
+            disabled={isGeneratingCommit || !(gitStatus?.staged.length || gitStatus?.unstaged.length || gitStatus?.untracked.length)}
             title={t('git.smartCommit')}
           >
             {isGeneratingCommit ? '⚡' : '🤖'} {t('git.smartCommit')}
