@@ -56,10 +56,16 @@ export function StatusView({ gitStatus, send, projectPath }: StatusViewProps) {
     });
   };
 
-  // 获取文件状态标记
+  // 合并 unstaged + untracked 为 "更改" 组（与 VS Code 一致）
+  const changes = [
+    ...unstaged.map(f => ({ file: f, source: 'unstaged' as const })),
+    ...untracked.map(f => ({ file: f, source: 'untracked' as const })),
+  ];
+
+  // 获取文件状态标记（与 VS Code 一致）
   const getFileStatusBadge = (file: string, type: 'staged' | 'unstaged' | 'untracked' | 'conflict') => {
-    if (type === 'conflict') return 'U';
-    if (type === 'untracked') return '?';
+    if (type === 'conflict') return 'C';
+    if (type === 'untracked') return 'U';
     if (type === 'staged' && file.startsWith('D ')) return 'D';
     if (type === 'staged' && file.startsWith('A ')) return 'A';
     if (type === 'unstaged' && file.startsWith('D ')) return 'D';
@@ -105,7 +111,7 @@ export function StatusView({ gitStatus, send, projectPath }: StatusViewProps) {
       {conflicts.length > 0 && (
         <div className="git-file-group">
           <div className="git-file-group-title git-file-group-title--conflict">
-            🔴 {t('git.conflicts')} ({conflicts.length})
+            {t('git.conflicts')} ({conflicts.length})
           </div>
           {conflicts.map((file, index) => (
             <div key={`conflict-${index}`} className="git-file-item git-file-item--conflict">
@@ -125,7 +131,7 @@ export function StatusView({ gitStatus, send, projectPath }: StatusViewProps) {
       {staged.length > 0 && (
         <div className="git-file-group">
           <div className="git-file-group-title git-file-group-title--staged">
-            ✓ {t('git.staged')} ({staged.length})
+            {t('git.staged')} ({staged.length})
           </div>
           {staged.map((file, index) => {
             const cleanFile = cleanFileName(file);
@@ -151,47 +157,18 @@ export function StatusView({ gitStatus, send, projectPath }: StatusViewProps) {
         </div>
       )}
 
-      {/* Changes（黄色） */}
-      {unstaged.length > 0 && (
+      {/* Changes — 合并已修改 + 未跟踪（与 VS Code 一致） */}
+      {changes.length > 0 && (
         <div className="git-file-group">
           <div className="git-file-group-title git-file-group-title--modified">
-            ⚠️ {t('git.modified')} ({unstaged.length})
+            {t('git.changes')} ({changes.length})
           </div>
-          {unstaged.map((file, index) => {
+          {changes.map(({ file, source }, index) => {
             const cleanFile = cleanFileName(file);
-            const badge = getFileStatusBadge(file, 'unstaged');
+            const badge = getFileStatusBadge(file, source);
             return (
-              <div key={`unstaged-${index}`} className="git-file-item git-file-item--modified">
+              <div key={`change-${index}`} className="git-file-item git-file-item--modified">
                 <span className="git-file-status-badge">{badge}</span>
-                <span className="git-file-name" onClick={() => handleFileDiff(cleanFile)}>
-                  {cleanFile}
-                </span>
-                <div className="git-file-actions">
-                  <button
-                    className="git-action-button git-action-button--stage"
-                    onClick={() => handleStage(cleanFile)}
-                    title={t('git.stage')}
-                  >
-                    {t('git.stage')}
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Untracked Files（灰色） */}
-      {untracked.length > 0 && (
-        <div className="git-file-group">
-          <div className="git-file-group-title git-file-group-title--untracked">
-            ❓ {t('git.untracked')} ({untracked.length})
-          </div>
-          {untracked.map((file, index) => {
-            const cleanFile = cleanFileName(file);
-            return (
-              <div key={`untracked-${index}`} className="git-file-item git-file-item--untracked">
-                <span className="git-file-status-badge">?</span>
                 <span className="git-file-name" onClick={() => handleFileDiff(cleanFile)}>
                   {cleanFile}
                 </span>
