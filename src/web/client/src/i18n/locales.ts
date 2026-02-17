@@ -153,6 +153,39 @@ const en: Translations = {
   'cli.agentResult': 'Agent returned result',
   'cli.toolUses': '{{count}} tool uses',
 
+  // TestRunner tool
+  'cli.testPassed': '{{count}} passed',
+  'cli.testFailed': '{{count}} failed',
+  'cli.testSkipped': '{{count}} skipped',
+  'cli.testDuration': '{{duration}}ms',
+  'cli.testCoverage': 'Coverage',
+  'cli.testLines': 'Lines',
+  'cli.testBranches': 'Branches',
+  'cli.testFunctions': 'Functions',
+  'cli.testNoFailures': 'All tests passed',
+  'cli.testFailureDetails': 'Failure Details',
+
+  // Database tool
+  'cli.dbConnected': 'Connected',
+  'cli.dbDisconnected': 'Disconnected',
+  'cli.dbRows': '{{count}} rows',
+  'cli.dbDuration': '{{duration}}ms',
+  'cli.dbTruncated': 'Results truncated',
+
+  // REPL tool
+  'cli.replSession': 'Session',
+  'cli.replRuntime': 'Runtime',
+  'cli.replResult': 'Result',
+  'cli.replType': 'Type',
+
+  // Debugger tool
+  'cli.debugAction': 'Action',
+  'cli.debugBreakpoint': 'Breakpoint',
+  'cli.debugCallStack': 'Call Stack',
+  'cli.debugVariables': 'Variables',
+  'cli.debugScopes': 'Scopes',
+  'cli.debugThreads': 'Threads',
+
   // WelcomeScreen
   'welcome.emptyProject.subtitle': 'Welcome to Claude Code! Describe the project you want, and I\'ll help you plan and implement it.',
   'welcome.emptyProject.hint1': 'Describe your project requirements in the input box below, and I\'ll help you organize and generate a project blueprint through conversation',
@@ -874,6 +907,39 @@ const zh: Translations = {
   'cli.failed': '失败',
   'cli.output': '输出',
   'cli.error': '错误',
+
+  // TestRunner tool
+  'cli.testPassed': '{{count}} 通过',
+  'cli.testFailed': '{{count}} 失败',
+  'cli.testSkipped': '{{count}} 跳过',
+  'cli.testDuration': '{{duration}}ms',
+  'cli.testCoverage': '覆盖率',
+  'cli.testLines': '行覆盖',
+  'cli.testBranches': '分支覆盖',
+  'cli.testFunctions': '函数覆盖',
+  'cli.testNoFailures': '所有测试通过',
+  'cli.testFailureDetails': '失败详情',
+
+  // Database tool
+  'cli.dbConnected': '已连接',
+  'cli.dbDisconnected': '已断开',
+  'cli.dbRows': '{{count}} 行',
+  'cli.dbDuration': '{{duration}}ms',
+  'cli.dbTruncated': '结果已截断',
+
+  // REPL tool
+  'cli.replSession': '会话',
+  'cli.replRuntime': '运行时',
+  'cli.replResult': '结果',
+  'cli.replType': '类型',
+
+  // Debugger tool
+  'cli.debugAction': '操作',
+  'cli.debugBreakpoint': '断点',
+  'cli.debugCallStack': '调用栈',
+  'cli.debugVariables': '变量',
+  'cli.debugScopes': '作用域',
+  'cli.debugThreads': '线程',
 
   // UserQuestionDialog
   'userQuestion.title': 'Claude 有问题要问',

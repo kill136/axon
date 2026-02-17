@@ -47,6 +47,10 @@ export const TOOL_DISPLAY_NAMES: Record<string, string> = {
   NotebookEdit: '笔记本编辑',
   AskUserQuestion: '询问用户',
   ScheduleTask: '定时任务',
+  TestRunner: '测试运行',
+  Database: '数据库',
+  REPL: '交互式执行',
+  Debugger: '调试器',
 };
 
 // 工具图标映射
@@ -65,6 +69,10 @@ export const TOOL_ICONS: Record<string, string> = {
   NotebookEdit: '📓',
   AskUserQuestion: '❓',
   ScheduleTask: '⏰',
+  TestRunner: '🧪',
+  Database: '🗄️',
+  REPL: '⚡',
+  Debugger: '🐛',
 };
 
 // 格式化日期
