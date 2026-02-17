@@ -762,9 +762,16 @@ export function useSwarmState(options: UseSwarmStateOptions): UseSwarmStateRetur
             case 'lead:reviewing':
               phase = 'reviewing';
               break;
-            case 'lead:completed':
-              phase = (payload.data as any)?.success === false ? 'failed' : 'completed';
+            case 'lead:completed': {
+              const completedData = payload.data as any;
+              if (completedData?.pendingTasks > 0) {
+                // v9.3: 有未完成任务时保持执行状态，不标记为已完成
+                phase = 'executing';
+              } else {
+                phase = completedData?.success === false ? 'failed' : 'completed';
+              }
               break;
+            }
           }
 
           return {
@@ -1037,6 +1044,13 @@ export function useSwarmState(options: UseSwarmStateOptions): UseSwarmStateRetur
     }
   }, [blueprintId, ws.interjectLead]);
 
+  // v9.3: 恢复卡死的 LeadAgent 执行（自动注入 blueprintId）
+  const resumeLead = useCallback(() => {
+    if (blueprintId) {
+      ws.resumeLead(blueprintId);
+    }
+  }, [blueprintId, ws.resumeLead]);
+
   return {
     state,
     isLoading,
@@ -1057,6 +1071,8 @@ export function useSwarmState(options: UseSwarmStateOptions): UseSwarmStateRetur
     interjectTask,
     // v9.2: LeadAgent 插嘴
     interjectLead,
+    // v9.3: 恢复卡死的 LeadAgent
+    resumeLead,
     // 探针功能：暴露底层 send 和 addMessageHandler
     send: ws.send,
     addMessageHandler: ws.addMessageHandler,

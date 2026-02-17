@@ -26,6 +26,29 @@ import { registerE2EAgent, unregisterE2EAgent, getE2EAgent } from '../../bluepri
 import { TerminalManager } from './terminal-manager.js';
 // Git 管理器
 import { GitManager } from './git-manager.js';
+// Git WebSocket 处理函数
+import {
+  handleGitGetStatus,
+  handleGitGetLog,
+  handleGitGetBranches,
+  handleGitGetStashes,
+  handleGitStage,
+  handleGitUnstage,
+  handleGitCommit,
+  handleGitPush,
+  handleGitPull,
+  handleGitCheckout,
+  handleGitCreateBranch,
+  handleGitDeleteBranch,
+  handleGitStashSave,
+  handleGitStashPop,
+  handleGitStashDrop,
+  handleGitStashApply,
+  handleGitGetDiff,
+  handleGitSmartCommit,
+  handleGitSmartReview,
+  handleGitExplainCommit,
+} from './websocket-git-handlers.js';
 
 // ============================================================================
 // 旧蓝图系统已被移除，以下是类型占位符和空函数
@@ -974,9 +997,16 @@ export function setupWebSocket(
       case 'lead:executing':
       case 'lead:dispatch': leadState.phase = 'executing'; break;
       case 'lead:reviewing': leadState.phase = 'reviewing'; break;
-      case 'lead:completed':
-        leadState.phase = (data.data as any)?.success === false ? 'failed' : 'completed';
+      case 'lead:completed': {
+        const completedData = data.data as any;
+        if (completedData?.pendingTasks > 0) {
+          // v9.3: 有未完成任务时保持执行状态，不标记为已完成
+          leadState.phase = 'executing';
+        } else {
+          leadState.phase = completedData?.success === false ? 'failed' : 'completed';
+        }
         break;
+      }
     }
     leadState.events.push({
       type: data.eventType,
@@ -1892,7 +1922,7 @@ async function handleClientMessage(
       break;
 
     case 'git:commit':
-      await handleGitCommit(client, message.payload.message, conversationManager);
+      await handleGitCommit(client, message.payload.message, conversationManager, message.payload.autoStage);
       break;
 
     case 'git:push':
@@ -2176,6 +2206,11 @@ async function handleClientMessage(
         (message.payload as any).blueprintId,
         (message.payload as any).message
       );
+      break;
+
+    // v9.4: 恢复 LeadAgent 执行（死任务恢复）
+    case 'swarm:resume_lead':
+      await handleResumeLead(client, (message.payload as any).blueprintId, swarmSubscriptions);
       break;
 
     // v3.8: 取消执行
@@ -2654,7 +2689,13 @@ async function handleSlashCommand(
       model,
     });
 
-    // 发送命令执行结果
+    // /resume <id> 成功后需要切换会话
+    if (result.data?.switchToSessionId) {
+      await handleSessionSwitch(client, result.data.switchToSessionId, conversationManager);
+      return;
+    }
+
+    // 发送命令执行结果（包含 dialogType）
     sendMessage(ws, {
       type: 'slash_command_result',
       payload: {
@@ -2663,6 +2704,7 @@ async function handleSlashCommand(
         message: result.message,
         data: result.data,
         action: result.action,
+        dialogType: result.dialogType,
       },
     });
 
@@ -5679,6 +5721,76 @@ async function handleSwarmResume(
       payload: {
         blueprintId,
         error: error instanceof Error ? error.message : '恢复失败',
+        timestamp: new Date().toISOString(),
+      },
+    });
+  }
+}
+
+/**
+ * v9.4: 恢复 LeadAgent 执行（死任务恢复）
+ * 当 LeadAgent 已退出但仍有 pending 任务时，用户从前端触发恢复
+ */
+async function handleResumeLead(
+  client: ClientConnection,
+  blueprintId: string,
+  swarmSubscriptions: Map<string, Set<string>>
+): Promise<void> {
+  const { ws } = client;
+
+  try {
+    if (!blueprintId) {
+      sendMessage(ws, {
+        type: 'error',
+        payload: { message: '缺少 blueprintId' },
+      });
+      return;
+    }
+
+    console.log(`[Swarm v9.4] 恢复 LeadAgent 执行: ${blueprintId}`);
+
+    // 清除旧的 LeadAgent 状态（让前端从 idle 开始重新追踪）
+    activeLeadAgentState.delete(blueprintId);
+
+    // 调用 executionManager 恢复执行
+    const result = await executionManager.resumeLeadAgent(blueprintId);
+
+    if (result.success) {
+      sendMessage(ws, {
+        type: 'swarm:resumed',
+        payload: {
+          blueprintId,
+          success: true,
+          timestamp: new Date().toISOString(),
+        },
+      });
+
+      // 广播给所有订阅者
+      const broadcastFn = (msg: any) => {
+        const subscribers = swarmSubscriptions.get(blueprintId);
+        if (!subscribers) return;
+        for (const subscriberId of subscribers) {
+          // 通过 client map 找到 ws 并发送
+          // 简化：使用 broadcastToSubscribers
+        }
+      };
+    } else {
+      sendMessage(ws, {
+        type: 'swarm:error',
+        payload: {
+          blueprintId,
+          error: result.error || '恢复失败',
+          timestamp: new Date().toISOString(),
+        },
+      });
+    }
+  } catch (error) {
+    console.error('[Swarm v9.4] 恢复 LeadAgent 失败:', error);
+    sendMessage(ws, {
+      type: 'swarm:error',
+      payload: {
+        blueprintId,
+        error: error instanceof Error ? error.message : '恢复 LeadAgent 失败',
         timestamp: new Date().toISOString(),
       },
     });

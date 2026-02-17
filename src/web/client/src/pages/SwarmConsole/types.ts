@@ -652,6 +652,8 @@ export interface UseSwarmWebSocketReturn {
   interjectTask: (blueprintId: string, taskId: string, message: string) => void;
   // v9.2: LeadAgent 插嘴
   interjectLead: (blueprintId: string, message: string) => void;
+  // v9.3: 恢复卡死的 LeadAgent 执行
+  resumeLead: (blueprintId: string) => void;
 }
 
 export interface UseSwarmStateReturn {
@@ -689,6 +691,8 @@ export interface UseSwarmStateReturn {
   interjectTask: (taskId: string, message: string) => void;
   // v9.2: LeadAgent 插嘴
   interjectLead: (message: string) => void;
+  // v9.3: 恢复卡死的 LeadAgent
+  resumeLead: () => void;
 }
 
 // ============= v4.2 新增：AskUserQuestion 对话框类型 =============

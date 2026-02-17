@@ -594,6 +594,9 @@ const en: Translations = {
   'swarm.taskNotFound': 'Task not found',
   'swarm.leadAgentStandby': 'LeadAgent on standby',
   'swarm.clickToView': 'Click a task or start execution to view Agent conversation',
+  'swarm.stalledExecution': 'Execution stalled - LeadAgent exited with pending tasks',
+  'swarm.resumeExecution': 'Resume Execution',
+  'swarm.resuming': 'Resuming...',
   'swarm.phase.started': 'Starting',
   'swarm.phase.exploring': 'Exploring code',
   'swarm.phase.planning': 'Making plan',
@@ -609,6 +612,7 @@ const en: Translations = {
   'swarm.verification.failed': 'Failed',
 
   // GitPanel
+  'git.loading': 'Loading...',
   'git.title': 'Git',
   'git.tab.status': 'Status',
   'git.tab.log': 'Log',
@@ -1136,6 +1140,9 @@ const zh: Translations = {
   'swarm.taskNotFound': '任务未找到',
   'swarm.leadAgentStandby': 'LeadAgent 待命中',
   'swarm.clickToView': '点击左侧任务或启动执行查看 Agent 对话',
+  'swarm.stalledExecution': '执行中断 - LeadAgent 已退出但仍有未完成任务',
+  'swarm.resumeExecution': '恢复执行',
+  'swarm.resuming': '恢复中...',
   'swarm.phase.started': '启动中',
   'swarm.phase.exploring': '探索代码',
   'swarm.phase.planning': '制定计划',
@@ -1151,6 +1158,7 @@ const zh: Translations = {
   'swarm.verification.failed': '失败',
 
   // Git Panel
+  'git.loading': '加载中...',
   'git.title': 'Git',
   'git.tab.status': '状态',
   'git.tab.log': '日志',

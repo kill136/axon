@@ -20,6 +20,7 @@ function RootContent() {
   const [swarmBlueprintId, setSwarmBlueprintId] = useState<string | null>(null);
   const [codeViewActive, setCodeViewActive] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showGitPanel, setShowGitPanel] = useState(false);
   const [showAuthDialog, setShowAuthDialog] = useState(false);
   const [authRefreshKey, setAuthRefreshKey] = useState(0);
 
@@ -53,6 +54,10 @@ function RootContent() {
     }
     setCodeViewActive(prev => !prev);
   }, [currentPage, codeViewActive]);
+
+  const toggleGitPanel = useCallback(() => {
+    setShowGitPanel(prev => !prev);
+  }, []);
 
   const navigateToBlueprintPage = (blueprintId?: string) => {
     if (blueprintId) setSelectedBlueprintId(blueprintId);
@@ -114,6 +119,8 @@ function RootContent() {
         onPageChange={handlePageChange}
         codeViewActive={codeViewActive}
         onToggleCodeView={toggleCodeView}
+        gitPanelActive={showGitPanel}
+        onToggleGitPanel={toggleGitPanel}
         connected={connected}
         onLoginClick={() => setShowAuthDialog(true)}
         onSettingsClick={() => setShowSettings(true)}
@@ -143,6 +150,8 @@ function RootContent() {
               onToggleCodeView={toggleCodeView}
               showSettings={showSettings}
               onCloseSettings={() => setShowSettings(false)}
+              showGitPanel={showGitPanel}
+              onToggleGitPanel={toggleGitPanel}
               onSessionsChange={setSessions}
               onSessionIdChange={setCurrentSessionId}
               onConnectedChange={setConnected}

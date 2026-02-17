@@ -13,6 +13,7 @@ import type {
   WSMessage,
 } from '../types';
 import type { ContextUsage, CompactState } from '../components/ContextBar';
+import type { SlashCommandResult } from '../components/SlashCommandDialog';
 
 export type Status = 'idle' | 'thinking' | 'streaming' | 'tool_executing';
 export type PermissionMode = 'default' | 'bypassPermissions' | 'acceptEdits' | 'plan';
@@ -57,6 +58,8 @@ interface UseMessageHandlerReturn {
   setIsTranscriptMode: React.Dispatch<React.SetStateAction<boolean>>;
   crossSessionNotification: CrossSessionNotification | null;
   dismissCrossSessionNotification: () => void;
+  slashCommandResult: SlashCommandResult | null;
+  setSlashCommandResult: React.Dispatch<React.SetStateAction<SlashCommandResult | null>>;
 }
 
 export function useMessageHandler({
@@ -76,6 +79,7 @@ export function useMessageHandler({
   const [permissionMode, setPermissionMode] = useState<PermissionMode>('default');
   const [isTranscriptMode, setIsTranscriptMode] = useState(false);
   const [crossSessionNotification, setCrossSessionNotification] = useState<CrossSessionNotification | null>(null);
+  const [slashCommandResult, setSlashCommandResult] = useState<SlashCommandResult | null>(null);
 
   const dismissCrossSessionNotification = useCallback(() => {
     setCrossSessionNotification(null);
@@ -879,21 +883,17 @@ export function useMessageHandler({
           break;
 
         case 'slash_command_result': {
-          const cmdResult = payload as { command: string; success: boolean; message?: string; data?: any; action?: string };
-          // 将命令结果作为助手消息展示
-          const resultMessage: ChatMessage = {
-            id: `cmd-${Date.now()}`,
-            role: 'assistant',
-            timestamp: Date.now(),
-            content: [{ type: 'text', text: cmdResult.message || (cmdResult.success ? '命令执行成功' : '命令执行失败') }],
-          };
-          setMessages(prev => [...prev, resultMessage]);
+          const cmdResult = payload as SlashCommandResult;
           setStatus('idle');
 
           // 如果命令要求清除历史（如 /clear）
           if (cmdResult.action === 'clear') {
             setMessages([]);
+            break;
           }
+
+          // 以对话框方式展示命令结果
+          setSlashCommandResult(cmdResult);
           break;
         }
 
@@ -934,5 +934,7 @@ export function useMessageHandler({
     setIsTranscriptMode,
     crossSessionNotification,
     dismissCrossSessionNotification,
+    slashCommandResult,
+    setSlashCommandResult,
   };
 }

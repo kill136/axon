@@ -471,6 +471,10 @@ ${techStack.language}${techStack.framework ? ' + ' + techStack.framework : ''}`;
         // v4.2: 使用自定义 askUserHandler 支持 WebUI 交互
         askUserHandler: this.createAskUserHandler(task.id),
         allowedTools,
+        // 认证透传：避免子 agent 走 initAuth() 拿到错误的认证
+        apiKey: context.config.apiKey,
+        authToken: context.config.authToken,
+        baseUrl: context.config.baseUrl,
       });
 
       // v4.5: 保存 loop 引用以支持插嘴功能

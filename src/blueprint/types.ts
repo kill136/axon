@@ -1088,6 +1088,16 @@ export interface SwarmConfig {
   leadAgentMaxTurns?: number;
   /** LeadAgent 自己执行任务的最大复杂度阈值（超过此复杂度的任务LeadAgent自己做） */
   leadAgentSelfExecuteComplexity?: TaskComplexity;
+
+  // ==========================================================================
+  // 认证透传（WebUI 模式下，主 agent 的认证信息透传给子 agent）
+  // ==========================================================================
+  /** API Key（主 agent 透传） */
+  apiKey?: string;
+  /** Auth Token（主 agent 透传） */
+  authToken?: string;
+  /** Base URL（主 agent 透传） */
+  baseUrl?: string;
 }
 
 /**
@@ -1445,6 +1455,12 @@ export interface LeadAgentConfig {
   askUserHandler?: (input: unknown) => Promise<unknown>;
   /** 是否为恢复模式（从中断位置继续执行） */
   isResume?: boolean;
+  /** API Key（显式传入，避免子 agent 走 initAuth 拿到错误的认证） */
+  apiKey?: string;
+  /** Auth Token（显式传入） */
+  authToken?: string;
+  /** Base URL（显式传入） */
+  baseUrl?: string;
 }
 
 /**

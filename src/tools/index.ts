@@ -30,6 +30,7 @@ export * from './team.js';
 export * from './schedule.js';
 export * from './self-evolve.js';
 export * from './browser.js';
+export * from './create-tool.js';
 
 // 蓝图工具不通过此处 re-export
 // 蓝图模块直接 import 各自需要的工具文件 (如 ../tools/dispatch-worker.js)
@@ -59,6 +60,7 @@ import { ScheduleTaskTool } from './schedule.js';
 import { SelfEvolveTool } from './self-evolve.js';
 import { BrowserTool } from './browser.js';
 import { MemorySearchTool } from './memory-search.js';
+import { CreateToolTool } from './create-tool.js';
 
 // ============ 蓝图工具 imports (lazy) ============
 import { BlueprintTool } from './blueprint.js';
@@ -173,6 +175,9 @@ export function registerCoreTools(): void {
 
   // 16. MemorySearch 长期记忆搜索工具
   toolRegistry.register(new MemorySearchTool());
+
+  // 17. CreateTool 自定义 Skill 创建（写入 ~/.claude/skills/，利用 Skill 系统）
+  toolRegistry.register(new CreateToolTool());
 }
 
 /**

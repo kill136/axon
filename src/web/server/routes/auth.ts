@@ -8,6 +8,8 @@ import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { OAUTH_ENDPOINTS, exchangeAuthorizationCode, saveAuthSecure, getAuth, isAuthenticated, logout, initAuth, type AuthConfig } from '../../../auth/index.js';
 import { isDemoMode } from '../../../utils/env-check.js';
+import { configManager } from '../../../config/index.js';
+import * as fs from 'fs';
 
 const router = Router();
 
@@ -227,7 +229,27 @@ router.post('/submit-code', async (req: Request, res: Response) => {
  * 获取当前认证状态
  */
 router.get('/status', async (req: Request, res: Response) => {
-  // 直接获取当前认证状态（已经在服务器启动时初始化了）
+  // 优先检查 WebUI settings.json 中的 apiKey
+  // 这是实际对话使用的认证方式（buildClientConfig 优先读这里）
+  // 避免因 .credentials.json 中有过期 OAuth token 而触发无意义的 refresh
+  try {
+    const settingsPath = configManager.getConfigPaths().userSettings;
+    if (fs.existsSync(settingsPath)) {
+      const raw = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+      if (raw.apiKey) {
+        return res.json({
+          authenticated: true,
+          type: 'api_key',
+          accountType: 'api',
+          isDemoMode: isDemoMode(),
+        });
+      }
+    }
+  } catch {
+    // 忽略，走原有逻辑
+  }
+
+  // 没有 WebUI API Key，走 getAuth() 逻辑
   let auth = getAuth();
   const authenticated = isAuthenticated();
 
@@ -251,19 +273,6 @@ router.get('/status', async (req: Request, res: Response) => {
     }
   }
 
-  // 调试日志
-  console.log('[OAuth] Status check:', {
-    hasAuth: !!auth,
-    authenticated,
-    type: auth?.type,
-    accountType: auth?.accountType,
-    hasAccessToken: !!auth?.accessToken,
-    hasAuthToken: !!auth?.authToken,
-    expiresAt: auth?.expiresAt,
-    now: Date.now(),
-    expired: auth?.expiresAt ? auth.expiresAt < Date.now() : 'no-expiry',
-  });
-
   // 如果是内置 API 配置，返回未认证状态（不应显示为已登录）
   if (auth?.isBuiltin) {
     return res.json({
@@ -278,20 +287,15 @@ router.get('/status', async (req: Request, res: Response) => {
     });
   }
 
-  // IS_DEMO 模式下隐藏敏感信息 - 官网实现:
-  // if(A.organization&&!process.env.IS_DEMO)...
-  // if(A.email&&!process.env.IS_DEMO)...
   const demoMode = isDemoMode();
 
   res.json({
     authenticated: true,
     type: auth.type,
     accountType: auth.accountType,
-    // IS_DEMO 模式下不返回 email
     email: demoMode ? undefined : auth.email,
     expiresAt: auth.expiresAt,
     scopes: auth.scopes || auth.scope,
-    // 通知前端当前是否为 Demo 模式
     isDemoMode: demoMode,
   });
 });

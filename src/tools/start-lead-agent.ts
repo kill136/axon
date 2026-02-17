@@ -68,6 +68,8 @@ export interface StartLeadAgentContext {
   navigateToSwarm?: (blueprintId: string, executionId: string) => void;
   /** 获取当前工作目录 */
   getWorkingDirectory?: () => string;
+  /** 获取主 agent 的认证配置（用于透传给子 agent） */
+  getClientConfig?: () => { apiKey?: string; authToken?: string; baseUrl?: string };
 }
 
 /**

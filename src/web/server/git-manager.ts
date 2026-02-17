@@ -3,7 +3,7 @@
  * 封装所有 git 命令操作
  */
 
-import { execSync } from 'child_process';
+import { execSync, execFileSync } from 'child_process';
 
 /**
  * Git 操作统一返回格式
@@ -249,33 +249,35 @@ export class GitManager {
    */
   getBranches(): GitResult<GitBranch[]> {
     try {
-      // 获取本地分支
-      const localOutput = this.execGit('branch --format=%(refname:short)|%(HEAD)');
-      const localBranches = localOutput.split('\n').map(line => {
-        const [name, isCurrent] = line.split('|');
-        return {
-          name,
-          current: isCurrent === '*',
-          remote: false,
-        };
-      });
+      // 使用 git branch -a 获取所有分支（兼容 Windows，避免 --format 中 % 被 cmd.exe 解析）
+      const output = this.execGit('branch -a');
+      const branches: GitBranch[] = [];
 
-      // 获取远程分支
-      let remoteBranches: GitBranch[] = [];
-      try {
-        const remoteOutput = this.execGit('branch -r --format=%(refname:short)');
-        remoteBranches = remoteOutput.split('\n').map(name => ({
+      for (const line of output.split('\n')) {
+        if (!line.trim()) continue;
+
+        const isCurrent = line.startsWith('*');
+        let name = line.replace(/^\*?\s+/, '').trim();
+
+        // 跳过 HEAD -> 指针
+        if (name.includes('->')) continue;
+
+        // 判断是否为远程分支
+        const isRemote = name.startsWith('remotes/');
+        if (isRemote) {
+          name = name.replace(/^remotes\//, '');
+        }
+
+        branches.push({
           name,
-          current: false,
-          remote: true,
-        }));
-      } catch {
-        // 没有远程分支
+          current: isCurrent,
+          remote: isRemote,
+        });
       }
 
       return {
         success: true,
-        data: [...localBranches, ...remoteBranches],
+        data: branches,
       };
     } catch (error: any) {
       return {
@@ -290,7 +292,9 @@ export class GitManager {
    */
   getStashes(): GitResult<GitStash[]> {
     try {
-      const output = this.execGit('stash list --format=%gd|%s|%ai');
+      // 使用 git stash list 默认格式（兼容 Windows，避免 --format 中 % 被 cmd.exe 解析）
+      // 默认格式: stash@{0}: WIP on branch: hash message
+      const output = this.execGit('stash list');
       
       if (!output) {
         return {
@@ -299,15 +303,19 @@ export class GitManager {
         };
       }
 
-      const stashes = output.split('\n').map(line => {
-        const [ref, message, date] = line.split('|');
-        const match = ref.match(/stash@\{(\d+)\}/);
-        const index = match ? parseInt(match[1]) : 0;
+      const stashes = output.split('\n').filter(Boolean).map(line => {
+        // 解析默认格式: "stash@{0}: On branch: message" 或 "stash@{0}: WIP on branch: hash message"
+        const indexMatch = line.match(/stash@\{(\d+)\}/);
+        const index = indexMatch ? parseInt(indexMatch[1]) : 0;
+        
+        // 提取冒号后面的消息部分
+        const colonIndex = line.indexOf(':');
+        const message = colonIndex >= 0 ? line.substring(colonIndex + 1).trim() : line;
         
         return {
           index,
           message,
-          date,
+          date: '', // 默认格式不含日期，留空
         };
       });
 
@@ -351,6 +359,18 @@ export class GitManager {
   }
 
   /**
+   * 暂存所有修改
+   */
+  stageAll(): GitResult {
+    try {
+      this.execGit('add -u');
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message || String(error) };
+    }
+  }
+
+  /**
    * 取消暂存
    */
   unstage(files: string[]): GitResult {
@@ -388,17 +408,23 @@ export class GitManager {
         };
       }
 
-      // 使用 -m 参数传递消息，避免引号问题
-      const escapedMessage = message.replace(/"/g, '\\"');
-      this.execGit(`commit -m "${escapedMessage}"`);
+      // 通过 stdin 传递 commit message（-F -），彻底避免 Windows 命令行对括号、!、& 等特殊字符的转义问题
+      execFileSync('git', ['commit', '-F', '-'], {
+        cwd: this.cwd,
+        encoding: 'utf-8',
+        timeout: this.timeout,
+        input: message,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
 
       return {
         success: true,
       };
     } catch (error: any) {
+      const stderr = error.stderr || '';
       return {
         success: false,
-        error: error.message || String(error),
+        error: stderr || error.message || String(error),
       };
     }
   }

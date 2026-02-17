@@ -245,6 +245,22 @@ export default function BlueprintPage({ initialBlueprintId, onNavigateToSwarm }:
 
 
   /**
+   * 按来源分组：codebase（项目全景）和 requirement（需求蓝图）
+   */
+  const { codebaseBlueprints, requirementBlueprints } = useMemo(() => {
+    const cbs: BlueprintListItem[] = [];
+    const rbs: BlueprintListItem[] = [];
+    for (const bp of blueprints) {
+      if (bp.source === 'codebase') {
+        cbs.push(bp);
+      } else {
+        rbs.push(bp);
+      }
+    }
+    return { codebaseBlueprints: cbs, requirementBlueprints: rbs };
+  }, [blueprints]);
+
+  /**
    * 是否允许创建新蓝图
    */
   const canCreateBlueprint = useMemo(() => {
@@ -345,59 +361,89 @@ export default function BlueprintPage({ initialBlueprintId, onNavigateToSwarm }:
                 🔄
               </button>
             </div>
-            <div className={styles.listContent}>
-              {blueprints.map((blueprint) => (
-                <div
-                  key={blueprint.id}
-                  className={`${styles.blueprintCard} ${selectedId === blueprint.id ? styles.selected : ''}`}
-                  onClick={() => setSelectedId(blueprint.id)}
-                >
-                  <div className={styles.cardHeader}>
-                    <h3 className={styles.cardTitle}>{blueprint.name}</h3>
-                    <span className={`${styles.cardStatus} ${styles[blueprint.status]}`}>
-                      {blueprint.status}
-                    </span>
-                  </div>
-                  {/* 显示项目路径 */}
-                  {blueprint.projectPath && (
-                    <div className={styles.cardProjectPath} title={blueprint.projectPath}>
-                      📁 {blueprint.projectPath.split(/[/\\]/).slice(-2).join('/')}
+
+            <div className={styles.scrollArea}>
+              {/* 项目全景区块（codebase 蓝图） */}
+              {codebaseBlueprints.length > 0 && (
+                <div className={styles.codebaseSection}>
+                  <h3 className={styles.sectionTitle}>🏗️ 项目全景</h3>
+                  {codebaseBlueprints.map((blueprint) => (
+                    <div
+                      key={blueprint.id}
+                      className={`${styles.codebaseCard} ${selectedId === blueprint.id ? styles.selected : ''}`}
+                      onClick={() => setSelectedId(blueprint.id)}
+                    >
+                      <div className={styles.cardHeader}>
+                        <h3 className={styles.cardTitle}>{blueprint.name}</h3>
+                        <span className={styles.codebaseBadge}>已同步</span>
+                      </div>
+                      <p className={styles.cardDescription}>
+                        {blueprint.description || '暂无描述'}
+                      </p>
+                      <div className={styles.cardMeta}>
+                        {blueprint.moduleCount > 0 && (
+                          <span>📦 {blueprint.moduleCount} 模块</span>
+                        )}
+                        {blueprint.processCount > 0 && (
+                          <span>🔄 {blueprint.processCount} 流程</span>
+                        )}
+                        {blueprint.nfrCount > 0 && (
+                          <span>🎯 {blueprint.nfrCount} NFR</span>
+                        )}
+                      </div>
+                      <div className={styles.cardFooter}>
+                        <span className={styles.cardVersion}>v{blueprint.version}</span>
+                        <span className={styles.cardDate}>
+                          {new Date(blueprint.updatedAt).toLocaleDateString('zh-CN')}
+                        </span>
+                      </div>
                     </div>
-                  )}
-                  <p className={styles.cardDescription}>
-                    {blueprint.description || '暂无描述'}
-                  </p>
-                  <div className={styles.cardMeta}>
-                    {blueprint.moduleCount > 0 && (
-                      <span>📦 {blueprint.moduleCount} 模块</span>
-                    )}
-                    {blueprint.processCount > 0 && (
-                      <span>🔄 {blueprint.processCount} 流程</span>
-                    )}
-                    {blueprint.nfrCount > 0 && (
-                      <span>🎯 {blueprint.nfrCount} NFR</span>
-                    )}
-                    {blueprint.requirementCount > 0 && (
-                      <span>📋 {blueprint.requirementCount} 需求</span>
-                    )}
-                    {blueprint.constraintCount > 0 && (
-                      <span>⚠️ {blueprint.constraintCount} 约束</span>
-                    )}
-                    {/* 如果所有统计都为0，显示占位 */}
-                    {blueprint.moduleCount === 0 && blueprint.processCount === 0 &&
-                     blueprint.nfrCount === 0 && blueprint.requirementCount === 0 &&
-                     blueprint.constraintCount === 0 && (
-                      <span className={styles.cardMetaEmpty}>暂无详细数据</span>
-                    )}
-                  </div>
-                  <div className={styles.cardFooter}>
-                    <span className={styles.cardVersion}>v{blueprint.version}</span>
-                    <span className={styles.cardDate}>
-                      {new Date(blueprint.updatedAt).toLocaleDateString('zh-CN')}
-                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* 需求蓝图区块 */}
+              {requirementBlueprints.length > 0 && (
+                <div className={styles.requirementSection}>
+                  <h3 className={styles.sectionTitle}>📝 需求蓝图</h3>
+                  <div className={styles.listContent}>
+                    {requirementBlueprints.map((blueprint) => (
+                      <div
+                        key={blueprint.id}
+                        className={`${styles.blueprintCard} ${selectedId === blueprint.id ? styles.selected : ''}`}
+                        onClick={() => setSelectedId(blueprint.id)}
+                      >
+                        <div className={styles.cardHeader}>
+                          <h3 className={styles.cardTitle}>{blueprint.name}</h3>
+                          <span className={`${styles.cardStatus} ${styles[blueprint.status]}`}>
+                            {blueprint.status}
+                          </span>
+                        </div>
+                        <p className={styles.cardDescription}>
+                          {blueprint.description || '暂无描述'}
+                        </p>
+                        <div className={styles.cardMeta}>
+                          {blueprint.requirementCount > 0 && (
+                            <span>📋 {blueprint.requirementCount} 需求</span>
+                          )}
+                          {blueprint.constraintCount > 0 && (
+                            <span>⚠️ {blueprint.constraintCount} 约束</span>
+                          )}
+                          {blueprint.requirementCount === 0 && blueprint.constraintCount === 0 && (
+                            <span className={styles.cardMetaEmpty}>暂无详细数据</span>
+                          )}
+                        </div>
+                        <div className={styles.cardFooter}>
+                          <span className={styles.cardVersion}>v{blueprint.version}</span>
+                          <span className={styles.cardDate}>
+                            {new Date(blueprint.updatedAt).toLocaleDateString('zh-CN')}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
-              ))}
+              )}
             </div>
           </div>
         )}

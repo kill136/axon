@@ -28,6 +28,10 @@ export interface TopNavBarProps {
   codeViewActive?: boolean;
   /** 切换代码视图 */
   onToggleCodeView?: () => void;
+  /** Git 面板是否打开 */
+  gitPanelActive?: boolean;
+  /** 切换 Git 面板 */
+  onToggleGitPanel?: () => void;
   /** 连接状态 */
   connected?: boolean;
   /** 点击登录按钮 */
@@ -89,6 +93,15 @@ const CodeViewIcon = () => (
   </svg>
 );
 
+const GitBranchIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="5" cy="4" r="2" />
+    <circle cx="11" cy="4" r="2" />
+    <circle cx="5" cy="12" r="2" />
+    <path d="M5 6v4M11 6c0 3-2 4-6 6" />
+  </svg>
+);
+
 const SettingsIcon = () => (
   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="8" cy="8" r="3" />
@@ -103,8 +116,9 @@ const SettingsIcon = () => (
  */
 export default function TopNavBar({
   currentPage, onPageChange, onSettingsClick,
-  codeViewActive, onToggleCodeView, connected,
-  onLoginClick, authRefreshKey,
+  codeViewActive, onToggleCodeView,
+  gitPanelActive, onToggleGitPanel,
+  connected, onLoginClick, authRefreshKey,
   currentProject, onProjectChange, onOpenFolder, onProjectRemove,
   sessions = [], currentSessionId, onSessionSelect, onNewSession,
   onSessionDelete, onSessionRename,
@@ -313,9 +327,18 @@ export default function TopNavBar({
           </button>
         </div>
 
-        {/* 右侧：视图切换按钮（仅 Chat 页面显示） */}
+        {/* 右侧：Git 按钮 + 视图切换按钮（仅 Chat 页面显示） */}
         {currentPage === 'chat' && (
           <div className={styles.viewSwitcher}>
+            {onToggleGitPanel && (
+              <button
+                className={`${styles.viewButton} ${gitPanelActive ? styles.active : ''}`}
+                onClick={onToggleGitPanel}
+                title="Git (Ctrl+Shift+G)"
+              >
+                <GitBranchIcon />
+              </button>
+            )}
             <button
               className={`${styles.viewButton} ${!codeViewActive ? styles.active : ''}`}
               onClick={() => codeViewActive && onToggleCodeView?.()}

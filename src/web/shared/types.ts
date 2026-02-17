@@ -146,6 +146,8 @@ export type ClientMessage =
   | { type: 'task:interject'; payload: { blueprintId: string; taskId: string; message: string } }
   // v9.2: LeadAgent æ’å˜´
   | { type: 'lead:interject'; payload: { blueprintId: string; message: string } }
+  // v9.3: LeadAgent æ¢å¤æ‰§è¡Œï¼ˆä»»åŠ¡å¡æ­»æ—¶æ‰‹åŠ¨è§¦å‘ï¼‰
+  | { type: 'swarm:resume_lead'; payload: { blueprintId: string } }
   // æŒç»­å¼€å‘æ¶ˆæ¯
   | { type: 'continuous_dev:start'; payload: { requirement: string } }
   | { type: 'continuous_dev:status' }
@@ -173,7 +175,7 @@ export type ClientMessage =
   | { type: 'git:get_stashes' }
   | { type: 'git:stage'; payload: { files: string[] } }
   | { type: 'git:unstage'; payload: { files: string[] } }
-  | { type: 'git:commit'; payload: { message: string } }
+  | { type: 'git:commit'; payload: { message: string; autoStage?: boolean } }
   | { type: 'git:push' }
   | { type: 'git:pull' }
   | { type: 'git:checkout'; payload: { branch: string } }
@@ -478,6 +480,7 @@ export interface SlashCommandResultPayload {
   message?: string;
   data?: any;
   action?: 'clear' | 'reload' | 'none';
+  dialogType?: 'text' | 'session-list' | 'compact-result';
 }
 
 // ============ èŠå¤©æ¶ˆæ¯ç±»å‹ ============
@@ -3060,10 +3063,10 @@ export const CONFIG_PATHS = {
   SKILLS_DIR: '~/.claude/skills',
 } as const;
 
-// ============ Git Ïà¹ØÀàĞÍ ============
+// ============ Git ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ============
 
 /**
- * Git ×´Ì¬ÏìÓ¦
+ * Git ×´Ì¬ï¿½ï¿½Ó¦
  */
 export interface GitStatusResponsePayload {
   success: boolean;
@@ -3094,7 +3097,7 @@ export interface GitStatusResponsePayload {
 }
 
 /**
- * Git ÈÕÖ¾ÏìÓ¦
+ * Git ï¿½ï¿½Ö¾ï¿½ï¿½Ó¦
  */
 export interface GitLogResponsePayload {
   success: boolean;
@@ -3108,7 +3111,7 @@ export interface GitLogResponsePayload {
 }
 
 /**
- * Git ·ÖÖ§ÏìÓ¦
+ * Git ï¿½ï¿½Ö§ï¿½ï¿½Ó¦
  */
 export interface GitBranchesResponsePayload {
   success: boolean;
@@ -3121,7 +3124,7 @@ export interface GitBranchesResponsePayload {
 }
 
 /**
- * Git Stash ÏìÓ¦
+ * Git Stash ï¿½ï¿½Ó¦
  */
 export interface GitStashesResponsePayload {
   success: boolean;
@@ -3135,7 +3138,7 @@ export interface GitStashesResponsePayload {
 }
 
 /**
- * Git ²Ù×÷½á¹û
+ * Git ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
  */
 export interface GitOperationResultPayload {
   success: boolean;
@@ -3144,7 +3147,7 @@ export interface GitOperationResultPayload {
 }
 
 /**
- * Git Diff ÏìÓ¦
+ * Git Diff ï¿½ï¿½Ó¦
  */
 export interface GitDiffResponsePayload {
   success: boolean;
@@ -3155,18 +3158,17 @@ export interface GitDiffResponsePayload {
 }
 
 /**
- * Git Smart Commit ÏìÓ¦
+ * Git Smart Commit ï¿½ï¿½Ó¦
  */
 export interface GitSmartCommitResponsePayload {
   success: boolean;
-  data?: {
-    message: string;
-  };
+  message?: string;
+  needsStaging?: boolean;
   error?: string;
 }
 
 /**
- * Git Smart Review ÏìÓ¦
+ * Git Smart Review ï¿½ï¿½Ó¦
  */
 export interface GitSmartReviewResponsePayload {
   success: boolean;
@@ -3177,7 +3179,7 @@ export interface GitSmartReviewResponsePayload {
 }
 
 /**
- * Git Explain Commit ÏìÓ¦
+ * Git Explain Commit ï¿½ï¿½Ó¦
  */
 export interface GitExplainCommitResponsePayload {
   success: boolean;

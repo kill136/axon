@@ -315,6 +315,11 @@ export function useSwarmWebSocket(options: UseSwarmWebSocketOptions): UseSwarmWe
     });
   }, [send]);
 
+  // v9.3: 恢复卡死的 LeadAgent 执行
+  const resumeLead = useCallback((blueprintId: string) => {
+    send({ type: 'swarm:resume_lead', payload: { blueprintId } });
+  }, [send]);
+
   return {
     connected,
     status,
@@ -333,6 +338,7 @@ export function useSwarmWebSocket(options: UseSwarmWebSocketOptions): UseSwarmWe
     sendAskUserResponse,
     interjectTask,
     interjectLead,
+    resumeLead,
     // 探针功能：暴露底层通信方法
     send,
     addMessageHandler,

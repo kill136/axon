@@ -5,8 +5,12 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useLanguage } from '../../i18n';
+import { StatusView } from './StatusView';
 import { LogView } from './LogView';
 import { BranchesView } from './BranchesView';
+import { StashView } from './StashView';
+import { DiffView } from './DiffView';
+import { MarkdownContent } from '../MarkdownContent';
 import './GitPanel.css';
 
 // Git 数据类型定义（与后端 GitManager 对应）
@@ -71,9 +75,17 @@ export function GitPanel({ isOpen, onClose, send, addMessageHandler, projectPath
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Diff 查看状态
+  const [diffContent, setDiffContent] = useState<string | null>(null);
+  const [diffFileName, setDiffFileName] = useState('');
+
   // AI 增强状态
   const [isGeneratingCommit, setIsGeneratingCommit] = useState(false);
   const [isReviewing, setIsReviewing] = useState(false);
+  const [smartCommitMessage, setSmartCommitMessage] = useState<string | null>(null);
+  const [smartCommitNeedsStaging, setSmartCommitNeedsStaging] = useState(false);
+  const [reviewResult, setReviewResult] = useState<string | null>(null);
+  const [explainResult, setExplainResult] = useState<string | null>(null);
 
   // 订阅 WebSocket 消息
   useEffect(() => {
@@ -115,24 +127,43 @@ export function GitPanel({ isOpen, onClose, send, addMessageHandler, projectPath
           }
           break;
 
+        case 'git:diff_response':
+          if (msg.payload?.success && msg.payload.data) {
+            setDiffContent(msg.payload.data.content || '');
+            setDiffFileName(msg.payload.data.file || 'diff');
+          }
+          break;
+
         case 'git:smart_commit_response':
           setIsGeneratingCommit(false);
-          // 智能提交响应将由 StatusView 处理
+          if (msg.payload?.success) {
+            setSmartCommitMessage(msg.payload.message);
+            setSmartCommitNeedsStaging(!!msg.payload.needsStaging);
+          } else {
+            setError(msg.payload?.error || 'Smart commit failed');
+          }
           break;
 
         case 'git:smart_review_response':
           setIsReviewing(false);
-          // 智能审查响应将由 StatusView 处理
+          if (msg.payload?.success) {
+            setReviewResult(msg.payload.review);
+          } else {
+            setError(msg.payload?.error || 'Smart review failed');
+          }
           break;
 
-        case 'git:operation_success':
-          // Git 操作成功后刷新状态
-          refreshGitData();
+        case 'git:explain_commit_response':
+          if (msg.payload?.success) {
+            setExplainResult(msg.payload.explanation);
+          }
           break;
 
-        case 'git:operation_error':
-          setLoading(false);
-          setError(msg.payload?.error || 'Git operation failed');
+        case 'git:operation_result':
+          // Git 操作完成后刷新状态（handler 已自动发送 status_response）
+          if (!msg.payload?.success) {
+            setError(msg.payload?.error || 'Git operation failed');
+          }
           break;
       }
     };
@@ -167,22 +198,17 @@ export function GitPanel({ isOpen, onClose, send, addMessageHandler, projectPath
       payload: { projectPath, limit: 50 },
     });
 
-    // 请求 branches（如果在 branches tab）
-    if (activeTab === 'branches') {
-      send({
-        type: 'git:get_branches',
-        payload: { projectPath },
-      });
-    }
+    // 始终请求 branches 和 stashes
+    send({
+      type: 'git:get_branches',
+      payload: { projectPath },
+    });
 
-    // 请求 stashes（如果在 stash tab）
-    if (activeTab === 'stash') {
-      send({
-        type: 'git:get_stashes',
-        payload: { projectPath },
-      });
-    }
-  }, [projectPath, activeTab, send]);
+    send({
+      type: 'git:get_stashes',
+      payload: { projectPath },
+    });
+  }, [projectPath, send]);
 
   // 切换标签页时请求相应数据
   useEffect(() => {
@@ -312,18 +338,11 @@ export function GitPanel({ isOpen, onClose, send, addMessageHandler, projectPath
           <>
             {activeTab === 'status' && (
               <div className="git-tab-content">
-                {/* StatusView 组件将在这里渲染 */}
-                <div className="git-placeholder">
-                  StatusView coming soon...
-                  <br />
-                  Current branch: {gitStatus?.currentBranch || 'N/A'}
-                  <br />
-                  Staged: {gitStatus?.staged.length || 0}
-                  <br />
-                  Modified: {gitStatus?.unstaged.length || 0}
-                  <br />
-                  Untracked: {gitStatus?.untracked.length || 0}
-                </div>
+                <StatusView
+                  gitStatus={gitStatus}
+                  send={send}
+                  projectPath={projectPath}
+                />
               </div>
             )}
 
@@ -349,17 +368,80 @@ export function GitPanel({ isOpen, onClose, send, addMessageHandler, projectPath
 
             {activeTab === 'stash' && (
               <div className="git-tab-content">
-                {/* StashView 组件将在这里渲染 */}
-                <div className="git-placeholder">
-                  StashView coming soon...
-                  <br />
-                  Stashes: {stashes.length}
-                </div>
+                <StashView
+                  stashes={stashes}
+                  send={send}
+                  projectPath={projectPath}
+                  onRefresh={refreshGitData}
+                />
               </div>
             )}
           </>
         )}
       </div>
+
+      {/* Diff 浮层 */}
+      {diffContent !== null && (
+        <div className="git-diff-overlay">
+          <DiffView
+            diff={diffContent}
+            fileName={diffFileName}
+            onClose={() => { setDiffContent(null); setDiffFileName(''); }}
+          />
+        </div>
+      )}
+
+      {/* Smart Commit Message 结果 */}
+      {smartCommitMessage && (
+        <div className="git-ai-result-overlay" onClick={() => setSmartCommitMessage(null)}>
+          <div className="git-ai-result" onClick={e => e.stopPropagation()}>
+            <div className="git-ai-result-header">
+              <span>{t('git.smartCommit')}</span>
+              <button onClick={() => setSmartCommitMessage(null)}>✕</button>
+            </div>
+            <pre className="git-ai-result-content">{smartCommitMessage}</pre>
+            <div className="git-ai-result-actions">
+              <button
+                className="git-ai-result-action-primary"
+                onClick={() => {
+                  send({ type: 'git:commit', payload: { projectPath, message: smartCommitMessage, autoStage: smartCommitNeedsStaging } });
+                  setSmartCommitMessage(null);
+                  setSmartCommitNeedsStaging(false);
+                }}
+              >
+                {t('git.commit')}
+              </button>
+              <button onClick={() => setSmartCommitMessage(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Smart Review 结果 */}
+      {reviewResult && (
+        <div className="git-ai-result-overlay" onClick={() => setReviewResult(null)}>
+          <div className="git-ai-result git-ai-result--wide" onClick={e => e.stopPropagation()}>
+            <div className="git-ai-result-header">
+              <span>{t('git.smartReview')}</span>
+              <button onClick={() => setReviewResult(null)}>✕</button>
+            </div>
+            <div className="git-ai-result-content git-ai-result-content--markdown"><MarkdownContent content={reviewResult} /></div>
+          </div>
+        </div>
+      )}
+
+      {/* Explain Commit 结果 */}
+      {explainResult && (
+        <div className="git-ai-result-overlay" onClick={() => setExplainResult(null)}>
+          <div className="git-ai-result" onClick={e => e.stopPropagation()}>
+            <div className="git-ai-result-header">
+              <span>{t('git.explainCommit')}</span>
+              <button onClick={() => setExplainResult(null)}>✕</button>
+            </div>
+            <div className="git-ai-result-content git-ai-result-content--markdown"><MarkdownContent content={explainResult} /></div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

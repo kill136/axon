@@ -1147,9 +1147,18 @@ class RealTaskExecutor implements TaskExecutor {
 class ExecutionManager {
   private sessions: Map<string, ExecutionSession> = new Map();
   private planner: SmartPlanner;
+  // 主 agent 的认证配置（由 ConversationManager 设置，透传给子 agent）
+  private clientConfig: { apiKey?: string; authToken?: string; baseUrl?: string } = {};
 
   constructor() {
     this.planner = createSmartPlanner();
+  }
+
+  /**
+   * 设置主 agent 的认证配置（供 startExecution 透传给子 agent）
+   */
+  setClientConfig(config: { apiKey?: string; authToken?: string; baseUrl?: string }): void {
+    this.clientConfig = config;
   }
 
   /**
@@ -1200,7 +1209,7 @@ class ExecutionManager {
   async startExecution(
     blueprint: Blueprint,
     onEvent?: (event: SwarmEvent) => void,
-    options?: { taskPlan?: any }
+    options?: { taskPlan?: any; apiKey?: string; authToken?: string; baseUrl?: string }
   ): Promise<ExecutionSession> {
     // 检查是否已有执行（tp- 临时蓝图跳过，它们不复用）
     if (!blueprint.id.startsWith('tp-')) {
@@ -1235,6 +1244,11 @@ class ExecutionManager {
       leadAgentModel: 'sonnet',
       leadAgentMaxTurns: 200,
       leadAgentSelfExecuteComplexity: 'complex',
+      // 认证透传：主 agent → coordinator → LeadAgent/Worker
+      // 优先使用 options 传入的，fallback 到 ExecutionManager 缓存的主 agent 认证
+      apiKey: options?.apiKey || this.clientConfig.apiKey,
+      authToken: options?.authToken || this.clientConfig.authToken,
+      baseUrl: options?.baseUrl || this.clientConfig.baseUrl,
     });
 
     // 设置真正的任务执行器（LeadAgent 模式下仍需作为 fallback）
@@ -1771,6 +1785,144 @@ class ExecutionManager {
       }
     }
     return true;
+  }
+
+  /**
+   * v9.4: 恢复 LeadAgent 执行（死任务恢复）
+   * 当 LeadAgent 已退出但仍有未完成任务时，用户可以从前端触发恢复
+   * 
+   * 与 resume() 不同：resume() 处理暂停状态，这里处理 session 已完成/丢失的情况
+   */
+  async resumeLeadAgent(blueprintId: string): Promise<{ success: boolean; error?: string }> {
+    console.log(`[ExecutionManager] resumeLeadAgent: ${blueprintId}`);
+
+    // 1. 查找已有 session（可能已 completed）
+    let session = this.getSessionByBlueprint(blueprintId);
+
+    if (session && !session.completedAt) {
+      // session 仍然活跃（还在跑），尝试 unpause
+      const needsRestart = session.coordinator.unpause();
+      if (needsRestart) {
+        const blueprint = blueprintStore.get(session.blueprintId);
+        if (blueprint) {
+          const executor = new RealTaskExecutor(blueprint);
+          executor.setCoordinator(session.coordinator);
+          session.coordinator.setTaskExecutor(executor);
+          blueprint.status = 'executing';
+          blueprintStore.save(blueprint);
+          this.runExecution(session, blueprint, executor, { isResume: true }).catch(error => {
+            console.error('[ExecutionManager] resumeLeadAgent 恢复失败:', error);
+          });
+        }
+      }
+      return { success: true };
+    }
+
+    // 2. Session 已完成或不存在，从蓝图状态恢复
+    // 先尝试从 blueprintStore 获取蓝图
+    let blueprint = blueprintStore.get(blueprintId);
+
+    // tp- 临时蓝图不在 store 中，但可能在 session 里
+    if (!blueprint && session) {
+      blueprint = {
+        id: blueprintId,
+        name: session.blueprintName || 'TaskPlan 执行',
+        description: '',
+        status: 'executing',
+        projectPath: session.projectPath,
+        createdAt: session.startedAt,
+        updatedAt: new Date(),
+      } as any;
+    }
+
+    if (!blueprint || !blueprint.projectPath) {
+      return { success: false, error: '找不到蓝图或缺少项目路径' };
+    }
+
+    // 获取之前的执行计划
+    const lastPlan = session?.coordinator.getCurrentPlan() || blueprint.lastExecutionPlan;
+    if (!lastPlan || !lastPlan.tasks || lastPlan.tasks.length === 0) {
+      return { success: false, error: '没有执行计划可以恢复' };
+    }
+
+    // 检查是否有 pending 任务
+    const pendingTasks = lastPlan.tasks.filter((t: any) => t.status === 'pending' || t.status === 'running');
+    if (pendingTasks.length === 0) {
+      return { success: false, error: '所有任务已完成，无需恢复' };
+    }
+
+    // 将 running 任务重置为 pending（原 LeadAgent 已退出，Worker 也已终止）
+    for (const task of lastPlan.tasks) {
+      if (task.status === 'running') {
+        task.status = 'pending';
+        task.startedAt = undefined;
+      }
+    }
+
+    console.log(`[ExecutionManager] 恢复 LeadAgent 执行: ${pendingTasks.length} 个待执行任务`);
+
+    // 清理旧 session
+    if (session) {
+      this.sessions.delete(session.id);
+    }
+
+    // 创建新的 coordinator 和 session（复用 startExecution 的逻辑）
+    const plan: ExecutionPlan = lastPlan as ExecutionPlan;
+    plan.status = 'ready';
+
+    const coordinator = createRealtimeCoordinator({
+      maxWorkers: 1,
+      workerTimeout: 1800000,
+      skipOnFailure: true,
+      stopOnGroupFailure: true,
+      enableLeadAgent: true,
+      leadAgentModel: 'sonnet',
+      leadAgentMaxTurns: 200,
+      leadAgentSelfExecuteComplexity: 'complex',
+      apiKey: this.clientConfig.apiKey,
+      authToken: this.clientConfig.authToken,
+      baseUrl: this.clientConfig.baseUrl,
+    });
+
+    const executor = new RealTaskExecutor(blueprint);
+    executor.setCoordinator(coordinator);
+    coordinator.setTaskExecutor(executor);
+    coordinator.setBlueprint(blueprint);
+
+    // 绑定事件
+    this.setupCoordinatorEvents(coordinator, blueprint);
+
+    // 创建新 session
+    const newSession: ExecutionSession = {
+      id: `session-resume-${Date.now()}`,
+      blueprintId: blueprint.id,
+      blueprintName: blueprint.name,
+      plan,
+      coordinator,
+      projectPath: blueprint.projectPath,
+      startedAt: new Date(),
+    };
+    this.sessions.set(newSession.id, newSession);
+
+    // 更新蓝图状态
+    blueprint.status = 'executing';
+    if (!blueprint.id.startsWith('tp-')) {
+      blueprintStore.save(blueprint);
+    }
+
+    // 以 resume 模式启动
+    this.runExecution(newSession, blueprint, executor, { isResume: true }).catch(error => {
+      console.error('[ExecutionManager] resumeLeadAgent 执行失败:', error);
+      if (!newSession.completedAt) {
+        newSession.completedAt = new Date();
+        blueprint.status = 'failed';
+        if (!blueprint.id.startsWith('tp-')) {
+          blueprintStore.save(blueprint);
+        }
+      }
+    });
+
+    return { success: true };
   }
 
   /**
@@ -2480,15 +2632,22 @@ router.get('/blueprints', (req: Request, res: Response) => {
     const blueprints = blueprintStore.getAll(filterPath);
 
     // 直接返回完整蓝图数据，添加便捷统计字段
-    const data = blueprints.map(b => ({
-      ...b,
-      // 便捷统计字段（供列表展示用）
-      moduleCount: b.modules?.length || 0,
-      processCount: b.businessProcesses?.length || 0,
-      nfrCount: b.nfrs?.length || 0,
-      requirementCount: b.requirements?.length || 0,
-      constraintCount: b.constraints?.length || 0,
-    }));
+    const data = blueprints.map(b => {
+      // 推断蓝图来源：优先用已有 source，否则根据内容推断
+      const source = b.source
+        || ((b.requirements?.length || 0) > 0 ? 'requirement' : 'codebase');
+
+      return {
+        ...b,
+        source,
+        // 便捷统计字段（供列表展示用）
+        moduleCount: b.modules?.length || 0,
+        processCount: b.businessProcesses?.length || 0,
+        nfrCount: b.nfrs?.length || 0,
+        requirementCount: b.requirements?.length || 0,
+        constraintCount: b.constraints?.length || 0,
+      };
+    });
 
     res.json({
       success: true,
