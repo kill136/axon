@@ -23,6 +23,7 @@ const en: Translations = {
   'settings.tab.importExport': 'Import/Export',
   'settings.tab.mcp': 'MCP',
   'settings.tab.plugins': 'Plugins',
+  'settings.tab.prompts': 'Prompts',
   'settings.tab.about': 'About',
 
   // SettingsPanel - General tab
@@ -703,6 +704,7 @@ const zh: Translations = {
   'settings.tab.importExport': '导入/导出',
   'settings.tab.mcp': 'MCP',
   'settings.tab.plugins': '插件',
+  'settings.tab.prompts': '提示词',
   'settings.tab.about': '关于',
 
   // SettingsPanel - General tab

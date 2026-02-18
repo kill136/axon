@@ -14,6 +14,7 @@ import { CheckpointManager } from './checkpoint-manager.js';
 import type { ClientMessage, ServerMessage, Attachment, AgentDebugPayload } from '../shared/types.js';
 import { changeLocale, getCurrentLocale } from '../../i18n/index.js';
 import { configManager } from '../../config/index.js';
+import { promptSnippetsManager, type PromptSnippetCreateInput, type PromptSnippetUpdateInput } from './prompt-snippets.js';
 // 导入蓝图存储和执行管理器（用于 WebSocket 订阅）
 import { blueprintStore, executionEventEmitter, executionManager, activeWorkers } from './routes/blueprint-api.js';
 // v4.5: 导入 Worker 类型
@@ -2013,6 +2014,31 @@ async function handleClientMessage(
       await handleSystemPromptGet(client, conversationManager);
       break;
 
+    // ========== 提示词片段管理 ==========
+    case 'prompt_snippets_list':
+      handlePromptSnippetsList(client);
+      break;
+
+    case 'prompt_snippets_create':
+      handlePromptSnippetsCreate(client, message.payload);
+      break;
+
+    case 'prompt_snippets_update':
+      handlePromptSnippetsUpdate(client, message.payload.id, message.payload);
+      break;
+
+    case 'prompt_snippets_delete':
+      handlePromptSnippetsDelete(client, message.payload.id);
+      break;
+
+    case 'prompt_snippets_toggle':
+      handlePromptSnippetsToggle(client, message.payload.id);
+      break;
+
+    case 'prompt_snippets_reorder':
+      handlePromptSnippetsReorder(client, message.payload.orders);
+      break;
+
     case 'debug_get_messages':
       await handleDebugGetMessages(client, conversationManager);
       break;
@@ -3331,6 +3357,121 @@ async function handleSystemPromptGet(
       payload: {
         message: error instanceof Error ? error.message : '获取系统提示失败',
       },
+    });
+  }
+}
+
+
+// ============================================================================
+// Prompt Snippets 处理函数
+// ============================================================================
+
+function handlePromptSnippetsList(client: ClientConnection): void {
+  const { ws } = client;
+  try {
+    const snippets = promptSnippetsManager.list();
+    sendMessage(ws, {
+      type: 'prompt_snippets_response',
+      payload: { snippets },
+    });
+  } catch (error) {
+    sendMessage(ws, {
+      type: 'error',
+      payload: { message: error instanceof Error ? error.message : '获取提示词片段失败' },
+    });
+  }
+}
+
+function handlePromptSnippetsCreate(client: ClientConnection, input: PromptSnippetCreateInput): void {
+  const { ws } = client;
+  try {
+    const snippet = promptSnippetsManager.create(input);
+    sendMessage(ws, {
+      type: 'prompt_snippets_response',
+      payload: { snippets: promptSnippetsManager.list(), created: snippet },
+    });
+  } catch (error) {
+    sendMessage(ws, {
+      type: 'error',
+      payload: { message: error instanceof Error ? error.message : '创建提示词片段失败' },
+    });
+  }
+}
+
+function handlePromptSnippetsUpdate(client: ClientConnection, id: string, input: PromptSnippetUpdateInput): void {
+  const { ws } = client;
+  try {
+    const updated = promptSnippetsManager.update(id, input);
+    if (!updated) {
+      sendMessage(ws, { type: 'error', payload: { message: `片段 ${id} 不存在` } });
+      return;
+    }
+    sendMessage(ws, {
+      type: 'prompt_snippets_response',
+      payload: { snippets: promptSnippetsManager.list(), updated },
+    });
+  } catch (error) {
+    sendMessage(ws, {
+      type: 'error',
+      payload: { message: error instanceof Error ? error.message : '更新提示词片段失败' },
+    });
+  }
+}
+
+function handlePromptSnippetsDelete(client: ClientConnection, id: string): void {
+  const { ws } = client;
+  try {
+    const success = promptSnippetsManager.delete(id);
+    if (!success) {
+      sendMessage(ws, { type: 'error', payload: { message: `片段 ${id} 不存在` } });
+      return;
+    }
+    sendMessage(ws, {
+      type: 'prompt_snippets_response',
+      payload: { snippets: promptSnippetsManager.list(), deleted: id },
+    });
+  } catch (error) {
+    sendMessage(ws, {
+      type: 'error',
+      payload: { message: error instanceof Error ? error.message : '删除提示词片段失败' },
+    });
+  }
+}
+
+function handlePromptSnippetsToggle(client: ClientConnection, id: string): void {
+  const { ws } = client;
+  try {
+    const toggled = promptSnippetsManager.toggle(id);
+    if (!toggled) {
+      sendMessage(ws, { type: 'error', payload: { message: `片段 ${id} 不存在` } });
+      return;
+    }
+    sendMessage(ws, {
+      type: 'prompt_snippets_response',
+      payload: { snippets: promptSnippetsManager.list(), toggled },
+    });
+  } catch (error) {
+    sendMessage(ws, {
+      type: 'error',
+      payload: { message: error instanceof Error ? error.message : '切换提示词片段失败' },
+    });
+  }
+}
+
+function handlePromptSnippetsReorder(client: ClientConnection, orders: Array<{ id: string; priority: number }>): void {
+  const { ws } = client;
+  try {
+    for (const { id, priority } of orders) {
+      promptSnippetsManager.update(id, { priority });
+    }
+    sendMessage(ws, {
+      type: 'prompt_snippets_response',
+      payload: { snippets: promptSnippetsManager.list() },
+    });
+  } catch (error) {
+    sendMessage(ws, {
+      type: 'error',
+      payload: { message: error instanceof Error ? error.message : '排序提示词片段失败' },
     });
   }
 }

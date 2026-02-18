@@ -46,6 +46,7 @@ import { TaskStore, type ScheduledTask } from '../../daemon/store.js';
 import { isDaemonRunning } from '../../daemon/index.js';
 import { parseTimeExpression } from '../../daemon/time-parser.js';
 import { appendRunLog } from '../../daemon/run-log.js';
+import { promptSnippetsManager } from './prompt-snippets.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -2946,6 +2947,19 @@ export class ConversationManager {
     const codebaseContext = this.buildCodebaseContext(state.session.cwd);
     if (codebaseContext) {
       prompt += '\n\n' + codebaseContext;
+    }
+
+    // 注入用户自定义提示词片段（~/.claude/prompt-snippets/）
+    try {
+      const { prepend, append } = promptSnippetsManager.getInjectionTexts();
+      if (prepend) {
+        prompt = prepend + '\n\n' + prompt;
+      }
+      if (append) {
+        prompt += '\n\n' + append;
+      }
+    } catch {
+      // 片段加载失败不影响主流程
     }
 
     return prompt;
