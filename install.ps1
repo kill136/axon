@@ -87,7 +87,7 @@ function Test-Node {
                 return $true
             } elseif ($major -gt $script:NodeMajorMax) {
                 Write-Warn "Node.js $ver detected, but version is too new (max supported: v$($script:NodeMajorMax).x LTS). Native modules may lack prebuilt binaries."
-                Write-Warn "Will install Node.js v22 LTS alongside..."
+                Write-Warn "Will download Node.js v22 LTS portable version (won't affect your system Node.js)..."
             } else {
                 Write-Warn "Node.js $ver found, but >= $script:NodeMajorRequired required"
             }
@@ -98,35 +98,113 @@ function Test-Node {
 
 # --- Auto-install Node.js ---
 function Install-Node {
-    Write-Warn "Node.js not found or version too low, installing..."
+    # Check if a local portable Node.js already exists
+    $localNodeDir = Join-Path $script:InstallDir ".node"
+    $localNode = Join-Path $localNodeDir "node.exe"
+    if (Test-Path $localNode) {
+        $env:Path = "$localNodeDir;$env:Path"
+        if (Test-Node) { return }
+    }
 
-    # Strategy 1: winget (force LTS v22, not current)
-    if (Test-Winget) {
-        Write-Info "Installing Node.js v22 LTS via winget..."
-        winget install OpenJS.NodeJS.LTS --version "22.14.0" --accept-source-agreements --accept-package-agreements --silent --force
-        if ($LASTEXITCODE -eq 0) {
+    # Check if system has a Node.js that's too new (e.g. v24)
+    # In that case, NEVER use MSI/winget — it would uninstall the existing version
+    # and kill the current PowerShell process. Use portable zip instead.
+    $systemNodeTooNew = $false
+    try {
+        $ver = (node -v 2>$null)
+        if ($ver) {
+            $major = [int]($ver -replace 'v','').Split('.')[0]
+            if ($major -gt $script:NodeMajorMax) {
+                $systemNodeTooNew = $true
+            }
+        }
+    } catch {}
+
+    if (-not $systemNodeTooNew) {
+        Write-Warn "Node.js not found or version too low, installing..."
+
+        # Strategy 1: winget (only when no conflicting Node.js exists)
+        if (Test-Winget) {
+            Write-Info "Installing Node.js v22 LTS via winget..."
+            winget install OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements --silent
+            if ($LASTEXITCODE -eq 0) {
+                Refresh-Path
+                if (Test-Node) { return }
+            }
+            Write-Warn "winget install completed but node not found in PATH, trying direct download..."
+        }
+
+        # Strategy 2: Direct MSI download (only when no conflicting Node.js exists)
+        $arch = if ([Environment]::Is64BitOperatingSystem) { "x64" } else { "x86" }
+        $nodeVersion = "22.14.0"
+        $msiFile = "node-v$nodeVersion-$arch.msi"
+        $msiPath = Join-Path $env:TEMP $msiFile
+
+        $nodeUrls = @(
+            "https://nodejs.org/dist/v$nodeVersion/$msiFile",
+            "https://npmmirror.com/mirrors/node/v$nodeVersion/$msiFile"
+        )
+
+        $downloaded = $false
+        foreach ($url in $nodeUrls) {
+            Write-Info "Downloading Node.js v$nodeVersion from $url ..."
+            try {
+                Invoke-WebRequest -Uri $url -OutFile $msiPath -UseBasicParsing -TimeoutSec 30
+                $downloaded = $true
+                break
+            } catch {
+                Write-Warn "Download failed from $url, trying next source..."
+            }
+        }
+
+        if ($downloaded) {
+            Write-Info "Installing Node.js v$nodeVersion (this may take a minute)..."
+            $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+            if ($isAdmin) {
+                Start-Process msiexec.exe -ArgumentList "/i `"$msiPath`" /qn /norestart" -Wait -NoNewWindow
+            } else {
+                Write-Info "Requesting administrator privileges for Node.js installation..."
+                Start-Process msiexec.exe -ArgumentList "/i `"$msiPath`" /qn /norestart" -Wait -Verb RunAs
+            }
+            Remove-Item $msiPath -Force -ErrorAction SilentlyContinue
             Refresh-Path
             if (Test-Node) { return }
         }
-        Write-Warn "winget install completed but node not found in PATH, trying direct download..."
     }
 
-    # Strategy 2: Direct MSI download (try official first, then China mirror)
+    # Strategy 3: Portable zip (safe fallback, never conflicts with existing Node.js)
+    # Used when: system Node is too new, or MSI/winget failed
+    Write-Info "Downloading Node.js v22 LTS portable version..."
+    Install-NodePortable
+    if (Test-Node) { return }
+
+    Write-Err @"
+Failed to install Node.js automatically.
+
+  Please install Node.js v22 LTS manually:
+    https://nodejs.org/
+
+  Then re-run this script.
+"@
+}
+
+# --- Install Node.js as portable zip (no MSI, no conflict) ---
+function Install-NodePortable {
     $arch = if ([Environment]::Is64BitOperatingSystem) { "x64" } else { "x86" }
     $nodeVersion = "22.14.0"
-    $msiFile = "node-v$nodeVersion-$arch.msi"
-    $msiPath = Join-Path $env:TEMP $msiFile
+    $zipFile = "node-v$nodeVersion-win-$arch.zip"
+    $zipPath = Join-Path $env:TEMP $zipFile
 
     $nodeUrls = @(
-        "https://nodejs.org/dist/v$nodeVersion/$msiFile",
-        "https://npmmirror.com/mirrors/node/v$nodeVersion/$msiFile"
+        "https://nodejs.org/dist/v$nodeVersion/$zipFile",
+        "https://npmmirror.com/mirrors/node/v$nodeVersion/$zipFile"
     )
 
     $downloaded = $false
     foreach ($url in $nodeUrls) {
-        Write-Info "Downloading Node.js v$nodeVersion from $url ..."
+        Write-Info "Downloading $zipFile from $url ..."
         try {
-            Invoke-WebRequest -Uri $url -OutFile $msiPath -UseBasicParsing -TimeoutSec 30
+            Invoke-WebRequest -Uri $url -OutFile $zipPath -UseBasicParsing -TimeoutSec 120
             $downloaded = $true
             break
         } catch {
@@ -134,29 +212,30 @@ function Install-Node {
         }
     }
 
-    if ($downloaded) {
-        Write-Info "Installing Node.js v$nodeVersion (this may take a minute)..."
-        # MSI silent install requires elevation; use -Verb RunAs to prompt UAC if needed
-        $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-        if ($isAdmin) {
-            Start-Process msiexec.exe -ArgumentList "/i `"$msiPath`" /qn /norestart" -Wait -NoNewWindow
-        } else {
-            Write-Info "Requesting administrator privileges for Node.js installation..."
-            Start-Process msiexec.exe -ArgumentList "/i `"$msiPath`" /qn /norestart" -Wait -Verb RunAs
-        }
-        Remove-Item $msiPath -Force -ErrorAction SilentlyContinue
-        Refresh-Path
-        if (Test-Node) { return }
+    if (-not $downloaded) {
+        Write-Warn "Failed to download Node.js portable zip."
+        return
     }
 
-    Write-Err @"
-Failed to install Node.js automatically.
+    $localNodeDir = Join-Path $script:InstallDir ".node"
+    if (Test-Path $localNodeDir) { Remove-Item -Recurse -Force $localNodeDir }
 
-  Please install Node.js >= $script:NodeMajorRequired manually:
-    https://nodejs.org/
+    Write-Info "Extracting Node.js portable to $localNodeDir ..."
+    # Create parent dir if install dir doesn't exist yet
+    if (-not (Test-Path $script:InstallDir)) {
+        New-Item -ItemType Directory -Path $script:InstallDir -Force | Out-Null
+    }
+    $extractDir = Join-Path $env:TEMP "node-extract-$"
+    Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
+    # Zip contains a folder like node-v22.14.0-win-x64/, move it to .node
+    $innerDir = Get-ChildItem -Path $extractDir -Directory | Select-Object -First 1
+    Move-Item -Path $innerDir.FullName -Destination $localNodeDir -Force
+    Remove-Item -Recurse -Force $extractDir -ErrorAction SilentlyContinue
+    Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
 
-  Then re-run this script.
-"@
+    # Prepend to PATH for current session
+    $env:Path = "$localNodeDir;$env:Path"
+    Write-Ok "Node.js portable extracted to $localNodeDir"
 }
 
 # --- Check Python (optional, only needed if prebuilt binaries unavailable) ---
@@ -345,6 +424,12 @@ echo.
 
 set "INSTALL_DIR=%USERPROFILE%\.claude-code-open"
 cd /d "%INSTALL_DIR%"
+
+REM --- Use portable Node.js if available ---
+if exist "%INSTALL_DIR%\.node\node.exe" (
+    set "PATH=%INSTALL_DIR%\.node;%PATH%"
+    echo [OK] Using portable Node.js from .node\
+)
 
 REM --- Check for updates ---
 set "NEED_REBUILD=0"
