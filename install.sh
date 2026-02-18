@@ -164,6 +164,48 @@ ensure_build_tools() {
     success "C++ build tools installed"
 }
 
+# --- Python (needed by node-gyp) ---
+ensure_python() {
+    if command -v python3 &> /dev/null; then
+        success "Python3 detected ($(python3 --version 2>&1))"
+        return
+    fi
+    if command -v python &> /dev/null; then
+        local pyver
+        pyver=$(python --version 2>&1)
+        if echo "$pyver" | grep -q "Python 3"; then
+            success "Python detected ($pyver)"
+            return
+        fi
+    fi
+
+    warn "Python3 not found (needed by node-gyp for native modules), installing..."
+    if [ "$PLATFORM" = "linux" ]; then
+        case "$PKG_MGR" in
+            dnf)    pkg_install python3 ;;
+            yum)    pkg_install python3 ;;
+            apt)    pkg_install python3 ;;
+            pacman) pkg_install python ;;
+            apk)    pkg_install python3 ;;
+            *)      error "Cannot auto-install Python3. Please install Python >= 3.7 manually." ;;
+        esac
+    elif [ "$PLATFORM" = "macos" ]; then
+        if command -v brew &> /dev/null; then
+            brew install python@3
+        else
+            # xcode-select provides python3 on modern macOS
+            xcode-select --install 2>/dev/null || true
+            until command -v python3 &>/dev/null; do sleep 3; done
+        fi
+    fi
+
+    if command -v python3 &> /dev/null || command -v python &> /dev/null; then
+        success "Python3 installed"
+    else
+        error "Python3 installation failed. Please install Python >= 3.7 manually: https://www.python.org/"
+    fi
+}
+
 # --- Node.js ---
 ensure_node() {
     if command -v node &> /dev/null; then
@@ -725,6 +767,9 @@ main() {
 
     # 2. Build tools (needed for native modules)
     ensure_build_tools
+
+    # 2.5. Python (needed by node-gyp for native modules)
+    ensure_python
 
     # 3. Node.js
     ensure_node

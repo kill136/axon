@@ -148,6 +148,81 @@ Failed to install Node.js automatically.
 "@
 }
 
+# --- Check Python (needed by node-gyp for native modules) ---
+function Test-Python {
+    try {
+        $ver = (python --version 2>&1)
+        if ($ver -match "Python 3\.") {
+            Write-Ok "Python detected ($ver)"
+            return $true
+        }
+    } catch {}
+    try {
+        $ver = (python3 --version 2>&1)
+        if ($ver -match "Python 3\.") {
+            Write-Ok "Python3 detected ($ver)"
+            return $true
+        }
+    } catch {}
+    return $false
+}
+
+# --- Auto-install Python ---
+function Install-Python {
+    Write-Warn "Python3 not found (needed by node-gyp for native modules), installing..."
+
+    # Strategy 1: winget
+    if (Test-Winget) {
+        Write-Info "Installing Python via winget..."
+        winget install Python.Python.3.12 --accept-source-agreements --accept-package-agreements --silent
+        if ($LASTEXITCODE -eq 0) {
+            Refresh-Path
+            if (Test-Python) { return }
+        }
+        Write-Warn "winget install completed but python not found in PATH, trying direct download..."
+    }
+
+    # Strategy 2: Direct download (try official first, then China mirror)
+    $arch = if ([Environment]::Is64BitOperatingSystem) { "amd64" } else { "" }
+    $pyVersion = "3.12.8"
+    $pyFile = if ($arch) { "python-$pyVersion-$arch.exe" } else { "python-$pyVersion.exe" }
+    $pyPath = Join-Path $env:TEMP $pyFile
+
+    $pyUrls = @(
+        "https://www.python.org/ftp/python/$pyVersion/$pyFile",
+        "https://registry.npmmirror.com/-/binary/python/$pyVersion/$pyFile"
+    )
+
+    $downloaded = $false
+    foreach ($url in $pyUrls) {
+        Write-Info "Downloading Python v$pyVersion from $url ..."
+        try {
+            Invoke-WebRequest -Uri $url -OutFile $pyPath -UseBasicParsing -TimeoutSec 60
+            $downloaded = $true
+            break
+        } catch {
+            Write-Warn "Download failed from $url, trying next source..."
+        }
+    }
+
+    if ($downloaded) {
+        Write-Info "Installing Python v$pyVersion (this may take a minute)..."
+        Start-Process $pyPath -ArgumentList "/quiet InstallAllUsers=0 PrependPath=1 Include_test=0" -Wait -NoNewWindow
+        Remove-Item $pyPath -Force -ErrorAction SilentlyContinue
+        Refresh-Path
+        if (Test-Python) { return }
+    }
+
+    Write-Err @"
+Failed to install Python automatically.
+
+  Please install Python >= 3.7 manually:
+    https://www.python.org/downloads/
+
+  Then re-run this script.
+"@
+}
+
 # --- Check Docker ---
 function Test-Docker {
     try {
@@ -605,7 +680,12 @@ function Main {
         Install-Node
     }
 
-    # 4. Check Docker availability (optional)
+    # 4. Python (needed by node-gyp for native modules) - auto-install if missing
+    if (-not (Test-Python)) {
+        Install-Python
+    }
+
+    # 5. Check Docker availability (optional)
     $hasDocker = Test-Docker
 
     Write-Host ""
