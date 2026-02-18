@@ -1150,7 +1150,9 @@ async function trySessionMemoryCompact(
   messages: Message[],
   agentId?: string,
   autoCompactThreshold?: number,
-  session?: Session
+  session?: Session,
+  projectPath?: string,
+  sessionId?: string
 ): Promise<{
   success: boolean;
   messages: Message[];
@@ -1174,8 +1176,21 @@ async function trySessionMemoryCompact(
   // 3. 获取最后一次压缩的UUID（从会话状态中读取）
   const lastCompactedUuid = getLastCompactedUuid(session);
 
-  // 4. 获取Session Memory模板
-  const template = getSessionMemoryTemplate();
+  // 4. 获取Session Memory内容（优先使用实际内容，fallback到模板）
+  let template: string | null = null;
+  if (projectPath && sessionId) {
+    const actualContent = readSessionMemory(projectPath, sessionId);
+    if (actualContent && actualContent.trim()) {
+      template = actualContent;
+      console.log(chalk.blue('[TJ1] 使用实际Session Memory内容进行压缩'));
+    }
+  }
+  if (!template) {
+    template = getSessionMemoryTemplate();
+    if (template) {
+      console.log(chalk.blue('[TJ1] 使用Session Memory模板（未找到实际内容）'));
+    }
+  }
   if (!template) {
     return null;
   }
@@ -1432,7 +1447,7 @@ async function autoCompact(
   console.log(chalk.yellow(`[AutoCompact] 超出: ${(currentTokens - threshold).toLocaleString()} tokens`));
 
   // 2. 优先尝试 TJ1 (Session Memory 压缩)
-  const tj1Result = await trySessionMemoryCompact(messages, undefined, threshold, session);
+  const tj1Result = await trySessionMemoryCompact(messages, undefined, threshold, session, session?.cwd, session?.sessionId);
   if (tj1Result && tj1Result.success) {
     console.log(chalk.green(`[AutoCompact] Session Memory压缩成功，节省 ${tj1Result.savedTokens.toLocaleString()} tokens`));
     // 获取边界标记的 UUID（用于增量压缩）

@@ -60,6 +60,7 @@ import { ScheduleTaskTool } from './schedule.js';
 import { SelfEvolveTool } from './self-evolve.js';
 import { BrowserTool } from './browser.js';
 import { MemorySearchTool } from './memory-search.js';
+import { MemoryDiagnosticsTool } from './memory-diagnostics.js';
 import { CreateToolTool } from './create-tool.js';
 import { DatabaseTool } from './database.js';
 import { DebuggerTool } from './debugger.js';
@@ -178,6 +179,7 @@ export function registerCoreTools(): void {
 
   // 16. MemorySearch 长期记忆搜索工具
   toolRegistry.register(new MemorySearchTool());
+  toolRegistry.register(new MemoryDiagnosticsTool());
 
   // 17. CreateTool 自定义 Skill 创建（写入 ~/.claude/skills/，利用 Skill 系统）
   toolRegistry.register(new CreateToolTool());
