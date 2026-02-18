@@ -131,7 +131,7 @@ export class LeadAgent extends EventEmitter {
     const platform = os.platform();
     const platformInfo = platform === 'win32' ? 'Windows' : platform === 'darwin' ? 'macOS' : 'Linux';
     const shellHint = platform === 'win32'
-      ? '\n- Windows 系统：使用 dir 代替 ls，使用 type 代替 cat'
+      ? '\n- Windows 系统：Shell 是 git-bash，ls/cat 等 Unix 命令可用，不要使用 cmd.exe 语法（如 dir、type、> nul 等）'
       : '';
     const today = new Date().toISOString().split('T')[0];
 
@@ -391,7 +391,7 @@ ${endpointLines.join('\n')}
     const platform = os.platform();
     const platformInfo = platform === 'win32' ? 'Windows' : platform === 'darwin' ? 'macOS' : 'Linux';
     const shellHint = platform === 'win32'
-      ? '\n- Windows 系统：使用 dir 代替 ls，使用 type 代替 cat'
+      ? '\n- Windows 系统：Shell 是 git-bash，ls/cat 等 Unix 命令可用，不要使用 cmd.exe 语法（如 dir、type、> nul 等）'
       : '';
     const today = new Date().toISOString().split('T')[0];
 

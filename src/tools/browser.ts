@@ -13,8 +13,7 @@ import type { BrowserToolInput } from '../browser/types.js';
 
 export class BrowserTool extends BaseTool<BrowserToolInput, ToolResult> {
   name = 'Browser';
-  description = `
-Control a Chromium browser through Chrome DevTools Protocol (CDP) and Playwright.
+  description = `Control a Chromium browser through Chrome DevTools Protocol (CDP) and Playwright.
 Supports persistent profiles, snapshot/ref/action interaction pattern.
 
 WORKFLOW:
@@ -22,50 +21,6 @@ WORKFLOW:
 2. Get page structure: Use "snapshot" action to get accessibility tree with ref IDs (e1, e2, e3...)
 3. Interact with page: Use ref IDs with actions like "click", "fill", "type"
 4. Capture results: Use "screenshot" to capture visual output
-
-AVAILABLE ACTIONS:
-
-Browser Lifecycle:
-  - start: Launch browser with persistent profile (~/.claude/browser-data/default)
-  - stop: Close browser
-  - status: Get browser status (running, url, title, tabs)
-
-Navigation:
-  - goto: Navigate to URL (returns snapshot automatically)
-  - go_back: Navigate back
-  - go_forward: Navigate forward
-  - reload: Reload current page
-
-Page Inspection:
-  - snapshot: Get accessibility tree with ref IDs
-    - Set interactive=true to show only interactive elements
-    - Returns page structure like:
-      - button "Submit" [ref=e1]
-      - textbox "Email" [ref=e2]
-      - link "Sign up" [ref=e3]
-  - screenshot: Capture page screenshot (set fullPage=true for full page)
-
-Interaction (requires ref from snapshot):
-  - click: Click element by ref
-  - fill: Fill input element by ref with value
-  - hover: Hover over element by ref
-  - select: Select option(s) by ref with value (comma-separated for multiple)
-
-Keyboard:
-  - type: Type text at current focus
-  - press: Press key (e.g., "Enter", "Escape", "Tab")
-
-Tab Management:
-  - tab_list: List all tabs with index/url/title
-  - tab_new: Create new tab (optional url)
-  - tab_select: Switch to tab by index
-  - tab_close: Close tab by index (or current if no index)
-
-Advanced:
-  - evaluate: Execute JavaScript expression
-  - cookies: Get cookies (optional domain filter)
-  - cookie_set: Set cookie (requires name, value, optional domain/path/etc)
-  - cookie_clear: Clear all cookies
 
 USAGE NOTES:
   - Always call "start" before other actions

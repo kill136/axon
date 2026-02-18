@@ -1,7 +1,8 @@
 #!/bin/bash
 # ============================================
 # Claude Code Open - One-Click Install Script
-# Usage: curl -fsSL https://raw.githubusercontent.com/kill136/claude-code-open/private_web_ui/install.sh | bash
+# GitHub:  curl -fsSL https://raw.githubusercontent.com/kill136/claude-code-open/private_web_ui/install.sh | bash
+# China:   curl -fsSL https://gitee.com/lubanbbs/claude-code-open/raw/private_web_ui/install.sh | bash
 # ============================================
 set -e
 
@@ -14,7 +15,9 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
 
-REPO_URL="https://github.com/kill136/claude-code-open.git"
+REPO_URL_GITHUB="https://github.com/kill136/claude-code-open.git"
+REPO_URL_GITEE="https://gitee.com/lubanbbs/claude-code-open.git"
+REPO_URL=""  # Will be set by detect_repo_url()
 DOCKER_IMAGE="wbj66/claude-code-open:latest"
 INSTALL_DIR="$HOME/.claude-code-open"
 NODE_MAJOR_REQUIRED=18
@@ -43,6 +46,34 @@ detect_platform() {
         *)       error "Unsupported OS: $OS. Use Windows install.ps1 instead." ;;
     esac
     info "Platform: $PLATFORM ($ARCH)"
+}
+
+# --- Detect best repo URL (GitHub vs Gitee for China) ---
+detect_repo_url() {
+    # If user explicitly set REPO_URL env var, respect it
+    if [ -n "$REPO_URL" ]; then
+        info "Using user-specified repo: $REPO_URL"
+        return
+    fi
+
+    info "Detecting network connectivity..."
+
+    # Check if curl is available (might not be on minimal systems)
+    if ! command -v curl &> /dev/null; then
+        warn "curl not found, defaulting to Gitee mirror (safer for China users)"
+        REPO_URL="$REPO_URL_GITEE"
+        return
+    fi
+
+    # Try GitHub with a short timeout (3 seconds)
+    if curl -fsSL --connect-timeout 3 --max-time 5 "https://github.com" -o /dev/null 2>/dev/null; then
+        REPO_URL="$REPO_URL_GITHUB"
+        success "GitHub accessible, using GitHub source"
+    else
+        warn "GitHub not accessible (likely in China), switching to Gitee mirror"
+        REPO_URL="$REPO_URL_GITEE"
+        success "Using Gitee mirror: $REPO_URL_GITEE"
+    fi
 }
 
 # --- Detect Linux package manager ---
@@ -688,6 +719,9 @@ main() {
 
     # 1. Git (needed for source install)
     ensure_git
+
+    # 1.5. Detect best repo source (GitHub vs Gitee for China)
+    detect_repo_url
 
     # 2. Build tools (needed for native modules)
     ensure_build_tools

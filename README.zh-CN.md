@@ -72,6 +72,11 @@ irm https://raw.githubusercontent.com/kill136/claude-code-open/private_web_ui/in
 curl -fsSL https://raw.githubusercontent.com/kill136/claude-code-open/private_web_ui/install.sh | bash
 ```
 
+**中国用户（无法访问 GitHub）：**
+```bash
+curl -fsSL https://gitee.com/lubanbbs/claude-code-open/raw/private_web_ui/install.sh | bash
+```
+
 安装脚本会自动完成：
 - ✅ 检测并安装缺失依赖（Node.js、Git、g++、make）
 - ✅ 克隆代码仓库

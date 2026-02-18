@@ -48,7 +48,7 @@ import { TaskCreateTool, TaskGetTool, TaskUpdateTool, TaskListTool } from './tas
 import { isTasksEnabled } from './task-storage.js';
 import { NotebookEditTool } from './notebook.js';
 import { EnterPlanModeTool, ExitPlanModeTool } from './planmode.js';
-import { MCPSearchTool, ListMcpResourcesTool, ReadMcpResourceTool } from './mcp.js';
+import { MCPSearchTool, McpResourceTool } from './mcp.js';
 import { AskUserQuestionTool } from './ask.js';
 import { SkillTool } from './skill.js';
 import { LSPTool } from './lsp.js';
@@ -132,10 +132,9 @@ export function registerCoreTools(): void {
   // 9. Skill 系统 (1个)
   toolRegistry.register(new SkillTool());
 
-  // 10. MCP 工具 (3个)
+  // 10. MCP 工具 (2个) - MCPSearch + McpResource (合并了 ListMcpResources/ReadMcpResource)
   toolRegistry.register(new MCPSearchTool());
-  toolRegistry.register(new ListMcpResourcesTool());
-  toolRegistry.register(new ReadMcpResourceTool());
+  toolRegistry.register(new McpResourceTool());
 
   // 18. Agent Teams v2.1.33 工具 (3个) - TeamCreate/TeamDelete/TeamSendMessage
   // v2.1.34: 添加 try-catch 保护，防止 agent teams 设置变化时崩溃

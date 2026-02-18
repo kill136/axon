@@ -623,6 +623,31 @@ export interface ReadMcpResourceInput {
 }
 
 /**
+ * Input parameters for McpResource tool (merged List + Read)
+ */
+export interface McpResourceInput {
+  /**
+   * Action to perform: 'list' or 'read'
+   */
+  action: 'list' | 'read';
+
+  /**
+   * The MCP server name (optional for list, required for read)
+   */
+  server?: string;
+
+  /**
+   * The resource URI to read (required for action='read')
+   */
+  uri?: string;
+
+  /**
+   * Whether to refresh the resource list from the server (for action='list')
+   */
+  refresh?: boolean;
+}
+
+/**
  * Input parameters for searching MCP tools
  */
 export interface MCPSearchInput {
@@ -886,6 +911,7 @@ export type ToolInputSchemas =
   | McpInput
   | ListMcpResourcesInput
   | ReadMcpResourceInput
+  | McpResourceInput
   | MCPSearchInput
   | AskUserQuestionInput
   | SkillInput

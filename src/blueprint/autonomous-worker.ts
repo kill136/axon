@@ -148,7 +148,7 @@ export class AutonomousWorkerExecutor extends EventEmitter {
     const platform = os.platform();
     const platformInfo = platform === 'win32' ? 'win32' : platform === 'darwin' ? 'darwin' : 'linux';
     const shellHint = platform === 'win32'
-      ? '\n- Windows 系统：使用 dir 代替 ls，使用 cd 代替 pwd，使用 type 代替 cat'
+      ? '\n- Windows 系统：Shell 是 git-bash，ls/pwd/cat 等 Unix 命令可用，不要使用 cmd.exe 语法（如 dir、type、> nul 等）'
       : '';
 
     // 检查是否是 git 仓库

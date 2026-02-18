@@ -177,6 +177,7 @@ export type {
   McpInput as McpToolInput,
   ListMcpResourcesInput as ListMcpResourcesToolInput,
   ReadMcpResourceInput as ReadMcpResourceToolInput,
+  McpResourceInput as McpResourceToolInput,
   MCPSearchInput as MCPSearchToolInput,
 } from './tools.js';
 

@@ -3217,6 +3217,7 @@ Guidelines:
       ExitPlanMode: 'plan',
       ListMcpResources: 'mcp',
       ReadMcpResource: 'mcp',
+      McpResource: 'mcp',
       MCPSearch: 'mcp',
       AskUserQuestion: 'interaction',
       Tmux: 'system',
