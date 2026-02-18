@@ -10,6 +10,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { estimateTokens } from '../utils/token-estimate.js';
 
 // ============================================================================
 // 路径函数
@@ -205,14 +206,6 @@ function estimateSectionTokens(content: string): Record<string, number> {
   }
 
   return sections;
-}
-
-/**
- * 简单的 token 估算
- */
-function estimateTokens(text: string): number {
-  // 简单估算：每4个字符约等于1个token
-  return Math.ceil(text.length / 4);
 }
 
 // ============================================================================

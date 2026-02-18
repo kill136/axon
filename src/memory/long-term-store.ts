@@ -291,14 +291,17 @@ export class LongTermStore {
         WHERE chunks_fts MATCH ?
       `;
 
+      const params: any[] = [query];
       if (source) {
-        sql += ` AND c.source = '${source}'`;
+        sql += ` AND c.source = ?`;
+        params.push(source);
       }
 
       sql += ` ORDER BY rank LIMIT ?`;
+      params.push(maxResults * 2);
 
       const stmt = this.db.prepare(sql);
-      const rows = stmt.all(query, maxResults * 2) as Array<{
+      const rows = stmt.all(...params) as Array<{
         id: string;
         path: string;
         source: string;
@@ -342,14 +345,17 @@ export class LongTermStore {
         WHERE text LIKE ?
       `;
 
+      const fallbackParams: any[] = [`%${query}%`];
       if (source) {
-        sql += ` AND source = '${source}'`;
+        sql += ` AND source = ?`;
+        fallbackParams.push(source);
       }
 
       sql += ` LIMIT ?`;
+      fallbackParams.push(maxResults * 2);
 
       const stmt = this.db.prepare(sql);
-      const rows = stmt.all(`%${query}%`, maxResults * 2) as Array<{
+      const rows = stmt.all(...fallbackParams) as Array<{
         id: string;
         path: string;
         source: string;

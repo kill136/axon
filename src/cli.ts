@@ -20,7 +20,7 @@ import { configManager } from './config/index.js';
 import { listSessions, loadSession, forkSession, findSessionByPr, getSessionsByPr } from './session/index.js';
 import { getMemoryManager } from './memory/index.js';
 import { emitLifecycleEvent } from './lifecycle/index.js';
-import { runHooks } from './hooks/index.js';
+import { runHooks, runSessionEndHooks } from './hooks/index.js';
 import { scheduleCleanup } from './session/cleanup.js';
 import { createPluginCommand } from './plugins/cli.js';
 import type { PermissionMode, OutputFormat, InputFormat } from './types/index.js';
@@ -148,6 +148,12 @@ process.on('SIGINT', async () => {
       // 静默失败
     }
   }
+  // SessionEnd hooks
+  try {
+    await runSessionEndHooks(activeSessionId || 'unknown', 'prompt_input_exit');
+  } catch {
+    // 不让 hook 失败阻止退出
+  }
   await cleanupMcpServers();
   showSessionResumeHint();
   safeExit(0);
@@ -155,6 +161,21 @@ process.on('SIGINT', async () => {
 
 // 注册 SIGTERM 信号处理
 process.on('SIGTERM', async () => {
+  // 自动记忆：退出前保存对话记忆
+  if (activeLoop) {
+    try {
+      console.error(chalk.gray('\n[AutoMemory] 正在保存对话记忆...'));
+      await activeLoop.autoMemorize();
+    } catch {
+      // 静默失败
+    }
+  }
+  // SessionEnd hooks
+  try {
+    await runSessionEndHooks(activeSessionId || 'unknown', 'prompt_input_exit');
+  } catch {
+    // 不让 hook 失败阻止退出
+  }
   await cleanupMcpServers();
   showSessionResumeHint();
   safeExit(0);
@@ -1139,6 +1160,12 @@ async function runTextInterface(
         // 自动记忆：提取本次对话值得记住的信息
         console.error(chalk.gray('[AutoMemory] 正在保存对话记忆...'));
         await loop.autoMemorize();
+        // SessionEnd hooks
+        try {
+          await runSessionEndHooks(activeSessionId || 'unknown', 'prompt_input_exit');
+        } catch {
+          // 不让 hook 失败阻止退出
+        }
         const stats = loop.getSession().getStats();
         console.log(chalk.gray(`Session stats: ${stats.messageCount} messages, ${stats.totalCost}`));
         showSessionResumeHint();
@@ -2982,6 +3009,12 @@ async function handleSlashCommand(input: string, loop: ConversationLoop): Promis
       console.log(chalk.yellow(`\n${t('cli.misc.goodbye')}`));
       console.error(chalk.gray('[AutoMemory] 正在保存对话记忆...'));
       await loop.autoMemorize();
+      // SessionEnd hooks
+      try {
+        await runSessionEndHooks(activeSessionId || 'unknown', 'prompt_input_exit');
+      } catch {
+        // 不让 hook 失败阻止退出
+      }
       const exitStats = loop.getSession().getStats();
       console.log(chalk.gray(`Session: ${exitStats.messageCount} messages, ${exitStats.totalCost}`));
       showSessionResumeHint();

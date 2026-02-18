@@ -4,6 +4,7 @@
  */
 
 import chalk from 'chalk';
+import { estimateTokens } from '../utils/token-estimate.js';
 
 /**
  * 预览选项
@@ -91,33 +92,6 @@ export interface DiffLine {
   content: string;
   /** 类型 */
   type: 'add' | 'delete' | 'modify';
-}
-
-/**
- * 估算 tokens（与 builder.ts 保持一致）
- */
-function estimateTokens(text: string): number {
-  if (!text) return 0;
-
-  const hasAsian = /[\u4e00-\u9fa5\u3040-\u309f\u30a0-\u30ff]/.test(text);
-  const hasCode = /^```|function |class |const |let |var |import |export /.test(text);
-
-  let charsPerToken = 3.5;
-
-  if (hasAsian) {
-    charsPerToken = 2.0;
-  } else if (hasCode) {
-    charsPerToken = 3.0;
-  }
-
-  let tokens = text.length / charsPerToken;
-  const specialChars = (text.match(/[{}[\]().,;:!?<>]/g) || []).length;
-  tokens += specialChars * 0.1;
-
-  const newlines = (text.match(/\n/g) || []).length;
-  tokens += newlines * 0.5;
-
-  return Math.ceil(tokens);
 }
 
 /**
