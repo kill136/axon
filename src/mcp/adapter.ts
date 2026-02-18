@@ -221,7 +221,8 @@ class McpResourceContextProvider implements ContextProvider {
     // 这里应该调用 MCP 的 resources/read 方法
     // 为了避免循环依赖，我们使用工具注册表
     const toolRegistry = new ToolRegistry();
-    const result = await toolRegistry.execute('ReadMcpResource', {
+    const result = await toolRegistry.execute('McpResource', {
+      action: 'read',
       server: this.serverName,
       uri: this.resource.uri,
     });

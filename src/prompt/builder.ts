@@ -15,6 +15,7 @@ import {
   CORE_IDENTITY,
   TASK_MANAGEMENT,
   SECURITY_RULES,
+  EXECUTING_WITH_CARE,
   getCodingGuidelines,
   getToolGuidelines,
   getToneAndStyle,
@@ -24,184 +25,10 @@ import {
 } from './templates.js';
 import { AttachmentManager, attachmentManager as defaultAttachmentManager } from './attachments.js';
 import { PromptCache, promptCache, generateCacheKey } from './cache.js';
-import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
-import { execSync } from 'child_process';
 import { getNotebookManager } from '../memory/notebook.js';
-// 注意：旧的 blueprintManager 已被移除，新架构使用 SmartPlanner
-// import { blueprintManager } from '../blueprint/blueprint-manager.js';
-
-/**
- * 安全执行命令，失败返回空字符串
- */
-function safeExec(cmd: string, timeout = 5000): string {
-  try {
-    return execSync(cmd, { encoding: 'utf-8', timeout, stdio: ['pipe', 'pipe', 'pipe'] }).trim();
-  } catch {
-    return '';
-  }
-}
-
-/**
- * 采集宿主机系统环境信息（CPU / 内存 / GPU / 磁盘 / 网络 / 活跃进程等）
- * 仅在首次调用时采集，后续使用缓存（信息在单次会话内不会剧变）
- */
-let _cachedHostInfo: Record<string, string | number | undefined> | null = null;
-
-function collectHostInfo(): Record<string, string | number | undefined> {
-  if (_cachedHostInfo) return _cachedHostInfo;
-
-  const isWin = process.platform === 'win32';
-  const info: Record<string, string | number | undefined> = {};
-
-  // ---- hostname ----
-  info.hostname = os.hostname();
-
-  // ---- arch ----
-  info.arch = os.arch();
-
-  // ---- uptime ----
-  const uptimeSec = os.uptime();
-  const days = Math.floor(uptimeSec / 86400);
-  const hrs = Math.floor((uptimeSec % 86400) / 3600);
-  const mins = Math.floor((uptimeSec % 3600) / 60);
-  info.uptime = `${days}d ${hrs}h ${mins}m`;
-
-  // ---- CPU ----
-  const cpus = os.cpus();
-  if (cpus.length > 0) {
-    info.cpuModel = cpus[0].model.trim();
-    // 物理核心数通过 Set 去重获取（同一物理核的线程 model 相同）
-    info.cpuLogical = cpus.length;
-  }
-  // Windows 上尝试获取物理核心数
-  if (isWin) {
-    const coresStr = safeExec('wmic cpu get NumberOfCores /value');
-    const m = coresStr.match(/NumberOfCores=(\d+)/);
-    if (m) info.cpuCores = parseInt(m[1], 10);
-  } else {
-    // Linux/macOS
-    const nproc = safeExec('nproc --all 2>/dev/null || sysctl -n hw.physicalcpu 2>/dev/null');
-    if (nproc) info.cpuCores = parseInt(nproc, 10);
-  }
-
-  // ---- Memory ----
-  info.totalMemoryGB = parseFloat((os.totalmem() / (1024 ** 3)).toFixed(1));
-  info.freeMemoryGB = parseFloat((os.freemem() / (1024 ** 3)).toFixed(1));
-
-  // ---- GPU ----
-  if (isWin) {
-    const gpuRaw = safeExec('wmic path win32_videocontroller get Name,AdapterRAM /value');
-    const gpuEntries: string[] = [];
-    const gpuBlocks = gpuRaw.split(/\n\n+/).filter(b => b.includes('Name='));
-    for (const block of gpuBlocks) {
-      const nameMatch = block.match(/Name=(.+)/);
-      const ramMatch = block.match(/AdapterRAM=(\d+)/);
-      if (nameMatch) {
-        const name = nameMatch[1].trim();
-        // 跳过虚拟显示器
-        if (/virtual|oray|idddriver/i.test(name)) continue;
-        const ramGB = ramMatch ? (parseInt(ramMatch[1], 10) / (1024 ** 3)).toFixed(1) + 'GB' : '';
-        gpuEntries.push(ramGB ? `${name} (${ramGB})` : name);
-      }
-    }
-    if (gpuEntries.length > 0) info.gpuInfo = gpuEntries.join('; ');
-  } else {
-    // Linux: 尝试 nvidia-smi；macOS: system_profiler
-    const nvSmi = safeExec('nvidia-smi --query-gpu=name,memory.total --format=csv,noheader,nounits 2>/dev/null');
-    if (nvSmi) {
-      info.gpuInfo = nvSmi.split('\n').map(l => l.trim()).filter(Boolean).join('; ');
-    } else {
-      const macGpu = safeExec('system_profiler SPDisplaysDataType 2>/dev/null | grep "Chipset Model"');
-      if (macGpu) info.gpuInfo = macGpu.replace(/Chipset Model:\s*/g, '').trim();
-    }
-  }
-
-  // ---- Disk ----
-  if (isWin) {
-    const diskRaw = safeExec('wmic logicaldisk get DeviceID,Size,FreeSpace /value');
-    const diskEntries: string[] = [];
-    const diskBlocks = diskRaw.split(/\n\n+/).filter(b => b.includes('DeviceID='));
-    for (const block of diskBlocks) {
-      const devMatch = block.match(/DeviceID=(.+)/);
-      const sizeMatch = block.match(/Size=(\d+)/);
-      const freeMatch = block.match(/FreeSpace=(\d+)/);
-      if (devMatch && sizeMatch) {
-        const dev = devMatch[1].trim();
-        const sizeGB = (parseInt(sizeMatch[1], 10) / (1024 ** 3)).toFixed(0);
-        const freeGB = freeMatch ? (parseInt(freeMatch[1], 10) / (1024 ** 3)).toFixed(0) : '?';
-        diskEntries.push(`${dev} ${freeGB}GB free / ${sizeGB}GB`);
-      }
-    }
-    if (diskEntries.length > 0) info.diskInfo = diskEntries.join(', ');
-  } else {
-    const dfOut = safeExec("df -h / /home 2>/dev/null | tail -n +2 | awk '{print $6\" \"$4\" free / \"$2}'");
-    if (dfOut) info.diskInfo = dfOut.split('\n').filter(Boolean).join(', ');
-  }
-
-  // ---- Network ----
-  const nets = os.networkInterfaces();
-  const activeNets: string[] = [];
-  for (const [name, addrs] of Object.entries(nets)) {
-    if (!addrs) continue;
-    // 跳过 loopback 和 docker/veth 虚拟接口
-    if (/^lo|^docker|^veth|^br-/i.test(name)) continue;
-    for (const addr of addrs) {
-      if (addr.family === 'IPv4' && !addr.internal) {
-        activeNets.push(`${name}(${addr.address})`);
-        break;
-      }
-    }
-  }
-  if (activeNets.length > 0) info.networkAdapters = activeNets.join(', ');
-
-  // ---- Node / npm 版本 ----
-  info.nodeVersion = process.version;
-  const npmVer = safeExec('npm -v');
-  if (npmVer) info.npmVersion = npmVer;
-
-  // ---- Shell 版本 ----
-  if (isWin) {
-    const psVer = safeExec('powershell.exe -NoProfile -Command "$PSVersionTable.PSVersion.ToString()"');
-    if (psVer) info.shellVersion = `PowerShell ${psVer}`;
-  } else {
-    const bashVer = safeExec('bash --version 2>/dev/null | head -1');
-    if (bashVer) {
-      const m = bashVer.match(/version (\S+)/);
-      info.shellVersion = m ? `bash ${m[1]}` : bashVer;
-    }
-  }
-
-  // ---- OS Name (Windows only, Linux/macOS 用 platform 即可) ----
-  if (isWin) {
-    const caption = safeExec('wmic os get Caption /value');
-    const m = caption.match(/Caption=(.+)/);
-    if (m) info.osName = m[1].trim();
-  } else {
-    const prettyName = safeExec('grep -oP "(?<=PRETTY_NAME=\").+(?=\")" /etc/os-release 2>/dev/null');
-    if (prettyName) info.osName = prettyName;
-  }
-
-  // ---- 活跃进程 (Top 10 by memory) ----
-  if (isWin) {
-    const psScript = `Get-Process | Sort-Object WorkingSet64 -Descending | Select-Object -First 10 -Property Name,@{N='MB';E={[math]::Round($_.WorkingSet64/1MB)}} | ForEach-Object { "$($_.Name)($($_.MB)MB)" }`;
-    const tmpFile = path.join(os.tmpdir(), '_claude_ps_top.ps1');
-    try {
-      fs.writeFileSync(tmpFile, psScript, 'utf-8');
-      const psOut = safeExec(`powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${tmpFile}"`);
-      if (psOut) info.activeProcesses = psOut.split(/\r?\n/).filter(Boolean).join(', ');
-      fs.unlinkSync(tmpFile);
-    } catch { /* ignore */ }
-  } else {
-    const psOut = safeExec('ps aux --sort=-%mem 2>/dev/null | head -11 | tail -10 | awk \'{printf "%s(%dMB) ",$11,$6/1024}\'');
-    if (psOut) info.activeProcesses = psOut.trim();
-  }
-
-  _cachedHostInfo = info;
-  return info;
-}
 
 /**
  * 估算 tokens
@@ -294,9 +121,8 @@ export class SystemPromptBuilder {
     // 生成附件
     const attachments = await this.attachmentManager.generateAttachments(context);
 
-    // ===== 对齐官方 aV 函数的组装顺序 (v2.1.34) =====
-    // 官方顺序: Rqz, yqz, Cqz, Sqz, cwq, hqz, Iqz, xqz, BV6, bqz, uqz, [CG1], NSA动态部分
-    // CG1 是缓存边界标记：CG1 之前为静态（cacheScope: "global"），之后为动态（cacheScope: null）
+    // ===== 组装顺序（对齐官方 prompt 组装逻辑）=====
+    // 缓存边界 CG1 之前为静态部分（cacheScope: "global"），之后为动态部分（cacheScope: null）
 
     const staticParts: (string | null)[] = [];
     const dynamicParts: (string | null)[] = [];
@@ -368,15 +194,18 @@ You have access to the ${askTool} tool to ask the user questions when you need c
       }));
     }
 
-    // 9. 安全规则 (BV6)
+    // 9. 谨慎操作 (N2z) - 告知 AI 对高风险操作需谨慎确认
+    staticParts.push(EXECUTING_WITH_CARE);
+
+    // 10. 安全规则 (BV6)
     staticParts.push(SECURITY_RULES);
 
-    // 10. TodoWrite 强制使用提醒 (bqz)
+    // 11. TodoWrite 强制使用提醒 (bqz)
     if (toolNames.has(todoWriteTool)) {
       staticParts.push(`IMPORTANT: Always use the ${todoWriteTool} tool to plan and track tasks throughout the conversation.`);
     }
 
-    // 10.5 NotebookWrite 主动调用规则
+    // 11.5 NotebookWrite 主动调用规则
     if (toolNames.has('NotebookWrite')) {
       staticParts.push(`# Memory Persistence Rules
 
@@ -387,7 +216,7 @@ Similarly, when you discover important project-specific knowledge (gotchas, hidd
 Failing to write important information to notebooks is a critical error — it means the information will be lost when the conversation ends.`);
     }
 
-    // 10.6 MemorySearch 长期记忆搜索提示
+    // 11.6 MemorySearch 长期记忆搜索提示
     if (toolNames.has('MemorySearch')) {
       staticParts.push(`# Long-term Memory Search
 
@@ -399,7 +228,7 @@ You have access to a MemorySearch tool that searches past session history and me
 The tool returns results with source attribution (file path, line numbers, timestamps, age) to help you judge relevance and freshness. This is a supplementary search layer — your primary knowledge source is still the fully-loaded notebook.`);
     }
 
-    // 11. 代码引用格式 (uqz)
+    // 12. 代码引用格式 (uqz)
     staticParts.push(`# Code References
 
 When referencing specific functions or pieces of code include the pattern \`file_path:line_number\` to allow the user to easily navigate to the source code location.
@@ -412,8 +241,7 @@ assistant: Clients are marked as failed in the \`connectToServer\` function in s
     // ===== [CG1] 缓存边界 =====
     // 以下是动态上下文部分（每次会话/每轮对话可能变化）
 
-    // 12. 环境信息（含宿主机硬件 / 进程 / 资源概况）
-    const hostInfo = collectHostInfo();
+    // 13. 环境信息
     dynamicParts.push(
       getEnvironmentInfo({
         workingDir: context.workingDir,
@@ -422,22 +250,6 @@ assistant: Clients are marked as failed in the \`connectToServer\` function in s
         todayDate: context.todayDate ?? new Date().toISOString().split('T')[0],
         osVersion: os.release(),
         model: context.model,
-        hostname: hostInfo.hostname as string | undefined,
-        osName: hostInfo.osName as string | undefined,
-        arch: hostInfo.arch as string | undefined,
-        cpuModel: hostInfo.cpuModel as string | undefined,
-        cpuCores: hostInfo.cpuCores as number | undefined,
-        cpuLogical: hostInfo.cpuLogical as number | undefined,
-        totalMemoryGB: hostInfo.totalMemoryGB as number | undefined,
-        freeMemoryGB: hostInfo.freeMemoryGB as number | undefined,
-        gpuInfo: hostInfo.gpuInfo as string | undefined,
-        diskInfo: hostInfo.diskInfo as string | undefined,
-        networkAdapters: hostInfo.networkAdapters as string | undefined,
-        shellVersion: hostInfo.shellVersion as string | undefined,
-        nodeVersion: hostInfo.nodeVersion as string | undefined,
-        npmVersion: hostInfo.npmVersion as string | undefined,
-        activeProcesses: hostInfo.activeProcesses as string | undefined,
-        uptime: hostInfo.uptime as string | undefined,
       })
     );
 

@@ -14,9 +14,11 @@ import {
   DebugPanel,
 } from './components';
 import { CrossSessionToast } from './components/CrossSessionToast';
+import { SlashCommandDialog } from './components/SlashCommandDialog';
 import { RewindOption } from './components/RewindMenu';
 import { InputArea } from './components/InputArea';
 import { ArtifactsPanel } from './components/ArtifactsPanel/ArtifactsPanel';
+import { GitPanel } from './components/GitPanel';
 import { useProject } from './contexts/ProjectContext';
 import { TerminalPanel } from './components/Terminal/TerminalPanel';
 import CodeView from './components/CodeView';
@@ -37,6 +39,8 @@ interface AppProps {
   onToggleCodeView?: () => void;
   showSettings?: boolean;
   onCloseSettings?: () => void;
+  showGitPanel?: boolean;
+  onToggleGitPanel?: () => void;
   onSessionsChange?: (sessions: any[]) => void;
   onSessionIdChange?: (id: string | null) => void;
   onConnectedChange?: (connected: boolean) => void;
@@ -48,6 +52,7 @@ function AppContent({
   codeViewActive,
   onToggleCodeView,
   showSettings, onCloseSettings,
+  showGitPanel: showGitPanelProp, onToggleGitPanel,
   onSessionsChange, onSessionIdChange, onConnectedChange,
   registerSessionActions,
 }: AppProps) {
@@ -57,6 +62,12 @@ function AppContent({
   const [showTerminal, setShowTerminal] = useState(false);
   const [terminalHeight, setTerminalHeight] = useState(280);
   const [isInputVisible, setIsInputVisible] = useState(true);
+  // Git 面板状态：优先使用 Root 传入的 prop，否则使用内部 state
+  const [showGitPanelLocal, setShowGitPanelLocal] = useState(false);
+  const showGitPanel = showGitPanelProp ?? showGitPanelLocal;
+  const setShowGitPanel = onToggleGitPanel
+    ? (_: boolean | ((prev: boolean) => boolean)) => onToggleGitPanel()
+    : setShowGitPanelLocal;
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
 
@@ -82,6 +93,8 @@ function AppContent({
     setIsTranscriptMode,
     crossSessionNotification,
     dismissCrossSessionNotification,
+    slashCommandResult,
+    setSlashCommandResult,
   } = useMessageHandler({
     addMessageHandler,
     model,
@@ -196,6 +209,17 @@ function AppContent({
       if (e.ctrlKey && e.shiftKey && (e.key === 'E' || e.key === 'e')) {
         e.preventDefault();
         onToggleCodeView?.();
+      }
+      if (e.ctrlKey && e.shiftKey && (e.key === 'G' || e.key === 'g')) {
+        e.preventDefault();
+        setShowGitPanel(prev => {
+          const newValue = !prev;
+          // 如果打开 Git 面板，则关闭 Artifacts 面板（互斥显示）
+          if (newValue) {
+            artifactsState.setIsPanelOpen(false);
+          }
+          return newValue;
+        });
       }
     };
     window.addEventListener('keydown', handleGlobalKeyDown);
@@ -429,6 +453,16 @@ function AppContent({
               showTerminal={showTerminal}
               onToggleTerminal={() => setShowTerminal(!showTerminal)}
               onOpenDebugPanel={() => setShowDebugPanel(true)}
+              onOpenGitPanel={() => {
+                setShowGitPanel(prev => {
+                  const newValue = !prev;
+                  // 如果打开 Git 面板，则关闭 Artifacts 面板（互斥显示）
+                  if (newValue) {
+                    artifactsState.setIsPanelOpen(false);
+                  }
+                  return newValue;
+                });
+              }}
               isPinned={chatInput.isPinned}
               onTogglePin={chatInput.togglePin}
               onVisibilityChange={setIsInputVisible}
@@ -462,6 +496,17 @@ function AppContent({
               onSelectScheduleArtifact={scheduleState.setSelectedScheduleId}
             />
           )}
+
+          {/* 右侧：Git 面板 */}
+          {showGitPanel && (
+            <GitPanel
+              isOpen={showGitPanel}
+              onClose={() => setShowGitPanel(false)}
+              send={send}
+              addMessageHandler={addMessageHandler}
+              projectPath={currentProjectPath}
+            />
+          )}
         </div>
       )}
 
@@ -490,6 +535,15 @@ function AppContent({
         onClose={() => setShowDebugPanel(false)}
         send={send}
         addMessageHandler={addMessageHandler}
+      />
+      <SlashCommandDialog
+        isOpen={!!slashCommandResult}
+        onClose={() => setSlashCommandResult(null)}
+        result={slashCommandResult}
+        onSessionSelect={(sid) => {
+          setSlashCommandResult(null);
+          sessionManager.handleSessionSelect(sid);
+        }}
       />
       {crossSessionNotification && (
         <CrossSessionToast

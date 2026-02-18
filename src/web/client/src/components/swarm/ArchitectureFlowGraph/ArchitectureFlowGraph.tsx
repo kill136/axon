@@ -9,6 +9,7 @@
  */
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { sanitizeSvg } from '../../../utils/sanitize';
 import styles from './ArchitectureFlowGraph.module.css';
 
 /** 架构图类型 */
@@ -256,7 +257,7 @@ export const ArchitectureFlowGraph: React.FC<ArchitectureFlowGraphProps> = ({
 
         // 渲染图表
         const { svg } = await mermaid.render(id, data.mermaidCode);
-        mermaidContainerRef.current.innerHTML = svg;
+        mermaidContainerRef.current.innerHTML = sanitizeSvg(svg);
 
         // 调整 SVG 样式
         const svgElement = mermaidContainerRef.current.querySelector('svg');

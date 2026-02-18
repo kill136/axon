@@ -1,7 +1,8 @@
 #!/bin/bash
 # ============================================
 # Claude Code Open - One-Click Install Script
-# Usage: curl -fsSL https://raw.githubusercontent.com/kill136/claude-code-open/private_web_ui/install.sh | bash
+# GitHub:  curl -fsSL https://raw.githubusercontent.com/kill136/claude-code-open/private_web_ui/install.sh | bash
+# China:   curl -fsSL https://gitee.com/lubanbbs/claude-code-open/raw/private_web_ui/install.sh | bash
 # ============================================
 set -e
 
@@ -14,7 +15,9 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
 
-REPO_URL="https://github.com/kill136/claude-code-open.git"
+REPO_URL_GITHUB="https://github.com/kill136/claude-code-open.git"
+REPO_URL_GITEE="https://gitee.com/lubanbbs/claude-code-open.git"
+REPO_URL=""  # Will be set by detect_repo_url()
 DOCKER_IMAGE="wbj66/claude-code-open:latest"
 INSTALL_DIR="$HOME/.claude-code-open"
 NODE_MAJOR_REQUIRED=18
@@ -43,6 +46,34 @@ detect_platform() {
         *)       error "Unsupported OS: $OS. Use Windows install.ps1 instead." ;;
     esac
     info "Platform: $PLATFORM ($ARCH)"
+}
+
+# --- Detect best repo URL (GitHub vs Gitee for China) ---
+detect_repo_url() {
+    # If user explicitly set REPO_URL env var, respect it
+    if [ -n "$REPO_URL" ]; then
+        info "Using user-specified repo: $REPO_URL"
+        return
+    fi
+
+    info "Detecting network connectivity..."
+
+    # Check if curl is available (might not be on minimal systems)
+    if ! command -v curl &> /dev/null; then
+        warn "curl not found, defaulting to Gitee mirror (safer for China users)"
+        REPO_URL="$REPO_URL_GITEE"
+        return
+    fi
+
+    # Try GitHub with a short timeout (3 seconds)
+    if curl -fsSL --connect-timeout 3 --max-time 5 "https://github.com" -o /dev/null 2>/dev/null; then
+        REPO_URL="$REPO_URL_GITHUB"
+        success "GitHub accessible, using GitHub source"
+    else
+        warn "GitHub not accessible (likely in China), switching to Gitee mirror"
+        REPO_URL="$REPO_URL_GITEE"
+        success "Using Gitee mirror: $REPO_URL_GITEE"
+    fi
 }
 
 # --- Detect Linux package manager ---
@@ -249,6 +280,129 @@ install_node_via_nvm() {
 # Desktop shortcuts
 # ============================================
 
+create_update_and_start_script() {
+    info "Creating auto-update startup script..."
+
+    cat > "$INSTALL_DIR/update-and-start.sh" << 'STARTER_EOF'
+#!/bin/bash
+# ============================================
+# Claude Code Open - Auto-Update & Start
+# This script pulls latest code before starting
+# ============================================
+# Note: no "set -e" here — update failures should not prevent startup
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
+NC='\033[0m'
+
+INSTALL_DIR="$HOME/.claude-code-open"
+
+info()    { echo -e "${BLUE}[INFO]${NC} $*"; }
+success() { echo -e "${GREEN}[OK]${NC} $*"; }
+warn()    { echo -e "${YELLOW}[WARN]${NC} $*"; }
+
+echo -e "${CYAN}"
+echo '  ╔═══════════════════════════════════════════╗'
+echo '  ║   Claude Code Open - Auto Update & Start  ║'
+echo '  ╚═══════════════════════════════════════════╝'
+echo -e "${NC}"
+
+cd "$INSTALL_DIR"
+
+# --- Auto-update from git ---
+NEED_REBUILD=false
+NEED_FRONTEND_REBUILD=false
+
+if [ -d ".git" ]; then
+    info "Checking for updates..."
+
+    # Save current commit hash
+    OLD_HASH=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
+
+    # Discard local changes (build artifacts, lock files, etc.)
+    git checkout -- . 2>/dev/null || true
+    git clean -fd 2>/dev/null || true
+
+    # Pull latest code
+    if git pull origin private_web_ui 2>/dev/null; then
+        NEW_HASH=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
+
+        if [ "$OLD_HASH" != "$NEW_HASH" ]; then
+            success "Updated: ${OLD_HASH:0:8} -> ${NEW_HASH:0:8}"
+
+            # Check what changed to decide rebuild scope
+            CHANGED_FILES=$(git diff --name-only "$OLD_HASH" "$NEW_HASH" 2>/dev/null || echo "")
+
+            # Check if package.json changed (need npm install)
+            if echo "$CHANGED_FILES" | grep -q "package.json"; then
+                NEED_REBUILD=true
+            fi
+
+            # Check if frontend files changed
+            if echo "$CHANGED_FILES" | grep -q "src/web/client/"; then
+                NEED_FRONTEND_REBUILD=true
+            fi
+
+            # Check if any TypeScript source changed (need tsc build)
+            if echo "$CHANGED_FILES" | grep -q "\.ts$\|\.tsx$"; then
+                NEED_REBUILD=true
+            fi
+        else
+            success "Already up to date"
+        fi
+    else
+        warn "Git pull failed (network issue?), starting with current version..."
+    fi
+else
+    warn "Not a git repository, skipping update"
+fi
+
+# --- Incremental rebuild if needed ---
+if [ "$NEED_REBUILD" = true ]; then
+    info "Source code changed, rebuilding..."
+
+    # Check if package.json changed
+    if echo "$CHANGED_FILES" | grep -qE "^package\.json$|^package-lock\.json$"; then
+        info "Dependencies changed, running npm install..."
+        npm install 2>&1 | tail -5
+    fi
+
+    # Rebuild frontend if needed
+    if [ "$NEED_FRONTEND_REBUILD" = true ]; then
+        info "Frontend changed, rebuilding..."
+        cd src/web/client
+        npm install 2>&1 | tail -3
+        npm run build 2>&1 | tail -3
+        cd ../../..
+    fi
+
+    # Rebuild backend
+    info "Building backend..."
+    npm run build 2>&1 | tail -5
+
+    # Re-link in case bin entries changed
+    npm link 2>/dev/null || true
+
+    success "Rebuild complete!"
+fi
+
+echo ""
+info "Starting Claude Code WebUI..."
+echo ""
+
+# --- Start the application ---
+export PATH="$HOME/.local/bin:$PATH"
+exec claude-web --evolve -H 0.0.0.0 "$@"
+STARTER_EOF
+
+    chmod +x "$INSTALL_DIR/update-and-start.sh"
+    success "Auto-update startup script created"
+}
+
 create_desktop_shortcut_npm() {
     info "Creating desktop shortcut..."
 
@@ -265,8 +419,8 @@ create_desktop_shortcut_npm() {
 Version=1.0
 Type=Application
 Name=Claude Code WebUI
-Comment=Launch Claude Code Web Interface
-Exec=bash -c 'export PATH="\$HOME/.local/bin:\$PATH"; export ANTHROPIC_BASE_URL=http://13.113.224.168:8082; export ANTHROPIC_API_KEY=my-secret; claude-web --evolve -H 0.0.0.0'
+Comment=Launch Claude Code Web Interface (Auto-Update)
+Exec=bash -c '$INSTALL_DIR/update-and-start.sh'
 Icon=utilities-terminal
 Terminal=true
 Categories=Development;Utility;
@@ -281,17 +435,9 @@ EOF
         DESKTOP_DIR="$HOME/Desktop"
         if [ -d "$DESKTOP_DIR" ]; then
             SHORTCUT_FILE="$DESKTOP_DIR/Claude Code WebUI.command"
-            cat > "$SHORTCUT_FILE" << 'EOF'
+            cat > "$SHORTCUT_FILE" << EOF
 #!/bin/bash
-cd ~
-export PATH="$HOME/.local/bin:$PATH"
-export ANTHROPIC_BASE_URL=http://13.113.224.168:8082
-export ANTHROPIC_API_KEY=my-secret
-echo "Starting Claude Code WebUI (Evolve Mode)..."
-echo "Server will be accessible from: http://0.0.0.0:3456"
-echo "Press Ctrl+C to stop the server"
-echo ""
-claude-web --evolve -H 0.0.0.0
+exec "$HOME/.claude-code-open/update-and-start.sh"
 EOF
             chmod +x "$SHORTCUT_FILE"
             success "Desktop shortcut created: $SHORTCUT_FILE"
@@ -424,7 +570,8 @@ install_npm() {
     # Ensure ~/.local/bin is in PATH
     ensure_path_in_shellrc "$HOME/.local/bin"
 
-    # Create desktop shortcut
+    # Create auto-update startup script and desktop shortcut
+    create_update_and_start_script
     create_desktop_shortcut_npm
 
     success "Installation complete!"
@@ -572,6 +719,9 @@ main() {
 
     # 1. Git (needed for source install)
     ensure_git
+
+    # 1.5. Detect best repo source (GitHub vs Gitee for China)
+    detect_repo_url
 
     # 2. Build tools (needed for native modules)
     ensure_build_tools

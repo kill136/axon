@@ -44,18 +44,23 @@ if (import.meta.hot) {
 
 // 2. 全局未捕获错误兜底
 //    即使模块加载崩溃，也不让页面完全白屏
-window.addEventListener('error', (event) => {
-  // 只处理脚本错误，忽略资源加载错误
-  if (event.error) {
-    console.error('[Global Error Guard] Uncaught error:', event.error);
-    showCrashRecoveryUI(event.error.message || 'Unknown error');
-  }
-});
+//    使用全局标志防止 HMR 重复注册
+if (!(window as any).__errorGuardRegistered) {
+  (window as any).__errorGuardRegistered = true;
 
-window.addEventListener('unhandledrejection', (event) => {
-  console.error('[Global Error Guard] Unhandled rejection:', event.reason);
-  // Promise rejection 不一定导致白屏，只记录日志
-});
+  window.addEventListener('error', (event) => {
+    // 只处理脚本错误，忽略资源加载错误
+    if (event.error) {
+      console.error('[Global Error Guard] Uncaught error:', event.error);
+      showCrashRecoveryUI(event.error.message || 'Unknown error');
+    }
+  });
+
+  window.addEventListener('unhandledrejection', (event) => {
+    console.error('[Global Error Guard] Unhandled rejection:', event.reason);
+    // Promise rejection 不一定导致白屏，只记录日志
+  });
+}
 
 /**
  * 当 React 树完全崩溃时，显示恢复 UI

@@ -381,6 +381,27 @@ const backgroundTasks: Map<string, TaskState> = new Map();
 // 向后兼容：保留旧的变量名作为别名
 const backgroundShells = backgroundTasks;
 
+// 定时清理已完成的后台任务，防止 Map 无限增长
+const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 分钟
+let _cleanupTimer: ReturnType<typeof setInterval> | null = null;
+
+function ensureCleanupTimer(): void {
+  if (_cleanupTimer) return;
+  _cleanupTimer = setInterval(() => {
+    cleanupCompletedTasks();
+    cleanupTimedOutTasks();
+    // 如果 Map 空了，停止定时器
+    if (backgroundTasks.size === 0 && _cleanupTimer) {
+      clearInterval(_cleanupTimer);
+      _cleanupTimer = null;
+    }
+  }, CLEANUP_INTERVAL_MS);
+  // 不阻止进程退出
+  if (_cleanupTimer && typeof _cleanupTimer === 'object' && 'unref' in _cleanupTimer) {
+    _cleanupTimer.unref();
+  }
+}
+
 /**
  * 获取后台任务信息（供 TaskOutput 工具使用）
  */
@@ -1145,6 +1166,9 @@ Important:
   }
 
   private executeBackground(command: string, maxRuntime: number, echoOutput: boolean = false): BashResult {
+    // 启动定时清理（懒初始化，首次创建后台任务时才启动）
+    ensureCleanupTimer();
+
     // 检查后台任务数量限制
     if (backgroundTasks.size >= MAX_BACKGROUND_SHELLS) {
       // 尝试清理已完成的任务

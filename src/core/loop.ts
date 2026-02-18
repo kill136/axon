@@ -694,6 +694,10 @@ function calculateTotalTokens(messages: Message[]): number {
         } else if (block.type === 'image') {
           // 图片用固定常量，不能 JSON.stringify base64 数据（对齐官方 Nr4=2000）
           totalTokens += 2000;
+        } else if (block.type === 'document') {
+          // PDF 文档用固定常量，不能 JSON.stringify base64 数据（否则 1MB PDF 会估算出 ~340k tokens 直接触发 AutoCompact）
+          // Anthropic API 对 PDF document block 的实际 token 消耗约 2000-8000/页，这里用固定常量粗略估算
+          totalTokens += 4000;
         } else if (block.type === 'tool_result' && 'content' in block && typeof block.content === 'string') {
           totalTokens += estimateTokens(block.content);
         } else {
@@ -2409,7 +2413,7 @@ export class ConversationLoop {
 
       // 处理响应内容
       const assistantContent: ContentBlock[] = [];
-      const toolResults: Array<{ type: 'tool_result'; tool_use_id: string; content: string }> = [];
+      const toolResults: Array<{ type: 'tool_result'; tool_use_id: string; content: string | any[] }> = [];
       // 收集所有工具返回的 newMessages（对齐官网实现）
       const allNewMessages: Array<{ role: 'user'; content: any[] }> = [];
 
@@ -2484,11 +2488,23 @@ export class ConversationLoop {
           // 使用格式化函数处理工具结果
           const formattedContent = formatToolResult(toolName, result);
 
-          toolResults.push({
-            type: 'tool_result',
-            tool_use_id: toolId,
-            content: formattedContent,
-          });
+          // 如果工具返回了 images，构建混合 content 数组（ImageBlockParam 嵌入 tool_result）
+          if (result.images && result.images.length > 0) {
+            toolResults.push({
+              type: 'tool_result',
+              tool_use_id: toolId,
+              content: [
+                { type: 'text', text: formattedContent || 'Tool completed.' },
+                ...result.images,
+              ],
+            });
+          } else {
+            toolResults.push({
+              type: 'tool_result',
+              tool_use_id: toolId,
+              content: formattedContent,
+            });
+          }
 
           // 收集 newMessages（对齐官网实现）
           if (result.newMessages && result.newMessages.length > 0) {
@@ -2850,7 +2866,7 @@ Guidelines:
       }
 
       // 执行所有工具调用
-      const toolResults: Array<{ type: 'tool_result'; tool_use_id: string; content: string }> = [];
+      const toolResults: Array<{ type: 'tool_result'; tool_use_id: string; content: string | any[] }> = [];
       // 收集所有工具返回的 newMessages（对齐官网实现）
       const allNewMessages: Array<{ role: 'user'; content: any[] }> = [];
 
@@ -2967,11 +2983,23 @@ Guidelines:
           // 使用格式化函数处理工具结果
           const formattedContent = formatToolResult(tool.name, result);
 
-          toolResults.push({
-            type: 'tool_result',
-            tool_use_id: id,
-            content: formattedContent,
-          });
+          // 如果工具返回了 images，构建混合 content 数组（ImageBlockParam 嵌入 tool_result）
+          if (result.images && result.images.length > 0) {
+            toolResults.push({
+              type: 'tool_result',
+              tool_use_id: id,
+              content: [
+                { type: 'text', text: formattedContent || 'Tool completed.' },
+                ...result.images,
+              ],
+            });
+          } else {
+            toolResults.push({
+              type: 'tool_result',
+              tool_use_id: id,
+              content: formattedContent,
+            });
+          }
 
           // 收集 newMessages（对齐官网实现）
           if (result.newMessages && result.newMessages.length > 0) {

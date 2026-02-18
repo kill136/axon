@@ -461,6 +461,10 @@ export class RealtimeCoordinator extends EventEmitter {
         // 转发 LeadAgent 事件到 WebSocket
         this.emitEvent(event.type, event.data);
       },
+      // 认证透传：避免子 agent 走 initAuth() 拿到错误的认证
+      apiKey: this.config.apiKey,
+      authToken: this.config.authToken,
+      baseUrl: this.config.baseUrl,
     };
 
     const leadAgent = new LeadAgent(leadAgentConfig);

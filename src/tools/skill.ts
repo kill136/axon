@@ -1018,6 +1018,7 @@ export async function initializeSkills(): Promise<void> {
  */
 export function clearSkillCache(): void {
   skillRegistry.clear();
+  invokedSkills.clear();
   skillsLoaded = false;
 }
 

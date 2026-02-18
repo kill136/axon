@@ -148,7 +148,7 @@ export class AutonomousWorkerExecutor extends EventEmitter {
     const platform = os.platform();
     const platformInfo = platform === 'win32' ? 'win32' : platform === 'darwin' ? 'darwin' : 'linux';
     const shellHint = platform === 'win32'
-      ? '\n- Windows 系统：使用 dir 代替 ls，使用 cd 代替 pwd，使用 type 代替 cat'
+      ? '\n- Windows 系统：Shell 是 git-bash，ls/pwd/cat 等 Unix 命令可用，不要使用 cmd.exe 语法（如 dir、type、> nul 等）'
       : '';
 
     // 检查是否是 git 仓库
@@ -471,6 +471,10 @@ ${techStack.language}${techStack.framework ? ' + ' + techStack.framework : ''}`;
         // v4.2: 使用自定义 askUserHandler 支持 WebUI 交互
         askUserHandler: this.createAskUserHandler(task.id),
         allowedTools,
+        // 认证透传：避免子 agent 走 initAuth() 拿到错误的认证
+        apiKey: context.config.apiKey,
+        authToken: context.config.authToken,
+        baseUrl: context.config.baseUrl,
       });
 
       // v4.5: 保存 loop 引用以支持插嘴功能

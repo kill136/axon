@@ -700,6 +700,24 @@ export interface BackgroundAgent {
 
 const backgroundAgents: Map<string, BackgroundAgent> = new Map();
 
+// 定时清理已完成的后台 Agent，防止 Map 无限增长
+const AGENT_CLEANUP_INTERVAL_MS = 10 * 60 * 1000; // 10 分钟
+let _agentCleanupTimer: ReturnType<typeof setInterval> | null = null;
+
+function ensureAgentCleanupTimer(): void {
+  if (_agentCleanupTimer) return;
+  _agentCleanupTimer = setInterval(() => {
+    clearCompletedAgents();
+    if (backgroundAgents.size === 0 && _agentCleanupTimer) {
+      clearInterval(_agentCleanupTimer);
+      _agentCleanupTimer = null;
+    }
+  }, AGENT_CLEANUP_INTERVAL_MS);
+  if (_agentCleanupTimer && typeof _agentCleanupTimer === 'object' && 'unref' in _agentCleanupTimer) {
+    _agentCleanupTimer.unref();
+  }
+}
+
 // 代理持久化目录
 const getAgentsDir = (): string => {
   const agentsDir = path.join(os.homedir(), '.claude', 'agents');
@@ -1105,6 +1123,7 @@ ${!isAgentTeamsEnabled() ? `\nNote: The "Agent Teams" feature (TeammateTool, Sen
     // 保存到内存和磁盘
     backgroundAgents.set(agentId, agent);
     saveAgentState(agent);
+    ensureAgentCleanupTimer();
 
     if (run_in_background) {
       // 后台执行 - 不阻塞，立即返回

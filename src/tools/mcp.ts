@@ -9,6 +9,7 @@ import type {
   McpInput,
   ListMcpResourcesInput,
   ReadMcpResourceInput,
+  McpResourceInput,
   MCPSearchInput,
   McpServerConfig,
   ToolResult,
@@ -100,6 +101,14 @@ export function registerMcpServer(
     tools: preloadedTools || [],
     resources: [],
   });
+}
+
+/**
+ * 注销 MCP 服务器（从 mcpServers Map 中移除）
+ * 用于禁用 MCP 服务器时彻底清除，防止 MCPSearchTool 仍能搜索到已禁用的工具
+ */
+export function unregisterMcpServer(name: string): void {
+  mcpServers.delete(name);
 }
 
 /**
@@ -1666,5 +1675,79 @@ Parameters:
         error: t('mcp.resourceReadError', { error: err instanceof Error ? err.message : 'Unknown error' }),
       };
     }
+  }
+}
+
+// ============ 合并的 MCP Resource 工具 ============
+
+/**
+ * 合并的 MCP 资源工具
+ * 替代 ListMcpResourcesTool 和 ReadMcpResourceTool
+ */
+export class McpResourceTool extends BaseTool<McpResourceInput, ToolResult> {
+  name = 'McpResource';
+
+  description = `List available resources from configured MCP servers or read a specific resource.
+
+Parameters:
+- action (required): 'list' or 'read'
+- server (optional for list, required for read): MCP server name
+- uri (required for read): The resource URI to read
+- refresh (optional, for list): Whether to refresh the resource list`;
+
+  getInputSchema(): ToolDefinition['inputSchema'] {
+    return {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['list', 'read'],
+          description: 'Action to perform: list available resources or read a specific resource',
+        },
+        server: {
+          type: 'string',
+          description: 'MCP server name (optional for list, required for read)',
+        },
+        uri: {
+          type: 'string',
+          description: 'The resource URI to read (required for action=read)',
+        },
+        refresh: {
+          type: 'boolean',
+          description: 'Whether to refresh the resource list from the server (for action=list)',
+        },
+      },
+      required: ['action'],
+    };
+  }
+
+  private listTool = new ListMcpResourcesTool();
+  private readTool = new ReadMcpResourceTool();
+
+  async execute(input: McpResourceInput): Promise<ToolResult> {
+    if (input.action === 'list') {
+      return this.listTool.execute({
+        server: input.server,
+        refresh: input.refresh,
+      });
+    }
+
+    if (input.action === 'read') {
+      if (!input.server || !input.uri) {
+        return {
+          success: false,
+          error: 'Both "server" and "uri" are required for action="read"',
+        };
+      }
+      return this.readTool.execute({
+        server: input.server,
+        uri: input.uri,
+      });
+    }
+
+    return {
+      success: false,
+      error: `Unknown action: ${input.action}. Use "list" or "read".`,
+    };
   }
 }

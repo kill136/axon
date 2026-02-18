@@ -18,6 +18,7 @@
 
 import { useState } from 'react';
 import { MarkdownContent } from './MarkdownContent';
+import { sanitizeHtml, sanitizeSvg } from '../utils/sanitize';
 import type { NotebookOutputData, NotebookCellData, NotebookCellOutput, NotebookMimeBundle } from '../types';
 import './NotebookOutputRenderer.css';
 
@@ -199,7 +200,7 @@ function CellOutputRenderer({ output }: CellOutputRendererProps) {
           {output.traceback && output.traceback.length > 0 && (
             <pre className="error-traceback">
               {output.traceback.map((line, i) => (
-                <div key={i} dangerouslySetInnerHTML={{ __html: ansiToHtml(line) }} />
+                <div key={i} dangerouslySetInnerHTML={{ __html: sanitizeHtml(ansiToHtml(line)) }} />
               ))}
             </pre>
           )}
@@ -286,11 +287,11 @@ function renderMimeContent(mimeType: string, content: any): JSX.Element {
   // 图片类型
   if (mimeType.startsWith('image/')) {
     if (mimeType === 'image/svg+xml') {
-      // SVG 可以直接内联
+      // SVG 内联渲染，sanitize 防止 XSS
       return (
         <div
           className="output-image svg"
-          dangerouslySetInnerHTML={{ __html: content }}
+          dangerouslySetInnerHTML={{ __html: sanitizeSvg(content) }}
         />
       );
     } else {
@@ -378,16 +379,7 @@ function renderMimeContent(mimeType: string, content: any): JSX.Element {
   );
 }
 
-/**
- * 简单的 HTML 清理（移除危险标签）
- */
-function sanitizeHtml(html: string): string {
-  // 移除 script 标签
-  let clean = html.replace(/<script[\s\S]*?<\/script>/gi, '');
-  // 移除 onclick 等事件处理器
-  clean = clean.replace(/\s+on\w+\s*=\s*["'][^"']*["']/gi, '');
-  return clean;
-}
+// sanitizeHtml/sanitizeSvg 已从 ../utils/sanitize 导入（基于 DOMPurify）
 
 /**
  * 将 ANSI 转义码转换为 HTML

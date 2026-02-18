@@ -15,7 +15,6 @@ export {
   getCodingGuidelines,
   getToolGuidelines,
   getToneAndStyle,
-  getToneAndStyleSimple,
   getMcpInstructions,
   getMcpCliInstructions,
   getOutputStylePrompt,

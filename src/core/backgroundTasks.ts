@@ -52,6 +52,24 @@ export interface TaskSummary {
 
 const backgroundConversationTasks = new Map<string, BackgroundConversationTask>();
 
+// 定时清理已完成的后台对话任务，防止 Map 无限增长
+const CONV_CLEANUP_INTERVAL_MS = 10 * 60 * 1000; // 10 分钟
+let _convCleanupTimer: ReturnType<typeof setInterval> | null = null;
+
+function ensureConvCleanupTimer(): void {
+  if (_convCleanupTimer) return;
+  _convCleanupTimer = setInterval(() => {
+    cleanupCompletedTasks();
+    if (backgroundConversationTasks.size === 0 && _convCleanupTimer) {
+      clearInterval(_convCleanupTimer);
+      _convCleanupTimer = null;
+    }
+  }, CONV_CLEANUP_INTERVAL_MS);
+  if (_convCleanupTimer && typeof _convCleanupTimer === 'object' && 'unref' in _convCleanupTimer) {
+    _convCleanupTimer.unref();
+  }
+}
+
 // 获取任务输出目录
 function getTasksDir(): string {
   const homeDir = process.env.HOME || process.env.USERPROFILE || '/tmp';
@@ -101,6 +119,7 @@ export function createBackgroundTask(userInput: string): BackgroundConversationT
   };
 
   backgroundConversationTasks.set(taskId, task);
+  ensureConvCleanupTimer();
 
   // 写入任务开始信息
   outputStream.write(`=== Background Conversation Task Started ===\n`);

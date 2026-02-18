@@ -146,6 +146,8 @@ export type ClientMessage =
   | { type: 'task:interject'; payload: { blueprintId: string; taskId: string; message: string } }
   // v9.2: LeadAgent 插嘴
   | { type: 'lead:interject'; payload: { blueprintId: string; message: string } }
+  // v9.3: LeadAgent 恢复执行（任务卡死时手动触发）
+  | { type: 'swarm:resume_lead'; payload: { blueprintId: string } }
   // 持续开发消息
   | { type: 'continuous_dev:start'; payload: { requirement: string } }
   | { type: 'continuous_dev:status' }
@@ -165,7 +167,28 @@ export type ClientMessage =
   | { type: 'terminal:destroy'; payload: { terminalId: string } }
   // Rewind 消息
   | { type: 'rewind_preview'; payload: { messageId: string; option: 'code' | 'conversation' | 'both' } }
-  | { type: 'rewind_execute'; payload: { messageId: string; option: 'code' | 'conversation' | 'both' } };
+  | { type: 'rewind_execute'; payload: { messageId: string; option: 'code' | 'conversation' | 'both' } }
+  // Git 消息
+  | { type: 'git:get_status' }
+  | { type: 'git:get_log'; payload?: { limit?: number } }
+  | { type: 'git:get_branches' }
+  | { type: 'git:get_stashes' }
+  | { type: 'git:stage'; payload: { files: string[] } }
+  | { type: 'git:unstage'; payload: { files: string[] } }
+  | { type: 'git:commit'; payload: { message: string; autoStage?: boolean } }
+  | { type: 'git:push' }
+  | { type: 'git:pull' }
+  | { type: 'git:checkout'; payload: { branch: string } }
+  | { type: 'git:create_branch'; payload: { name: string } }
+  | { type: 'git:delete_branch'; payload: { name: string } }
+  | { type: 'git:stash_save'; payload: { message?: string } }
+  | { type: 'git:stash_pop'; payload: { index?: number } }
+  | { type: 'git:stash_drop'; payload: { index: number } }
+  | { type: 'git:stash_apply'; payload: { index: number } }
+  | { type: 'git:get_diff'; payload?: { file?: string } }
+  | { type: 'git:smart_commit' }
+  | { type: 'git:smart_review' }
+  | { type: 'git:explain_commit'; payload: { hash: string } };
 
 /**
  * 服务端发送的消息类型
@@ -239,6 +262,16 @@ export type ServerMessage =
   | { type: 'oauth_status_response'; payload: OAuthStatusPayload }
   | { type: 'oauth_logout_response'; payload: { success: boolean } }
   | { type: 'oauth_auth_url_response'; payload: { url: string } }
+  // Git 响应消息
+  | { type: 'git:status_response'; payload: GitStatusResponsePayload }
+  | { type: 'git:log_response'; payload: GitLogResponsePayload }
+  | { type: 'git:branches_response'; payload: GitBranchesResponsePayload }
+  | { type: 'git:stashes_response'; payload: GitStashesResponsePayload }
+  | { type: 'git:operation_result'; payload: GitOperationResultPayload }
+  | { type: 'git:diff_response'; payload: GitDiffResponsePayload }
+  | { type: 'git:smart_commit_response'; payload: GitSmartCommitResponsePayload }
+  | { type: 'git:smart_review_response'; payload: GitSmartReviewResponsePayload }
+  | { type: 'git:explain_commit_response'; payload: GitExplainCommitResponsePayload }
   // 蜂群相关消息
   | { type: 'swarm:state'; payload: any }
   | { type: 'swarm:task_update'; payload: any }
@@ -447,6 +480,7 @@ export interface SlashCommandResultPayload {
   message?: string;
   data?: any;
   action?: 'clear' | 'reload' | 'none';
+  dialogType?: 'text' | 'session-list' | 'compact-result';
 }
 
 // ============ 聊天消息类型 ============
@@ -952,6 +986,7 @@ export const TOOL_DISPLAY_NAMES: Record<string, string> = {
   ExitPlanMode: '退出计划模式',
   ListMcpResources: 'MCP资源列表',
   ReadMcpResource: '读取MCP资源',
+  McpResource: 'MCP资源',
   MCPSearch: 'MCP搜索',
   AskUserQuestion: '询问用户',
   Tmux: '终端复用',
@@ -984,6 +1019,7 @@ export const TOOL_ICONS: Record<string, string> = {
   ExitPlanMode: '✅',
   ListMcpResources: '📦',
   ReadMcpResource: '📄',
+  McpResource: '📦',
   MCPSearch: '🔍',
   AskUserQuestion: '❓',
   Tmux: '🖥️',
@@ -3028,3 +3064,129 @@ export const CONFIG_PATHS = {
   /** 技能目录 */
   SKILLS_DIR: '~/.claude/skills',
 } as const;
+
+// ============ Git ������� ============
+
+/**
+ * Git ״̬��Ӧ
+ */
+export interface GitStatusResponsePayload {
+  success: boolean;
+  data?: {
+    branch: string;
+    isClean: boolean;
+    staged: string[];
+    unstaged: string[];
+    untracked: string[];
+    conflictFiles: string[];
+    ahead: number;
+    behind: number;
+    recentCommits: Array<{
+      hash: string;
+      message: string;
+      author: string;
+      date: string;
+    }>;
+    stashCount: number;
+    remoteStatus: {
+      tracking: string | null;
+      ahead: number;
+      behind: number;
+    };
+    tags: string[];
+  };
+  error?: string;
+}
+
+/**
+ * Git ��־��Ӧ
+ */
+export interface GitLogResponsePayload {
+  success: boolean;
+  data?: Array<{
+    hash: string;
+    message: string;
+    author: string;
+    date: string;
+  }>;
+  error?: string;
+}
+
+/**
+ * Git ��֧��Ӧ
+ */
+export interface GitBranchesResponsePayload {
+  success: boolean;
+  data?: {
+    current: string;
+    local: string[];
+    remote: string[];
+  };
+  error?: string;
+}
+
+/**
+ * Git Stash ��Ӧ
+ */
+export interface GitStashesResponsePayload {
+  success: boolean;
+  data?: Array<{
+    index: number;
+    message: string;
+    branch: string;
+    date: string;
+  }>;
+  error?: string;
+}
+
+/**
+ * Git �������
+ */
+export interface GitOperationResultPayload {
+  success: boolean;
+  message?: string;
+  error?: string;
+}
+
+/**
+ * Git Diff ��Ӧ
+ */
+export interface GitDiffResponsePayload {
+  success: boolean;
+  data?: {
+    diff: string;
+  };
+  error?: string;
+}
+
+/**
+ * Git Smart Commit ��Ӧ
+ */
+export interface GitSmartCommitResponsePayload {
+  success: boolean;
+  message?: string;
+  needsStaging?: boolean;
+  error?: string;
+}
+
+/**
+ * Git Smart Review ��Ӧ
+ */
+export interface GitSmartReviewResponsePayload {
+  success: boolean;
+  data?: {
+    review: string;
+  };
+  error?: string;
+}
+
+/**
+ * Git Explain Commit ��Ӧ
+ */
+export interface GitExplainCommitResponsePayload {
+  success: boolean;
+  data?: {
+    explanation: string;
+  };
+  error?: string;
+}

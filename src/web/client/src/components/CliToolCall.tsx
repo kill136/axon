@@ -26,6 +26,11 @@ const CLI_TOOL_NAMES: Record<string, string> = {
   Task: 'Task',
   NotebookEdit: 'NotebookEdit',
   AskUserQuestion: 'AskUserQuestion',
+  Browser: 'Browser',
+  TestRunner: 'TestRunner',
+  Database: 'Database',
+  REPL: 'REPL',
+  Debugger: 'Debugger',
 };
 
 interface CliToolCallProps {
@@ -112,6 +117,16 @@ function getToolDescription(name: string, input: any): string {
       return input?.query || '';
     case 'Task':
       return input?.description || '';
+    case 'Browser':
+      return input?.action || '';
+    case 'TestRunner':
+      return input?.path || input?.framework || '';
+    case 'Database':
+      return input?.action === 'query' ? (input?.sql || input?.command || '') : (input?.action || '');
+    case 'REPL':
+      return input?.action === 'execute' ? `[${input?.session || 'default'}]` : (input?.action || '');
+    case 'Debugger':
+      return input?.action || '';
     default:
       return '';
   }
@@ -369,6 +384,399 @@ function GrepToolContent({ input, result }: { input: any; result?: any }) {
 }
 
 /**
+ * Browser 工具内容渲染
+ * 支持截图预览和其他 Browser 操作的结果展示
+ */
+function BrowserToolContent({ input, result }: { input: any; result?: any }) {
+  const action = input?.action || '';
+  const images = result?.data?.images as Array<{ type: string; source: { type: string; media_type: string; data: string } }> | undefined;
+
+  // 截图操作：渲染图片
+  if (action === 'screenshot' && images && images.length > 0) {
+    return (
+      <div className="cli-browser-content">
+        {images.map((img, i) => (
+          <div key={i} style={{ marginTop: '8px' }}>
+            <img
+              src={`data:${img.source.media_type};base64,${img.source.data}`}
+              alt="Browser screenshot"
+              style={{
+                maxWidth: '100%',
+                borderRadius: '6px',
+                border: '1px solid var(--border-color, #333)',
+              }}
+            />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  // 其他 Browser 操作：显示文本输出
+  const output = result?.output || result?.error || '';
+  return output ? (
+    <div className="cli-browser-content">
+      <pre className="cli-generic-output">{output}</pre>
+    </div>
+  ) : null;
+}
+
+/**
+ * TestRunner 工具内容渲染
+ */
+function TestRunnerToolContent({ input, result }: { input: any; result?: any }) {
+  const [expanded, setExpanded] = useState(false);
+  const [showPassed, setShowPassed] = useState(false);
+  const { t } = useLanguage();
+
+  let data: any = null;
+  try {
+    if (result?.output) {
+      data = JSON.parse(result.output);
+    }
+  } catch {
+    // 解析失败，回退纯文本
+  }
+
+  if (!data) {
+    const output = result?.output || result?.error || '';
+    const allLines = output.split('\n');
+    return (
+      <div className="cli-testrunner-content">
+        <ExpandableContent
+          totalLines={allLines.length}
+          expanded={expanded}
+          onToggle={() => setExpanded(!expanded)}
+          t={t}
+        >
+          <pre className="cli-bash-code cli-bash-output">{output}</pre>
+        </ExpandableContent>
+      </div>
+    );
+  }
+
+  const suites: any[] = data.suites || [];
+  const totalLines = suites.reduce((acc: number, s: any) => acc + (s.tests?.length || 0), 0);
+  const failedTests: Array<{ suiteName: string; test: any }> = [];
+  const passedTests: Array<{ suiteName: string; test: any }> = [];
+  suites.forEach((suite: any) => {
+    (suite.tests || []).forEach((test: any) => {
+      if (test.status === 'failed') {
+        failedTests.push({ suiteName: suite.name, test });
+      } else if (test.status === 'passed') {
+        passedTests.push({ suiteName: suite.name, test });
+      }
+    });
+  });
+
+  const coverage = data.coverage;
+
+  return (
+    <div className="cli-testrunner-content">
+      {/* 概要栏 */}
+      <div className="cli-test-summary">
+        <span className="cli-test-passed">✓ {data.passed ?? 0}</span>
+        <span className="cli-test-failed">✗ {data.failed ?? 0}</span>
+        <span className="cli-test-skipped">◌ {data.skipped ?? 0}</span>
+        <span className="cli-test-total">{t('cli.testTotal', { count: data.total ?? 0 })}</span>
+        {data.duration != null && (
+          <span className="cli-test-duration">{data.duration}ms</span>
+        )}
+      </div>
+
+      <ExpandableContent
+        totalLines={totalLines}
+        expanded={expanded}
+        onToggle={() => setExpanded(!expanded)}
+        t={t}
+      >
+        {/* 失败测试置顶 */}
+        {failedTests.map(({ suiteName, test }, i) => (
+          <div key={i} className="cli-test-error">
+            <div className="cli-test-error-name">{suiteName} › {test.name}</div>
+            {test.error?.message && (
+              <pre className="cli-test-error-message">{test.error.message}</pre>
+            )}
+            {test.error?.diff && (
+              <pre className="cli-test-error-diff">{test.error.diff}</pre>
+            )}
+          </div>
+        ))}
+
+        {/* 通过测试折叠显示 */}
+        {passedTests.length > 0 && (
+          <div className="cli-test-passed-section">
+            <button
+              className="cli-expand-btn"
+              onClick={(e) => { e.stopPropagation(); setShowPassed(!showPassed); }}
+            >
+              {showPassed ? '▼' : '▶'} {t('cli.testPassed', { count: passedTests.length })}
+            </button>
+            {showPassed && passedTests.map(({ suiteName, test }, i) => (
+              <div key={i} className="cli-test-passed-item">
+                ✓ {suiteName} › {test.name}
+                {test.duration != null && <span className="cli-test-duration"> ({test.duration}ms)</span>}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* 覆盖率区域 */}
+        {coverage && (
+          <div className="cli-coverage-section">
+            {['lines', 'branches', 'functions'].map((key) => {
+              const pct = coverage[key] ?? 0;
+              return (
+                <div key={key} className="cli-coverage-row">
+                  <span className="cli-coverage-label">{key}</span>
+                  <div className="cli-coverage-bar">
+                    <div
+                      className="cli-coverage-fill"
+                      style={{ width: `${Math.min(100, pct)}%` }}
+                    />
+                  </div>
+                  <span className="cli-coverage-pct">{pct}%</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </ExpandableContent>
+    </div>
+  );
+}
+
+/**
+ * Database 工具内容渲染
+ */
+function DatabaseToolContent({ input, result }: { input: any; result?: any }) {
+  const [expanded, setExpanded] = useState(false);
+  const { t } = useLanguage();
+
+  let data: any = null;
+  let rows: any[] = [];
+  let columns: string[] = [];
+  let isTable = false;
+
+  try {
+    if (result?.output) {
+      data = JSON.parse(result.output);
+      if (data && Array.isArray(data.columns) && Array.isArray(data.rows)) {
+        columns = data.columns;
+        rows = data.rows;
+        isTable = true;
+      }
+    }
+  } catch {
+    // 回退纯文本
+  }
+
+  const output = result?.output || '';
+  const totalLines = isTable ? rows.length : output.split('\n').length;
+
+  return (
+    <div className="cli-db-content">
+      <ExpandableContent
+        totalLines={totalLines}
+        expanded={expanded}
+        onToggle={() => setExpanded(!expanded)}
+        t={t}
+      >
+        {isTable ? (
+          <table className="cli-db-table">
+            <thead>
+              <tr>
+                {columns.map((col: string, i: number) => (
+                  <th key={i}>{col}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row: any, i: number) => (
+                <tr key={i}>
+                  {columns.map((col: string, j: number) => (
+                    <td key={j}>{String(row[col] ?? row[j] ?? '')}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <pre className="cli-db-pre">{output}</pre>
+        )}
+      </ExpandableContent>
+
+      {/* 底部信息 */}
+      <div className="cli-db-footer">
+        <span>{t('cli.dbRows', { count: data?.rowCount ?? rows.length })}</span>
+        <span> · </span>
+        <span>{t('cli.dbDuration', { duration: result?.duration ?? data?.duration ?? 0 })}</span>
+        {data?.truncated && (
+          <span className="cli-db-truncated"> {t('cli.dbTruncated')}</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * REPL 工具内容渲染
+ */
+function REPLToolContent({ input, result }: { input: any; result?: any }) {
+  const [expanded, setExpanded] = useState(false);
+  const { t } = useLanguage();
+  const output = result?.output || result?.error || '';
+  const allLines = output.split('\n');
+  const totalLines = allLines.length;
+  const maxLines = DEFAULT_MAX_LINES;
+  const displayOutput = expanded ? output : allLines.slice(0, maxLines).join('\n');
+  const code = input?.code || input?.expression || '';
+  const session = input?.session || 'default';
+  const runtime = input?.runtime || input?.language || '';
+
+  return (
+    <div className="cli-repl-content">
+      {/* REPL 头部：session + runtime */}
+      <div className="cli-repl-header">
+        <span className="cli-repl-session">{session}</span>
+        {runtime && <span className="cli-repl-runtime">{runtime}</span>}
+      </div>
+
+      {/* IN 区域 */}
+      {code && (
+        <div className="cli-bash-section">
+          <span className="cli-bash-label">{t('cli.inputLabel')}</span>
+          <pre className="cli-bash-code">{code}</pre>
+        </div>
+      )}
+
+      {/* OUT 区域 */}
+      {result && (
+        <div className="cli-bash-section">
+          <span className="cli-bash-label">{t('cli.outputLabel')}</span>
+          <ExpandableContent
+            totalLines={totalLines}
+            maxLines={maxLines}
+            expanded={expanded}
+            onToggle={() => setExpanded(!expanded)}
+            t={t}
+          >
+            <pre className={`cli-bash-code cli-bash-output${result?.error ? ' cli-repl-error' : ''}`}>
+              {displayOutput}
+            </pre>
+            {result?.result != null && (
+              <div className="cli-repl-result">
+                <span className="cli-repl-result-value">{String(result.result)}</span>
+                {result?.type && <span className="cli-repl-result-type"> ({result.type})</span>}
+              </div>
+            )}
+          </ExpandableContent>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Debugger 工具内容渲染
+ */
+function DebuggerToolContent({ input, result }: { input: any; result?: any }) {
+  const { t } = useLanguage();
+  const action = input?.action || '';
+  const output = result?.output || '';
+
+  const renderByAction = () => {
+    switch (action) {
+      case 'launch':
+      case 'attach':
+        return (
+          <div className="cli-debug-launch">
+            {input?.program && <div className="cli-debug-program">{input.program}</div>}
+            {input?.runtime && <span className="cli-repl-runtime">{input.runtime}</span>}
+          </div>
+        );
+
+      case 'set_breakpoint':
+        return (
+          <div className="cli-debug-breakpoint">
+            <span className="cli-debug-file">{input?.file}</span>
+            {input?.line != null && <span className="cli-debug-line">:{input.line}</span>}
+          </div>
+        );
+
+      case 'stack_trace': {
+        let frames: any[] = [];
+        try {
+          frames = JSON.parse(output);
+        } catch {
+          return <pre className="cli-bash-code cli-bash-output">{output}</pre>;
+        }
+        return (
+          <div className="cli-debug-stack">
+            {frames.map((frame: any, i: number) => (
+              <div key={i} className="cli-debug-frame">
+                <span className="cli-debug-frame-fn">{frame.function || frame.fn || ''}</span>
+                <span className="cli-debug-frame-loc">
+                  {frame.file}{frame.line != null ? `:${frame.line}` : ''}
+                </span>
+              </div>
+            ))}
+          </div>
+        );
+      }
+
+      case 'variables':
+      case 'scopes': {
+        let vars: any[] = [];
+        try {
+          vars = JSON.parse(output);
+        } catch {
+          return <pre className="cli-bash-code cli-bash-output">{output}</pre>;
+        }
+        return (
+          <div className="cli-debug-vars">
+            {vars.map((v: any, i: number) => (
+              <div key={i} className="cli-debug-var">
+                <span className="cli-debug-var-name">{v.name}</span>
+                <span className="cli-debug-var-type">{v.type ? `(${v.type})` : ''}</span>
+                <span className="cli-debug-var-value">{String(v.value ?? '')}</span>
+              </div>
+            ))}
+          </div>
+        );
+      }
+
+      case 'evaluate':
+        return (
+          <div className="cli-debug-evaluate">
+            {input?.expression && (
+              <div className="cli-bash-section">
+                <span className="cli-bash-label">{t('cli.inputLabel')}</span>
+                <pre className="cli-bash-code">{input.expression}</pre>
+              </div>
+            )}
+            {output && (
+              <div className="cli-bash-section">
+                <span className="cli-bash-label">{t('cli.outputLabel')}</span>
+                <pre className="cli-bash-code cli-bash-output">{output}</pre>
+              </div>
+            )}
+          </div>
+        );
+
+      default:
+        return output ? <pre className="cli-bash-code cli-bash-output">{output}</pre> : null;
+    }
+  };
+
+  return (
+    <div className="cli-debugger-content">
+      {renderByAction()}
+    </div>
+  );
+}
+
+/**
  * 获取子工具的输入展示文本
  */
 function getSubagentToolInput(name: string, input: any): string {
@@ -391,6 +799,14 @@ function getSubagentToolInput(name: string, input: any): string {
       return input?.query || '';
     case 'Task':
       return input?.description || '';
+    case 'TestRunner':
+      return input?.path || input?.framework || '';
+    case 'Database':
+      return input?.sql || input?.command || input?.action || '';
+    case 'REPL':
+      return input?.code || input?.expression || '';
+    case 'Debugger':
+      return `${input?.action || ''}${input?.file ? ' ' + input.file : ''}`;
     default:
       // 尝试序列化 input
       if (input) {
@@ -522,6 +938,16 @@ export function CliToolCall({ toolUse }: CliToolCallProps) {
         return <ReadToolContent input={input} result={result} />;
       case 'Grep':
         return <GrepToolContent input={input} result={result} />;
+      case 'Browser':
+        return <BrowserToolContent input={input} result={result} />;
+      case 'TestRunner':
+        return <TestRunnerToolContent input={input} result={result} />;
+      case 'Database':
+        return <DatabaseToolContent input={input} result={result} />;
+      case 'REPL':
+        return <REPLToolContent input={input} result={result} />;
+      case 'Debugger':
+        return <DebuggerToolContent input={input} result={result} />;
       case 'Task':
         return (
           <div className="cli-task-content">

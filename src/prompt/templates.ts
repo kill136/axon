@@ -78,12 +78,12 @@ export function getToolGuidelines(
     `To create files use ${write} instead of cat with heredoc or echo redirection`,
     `To search for files use ${glob} instead of find or ls`,
     `To search the content of files, use ${grep} instead of grep or rg`,
-    `Reserve using the ${bash} exclusively for system commands and terminal operations that require shell execution. If you are unsure and there is a relevant dedicated tool, default to using the dedicated tool and only fallback on using the ${bash} tool for these if it is absolutely necessary.`,
   ];
 
   const items: (string | string[] | null)[] = [
     `Do NOT use the ${bash} to run commands when a relevant dedicated tool is provided. Using dedicated tools allows the user to better understand and review your work. This is CRITICAL to assisting the user:`,
     bashAlternatives,
+    `Reserve using the ${bash} exclusively for system commands and terminal operations that require shell execution.`,
     hasTodo ? `Break down and manage your work with the ${todoWrite} tool. These tools are helpful for planning your work and helping the user track your progress. Mark each task as completed as soon as you are done with the task. Do not batch up multiple tasks before marking them as completed.` : null,
     hasTodo && toolNames.has('TaskCreate') ? `Important: use ${todoWrite} for task progress tracking in conversations. TaskCreate/TaskUpdate are for internal multi-agent coordination only — do not use them directly in normal conversations.` : null,
     hasTask ? `Use the ${task} tool with specialized agents when the task at hand matches the agent's description. Subagents are valuable for parallelizing independent queries or for protecting the main context window from excessive results, but they should not be used excessively when not needed. Importantly, avoid duplicating work that subagents are already doing - if you delegate research to a subagent, do not also perform the same searches yourself.` : null,
@@ -91,6 +91,10 @@ export function getToolGuidelines(
     `For broader codebase exploration and deep research, use the ${task} tool with subagent_type=${exploreAgentType}. This is slower than calling ${glob} or ${grep} directly so use this only when a simple, directed search proves to be insufficient or when your task will clearly require more than 3 queries.`,
     hasSkillTool ? `/<skill-name> (e.g., /commit) is shorthand for users to invoke a user-invocable skill. When executed, the skill gets expanded to a full prompt. Use the ${skill} tool to execute them. IMPORTANT: Only use ${skill} for skills listed in its user-invocable skills section - do not guess or use built-in CLI commands.` : null,
     'You can call multiple tools in a single response. If you intend to call multiple tools and there are no dependencies between them, make all independent tool calls in parallel. Maximize use of parallel tool calls where possible to increase efficiency. However, if some tool calls depend on previous calls to inform dependent values, do NOT call these tools in parallel and instead call them sequentially. For instance, if one operation must complete before another starts, run these operations sequentially instead.',
+    toolNames.has('Database') ? 'Use the Database tool to directly query databases (postgres/mysql/sqlite/redis/mongo), instead of calling mysql/psql/redis-cli via Bash. Database tool provides structured results, readonly safety mode, and connection management.' : null,
+    toolNames.has('TestRunner') ? 'Use the TestRunner tool to run tests and get structured results (pass/fail counts, per-test details, coverage). Prefer TestRunner over Bash for test execution — it auto-detects the framework (vitest/jest/pytest/go/cargo) and returns structured JSON output with failed tests highlighted.' : null,
+    toolNames.has('REPL') ? 'Use the REPL tool for stateful interactive code exploration and quick validation. Unlike Bash, variables persist across executions within the same session. Supports node and python runtimes.' : null,
+    toolNames.has('Debugger') ? 'Use the Debugger tool to set breakpoints, inspect call stacks and variable values, and step through code. Prefer Debugger over adding console.log statements for debugging.' : null,
   ];
 
   return ['# Using your tools', ...items.filter(item => item !== null).flatMap(item =>
@@ -158,21 +162,6 @@ Prioritize technical accuracy and truthfulness over validating the user's belief
 Never give time estimates or predictions for how long tasks will take, whether for your own work or for users planning their projects. Avoid phrases like "this will take me a few minutes," "should be done in about 5 minutes," "this is a quick fix," "this will take 2-3 weeks," or "we can do this later." Focus on what needs to be done, not how long it might take. Break work into actionable steps and let users judge timing for themselves.`;
 }
 
-/**
- * 简化版 Tone and style（对齐官方 H3z 函数 - 简化路径）
- * 当有自定义输出样式时使用
- */
-export function getToneAndStyleSimple(): string {
-  return ['# Tone and style', ...([
-    'Only use emojis if the user explicitly requests it. Avoid using emojis in all communication unless asked.',
-    'Your responses should be short and concise.',
-    'When referencing specific functions or pieces of code include the pattern file_path:line_number to allow the user to easily navigate to the source code location.',
-    'Do not use a colon before tool calls. Your tool calls may not be shown directly in the output, so text like "Let me read the file:" followed by a read tool call should just be "Let me read the file." with a period.',
-  ]).map(item => ` - ${item}`)].join('\n');
-}
-
-
-
 
 /**
  * 任务管理指南
@@ -183,62 +172,14 @@ These tools are also EXTREMELY helpful for planning tasks, and for breaking down
 
 It is critical that you mark todos as completed as soon as you are done with a task. Do not batch up multiple tasks before marking them as completed.
 
-Examples:
-
-<example>
-user: Run the build and fix any type errors
-assistant: I'm going to use the TodoWrite tool to write the following items to the todo list:
-- Run the build
-- Fix any type errors
-
-I'm now going to run the build using Bash.
-
-Looks like I found 10 type errors. I'm going to use the TodoWrite tool to write 10 items to the todo list.
-
-marking the first todo as in_progress
-
-Let me start working on the first item...
-
-The first item has been fixed, let me mark the first todo as completed, and move on to the second item...
-..
-..
-</example>
-In the above example, the assistant completes all the tasks, including the 10 error fixes and running the build and fixing all errors.
-
-<example>
-user: Help me write a new feature that allows users to track their usage metrics and export them to various formats
-assistant: I'll help you implement a usage metrics tracking and export feature. Let me first use the TodoWrite tool to plan this task.
-Adding the following todos to the todo list:
-1. Research existing metrics tracking in the codebase
-2. Design the metrics collection system
-3. Implement core metrics tracking functionality
-4. Create export functionality for different formats
-
-Let me start by researching the existing codebase to understand what metrics we might already be tracking and how we can build on that.
-
-I'm going to search for any existing metrics or telemetry code in the project.
-
-I've found some existing telemetry code. Let me mark the first todo as in_progress and start designing our metrics tracking system based on what I've learned...
-
-[Assistant continues implementing the feature step by step, marking todos as in_progress and completed as they go]
-</example>
-
 ## Task Tool Selection Guide
-
-Match your task to the RIGHT tool:
 
 | Complexity | Tool | When |
 |-----------|------|------|
 | Simple (1-3 steps) | Just do it | No task tool needed |
-| Medium (multi-step, single agent) | TodoWrite | Track progress for user visibility |
-| Complex (needs exploration first) | EnterPlanMode | Explore → plan → get approval → implement |
-| Large project (multi-file, multi-module) | GenerateBlueprint → StartLeadAgent | Generate blueprint, delegate to LeadAgent |
-
-Key distinctions:
-- TodoWrite = progress tracking for the current session (in-memory, flat list)
-- TaskCreate/Update = structured task management with dependencies (file-persisted, used internally by LeadAgent)
-- EnterPlanMode = "I need to think before I act" (enters read-only exploration mode)
-- GenerateBlueprint = "This is too big for one agent" (generates structured blueprint for multi-agent execution)
+| Medium (multi-step) | TodoWrite | Track progress for user visibility |
+| Complex (needs exploration) | EnterPlanMode | Explore → plan → approve → implement |
+| Large project (multi-module) | GenerateBlueprint → StartLeadAgent | Multi-agent execution |
 
 Do NOT use TaskCreate/TaskUpdate directly unless you are a LeadAgent managing worker tasks. For normal conversations, use TodoWrite.`;
 
@@ -275,8 +216,6 @@ export function getCodingGuidelines(toolNames: Set<string>, todoToolName: string
     'You are highly capable and often allow users to complete ambitious tasks that would otherwise be too complex or take too long. You should defer to user judgement about whether a task is too large to attempt.',
     'In general, do not propose changes to code you haven\'t read. If a user asks about or wants you to modify a file, read it first. Understand existing code before suggesting modifications',
     ...toolSpecificItems,
-    'Do not create files unless they\'re absolutely necessary for achieving your goal. Generally prefer editing an existing file to creating a new one, as this prevents file bloat and builds on existing work more effectively.',
-    'Avoid giving time estimates or predictions for how long tasks will take, whether for your own work or for users planning projects. Focus on what needs to be done, not how long it might take.',
     `If your approach is blocked, do not attempt to brute force your way to the outcome. For example, if an API call or test fails, do not wait and retry the same action repeatedly. Instead, consider alternative approaches or other ways you might unblock yourself, or consider using the ${askToolName} to align with the user on the right path forward.`,
     'Be careful not to introduce security vulnerabilities such as command injection, XSS, SQL injection, and other OWASP top 10 vulnerabilities. If you notice that you wrote insecure code, immediately fix it. Prioritize writing safe, secure, and correct code.',
     'Avoid over-engineering. Only make changes that are directly requested or clearly necessary. Keep solutions simple and focused.',
@@ -616,22 +555,6 @@ export function getEnvironmentInfo(context: {
   osVersion?: string;
   model?: string;
   additionalWorkingDirs?: string[];
-  hostname?: string;
-  osName?: string;
-  arch?: string;
-  cpuModel?: string;
-  cpuCores?: number;
-  cpuLogical?: number;
-  totalMemoryGB?: number;
-  freeMemoryGB?: number;
-  gpuInfo?: string;
-  diskInfo?: string;
-  networkAdapters?: string;
-  shellVersion?: string;
-  nodeVersion?: string;
-  npmVersion?: string;
-  activeProcesses?: string;
-  uptime?: string;
 }): string {
   const lines = [
     `Here is useful information about the environment you are running in:`,
@@ -806,29 +729,62 @@ export function getGitStatusInfo(status: {
   untracked?: string[];
   ahead?: number;
   behind?: number;
+  recentCommits?: Array<{ hash: string; message: string; author: string; date: string }>;
+  stashCount?: number;
+  conflictFiles?: string[];
+  remoteStatus?: { tracking: string | null; ahead: number; behind: number };
+  tags?: string[];
 }): string {
-  const parts: string[] = [`gitStatus: Current branch: ${status.branch}`];
+  const parts: string[] = [];
 
-  if (status.ahead && status.ahead > 0) {
-    parts.push(`Your branch is ahead by ${status.ahead} commits`);
-  }
-  if (status.behind && status.behind > 0) {
-    parts.push(`Your branch is behind by ${status.behind} commits`);
+  // 分支和远程跟踪信息
+  if (status.remoteStatus?.tracking) {
+    parts.push(`gitStatus: Current branch: ${status.branch} (tracking ${status.remoteStatus.tracking}, ahead ${status.remoteStatus.ahead}, behind ${status.remoteStatus.behind})`);
+  } else {
+    parts.push(`gitStatus: Current branch: ${status.branch}`);
   }
 
+  // 最近的 commits（最多5条）
+  if (status.recentCommits && status.recentCommits.length > 0) {
+    parts.push('Recent commits:');
+    for (const commit of status.recentCommits.slice(0, 5)) {
+      const shortHash = commit.hash.substring(0, 7);
+      // 简化时间显示（如 "2h ago"）
+      parts.push(`  ${shortHash} - ${commit.message} (${commit.date})`);
+    }
+  }
+
+  // 工作区状态
   if (status.isClean) {
     parts.push('Status: (clean)');
   } else {
     parts.push('Status:');
     if (status.staged && status.staged.length > 0) {
-      parts.push(`Staged: ${status.staged.join(', ')}`);
+      parts.push(`  Staged: ${status.staged.join(', ')}`);
     }
     if (status.unstaged && status.unstaged.length > 0) {
-      parts.push(`Modified: ${status.unstaged.join(', ')}`);
+      parts.push(`  Modified: ${status.unstaged.join(', ')}`);
     }
     if (status.untracked && status.untracked.length > 0) {
-      parts.push(`Untracked: ${status.untracked.join(', ')}`);
+      parts.push(`  Untracked: ${status.untracked.join(', ')}`);
     }
+    if (status.conflictFiles && status.conflictFiles.length > 0) {
+      parts.push(`  Conflicts: ${status.conflictFiles.join(', ')}`);
+    } else {
+      parts.push('  Conflicts: NONE');
+    }
+  }
+
+  // Stash 信息
+  if (status.stashCount !== undefined) {
+    if (status.stashCount > 0) {
+      parts.push(`Stash: ${status.stashCount} ${status.stashCount === 1 ? 'entry' : 'entries'}`);
+    }
+  }
+
+  // 最近的 tags（可选）
+  if (status.tags && status.tags.length > 0) {
+    parts.push(`Recent tags: ${status.tags.slice(0, 3).join(', ')}`);
   }
 
   const result = parts.join('\n');
@@ -939,7 +895,6 @@ export const PromptTemplates = {
   getCodingGuidelines,
   getToolGuidelines,
   getToneAndStyle,
-  getToneAndStyleSimple,
   getMcpInstructions,
   getMcpCliInstructions,
   getOutputStylePrompt,

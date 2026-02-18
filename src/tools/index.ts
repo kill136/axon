@@ -30,6 +30,7 @@ export * from './team.js';
 export * from './schedule.js';
 export * from './self-evolve.js';
 export * from './browser.js';
+export * from './create-tool.js';
 
 // 蓝图工具不通过此处 re-export
 // 蓝图模块直接 import 各自需要的工具文件 (如 ../tools/dispatch-worker.js)
@@ -47,7 +48,7 @@ import { TaskCreateTool, TaskGetTool, TaskUpdateTool, TaskListTool } from './tas
 import { isTasksEnabled } from './task-storage.js';
 import { NotebookEditTool } from './notebook.js';
 import { EnterPlanModeTool, ExitPlanModeTool } from './planmode.js';
-import { MCPSearchTool, ListMcpResourcesTool, ReadMcpResourceTool } from './mcp.js';
+import { MCPSearchTool, McpResourceTool } from './mcp.js';
 import { AskUserQuestionTool } from './ask.js';
 import { SkillTool } from './skill.js';
 import { LSPTool } from './lsp.js';
@@ -59,6 +60,11 @@ import { ScheduleTaskTool } from './schedule.js';
 import { SelfEvolveTool } from './self-evolve.js';
 import { BrowserTool } from './browser.js';
 import { MemorySearchTool } from './memory-search.js';
+import { CreateToolTool } from './create-tool.js';
+import { DatabaseTool } from './database.js';
+import { DebuggerTool } from './debugger.js';
+import { TestRunnerTool } from './test-runner.js';
+import { REPLTool } from './repl.js';
 
 // ============ 蓝图工具 imports (lazy) ============
 import { BlueprintTool } from './blueprint.js';
@@ -126,10 +132,9 @@ export function registerCoreTools(): void {
   // 9. Skill 系统 (1个)
   toolRegistry.register(new SkillTool());
 
-  // 10. MCP 工具 (3个)
+  // 10. MCP 工具 (2个) - MCPSearch + McpResource (合并了 ListMcpResources/ReadMcpResource)
   toolRegistry.register(new MCPSearchTool());
-  toolRegistry.register(new ListMcpResourcesTool());
-  toolRegistry.register(new ReadMcpResourceTool());
+  toolRegistry.register(new McpResourceTool());
 
   // 18. Agent Teams v2.1.33 工具 (3个) - TeamCreate/TeamDelete/TeamSendMessage
   // v2.1.34: 添加 try-catch 保护，防止 agent teams 设置变化时崩溃
@@ -173,6 +178,15 @@ export function registerCoreTools(): void {
 
   // 16. MemorySearch 长期记忆搜索工具
   toolRegistry.register(new MemorySearchTool());
+
+  // 17. CreateTool 自定义 Skill 创建（写入 ~/.claude/skills/，利用 Skill 系统）
+  toolRegistry.register(new CreateToolTool());
+
+  // 20. 开发工具 (4个) - Database, Debugger, TestRunner, REPL
+  toolRegistry.register(new DatabaseTool());
+  toolRegistry.register(new DebuggerTool());
+  toolRegistry.register(new TestRunnerTool());
+  toolRegistry.register(new REPLTool());
 }
 
 /**

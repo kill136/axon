@@ -277,6 +277,72 @@
   align-items: center;
   justify-content: space-between;
   margin-bottom: 20px;
+  flex-shrink: 0;
+}
+
+/* 可滚动区域 */
+.scrollArea {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+/* 区块标题 */
+.sectionTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin: 0 0 12px 0;
+}
+
+/* 项目全景区块 */
+.codebaseSection {
+  flex-shrink: 0;
+}
+
+/* 项目全景卡片 - 全宽、左侧蓝色边框 */
+.codebaseCard {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-left: 3px solid #3b82f6;
+  border-radius: 8px;
+  padding: 16px 20px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.codebaseCard:hover {
+  border-color: #3b82f6;
+  border-left-color: #3b82f6;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.1);
+}
+
+.codebaseCard.selected {
+  border-color: #3b82f6;
+  background: var(--bg-tertiary);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+
+/* 已同步标签 */
+.codebaseBadge {
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* 需求蓝图区块 */
+.requirementSection {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .listTitle {

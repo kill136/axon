@@ -64,6 +64,105 @@ function Test-Git {
     return $false
 }
 
+# --- Create Auto-Update Startup Script ---
+function New-UpdateAndStartScript {
+    param([string]$InstallPath)
+
+    Write-Info "Creating auto-update startup script..."
+
+    $ScriptPath = Join-Path $InstallPath "update-and-start.bat"
+    $ScriptContent = @"
+@echo off
+chcp 65001 >nul 2>&1
+setlocal enabledelayedexpansion
+
+echo.
+echo   +=============================================+
+echo   ^|   Claude Code Open - Auto Update ^& Start   ^|
+echo   +=============================================+
+echo.
+
+set "INSTALL_DIR=%USERPROFILE%\.claude-code-open"
+cd /d "%INSTALL_DIR%"
+
+REM --- Check for updates ---
+set "NEED_REBUILD=0"
+set "NEED_FRONTEND_REBUILD=0"
+
+if exist ".git" (
+    echo [INFO] Checking for updates...
+
+    REM Save current commit hash
+    for /f "tokens=*" %%i in ('git rev-parse HEAD 2^>nul') do set "OLD_HASH=%%i"
+
+    REM Discard local changes
+    git checkout -- . >nul 2>&1
+    git clean -fd >nul 2>&1
+
+    REM Pull latest code
+    git pull origin private_web_ui >nul 2>&1
+    if !errorlevel! neq 0 (
+        echo [WARN] Git pull failed ^(network issue?^), starting with current version...
+        goto :start_app
+    )
+
+    for /f "tokens=*" %%i in ('git rev-parse HEAD 2^>nul') do set "NEW_HASH=%%i"
+
+    if "!OLD_HASH!" neq "!NEW_HASH!" (
+        echo [OK] Updated: !OLD_HASH:~0,8! -^> !NEW_HASH:~0,8!
+
+        REM Check what changed
+        for /f "tokens=*" %%f in ('git diff --name-only !OLD_HASH! !NEW_HASH! 2^>nul') do (
+            echo %%f | findstr /i "package.json" >nul && set "NEED_REBUILD=1"
+            echo %%f | findstr /i "src\\web\\client\\" >nul && set "NEED_FRONTEND_REBUILD=1"
+            echo %%f | findstr /i "\.ts$ \.tsx$" >nul && set "NEED_REBUILD=1"
+        )
+    ) else (
+        echo [OK] Already up to date
+    )
+) else (
+    echo [WARN] Not a git repository, skipping update
+)
+
+REM --- Incremental rebuild if needed ---
+if "!NEED_REBUILD!" == "1" (
+    echo [INFO] Source code changed, rebuilding...
+
+    echo [INFO] Installing dependencies...
+    call npm install >nul 2>&1
+
+    if "!NEED_FRONTEND_REBUILD!" == "1" (
+        echo [INFO] Frontend changed, rebuilding...
+        cd /d "%INSTALL_DIR%\src\web\client"
+        call npm install >nul 2>&1
+        call npm run build >nul 2>&1
+        cd /d "%INSTALL_DIR%"
+    )
+
+    echo [INFO] Building backend...
+    call npm run build >nul 2>&1
+
+    REM Re-link in case bin entries changed
+    call npm link >nul 2>&1
+
+    echo [OK] Rebuild complete!
+)
+
+:start_app
+echo.
+echo [INFO] Starting Claude Code WebUI...
+echo.
+
+REM --- Start the application ---
+cd /d "%INSTALL_DIR%"
+node_modules\.bin\tsx.cmd src\web-cli.ts --evolve -H 0.0.0.0
+
+pause
+"@
+    Set-Content -Path $ScriptPath -Value $ScriptContent -Encoding ASCII
+    Write-Ok "Auto-update startup script created: $ScriptPath"
+}
+
 # --- Create Desktop Shortcut ---
 function New-DesktopShortcut {
     param(
@@ -81,38 +180,11 @@ function New-DesktopShortcut {
         $Shortcut = $WshShell.CreateShortcut($ShortcutPath)
 
         if ($Type -eq "npm") {
-            # npm installation: create a batch file and shortcut to it
-            $BatDir = Join-Path $env:USERPROFILE ".local\bin"
-            if (!(Test-Path $BatDir)) { New-Item -ItemType Directory -Path $BatDir -Force | Out-Null }
+            # npm installation: shortcut points to auto-update script
+            $UpdateScript = Join-Path $InstallPath "update-and-start.bat"
 
-            $BatPath = Join-Path $BatDir "claude-web-launch.bat"
-            $WebCliPath = Join-Path $InstallPath "dist\web-cli.js"
-
-            # Build batch file content with runtime environment variables
-            $BatContent = @"
-@echo off
-cd /d "%USERPROFILE%"
-
-REM Set default API configuration
-set "ANTHROPIC_BASE_URL=http://13.113.224.168:8082"
-set "ANTHROPIC_API_KEY=my-secret"
-
-echo Starting Claude Code WebUI...
-echo API URL: %ANTHROPIC_BASE_URL%
-echo Server will be accessible from: http://0.0.0.0:3456
-echo Press Ctrl+C to stop the server
-echo.
-
-REM Run in evolve mode: tsx runs TypeScript source directly, --evolve enables auto-restart on code changes
-cd /d "%USERPROFILE%\.claude-code-open"
-node_modules\.bin\tsx.cmd src\web-cli.ts --evolve -H 0.0.0.0
-
-pause
-"@
-            Set-Content -Path $BatPath -Value $BatContent -Encoding ASCII
-
-            $Shortcut.TargetPath = $BatPath
-            $Shortcut.Description = "Launch Claude Code Web Interface"
+            $Shortcut.TargetPath = $UpdateScript
+            $Shortcut.Description = "Launch Claude Code Web Interface (Auto-Update)"
             $Shortcut.WorkingDirectory = "$env:USERPROFILE"
         }
         elseif ($Type -eq "docker") {
@@ -240,7 +312,8 @@ This usually means the git clone was incomplete. Please try:
 
     Pop-Location
 
-    # Create desktop shortcut
+    # Create auto-update startup script and desktop shortcut
+    New-UpdateAndStartScript -InstallPath $InstallDir
     New-DesktopShortcut -Type "npm" -InstallPath $InstallDir
 
     Write-Ok "Installation complete via npm!"

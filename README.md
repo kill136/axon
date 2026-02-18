@@ -72,6 +72,11 @@ irm https://raw.githubusercontent.com/kill136/claude-code-open/private_web_ui/in
 curl -fsSL https://raw.githubusercontent.com/kill136/claude-code-open/private_web_ui/install.sh | bash
 ```
 
+**China users (GitHub not accessible):**
+```bash
+curl -fsSL https://gitee.com/lubanbbs/claude-code-open/raw/private_web_ui/install.sh | bash
+```
+
 The install script will automatically:
 - ✅ Detect and install missing dependencies (Node.js, Git, g++, make)
 - ✅ Clone the repository

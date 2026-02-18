@@ -686,3 +686,477 @@
     display: none;
   }
 }
+
+/* ===== TestRunner 工具样式 ===== */
+.cli-test-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 6px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.cli-test-passed {
+  color: #4caf50;
+  font-weight: 600;
+  padding: 2px 8px;
+  background: rgba(76, 175, 80, 0.12);
+  border-radius: 4px;
+}
+
+.cli-test-failed {
+  color: #f44336;
+  font-weight: 600;
+  padding: 2px 8px;
+  background: rgba(244, 67, 54, 0.12);
+  border-radius: 4px;
+}
+
+.cli-test-skipped {
+  color: #ff9800;
+  font-weight: 600;
+  padding: 2px 8px;
+  background: rgba(255, 152, 0, 0.12);
+  border-radius: 4px;
+}
+
+.cli-test-total {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.cli-test-duration {
+  color: var(--text-muted);
+  font-size: 11px;
+  margin-left: auto;
+}
+
+.cli-test-error {
+  margin: 6px 0;
+  padding: 10px 12px;
+  background: rgba(244, 67, 54, 0.08);
+  border-left: 3px solid #f44336;
+  border-radius: 0 4px 4px 0;
+}
+
+.cli-test-error-name {
+  color: #f44336;
+  font-weight: 600;
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+
+.cli-test-error-message {
+  color: var(--text-secondary);
+  font-size: 12px;
+  margin: 0 0 6px 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.cli-test-error-diff {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 0;
+  padding: 6px 8px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.cli-test-passed-section {
+  margin-top: 8px;
+}
+
+.cli-test-passed-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 4px 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+
+.cli-test-passed-header:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.cli-test-passed-list {
+  margin-top: 4px;
+}
+
+.cli-test-passed-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.cli-test-passed-item::before {
+  content: '✓';
+  color: #4caf50;
+  font-size: 11px;
+}
+
+.cli-coverage-section {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 6px;
+}
+
+.cli-coverage-title {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.cli-coverage-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 0;
+}
+
+.cli-coverage-label {
+  color: var(--text-muted);
+  font-size: 11px;
+  min-width: 72px;
+}
+
+.cli-coverage-bar {
+  flex: 1;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.cli-coverage-fill {
+  height: 100%;
+  background: #4caf50;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.cli-coverage-pct {
+  color: var(--text-secondary);
+  font-size: 11px;
+  min-width: 36px;
+  text-align: right;
+}
+
+/* ===== Database 工具样式 ===== */
+.cli-db-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cli-db-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-family: 'JetBrains Mono', Consolas, 'Courier New', monospace;
+}
+
+.cli-db-table th {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+  padding: 6px 10px;
+  text-align: left;
+  border: 1px solid var(--border-color, #333);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.cli-db-table td {
+  padding: 5px 10px;
+  border: 1px solid var(--border-color, #333);
+  color: var(--text-primary);
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cli-db-table tr:nth-child(even) td {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.cli-db-table tr:hover td {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.cli-db-pre {
+  margin: 0;
+  padding: 8px;
+  font-size: 12px;
+  color: var(--text-primary);
+  white-space: pre;
+  overflow-x: auto;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+}
+
+.cli-db-footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  color: var(--text-muted);
+  font-size: 11px;
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 4px;
+  border-top: 1px solid var(--border-color, #333);
+}
+
+.cli-db-truncated {
+  color: #ff9800;
+  font-size: 11px;
+  padding: 2px 6px;
+  background: rgba(255, 152, 0, 0.1);
+  border-radius: 3px;
+  margin-left: auto;
+}
+
+/* ===== REPL 工具样式 ===== */
+.cli-repl-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cli-repl-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.cli-repl-session {
+  color: var(--text-muted);
+  font-size: 11px;
+  padding: 2px 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 3px;
+}
+
+.cli-repl-runtime {
+  color: #fff;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-weight: 600;
+  background: #388e3c;
+}
+
+.cli-repl-runtime[data-runtime="python"],
+.cli-repl-runtime[data-lang="python"] {
+  background: #1565c0;
+}
+
+.cli-repl-runtime[data-runtime="ruby"],
+.cli-repl-runtime[data-lang="ruby"] {
+  background: #b71c1c;
+}
+
+.cli-repl-error {
+  color: #f44336 !important;
+  background: rgba(244, 67, 54, 0.06) !important;
+}
+
+.cli-repl-result {
+  margin-top: 4px;
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.cli-repl-result-value {
+  color: #64b5f6;
+  font-weight: 500;
+}
+
+.cli-repl-result-type {
+  color: var(--text-muted);
+  font-size: 11px;
+  margin-left: 4px;
+}
+
+/* ===== Debugger 工具样式 ===== */
+.cli-debug-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cli-debug-action-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  background: rgba(255, 255, 255, 0.07);
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.cli-debug-launch {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cli-debug-program {
+  color: var(--text-primary);
+  font-size: 12px;
+  padding: 4px 8px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+}
+
+.cli-debug-breakpoint {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: rgba(255, 152, 0, 0.08);
+  border-left: 2px solid #ff9800;
+  border-radius: 0 4px 4px 0;
+}
+
+.cli-debug-file {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.cli-debug-line {
+  color: #ff9800;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.cli-debug-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cli-debug-frame {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  transition: background 0.15s;
+}
+
+.cli-debug-frame:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.cli-debug-frame-active {
+  background: rgba(100, 181, 246, 0.08);
+  border-left: 2px solid #64b5f6;
+  padding-left: 6px;
+}
+
+.cli-debug-frame-fn {
+  color: #64b5f6;
+  font-weight: 500;
+  min-width: 100px;
+}
+
+.cli-debug-frame-loc {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.cli-debug-vars {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cli-debug-var {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 8px;
+  border-radius: 3px;
+  font-size: 12px;
+}
+
+.cli-debug-var:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.cli-debug-var-name {
+  color: #ce93d8;
+  font-weight: 500;
+  min-width: 80px;
+}
+
+.cli-debug-var-type {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.cli-debug-var-value {
+  color: #a5d6a7;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 11px;
+}
+
+.cli-debug-evaluate {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cli-debug-raw {
+  padding: 6px 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+}
+
+@media (max-width: 768px) {
+  .cli-test-summary {
+    gap: 6px;
+  }
+
+  .cli-db-table td,
+  .cli-db-table th {
+    padding: 4px 6px;
+    font-size: 11px;
+  }
+
+  .cli-coverage-row {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .cli-debug-frame {
+    flex-direction: column;
+    gap: 2px;
+  }
+}

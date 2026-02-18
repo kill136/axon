@@ -600,6 +600,29 @@
   opacity: 0.9;
 }
 
+/* v9.3: 恢复执行按钮 */
+.resumeButton {
+  margin-top: 12px;
+  padding: 10px 24px;
+  background: #e67e22;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: opacity 0.2s, background 0.2s;
+}
+
+.resumeButton:hover:not(:disabled) {
+  background: #d35400;
+}
+
+.resumeButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 /* 空状态 */
 .emptyState {
   display: flex;

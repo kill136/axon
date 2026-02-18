@@ -443,13 +443,17 @@ Do not directly edit files - delegate work to teammate agents.
       const staged: string[] = [];
       const unstaged: string[] = [];
       const untracked: string[] = [];
+      const conflictFiles: string[] = [];
 
       for (const line of status.split('\n').filter(Boolean)) {
         const x = line[0];
         const y = line[1];
         const file = line.slice(3);
 
-        if (x === '?' && y === '?') {
+        // 检测冲突文件 (UU, AA, DD 等)
+        if ((x === 'U' && y === 'U') || (x === 'A' && y === 'A') || (x === 'D' && y === 'D')) {
+          conflictFiles.push(file);
+        } else if (x === '?' && y === '?') {
           untracked.push(file);
         } else if (x !== ' ' && x !== '?') {
           staged.push(file);
@@ -458,9 +462,10 @@ Do not directly edit files - delegate work to teammate agents.
         }
       }
 
-      // 获取 ahead/behind 信息
+      // 获取 ahead/behind 和远程跟踪信息
       let ahead = 0;
       let behind = 0;
+      let tracking: string | null = null;
       try {
         const aheadBehind = execSync('git rev-list --left-right --count @{u}...HEAD', {
           cwd: workingDir,
@@ -470,8 +475,63 @@ Do not directly edit files - delegate work to teammate agents.
         const [behindStr, aheadStr] = aheadBehind.split('\t');
         behind = parseInt(behindStr, 10) || 0;
         ahead = parseInt(aheadStr, 10) || 0;
+
+        // 获取 tracking 分支
+        try {
+          tracking = execSync('git rev-parse --abbrev-ref --symbolic-full-name @{u}', {
+            cwd: workingDir,
+            encoding: 'utf-8',
+            stdio: ['pipe', 'pipe', 'pipe'],
+          }).trim();
+        } catch {
+          // 没有上游分支
+        }
       } catch {
         // 可能没有上游分支
+      }
+
+      // 获取最近的 5 条 commits
+      const recentCommits: Array<{ hash: string; message: string; author: string; date: string }> = [];
+      try {
+        const logOutput = execSync('git log -5 --pretty=format:%H|%s|%an|%ar', {
+          cwd: workingDir,
+          encoding: 'utf-8',
+          stdio: ['pipe', 'pipe', 'pipe'],
+        }).trim();
+
+        for (const line of logOutput.split('\n').filter(Boolean)) {
+          const [hash, message, author, date] = line.split('|');
+          recentCommits.push({ hash, message, author, date });
+        }
+      } catch {
+        // 可能是空仓库或其他错误
+      }
+
+      // 获取 stash 数量
+      let stashCount = 0;
+      try {
+        const stashList = execSync('git stash list', {
+          cwd: workingDir,
+          encoding: 'utf-8',
+          stdio: ['pipe', 'pipe', 'pipe'],
+        }).trim();
+        stashCount = stashList ? stashList.split('\n').length : 0;
+      } catch {
+        // git stash 失败
+      }
+
+      // 获取最近的 tags（最多3个）
+      const tags: string[] = [];
+      try {
+        const tagsOutput = execSync('git tag --sort=-creatordate', {
+          cwd: workingDir,
+          encoding: 'utf-8',
+          stdio: ['pipe', 'pipe', 'pipe'],
+        }).trim();
+        const tagLines = tagsOutput.split('\n').filter(Boolean);
+        tags.push(...tagLines.slice(0, 3));
+      } catch {
+        // 没有 tags
       }
 
       return {
@@ -482,6 +542,11 @@ Do not directly edit files - delegate work to teammate agents.
         untracked,
         ahead,
         behind,
+        recentCommits,
+        stashCount,
+        conflictFiles,
+        remoteStatus: { tracking, ahead, behind },
+        tags,
       };
     } catch (error) {
       return null;

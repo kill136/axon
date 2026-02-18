@@ -75,7 +75,7 @@ export default function SwarmConsole({ initialBlueprintId }: SwarmConsoleProps) 
   }, []);
 
   // WebSocket 状态
-  const { state, isLoading, error, refresh, sendAskUserResponse, loadTaskHistoryLogs, interjectTask, interjectLead, send, addMessageHandler } = useSwarmState({
+  const { state, isLoading, error, refresh, sendAskUserResponse, loadTaskHistoryLogs, interjectTask, interjectLead, resumeLead, send, addMessageHandler } = useSwarmState({
     url: getWebSocketUrl(),
     blueprintId: selectedBlueprintId || undefined,
   });
@@ -216,13 +216,52 @@ export default function SwarmConsole({ initialBlueprintId }: SwarmConsoleProps) 
     if (phase === 'completed') return 'completed';
     if (phase === 'failed') return 'failed';
     if (phase === 'idle') return 'pending';
+    // v9.3: 如果 LeadAgent phase 仍为执行中，但所有任务都已结束，前端推导为已完成
+    if (executionPlan && executionPlan.tasks.length > 0) {
+      const allDone = executionPlan.tasks.every(
+        t => t.status === 'completed' || t.status === 'failed' || t.status === 'skipped'
+      );
+      if (allDone) {
+        const hasFailed = executionPlan.tasks.some(t => t.status === 'failed');
+        return hasFailed ? 'failed' : 'completed';
+      }
+    }
     return 'running';
-  }, [state.leadAgent.phase]);
+  }, [state.leadAgent.phase, executionPlan]);
+
+  // v9.3: 检测执行是否卡死（LeadAgent 已退出但仍有未完成任务）
+  const isStalled = useMemo(() => {
+    if (!executionPlan || executionPlan.tasks.length === 0) return false;
+    const phase = state.leadAgent.phase;
+    // LeadAgent 处于 idle/completed/failed 状态
+    const leadExited = phase === 'idle' || phase === 'completed' || phase === 'failed';
+    if (!leadExited) return false;
+    // 存在未完成任务
+    const hasPending = executionPlan.tasks.some(
+      t => t.status === 'pending' || t.status === 'running'
+    );
+    return hasPending;
+  }, [executionPlan, state.leadAgent.phase]);
+
+  const [isResuming, setIsResuming] = useState(false);
+
+  const handleResumeLead = useCallback(() => {
+    setIsResuming(true);
+    resumeLead();
+    // 超时自动恢复按钮状态
+    setTimeout(() => setIsResuming(false), 15000);
+  }, [resumeLead]);
+
+  // LeadAgent 恢复执行后重置 resuming 状态
+  useEffect(() => {
+    if (isResuming && state.leadAgent.phase !== 'idle' && state.leadAgent.phase !== 'completed' && state.leadAgent.phase !== 'failed') {
+      setIsResuming(false);
+    }
+  }, [isResuming, state.leadAgent.phase]);
 
   // LeadAgent 是否可以插嘴
-  const canInterjectLead = state.leadAgent.phase !== 'idle' &&
-    state.leadAgent.phase !== 'completed' &&
-    state.leadAgent.phase !== 'failed';
+  // v9.3: 基于实际状态判断，而非仅依赖 phase
+  const canInterjectLead = leadAgentStatus === 'running';
 
   // 当前选中的 Worker 的模型信息
   const selectedWorkerModel = useMemo(() => {
@@ -529,16 +568,34 @@ export default function SwarmConsole({ initialBlueprintId }: SwarmConsoleProps) 
                 interjectStatus={state.leadInterjectStatus}
               />
             ) : (
-              /* 空状态 */
+              /* 空状态 / 卡死恢复 */
               <div className={styles.emptyState}>
-                <div className={styles.emptyStateIcon}>🧠</div>
-                <div className={styles.emptyStateText}>
-                  {!selectedBlueprintId ? t('swarm.noBlueprint') : t('swarm.leadAgentStandby')}
-                  <br />
-                  <span style={{ fontSize: '0.85em', opacity: 0.7 }}>
-                    {!selectedBlueprintId ? t('swarm.createBlueprint') : t('swarm.clickToView')}
-                  </span>
-                </div>
+                {isStalled ? (
+                  <>
+                    <div className={styles.emptyStateIcon}>⚠️</div>
+                    <div className={styles.emptyStateText}>
+                      {t('swarm.stalledExecution')}
+                    </div>
+                    <button
+                      className={styles.resumeButton}
+                      onClick={handleResumeLead}
+                      disabled={isResuming}
+                    >
+                      {isResuming ? t('swarm.resuming') : t('swarm.resumeExecution')}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div className={styles.emptyStateIcon}>🧠</div>
+                    <div className={styles.emptyStateText}>
+                      {!selectedBlueprintId ? t('swarm.noBlueprint') : t('swarm.leadAgentStandby')}
+                      <br />
+                      <span style={{ fontSize: '0.85em', opacity: 0.7 }}>
+                        {!selectedBlueprintId ? t('swarm.createBlueprint') : t('swarm.clickToView')}
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
             )}
           </div>

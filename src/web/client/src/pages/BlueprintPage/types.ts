@@ -164,6 +164,7 @@ export interface BlueprintListItem {
   nfrCount: number;             // 非功能要求数量
   requirementCount: number;     // 需求数量
   constraintCount: number;      // 约束数量
+  source?: 'requirement' | 'codebase';  // 蓝图来源
   projectPath?: string;         // 关联的项目路径
 }
 

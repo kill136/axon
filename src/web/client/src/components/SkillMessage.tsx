@@ -6,6 +6,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { marked } from 'marked';
 import hljs from 'highlight.js';
+import { sanitizeHtml } from '../utils/sanitize';
 import './SkillMessage.css';
 
 /**
@@ -53,7 +54,7 @@ function MarkdownRenderer({ content }: { content: string }) {
 
   useEffect(() => {
     if (ref.current && content) {
-      ref.current.innerHTML = marked.parse(content) as string;
+      ref.current.innerHTML = sanitizeHtml(marked.parse(content) as string);
       ref.current.querySelectorAll('pre code').forEach((block) => {
         hljs.highlightElement(block as HTMLElement);
       });

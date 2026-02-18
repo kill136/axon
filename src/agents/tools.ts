@@ -108,7 +108,7 @@ export const AGENT_TOOL_CONFIGS: Record<string, AgentToolConfig> = {
     allowedTools: [
       'Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep',
       'UpdateTaskPlan', 'DispatchWorker', 'TriggerE2ETest',
-      'AskUserQuestion',
+      'AskUserQuestion', 'Database', 'Debugger', 'TestRunner', 'REPL',
     ],
     permissionLevel: 'elevated',
   },
@@ -116,7 +116,7 @@ export const AGENT_TOOL_CONFIGS: Record<string, AgentToolConfig> = {
     agentType: 'worker',
     allowedTools: [
       'Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep',
-      'AskUserQuestion',
+      'AskUserQuestion', 'Database', 'TestRunner', 'REPL',
     ],
     permissionLevel: 'standard',
   },

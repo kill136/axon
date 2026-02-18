@@ -93,7 +93,7 @@ export class ModelSelector {
     return {
       haiku: 'Claude 4.5 Haiku',
       sonnet: 'Claude 4.5 Sonnet',
-      opus: 'Claude 4.5 Opus',
+      opus: 'Claude Opus 4.6',
     }[model] || model;
   }
 }

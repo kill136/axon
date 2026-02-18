@@ -1,6 +1,7 @@
 import { useRef, useEffect } from 'react';
 import { marked } from 'marked';
 import hljs from 'highlight.js';
+import { sanitizeHtml } from '../utils/sanitize';
 
 interface MarkdownContentProps {
   content: string;
@@ -20,7 +21,7 @@ export function MarkdownContent({ content, isUserMessage = false }: MarkdownCont
         gfm: true,
       }) as string;
 
-      ref.current.innerHTML = html;
+      ref.current.innerHTML = sanitizeHtml(html);
       ref.current.querySelectorAll('pre code').forEach((block) => {
         hljs.highlightElement(block as HTMLElement);
       });

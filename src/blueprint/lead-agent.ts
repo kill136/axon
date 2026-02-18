@@ -131,7 +131,7 @@ export class LeadAgent extends EventEmitter {
     const platform = os.platform();
     const platformInfo = platform === 'win32' ? 'Windows' : platform === 'darwin' ? 'macOS' : 'Linux';
     const shellHint = platform === 'win32'
-      ? '\n- Windows 系统：使用 dir 代替 ls，使用 type 代替 cat'
+      ? '\n- Windows 系统：Shell 是 git-bash，ls/cat 等 Unix 命令可用，不要使用 cmd.exe 语法（如 dir、type、> nul 等）'
       : '';
     const today = new Date().toISOString().split('T')[0];
 
@@ -177,6 +177,7 @@ export class LeadAgent extends EventEmitter {
 - 日期: ${today}
 - 项目路径: ${this.projectPath}${gitInfo}${techStackInfo}${shellHint}
 
+${this.buildCodebaseContextPrompt()}
 ## 蓝图（需求锚点）
 项目名: ${this.blueprint.name}
 描述: ${this.blueprint.description}
@@ -309,6 +310,56 @@ git add -A && git commit -m "[LeadAgent] 任务描述"
   }
 
   /**
+   * 加载项目全景蓝图（codebase 蓝图），构建模块结构上下文
+   * 让 LeadAgent 在探索代码之前就了解项目架构，减少 Phase 1 探索时间
+   */
+  private buildCodebaseContextPrompt(): string {
+    try {
+      const blueprintDir = path.join(this.projectPath, '.blueprint');
+      if (!fs.existsSync(blueprintDir)) return '';
+
+      const files = fs.readdirSync(blueprintDir).filter(f => f.endsWith('.json') && !f.startsWith('.'));
+      for (const file of files) {
+        const data = JSON.parse(fs.readFileSync(path.join(blueprintDir, file), 'utf-8'));
+        // 跳过当前需求蓝图自身，只找 codebase 蓝图
+        if (data.id === this.blueprint.id) continue;
+
+        // 推断：有 modules/businessProcesses 但没有 requirements → codebase 蓝图
+        const hasModules = data.modules?.length > 0;
+        const hasProcesses = data.businessProcesses?.length > 0;
+        const hasRequirements = data.requirements?.length > 0;
+        const isCodebase = data.source === 'codebase' || ((hasModules || hasProcesses) && !hasRequirements);
+
+        if (!isCodebase) continue;
+
+        // 构建模块摘要
+        const lines: string[] = ['## 项目全景（来自代码分析）'];
+
+        if (data.modules?.length > 0) {
+          lines.push(`\n### 模块结构（${data.modules.length} 个模块）`);
+          for (const m of data.modules) {
+            const deps = m.dependencies?.length ? ` (依赖 ${m.dependencies.length} 个模块)` : '';
+            lines.push(`- **${m.name}** [${m.type || 'other'}]: ${m.description}${deps}`);
+          }
+        }
+
+        if (data.businessProcesses?.length > 0) {
+          lines.push(`\n### 业务流程（${data.businessProcesses.length} 个）`);
+          for (const p of data.businessProcesses) {
+            lines.push(`- **${p.name}**: ${p.description} (${p.steps?.length || 0} 步)`);
+          }
+        }
+
+        lines.push('\n> 以上信息来自项目全景蓝图，可加速你对代码库的理解。探索阶段可以聚焦于需求相关的具体实现细节，而非项目整体结构。\n');
+        return lines.join('\n');
+      }
+    } catch {
+      // 加载失败不影响主流程
+    }
+    return '';
+  }
+
+  /**
    * 构建 API 契约提示词（如果蓝图中有 API 契约，嵌入到系统提示词中）
    */
   private buildAPIContractPrompt(): string {
@@ -340,7 +391,7 @@ ${endpointLines.join('\n')}
     const platform = os.platform();
     const platformInfo = platform === 'win32' ? 'Windows' : platform === 'darwin' ? 'macOS' : 'Linux';
     const shellHint = platform === 'win32'
-      ? '\n- Windows 系统：使用 dir 代替 ls，使用 type 代替 cat'
+      ? '\n- Windows 系统：Shell 是 git-bash，ls/cat 等 Unix 命令可用，不要使用 cmd.exe 语法（如 dir、type、> nul 等）'
       : '';
     const today = new Date().toISOString().split('T')[0];
 
@@ -628,6 +679,10 @@ ${taskSummary}
       isSubAgent: true,
       askUserHandler: this.config.askUserHandler as any,
       allowedTools,
+      // 认证透传：避免子 agent 走 initAuth() 拿到错误的认证
+      apiKey: this.config.apiKey,
+      authToken: this.config.authToken,
+      baseUrl: this.config.baseUrl,
     });
 
     // 发射 LeadAgent 的 system_prompt 事件，供前端查看
@@ -638,6 +693,8 @@ ${taskSummary}
     let selfHealAttempts = 0;
     let isResumeRun = this.config.isResume || false;
     let lastResponse = '';
+    let lastErrorMsg = '';
+    let fatalError = false;
 
     while (true) {
       // 构建提示词：首次使用初始/恢复提示词，自愈重启使用恢复提示词
@@ -647,6 +704,7 @@ ${taskSummary}
       const messageStream = this.loop!.processMessageStream(prompt);
 
       let loopDiedFromError = false;
+      lastErrorMsg = '';
 
       try {
         for await (const event of messageStream) {
@@ -704,6 +762,7 @@ ${taskSummary}
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
         loopDiedFromError = true;
+        lastErrorMsg = errorMsg;
         console.error(`[LeadAgent] Loop 异常退出: ${errorMsg}`);
 
         this.emit('lead:stream', {
@@ -712,27 +771,43 @@ ${taskSummary}
         });
       }
 
-      // v9.2: 检查是否需要自愈重启
-      // 条件：Loop 异常退出 + 还有未完成的任务 + 未超过重试次数
+      // v9.3: 检查是否需要自愈重启
+      // 条件：还有未完成的任务 + 未超过重试次数（无论正常退出还是异常退出）
+      // v9.4: 认证错误（401）是致命错误，不应自愈重启
       const hasPendingTasks = this.executionPlan?.tasks.some(
         t => t.status === 'pending' || t.status === 'running'
       );
+      const isFatalError = loopDiedFromError && (
+        lastErrorMsg.includes('authentication_error') ||
+        lastErrorMsg.includes('401') ||
+        lastErrorMsg.includes('authentication')
+      );
 
-      if (loopDiedFromError && hasPendingTasks && selfHealAttempts < maxSelfHealRetries) {
+      if (isFatalError) {
+        console.error('[LeadAgent] 致命认证错误，终止执行（不自愈）');
+        fatalError = true;
+        this.emit('lead:stream', {
+          type: 'text',
+          content: '\n❌ [LeadAgent] 认证失败（API Key/Token 无效或已过期），终止执行\n',
+        });
+        break;
+      }
+
+      if (hasPendingTasks && selfHealAttempts < maxSelfHealRetries) {
         selfHealAttempts++;
         const delay = 2000 * Math.pow(2, selfHealAttempts - 1); // 2s, 4s, 8s
-        console.log(`[LeadAgent] 自愈重启 (${selfHealAttempts}/${maxSelfHealRetries}): 还有未完成的任务，${delay}ms 后以 resume 模式重启...`);
+        const reason = loopDiedFromError ? '异常退出' : 'Loop 正常结束但仍有未完成任务';
+        console.log(`[LeadAgent] 自愈重启 (${selfHealAttempts}/${maxSelfHealRetries}): ${reason}，${delay}ms 后以 resume 模式重启...`);
 
         this.emit('lead:stream', {
           type: 'text',
-          content: `\n🔄 [LeadAgent] 自愈重启 (${selfHealAttempts}/${maxSelfHealRetries})...\n`,
+          content: `\n🔄 [LeadAgent] 自愈重启 (${selfHealAttempts}/${maxSelfHealRetries}): ${reason}...\n`,
         });
 
         await new Promise(r => setTimeout(r, delay));
 
-        // 将卡在 running 的任务重置为 pending（直接修改共享的 executionPlan 对象）
-        // 不需要 emit 事件，LeadAgent 恢复后会通过 UpdateTaskPlan(start_task) 重新通知前端
-        if (this.executionPlan) {
+        // 仅在异常退出时将 running 任务重置为 pending（正常退出时 Worker 仍在处理中）
+        if (loopDiedFromError && this.executionPlan) {
           for (const task of this.executionPlan.tasks) {
             if (task.status === 'running') {
               task.status = 'pending';
@@ -752,6 +827,10 @@ ${taskSummary}
           isSubAgent: true,
           askUserHandler: this.config.askUserHandler as any,
           allowedTools,
+          // 认证透传
+          apiKey: this.config.apiKey,
+          authToken: this.config.authToken,
+          baseUrl: this.config.baseUrl,
         });
 
         isResumeRun = true; // 下一轮使用恢复提示词
@@ -759,12 +838,17 @@ ${taskSummary}
       }
 
       // 正常退出或重试耗尽，跳出循环
-      if (loopDiedFromError && selfHealAttempts >= maxSelfHealRetries) {
-        console.error(`[LeadAgent] 自愈重试耗尽 (${maxSelfHealRetries} 次)，放弃重启`);
-        this.emit('lead:stream', {
-          type: 'text',
-          content: `\n❌ [LeadAgent] 自愈重试耗尽，无法继续执行\n`,
-        });
+      if (selfHealAttempts >= maxSelfHealRetries) {
+        const stillHasPending = this.executionPlan?.tasks.some(
+          t => t.status === 'pending' || t.status === 'running'
+        );
+        if (stillHasPending) {
+          console.error(`[LeadAgent] 自愈重试耗尽 (${maxSelfHealRetries} 次)，放弃重启`);
+          this.emit('lead:stream', {
+            type: 'text',
+            content: `\n❌ [LeadAgent] 自愈重试耗尽，无法继续执行\n`,
+          });
+        }
       }
       break;
     }
@@ -782,15 +866,21 @@ ${taskSummary}
       }
     }
 
+    // v9.3: 检查是否所有计划任务都已完成，未完成的任务不应视为成功
+    const pendingOrRunning = this.executionPlan?.tasks.filter(
+      t => t.status === 'pending' || t.status === 'running'
+    ) || [];
+
     this.emitLeadEvent('lead:completed', {
-      success: failedTasks.length === 0,
+      success: !fatalError && failedTasks.length === 0 && pendingOrRunning.length === 0,
       completedTasks: completedTasks.length,
       failedTasks: failedTasks.length,
+      pendingTasks: pendingOrRunning.length,
       durationMs,
     });
 
     return {
-      success: failedTasks.length === 0,
+      success: !fatalError && failedTasks.length === 0,
       completedTasks,
       failedTasks,
       estimatedTokens: 0, // TODO: 从 loop 获取

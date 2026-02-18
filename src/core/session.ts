@@ -13,6 +13,35 @@ import { GitUtils, type GitInfo } from '../git/index.js';
 // 会话版本号
 const SESSION_VERSION = '2.0';
 
+/**
+ * 原子文件写入（对齐官方 fL 函数）
+ * 1. 写入临时文件 ${path}.tmp.${pid}.${timestamp}
+ * 2. renameSync 原子替换目标文件
+ * 3. rename 失败则降级为直接写入
+ */
+function atomicWriteFileSync(filePath: string, content: string): void {
+  const tmpFile = `${filePath}.tmp.${process.pid}.${Date.now()}`;
+  try {
+    // 保留原文件权限
+    let mode: number | undefined;
+    try {
+      mode = fs.statSync(filePath).mode;
+    } catch { /* 文件不存在，用默认权限 */ }
+
+    fs.writeFileSync(tmpFile, content, { encoding: 'utf-8', flush: true });
+
+    if (mode !== undefined) {
+      fs.chmodSync(tmpFile, mode);
+    }
+
+    fs.renameSync(tmpFile, filePath);
+  } catch {
+    // rename 失败（Windows 上目标被锁定时可能发生），降级为直接写
+    try { fs.unlinkSync(tmpFile); } catch { /* ignore */ }
+    fs.writeFileSync(filePath, content, { encoding: 'utf-8', flush: true });
+  }
+}
+
 // v2.1.27: 全局会话 ID 追踪
 let _currentSessionId: string | null = null;
 
@@ -487,7 +516,8 @@ ${modelUsageStr ? '\n模型使用统计:' + modelUsageStr : ''}
   }
 
   /**
-   * T146: 保存会话到文件（带版本控制）
+   * 保存会话到文件
+   * 使用原子写入（tmp+rename）防止半写文件，使用排他锁防止并发写入
    */
   save(): string {
     const sessionFile = path.join(this.configDir, 'sessions', `${this.state.sessionId}.json`);
@@ -497,39 +527,33 @@ ${modelUsageStr ? '\n模型使用统计:' + modelUsageStr : ''}
       fs.mkdirSync(sessionDir, { recursive: true });
     }
 
-    // T157: 检查并获取锁
     this.acquireLock();
 
     try {
-      // T146: 匹配官方格式，添加版本控制
       const data = {
-        version: SESSION_VERSION, // T146: 添加版本号
+        version: SESSION_VERSION,
         state: this.state,
         messages: this.messages,
-        // 额外元数据 (官方风格)
         metadata: {
-          // Git 信息 (完整)
           gitInfo: this.gitInfo,
-          gitBranch: this.gitInfo?.branchName, // 兼容旧版
+          gitBranch: this.gitInfo?.branchName,
           gitStatus: this.gitInfo?.isClean ? 'clean' : 'dirty',
           gitDefaultBranch: this.gitInfo?.defaultBranch,
           gitCommitHash: this.gitInfo?.commitHash,
-          // Session 信息
           customTitle: this.customTitle,
           firstPrompt: this.getFirstPrompt(),
           projectPath: this.state.cwd,
           created: this.state.startTime,
           modified: Date.now(),
           messageCount: this.messages.length,
-          // v2.1.32: 保存 agent 值供 resume 复用
           agent: this.agentValue,
         },
       };
 
-      fs.writeFileSync(sessionFile, JSON.stringify(data, null, 2));
+      const content = JSON.stringify(data, null, 2);
+      atomicWriteFileSync(sessionFile, content);
       return sessionFile;
     } finally {
-      // T157: 释放锁
       this.releaseLock();
     }
   }
@@ -648,7 +672,8 @@ ${modelUsageStr ? '\n模型使用统计:' + modelUsageStr : ''}
   }
 
   /**
-   * T157: 获取锁（防止并发修改）
+   * 获取排他锁（防止并发修改）
+   * 使用 'wx' flag 原子创建锁文件，写入 PID 用于僵尸锁检测
    */
   private acquireLock(): void {
     if (this.isLocked) {
@@ -657,26 +682,70 @@ ${modelUsageStr ? '\n模型使用统计:' + modelUsageStr : ''}
 
     this.lockFile = path.join(this.configDir, 'sessions', `.${this.state.sessionId}.lock`);
 
-    // 检查是否已有锁文件
-    if (fs.existsSync(this.lockFile)) {
-      const lockData = fs.readFileSync(this.lockFile, 'utf-8');
-      const lockTime = parseInt(lockData, 10);
-
-      // 如果锁超过 5 分钟，认为是僵尸锁，删除它
-      if (Date.now() - lockTime > 5 * 60 * 1000) {
-        fs.unlinkSync(this.lockFile);
-      } else {
-        throw new Error(`Session ${this.state.sessionId} is locked by another process`);
-      }
+    // 尝试原子创建锁文件（wx = 排他写，文件已存在则抛 EEXIST）
+    try {
+      fs.writeFileSync(this.lockFile, `${process.pid}\n${Date.now()}`, { flag: 'wx' });
+      this.isLocked = true;
+      return;
+    } catch (err: any) {
+      if (err.code !== 'EEXIST') throw err;
+      // 锁文件已存在，检查是否为僵尸锁
     }
 
-    // 创建锁文件
-    fs.writeFileSync(this.lockFile, Date.now().toString());
-    this.isLocked = true;
+    // 读取已有锁文件，检查持锁进程是否存活
+    try {
+      const lockData = fs.readFileSync(this.lockFile, 'utf-8');
+      const [pidStr, timeStr] = lockData.split('\n');
+      const lockPid = parseInt(pidStr, 10);
+      const lockTime = parseInt(timeStr, 10);
+
+      // 检查持锁进程是否还活着
+      let processAlive = false;
+      if (!isNaN(lockPid)) {
+        try {
+          process.kill(lockPid, 0); // signal 0 不发送信号，仅检查进程是否存在
+          processAlive = true;
+        } catch {
+          // 进程不存在，这是僵尸锁
+        }
+      }
+
+      if (processAlive) {
+        // 进程存活：检查锁是否超过 2 小时（对齐官方 STUCK_RUN_MS）
+        const LOCK_TIMEOUT_MS = 2 * 60 * 60 * 1000;
+        if (!isNaN(lockTime) && Date.now() - lockTime > LOCK_TIMEOUT_MS) {
+          // 超时，强制接管
+          fs.unlinkSync(this.lockFile);
+        } else {
+          throw new Error(`Session ${this.state.sessionId} is locked by PID ${lockPid}`);
+        }
+      } else {
+        // 僵尸锁，删除后重新获取
+        fs.unlinkSync(this.lockFile);
+      }
+    } catch (err: any) {
+      // 如果是我们自己抛的"is locked by PID"错误，直接抛出
+      if (err.message?.includes('is locked by PID')) throw err;
+      // 其他错误（读取锁文件失败等），尝试清理后继续
+      try { fs.unlinkSync(this.lockFile); } catch { /* ignore */ }
+    }
+
+    // 重新尝试创建锁文件
+    try {
+      fs.writeFileSync(this.lockFile, `${process.pid}\n${Date.now()}`, { flag: 'wx' });
+      this.isLocked = true;
+    } catch (err: any) {
+      // 再次 EEXIST 说明有竞态，放弃
+      if (err.code === 'EEXIST') {
+        throw new Error(`Session ${this.state.sessionId} is locked by another process (race condition)`);
+      }
+      throw err;
+    }
   }
 
   /**
-   * T157: 释放锁
+   * 释放锁
+   * 验证锁文件中的 PID 是自己的才删除，防止误删其他进程的锁
    */
   private releaseLock(): void {
     if (!this.isLocked || !this.lockFile) {
@@ -685,10 +754,15 @@ ${modelUsageStr ? '\n模型使用统计:' + modelUsageStr : ''}
 
     try {
       if (fs.existsSync(this.lockFile)) {
-        fs.unlinkSync(this.lockFile);
+        // 验证是自己的锁再删
+        const lockData = fs.readFileSync(this.lockFile, 'utf-8');
+        const lockPid = parseInt(lockData.split('\n')[0], 10);
+        if (lockPid === process.pid) {
+          fs.unlinkSync(this.lockFile);
+        }
       }
-    } catch (error) {
-      console.warn(`Failed to release lock for session ${this.state.sessionId}:`, error);
+    } catch {
+      // 释放锁失败不应阻塞正常流程
     }
 
     this.isLocked = false;

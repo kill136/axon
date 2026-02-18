@@ -206,6 +206,7 @@ export interface ToolResult {
   success: boolean;
   output?: string;
   error?: string;
+  data?: any;
 }
 
 // 工具相关

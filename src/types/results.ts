@@ -44,6 +44,18 @@ export interface ToolResult {
     /** 标记此消息为元消息，不算作用户实际输入（对齐官方 isMeta） */
     isMeta?: boolean;
   }>;
+  /**
+   * 工具返回的图片，会作为 ImageBlockParam 嵌入 tool_result content
+   * 用于 Browser screenshot 等需要返回图片的工具，避免 base64 作为文本计入 token
+   */
+  images?: Array<{
+    type: 'image';
+    source: {
+      type: 'base64';
+      media_type: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+      data: string;
+    };
+  }>;
   /** Skill 命令名称（由 Skill 工具设置） */
   commandName?: string;
   /** Skill 声明的允许工具列表 */
