@@ -378,9 +378,9 @@ if [ -d ".git" ]; then
     # Save current commit hash
     OLD_HASH=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
 
-    # Discard local changes (build artifacts, lock files, etc.)
+    # Discard local changes (protect .node portable directory)
     git checkout -- . 2>/dev/null || true
-    git clean -fd 2>/dev/null || true
+    git clean -fd --exclude=.node 2>/dev/null || true
 
     # Pull latest code
     if git pull origin private_web_ui 2>/dev/null; then
