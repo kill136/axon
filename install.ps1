@@ -132,7 +132,14 @@ function Install-Node {
 
     if ($downloaded) {
         Write-Info "Installing Node.js v$nodeVersion (this may take a minute)..."
-        Start-Process msiexec.exe -ArgumentList "/i `"$msiPath`" /qn /norestart" -Wait -NoNewWindow
+        # MSI silent install requires elevation; use -Verb RunAs to prompt UAC if needed
+        $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+        if ($isAdmin) {
+            Start-Process msiexec.exe -ArgumentList "/i `"$msiPath`" /qn /norestart" -Wait -NoNewWindow
+        } else {
+            Write-Info "Requesting administrator privileges for Node.js installation..."
+            Start-Process msiexec.exe -ArgumentList "/i `"$msiPath`" /qn /norestart" -Wait -Verb RunAs
+        }
         Remove-Item $msiPath -Force -ErrorAction SilentlyContinue
         Refresh-Path
         if (Test-Node) { return }
@@ -291,7 +298,14 @@ function Install-Git {
 
     if ($downloaded) {
         Write-Info "Installing Git (this may take a minute)..."
-        Start-Process $gitInstallerPath -ArgumentList "/VERYSILENT /NORESTART /NOCANCEL /SP- /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS /COMPONENTS=`"icons,ext\reg\shellhere,assoc,assoc_sh`"" -Wait -NoNewWindow
+        $gitArgs = "/VERYSILENT /NORESTART /NOCANCEL /SP- /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS /COMPONENTS=`"icons,ext\reg\shellhere,assoc,assoc_sh`""
+        $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+        if ($isAdmin) {
+            Start-Process $gitInstallerPath -ArgumentList $gitArgs -Wait -NoNewWindow
+        } else {
+            Write-Info "Requesting administrator privileges for Git installation..."
+            Start-Process $gitInstallerPath -ArgumentList $gitArgs -Wait -Verb RunAs
+        }
         Remove-Item $gitInstallerPath -Force -ErrorAction SilentlyContinue
         Refresh-Path
         if (Test-Git) { return }
@@ -550,8 +564,22 @@ This usually means the git clone was incomplete. Please try:
     Write-Info "Building backend..."
     npm run build
 
+    # Configure npm to use user-level global directory (avoids permission issues)
+    $NpmPrefix = Join-Path $env:USERPROFILE ".local"
+    $NpmBinDir = Join-Path $NpmPrefix "bin"
+    if (-not (Test-Path $NpmBinDir)) { New-Item -ItemType Directory -Path $NpmBinDir -Force | Out-Null }
+    npm config set prefix $NpmPrefix
+
     Write-Info "Linking globally..."
     npm link
+
+    # Ensure npm global bin is in user PATH
+    $UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    if ($UserPath -notlike "*$NpmBinDir*") {
+        [Environment]::SetEnvironmentVariable("Path", "$NpmBinDir;$UserPath", "User")
+        $env:Path = "$NpmBinDir;$env:Path"
+        Write-Warn "Added $NpmBinDir to user PATH."
+    }
 
     Pop-Location
 

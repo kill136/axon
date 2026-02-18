@@ -32,13 +32,27 @@ if exist "%SCRIPT_DIR%install.ps1" (
     goto :end
 )
 
-rem --- install.ps1 not found locally, download and execute from remote ---
+rem --- install.ps1 not found locally, download to temp and execute ---
 echo [INFO] install.ps1 not found locally, downloading from remote...
+set "PS1_TEMP=%TEMP%\claude-code-install.ps1"
 
-rem Try GitHub first, then Gitee
-echo [INFO] Trying GitHub...
+rem Detect network and download install.ps1 to temp file
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
-    "try { $r = Invoke-WebRequest -Uri 'https://github.com' -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop; $url = 'https://raw.githubusercontent.com/kill136/claude-code-open/private_web_ui/install.ps1' } catch { $url = 'https://gitee.com/lubanbbs/claude-code-open/raw/private_web_ui/install.ps1' }; Write-Host \"[INFO] Downloading from $url\"; try { Invoke-Expression (Invoke-WebRequest -Uri $url -UseBasicParsing).Content } catch { Write-Host \"[ERROR] Failed to download install script: $_\" -ForegroundColor Red; exit 1 }"
+    "$ErrorActionPreference = 'Stop'; " ^
+    "try { Invoke-WebRequest -Uri 'https://github.com' -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop | Out-Null; $url = 'https://raw.githubusercontent.com/kill136/claude-code-open/private_web_ui/install.ps1' } catch { $url = 'https://gitee.com/lubanbbs/claude-code-open/raw/private_web_ui/install.ps1' }; " ^
+    "Write-Host \"[INFO] Downloading from $url\"; " ^
+    "Invoke-WebRequest -Uri $url -OutFile '%PS1_TEMP%' -UseBasicParsing"
+
+if not exist "%PS1_TEMP%" (
+    echo [ERROR] Failed to download install script.
+    goto :end
+)
+
+rem Execute the downloaded script with -File (supports Read-Host, full interactivity)
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%PS1_TEMP%" %*
+
+rem Clean up
+del "%PS1_TEMP%" >nul 2>&1
 
 :end
 if "%1"=="" pause
