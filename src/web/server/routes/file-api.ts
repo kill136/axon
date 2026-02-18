@@ -24,8 +24,20 @@ const execPromise = promisify(exec);
 
 const router = Router();
 
-// 项目根目录
-const PROJECT_ROOT = process.env.PROJECT_ROOT || process.cwd();
+// 默认项目根目录（仅在请求未指定 root 时使用）
+const DEFAULT_PROJECT_ROOT = process.env.PROJECT_ROOT || process.cwd();
+
+/**
+ * 从请求中获取项目根目录
+ * 优先使用 query/body 中的 root 参数，否则使用默认值
+ */
+function getProjectRoot(req: Request): string {
+  const root = (req.query.root as string) || (req.body?.root as string);
+  if (root && path.isAbsolute(root)) {
+    return path.normalize(root);
+  }
+  return DEFAULT_PROJECT_ROOT;
+}
 
 // 自动排除的目录
 const EXCLUDED_DIRS = new Set([
@@ -78,13 +90,13 @@ const EXT_TO_LANGUAGE: Record<string, string> = {
  * 验证路径安全性
  * 防止路径遍历攻击，确保路径在项目根目录下
  */
-function validatePath(filePath: string): { valid: boolean; resolvedPath: string; error?: string } {
+function validatePath(filePath: string, projectRoot: string): { valid: boolean; resolvedPath: string; error?: string } {
   try {
     // 解析绝对路径
-    const resolvedPath = path.resolve(PROJECT_ROOT, filePath);
+    const resolvedPath = path.resolve(projectRoot, filePath);
     
     // 计算相对路径
-    const relativePath = path.relative(PROJECT_ROOT, resolvedPath);
+    const relativePath = path.relative(projectRoot, resolvedPath);
     
     // 检查是否在项目目录下（不能以 '..' 开头）
     if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
@@ -114,12 +126,13 @@ function validatePath(filePath: string): { valid: boolean; resolvedPath: string;
 async function getDirectoryTree(
   dirPath: string,
   currentDepth: number,
-  maxDepth: number
+  maxDepth: number,
+  projectRoot: string
 ): Promise<FileTreeNode | null> {
   try {
     const stats = await fs.stat(dirPath);
     const name = path.basename(dirPath);
-    const relativePath = path.relative(PROJECT_ROOT, dirPath);
+    const relativePath = path.relative(projectRoot, dirPath);
     
     // 如果是文件，直接返回
     if (stats.isFile()) {
@@ -154,7 +167,7 @@ async function getDirectoryTree(
       
       for (const entry of entries) {
         const entryPath = path.join(dirPath, entry);
-        const childNode = await getDirectoryTree(entryPath, currentDepth + 1, maxDepth);
+        const childNode = await getDirectoryTree(entryPath, currentDepth + 1, maxDepth, projectRoot);
         if (childNode) {
           children.push(childNode);
         }
@@ -221,11 +234,12 @@ interface WriteFileResponse {
  */
 router.get('/tree', async (req: Request, res: Response) => {
   try {
+    const projectRoot = getProjectRoot(req);
     const queryPath = (req.query.path as string) || '.';
     const depth = Math.min(Math.max(parseInt(req.query.depth as string) || 3, 1), 5);
     
     // 验证路径
-    const validation = validatePath(queryPath);
+    const validation = validatePath(queryPath, projectRoot);
     if (!validation.valid) {
       res.status(400).json({
         error: validation.error,
@@ -244,7 +258,7 @@ router.get('/tree', async (req: Request, res: Response) => {
     }
     
     // 获取目录树
-    const tree = await getDirectoryTree(validation.resolvedPath, 0, depth);
+    const tree = await getDirectoryTree(validation.resolvedPath, 0, depth, projectRoot);
     
     if (!tree) {
       res.status(404).json({
@@ -272,6 +286,7 @@ router.get('/tree', async (req: Request, res: Response) => {
  */
 router.get('/read', async (req: Request, res: Response) => {
   try {
+    const projectRoot = getProjectRoot(req);
     const queryPath = req.query.path as string;
     
     if (!queryPath) {
@@ -282,7 +297,7 @@ router.get('/read', async (req: Request, res: Response) => {
     }
     
     // 验证路径
-    const validation = validatePath(queryPath);
+    const validation = validatePath(queryPath, projectRoot);
     if (!validation.valid) {
       res.status(400).json({
         error: validation.error,
@@ -338,6 +353,7 @@ router.get('/read', async (req: Request, res: Response) => {
  */
 router.put('/write', async (req: Request, res: Response) => {
   try {
+    const projectRoot = getProjectRoot(req);
     const { path: filePath, content } = req.body as WriteFileRequest;
     
     if (!filePath) {
@@ -357,7 +373,7 @@ router.put('/write', async (req: Request, res: Response) => {
     }
     
     // 验证路径
-    const validation = validatePath(filePath);
+    const validation = validatePath(filePath, projectRoot);
     if (!validation.valid) {
       res.status(400).json({
         success: false,
@@ -398,6 +414,7 @@ router.put('/write', async (req: Request, res: Response) => {
  */
 router.post('/rename', async (req: Request, res: Response) => {
   try {
+    const projectRoot = getProjectRoot(req);
     const { oldPath, newPath } = req.body;
     
     if (!oldPath || !newPath) {
@@ -409,8 +426,8 @@ router.post('/rename', async (req: Request, res: Response) => {
     }
     
     // 验证路径
-    const oldValidation = validatePath(oldPath);
-    const newValidation = validatePath(newPath);
+    const oldValidation = validatePath(oldPath, projectRoot);
+    const newValidation = validatePath(newPath, projectRoot);
     
     if (!oldValidation.valid) {
       res.status(400).json({
@@ -479,6 +496,7 @@ router.post('/rename', async (req: Request, res: Response) => {
  */
 router.post('/delete', async (req: Request, res: Response) => {
   try {
+    const projectRoot = getProjectRoot(req);
     const { path: filePath } = req.body;
     
     if (!filePath) {
@@ -490,7 +508,7 @@ router.post('/delete', async (req: Request, res: Response) => {
     }
     
     // 验证路径
-    const validation = validatePath(filePath);
+    const validation = validatePath(filePath, projectRoot);
     if (!validation.valid) {
       res.status(400).json({
         success: false,
@@ -542,6 +560,7 @@ router.post('/delete', async (req: Request, res: Response) => {
  */
 router.post('/create', async (req: Request, res: Response) => {
   try {
+    const projectRoot = getProjectRoot(req);
     const { path: filePath, content = '' } = req.body;
     
     if (!filePath) {
@@ -553,7 +572,7 @@ router.post('/create', async (req: Request, res: Response) => {
     }
     
     // 验证路径
-    const validation = validatePath(filePath);
+    const validation = validatePath(filePath, projectRoot);
     if (!validation.valid) {
       res.status(400).json({
         success: false,
@@ -602,6 +621,7 @@ router.post('/create', async (req: Request, res: Response) => {
  */
 router.post('/mkdir', async (req: Request, res: Response) => {
   try {
+    const projectRoot = getProjectRoot(req);
     const { path: dirPath } = req.body;
     
     if (!dirPath) {
@@ -613,7 +633,7 @@ router.post('/mkdir', async (req: Request, res: Response) => {
     }
     
     // 验证路径
-    const validation = validatePath(dirPath);
+    const validation = validatePath(dirPath, projectRoot);
     if (!validation.valid) {
       res.status(400).json({
         success: false,
@@ -659,6 +679,7 @@ router.post('/mkdir', async (req: Request, res: Response) => {
  */
 router.post('/copy', async (req: Request, res: Response) => {
   try {
+    const projectRoot = getProjectRoot(req);
     const { sourcePath, destPath } = req.body;
     
     if (!sourcePath || !destPath) {
@@ -670,8 +691,8 @@ router.post('/copy', async (req: Request, res: Response) => {
     }
     
     // 验证路径
-    const sourceValidation = validatePath(sourcePath);
-    const destValidation = validatePath(destPath);
+    const sourceValidation = validatePath(sourcePath, projectRoot);
+    const destValidation = validatePath(destPath, projectRoot);
     
     if (!sourceValidation.valid) {
       res.status(400).json({
@@ -732,6 +753,7 @@ router.post('/copy', async (req: Request, res: Response) => {
  */
 router.post('/move', async (req: Request, res: Response) => {
   try {
+    const projectRoot = getProjectRoot(req);
     const { sourcePath, destPath } = req.body;
     
     if (!sourcePath || !destPath) {
@@ -743,8 +765,8 @@ router.post('/move', async (req: Request, res: Response) => {
     }
     
     // 验证路径
-    const sourceValidation = validatePath(sourcePath);
-    const destValidation = validatePath(destPath);
+    const sourceValidation = validatePath(sourcePath, projectRoot);
+    const destValidation = validatePath(destPath, projectRoot);
     
     if (!sourceValidation.valid) {
       res.status(400).json({
@@ -801,6 +823,7 @@ router.post('/move', async (req: Request, res: Response) => {
  */
 router.post('/reveal', async (req: Request, res: Response) => {
   try {
+    const projectRoot = getProjectRoot(req);
     const { path: filePath } = req.body;
     
     if (!filePath) {
@@ -812,7 +835,7 @@ router.post('/reveal', async (req: Request, res: Response) => {
     }
     
     // 验证路径
-    const validation = validatePath(filePath);
+    const validation = validatePath(filePath, projectRoot);
     if (!validation.valid) {
       res.status(400).json({
         success: false,

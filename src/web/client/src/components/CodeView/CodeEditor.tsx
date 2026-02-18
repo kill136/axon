@@ -11,6 +11,7 @@ import { useMonacoDecorations } from '../../hooks/useMonacoDecorations';
  * CodeEditor Props
  */
 export interface CodeEditorProps {
+  projectPath?: string;
   onSelectionChange?: (selection: string, filePath: string, startLine: number, endLine: number) => void;
   onActiveFileChange?: (filePath: string | null, content: string, language: string) => void;
   onCursorLineChange?: (line: number) => void;
@@ -92,7 +93,7 @@ const CloseIcon: React.FC = () => (
  * Monaco Editor 包装器，支持多 Tab、文件打开/保存，集成 AI 增强功能
  */
 export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
-  ({ onSelectionChange, onActiveFileChange, onCursorLineChange }, ref) => {
+  ({ projectPath, onSelectionChange, onActiveFileChange, onCursorLineChange }, ref) => {
     const [tabs, setTabs] = useState<EditorTab[]>([]);
     const [activeTabIndex, setActiveTabIndex] = useState<number>(-1);
     const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -165,7 +166,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
 
         // 加载文件内容
         try {
-          const response = await fetch(`/api/files/read?path=${encodeURIComponent(path)}`);
+          const response = await fetch(`/api/files/read?path=${encodeURIComponent(path)}${projectPath ? `&root=${encodeURIComponent(projectPath)}` : ''}`);
           
           if (!response.ok) {
             const errorData = await response.json();
@@ -286,6 +287,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
           body: JSON.stringify({
             path: tab.path,
             content: tab.content,
+            root: projectPath,
           }),
         });
 

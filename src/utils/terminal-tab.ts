@@ -4,6 +4,8 @@
  */
 
 import { spawn, spawnSync } from 'child_process';
+import * as fs from 'fs';
+import * as path from 'path';
 import * as os from 'os';
 
 export interface TerminalTabOptions {
@@ -92,17 +94,35 @@ export function openTerminalForTask(options: TerminalTabOptions): boolean {
 
 /**
  * Windows Terminal: wt.exe -w 0 nt
+ * 
+ * 注意：wt.exe 用 `;` 作为命令分隔符（用于在一条命令中打开多个 tab/pane），
+ * 而 PowerShell 也用 `;` 分隔语句。如果直接在 wt.exe 参数中传 PowerShell 命令，
+ * wt.exe 会把 `;` 当作自己的分隔符，导致命令被拆成多个 tab。
+ * 
+ * 解决方案：将 PowerShell 命令写入临时 .ps1 文件，让 wt.exe 执行该文件。
  */
 function openWindowsTerminalTab(title: string, logFile: string): boolean {
-  // PowerShell 命令：用 Get-Content -Wait 实时跟踪文件
-  // 加 -ErrorAction SilentlyContinue 避免文件还没创建时报错
-  const psCommand = `$Host.UI.RawUI.WindowTitle = '${title.replace(/'/g, "''")}'; Write-Host 'Waiting for output from background task...' -ForegroundColor Cyan; Write-Host 'Log: ${logFile.replace(/'/g, "''")}' -ForegroundColor DarkGray; Write-Host ''; while (!(Test-Path '${logFile.replace(/'/g, "''")}')) { Start-Sleep -Milliseconds 200 }; Get-Content -Path '${logFile.replace(/'/g, "''")}' -Wait -Tail 0`;
+  // 写入临时 .ps1 脚本文件
+  const escapedTitle = title.replace(/'/g, "''");
+  const escapedLogFile = logFile.replace(/'/g, "''");
+  const psScript = [
+    `$Host.UI.RawUI.WindowTitle = '${escapedTitle}'`,
+    `Write-Host 'Waiting for output from background task...' -ForegroundColor Cyan`,
+    `Write-Host 'Log: ${escapedLogFile}' -ForegroundColor DarkGray`,
+    `Write-Host ''`,
+    `while (!(Test-Path '${escapedLogFile}')) { Start-Sleep -Milliseconds 200 }`,
+    `Get-Content -Path '${escapedLogFile}' -Wait -Tail 0`,
+  ].join('\n');
+
+  const tmpDir = os.tmpdir();
+  const scriptFile = path.join(tmpDir, `claude-bg-${Date.now()}.ps1`);
+  fs.writeFileSync(scriptFile, psScript, 'utf-8');
 
   const proc = spawn('wt.exe', [
     '-w', '0',
     'nt',
     '--title', title,
-    'powershell', '-NoProfile', '-Command', psCommand,
+    'powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptFile,
   ], {
     stdio: 'ignore',
     detached: true,

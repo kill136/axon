@@ -1,13 +1,17 @@
 # ============================================
 # Claude Code Open - Windows One-Click Installer
-# Usage: irm https://raw.githubusercontent.com/kill136/claude-code-open/main/install.ps1 | iex
+# Usage (GitHub):  irm https://raw.githubusercontent.com/kill136/claude-code-open/private_web_ui/install.ps1 | iex
+# Usage (Gitee):   irm https://gitee.com/lubanbbs/claude-code-open/raw/private_web_ui/install.ps1 | iex
 # ============================================
 
 $ErrorActionPreference = "Stop"
 
-$RepoUrl      = "https://github.com/kill136/claude-code-open.git"
-$DockerImage  = "wbj66/claude-code-open:latest"
-$InstallDir   = "$env:USERPROFILE\.claude-code-open"
+$RepoUrlGithub = "https://github.com/kill136/claude-code-open.git"
+$RepoUrlGitee  = "https://gitee.com/lubanbbs/claude-code-open.git"
+$RepoUrl       = ""  # Will be set by Detect-RepoUrl
+$DockerImage   = "wbj66/claude-code-open:latest"
+$InstallDir    = "$env:USERPROFILE\.claude-code-open"
+$NodeMajorRequired = 18
 
 function Write-Banner {
     Write-Host ""
@@ -23,21 +27,104 @@ function Write-Ok      { param($msg) Write-Host "[OK] " -ForegroundColor Green -
 function Write-Warn    { param($msg) Write-Host "[WARN] " -ForegroundColor Yellow -NoNewline; Write-Host $msg }
 function Write-Err     { param($msg) Write-Host "[ERROR] " -ForegroundColor Red -NoNewline; Write-Host $msg; exit 1 }
 
+# --- Refresh PATH from registry (pick up newly installed programs) ---
+function Refresh-Path {
+    $machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
+    $userPath    = [Environment]::GetEnvironmentVariable("Path", "User")
+    $env:Path    = "$machinePath;$userPath"
+}
+
+# --- Detect best repo URL (GitHub vs Gitee for China) ---
+function Detect-RepoUrl {
+    if ($script:RepoUrl) {
+        Write-Info "Using user-specified repo: $script:RepoUrl"
+        return
+    }
+
+    Write-Info "Detecting network connectivity..."
+    try {
+        $response = Invoke-WebRequest -Uri "https://github.com" -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
+        $script:RepoUrl = $script:RepoUrlGithub
+        Write-Ok "GitHub accessible, using GitHub source"
+    } catch {
+        Write-Warn "GitHub not accessible (likely in China), switching to Gitee mirror"
+        $script:RepoUrl = $script:RepoUrlGitee
+        Write-Ok "Using Gitee mirror: $script:RepoUrlGitee"
+    }
+}
+
+# --- Check if winget is available ---
+function Test-Winget {
+    try {
+        winget --version >$null 2>&1
+        return ($LASTEXITCODE -eq 0)
+    } catch {
+        return $false
+    }
+}
+
 # --- Check Node.js ---
 function Test-Node {
     try {
         $ver = (node -v 2>$null)
         if ($ver) {
             $major = [int]($ver -replace 'v','').Split('.')[0]
-            if ($major -ge 18) {
+            if ($major -ge $script:NodeMajorRequired) {
                 Write-Ok "Node.js $ver detected"
                 return $true
             } else {
-                Write-Warn "Node.js $ver found, but >= 18 required"
+                Write-Warn "Node.js $ver found, but >= $script:NodeMajorRequired required"
             }
         }
     } catch {}
     return $false
+}
+
+# --- Auto-install Node.js ---
+function Install-Node {
+    Write-Warn "Node.js not found or version too low, installing..."
+
+    # Strategy 1: winget
+    if (Test-Winget) {
+        Write-Info "Installing Node.js via winget..."
+        winget install OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements --silent
+        if ($LASTEXITCODE -eq 0) {
+            Refresh-Path
+            if (Test-Node) { return }
+        }
+        Write-Warn "winget install completed but node not found in PATH, trying direct download..."
+    }
+
+    # Strategy 2: Direct MSI download
+    Write-Info "Downloading Node.js v22 installer..."
+    $arch = if ([Environment]::Is64BitOperatingSystem) { "x64" } else { "x86" }
+    $nodeVersion = "22.14.0"
+    $msiUrl = "https://nodejs.org/dist/v$nodeVersion/node-v$nodeVersion-$arch.msi"
+    $msiPath = Join-Path $env:TEMP "node-v$nodeVersion-$arch.msi"
+
+    try {
+        Invoke-WebRequest -Uri $msiUrl -OutFile $msiPath -UseBasicParsing
+        Write-Info "Installing Node.js v$nodeVersion (this may take a minute)..."
+        Start-Process msiexec.exe -ArgumentList "/i `"$msiPath`" /qn /norestart" -Wait -NoNewWindow
+        Remove-Item $msiPath -Force -ErrorAction SilentlyContinue
+
+        Refresh-Path
+
+        if (Test-Node) {
+            return
+        }
+    } catch {
+        Write-Warn "Direct download failed: $_"
+    }
+
+    Write-Err @"
+Failed to install Node.js automatically.
+
+  Please install Node.js >= $script:NodeMajorRequired manually:
+    https://nodejs.org/
+
+  Then re-run this script.
+"@
 }
 
 # --- Check Docker ---
@@ -62,6 +149,51 @@ function Test-Git {
         }
     } catch {}
     return $false
+}
+
+# --- Auto-install Git ---
+function Install-Git {
+    Write-Warn "Git not found, installing..."
+
+    # Strategy 1: winget
+    if (Test-Winget) {
+        Write-Info "Installing Git via winget..."
+        winget install Git.Git --accept-source-agreements --accept-package-agreements --silent
+        if ($LASTEXITCODE -eq 0) {
+            Refresh-Path
+            if (Test-Git) { return }
+        }
+        Write-Warn "winget install completed but git not found in PATH, trying direct download..."
+    }
+
+    # Strategy 2: Direct download
+    Write-Info "Downloading Git installer..."
+    $arch = if ([Environment]::Is64BitOperatingSystem) { "64-bit" } else { "32-bit" }
+    # Use the Git for Windows redirect URL which always points to latest
+    $gitInstallerUrl = "https://github.com/git-for-windows/git/releases/latest/download/Git-2.47.1.2-$arch.exe"
+    $gitInstallerPath = Join-Path $env:TEMP "git-installer.exe"
+
+    try {
+        Invoke-WebRequest -Uri $gitInstallerUrl -OutFile $gitInstallerPath -UseBasicParsing
+        Write-Info "Installing Git (this may take a minute)..."
+        Start-Process $gitInstallerPath -ArgumentList "/VERYSILENT /NORESTART /NOCANCEL /SP- /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS /COMPONENTS=`"icons,ext\reg\shellhere,assoc,assoc_sh`"" -Wait -NoNewWindow
+        Remove-Item $gitInstallerPath -Force -ErrorAction SilentlyContinue
+
+        Refresh-Path
+
+        if (Test-Git) { return }
+    } catch {
+        Write-Warn "Direct download failed: $_"
+    }
+
+    Write-Err @"
+Failed to install Git automatically.
+
+  Please install Git manually:
+    https://git-scm.com/download/win
+
+  Then re-run this script.
+"@
 }
 
 # --- Create Auto-Update Startup Script ---
@@ -421,44 +553,42 @@ function Main {
         return
     }
 
-    Write-Info "Checking dependencies..."
-    $hasNode   = Test-Node
-    $hasDocker = Test-Docker
-    $hasGit    = Test-Git
+    Write-Info "Checking & installing dependencies..."
     Write-Host ""
 
-    if ($hasNode -and $hasGit) {
-        if ($hasDocker) {
-            Write-Host "  Select installation method:" -ForegroundColor White
-            Write-Host "    1) npm (from source)  " -ForegroundColor Green -NoNewline; Write-Host "[recommended]" -ForegroundColor Cyan
-            Write-Host "    2) Docker" -ForegroundColor Green
-            Write-Host ""
-            $choice = Read-Host "  Choice [1]"
-            if ([string]::IsNullOrEmpty($choice)) { $choice = "1" }
+    # 1. Git (needed for source install) - auto-install if missing
+    if (-not (Test-Git)) {
+        Install-Git
+    }
 
-            switch ($choice) {
-                "2" { Install-Docker }
-                default { Install-Npm }
-            }
-        } else {
-            Install-Npm
-        }
+    # 2. Detect best repo source (GitHub vs Gitee for China)
+    Detect-RepoUrl
+
+    # 3. Node.js - auto-install if missing
+    if (-not (Test-Node)) {
+        Install-Node
     }
-    elseif ($hasDocker) {
-        Write-Info "Node.js >= 18 not found, using Docker installation."
-        Install-Docker
-    }
-    else {
+
+    # 4. Check Docker availability (optional)
+    $hasDocker = Test-Docker
+
+    Write-Host ""
+
+    # --- Install ---
+    if ($hasDocker) {
+        Write-Host "  Select installation method:" -ForegroundColor White
+        Write-Host "    1) npm (from source)  " -ForegroundColor Green -NoNewline; Write-Host "[recommended]" -ForegroundColor Cyan
+        Write-Host "    2) Docker" -ForegroundColor Green
         Write-Host ""
-        Write-Err @"
-Neither Node.js (>= 18) nor Docker found.
+        $choice = Read-Host "  Choice [1]"
+        if ([string]::IsNullOrEmpty($choice)) { $choice = "1" }
 
-  Please install one of:
-    - Node.js >= 18: https://nodejs.org/
-    - Docker:        https://docs.docker.com/get-docker/
-
-  Then re-run this script.
-"@
+        switch ($choice) {
+            "2" { Install-Docker }
+            default { Install-Npm }
+        }
+    } else {
+        Install-Npm
     }
 }
 
