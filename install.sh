@@ -22,6 +22,8 @@ DOCKER_IMAGE="wbj66/claude-code-open:latest"
 INSTALL_DIR="$HOME/.claude-code-open"
 NODE_MAJOR_REQUIRED=18
 NODE_MAJOR_MAX=22  # LTS; native modules may lack prebuilds for newer versions
+NODE_HEAP_MB=3072  # Node.js max heap size for npm install (prevents OOM on low-memory devices)
+MIN_TOTAL_MB=2048  # Minimum required memory (RAM + swap); auto-creates swap if below
 
 print_banner() {
     echo -e "${CYAN}"
@@ -212,6 +214,56 @@ ensure_python() {
         success "Python3 installed"
     else
         warn "Python3 not available. Installation will continue (prebuilt binaries should work)."
+    fi
+}
+
+# --- Memory check & swap creation (prevents OOM during npm install) ---
+ensure_memory_for_npm() {
+    if [ "$PLATFORM" = "macos" ]; then
+        # macOS manages swap automatically, skip
+        success "macOS: swap managed by system"
+        return
+    fi
+
+    if ! command -v free &>/dev/null; then
+        warn "Cannot detect memory (free command not found), skipping swap check"
+        return
+    fi
+
+    local total_ram_mb total_swap_mb total_mb
+    total_ram_mb=$(free -m | awk '/^Mem:/{print $2}')
+    total_swap_mb=$(free -m | awk '/^Swap:/{print $2}')
+    total_mb=$((total_ram_mb + total_swap_mb))
+    info "Memory: ${total_ram_mb}MB RAM + ${total_swap_mb}MB swap = ${total_mb}MB total"
+
+    if [ "$total_mb" -ge "$MIN_TOTAL_MB" ]; then
+        success "Memory sufficient for npm install"
+        return
+    fi
+
+    local swap_needed_mb=$((MIN_TOTAL_MB - total_mb + 512))
+    warn "Total memory (${total_mb}MB) < ${MIN_TOTAL_MB}MB, creating ${swap_needed_mb}MB swap..."
+
+    if [ -f /swapfile ] && swapon --show | grep -q /swapfile; then
+        warn "/swapfile already active, skipping"
+        return
+    fi
+
+    if [ "$(id -u)" -eq 0 ] || sudo -n true 2>/dev/null; then
+        sudo swapoff /swapfile 2>/dev/null || true
+        sudo rm -f /swapfile
+        if sudo fallocate -l "${swap_needed_mb}M" /swapfile 2>/dev/null || \
+           sudo dd if=/dev/zero of=/swapfile bs=1M count="$swap_needed_mb" status=progress; then
+            sudo chmod 600 /swapfile
+            sudo mkswap /swapfile
+            sudo swapon /swapfile
+            success "Created and enabled ${swap_needed_mb}MB swap"
+        else
+            warn "Failed to create swap. npm install may fail on low-memory devices."
+        fi
+    else
+        warn "No sudo access, cannot create swap. npm install may fail on low-memory devices."
+        warn "Fix: sudo fallocate -l ${swap_needed_mb}M /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile"
     fi
 }
 
@@ -423,7 +475,7 @@ if [ "$NEED_REBUILD" = true ]; then
     # Check if package.json changed
     if echo "$CHANGED_FILES" | grep -qE "^package\.json$|^package-lock\.json$"; then
         info "Dependencies changed, running npm install..."
-        npm install 2>&1 | tail -5
+        NODE_OPTIONS="--max-old-space-size=3072" npm install 2>&1 | tail -5
     fi
 
     # Rebuild frontend if needed
@@ -587,9 +639,12 @@ install_npm() {
         cd "$INSTALL_DIR"
     fi
 
+    # Ensure enough memory for npm install (prevent OOM on low-memory devices)
+    ensure_memory_for_npm
+
     # Install dependencies
     info "Installing dependencies..."
-    npm install
+    NODE_OPTIONS="--max-old-space-size=$NODE_HEAP_MB" npm install
 
     # Build frontend
     info "Building frontend..."
