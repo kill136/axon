@@ -883,8 +883,8 @@ ${taskSummary}
       success: !fatalError && failedTasks.length === 0,
       completedTasks,
       failedTasks,
-      estimatedTokens: 0, // TODO: 从 loop 获取
-      estimatedCost: 0,
+      estimatedTokens: this.loop ? this.loop.getSession().getStats().totalTokens : 0,
+      estimatedCost: this.loop ? (parseFloat(this.loop.getSession().getStats().totalCost.replace("$", "")) || 0) : 0,
       durationMs,
       summary: lastResponse.substring(0, 1000),
       rawResponse: lastResponse,  // v10.0: 完整输出给 Planner Agent

@@ -143,8 +143,14 @@ export class MemorySyncEngine {
         }
       }
 
-      // TODO: 删除 store 中存在但磁盘上已不存在的文件
-      // 这需要 store 提供 listFiles 方法，暂时跳过
+      // Delete indexed paths that no longer exist on disk (source: 'memory')
+      const indexedPaths = this.store.listFilePaths('memory');
+      for (const indexedPath of indexedPaths) {
+        if (!processedPaths.has(indexedPath)) {
+          this.store.removeFile(indexedPath);
+          result.removed++;
+        }
+      }
 
     } catch (error) {
       console.error('[MemorySync] Failed to sync memory files:', error);
@@ -171,6 +177,8 @@ export class MemorySyncEngine {
         nodir: true,
         absolute: true,
       });
+      const processedPaths = new Set<string>();
+
 
       for (const absPath of files) {
         try {
@@ -182,6 +190,7 @@ export class MemorySyncEngine {
 
           // 构建文件条目
           const entry = await buildFileEntry(absPath, sessionsDir, 'session');
+          processedPaths.add(entry.path);
 
           // 检查是否需要更新
           const existingHash = this.store.getFileHash(entry.path);
@@ -204,6 +213,16 @@ export class MemorySyncEngine {
           console.warn(`[MemorySync] Failed to process session file ${absPath}:`, error);
         }
       }
+      // Delete indexed paths for 'session' source that no longer exist on disk
+      const indexedSessionPaths = this.store.listFilePaths('session');
+      for (const indexedPath of indexedSessionPaths) {
+        if (!processedPaths.has(indexedPath)) {
+          this.store.removeFile(indexedPath);
+          result.removed++;
+        }
+      }
+
+
     } catch (error) {
       console.error('[MemorySync] Failed to sync session files:', error);
     }

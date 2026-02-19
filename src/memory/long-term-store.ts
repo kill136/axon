@@ -434,6 +434,21 @@ export class LongTermStore {
     const row = stmt.get(filePath) as { hash: string } | undefined;
     return row?.hash ?? null;
   }
+  /**
+   * List indexed file paths, optionally filtered by source
+   */
+  listFilePaths(source?: import('./types.js').MemorySource): string[] {
+    if (source !== undefined) {
+      const stmt = this.db.prepare('SELECT path FROM files WHERE source = ?');
+      const rows = stmt.all(source) as { path: string }[];
+      return rows.map(r => r.path);
+    } else {
+      const stmt = this.db.prepare('SELECT path FROM files');
+      const rows = stmt.all() as { path: string }[];
+      return rows.map(r => r.path);
+    }
+  }
+
 
   /**
    * 获取统计信息
