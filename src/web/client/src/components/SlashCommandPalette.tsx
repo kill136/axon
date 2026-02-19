@@ -1,6 +1,28 @@
 import { useState, useEffect, useRef } from 'react';
-import { SLASH_COMMANDS } from '../utils/constants';
+import { getAllSlashCommands } from '../utils/constants';
 import type { SlashCommand } from '../types';
+import { useLanguage } from '../i18n';
+
+// 命令图标映射
+const COMMAND_ICONS: Record<string, string> = {
+  '/help': '❓',
+  '/clear': '🗑️',
+  '/status': '📊',
+  '/compact': '📦',
+  '/cost': '💰',
+  '/resume': '⏪',
+  '/model': '🤖',
+  '/config': '⚙️',
+  '/mcp': '🔌',
+  '/tasks': '📋',
+  '/doctor': '🩺',
+  '/plugin': '🧩',
+  '/login': '🔑',
+  '/logout': '🚪',
+};
+
+// 分类显示顺序
+const CATEGORY_ORDER = ['general', 'session', 'config', 'utility', 'integration', 'auth', 'development', 'skill'];
 
 interface SlashCommandPaletteProps {
   input: string;
@@ -11,13 +33,25 @@ interface SlashCommandPaletteProps {
 export function SlashCommandPalette({ input, onSelect, onClose }: SlashCommandPaletteProps) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const paletteRef = useRef<HTMLDivElement>(null);
+  const { t } = useLanguage();
 
-  // 过滤匹配的命令
   const query = input.slice(1).toLowerCase();
-  const filteredCommands = SLASH_COMMANDS.filter(cmd =>
+  const allCommands = getAllSlashCommands();
+  const filteredCommands = allCommands.filter(cmd =>
     cmd.name.slice(1).startsWith(query) ||
     cmd.aliases?.some(a => a.slice(1).startsWith(query))
   );
+
+  // 按 category 分组
+  const grouped: Record<string, SlashCommand[]> = {};
+  for (const cmd of filteredCommands) {
+    const cat = cmd.category || 'general';
+    if (!grouped[cat]) grouped[cat] = [];
+    grouped[cat].push(cmd);
+  }
+
+  // 按照预定顺序排列分组
+  const orderedCategories = CATEGORY_ORDER.filter(cat => grouped[cat]?.length > 0);
 
   // 重置选中索引当过滤结果变化时
   useEffect(() => {
@@ -50,18 +84,36 @@ export function SlashCommandPalette({ input, onSelect, onClose }: SlashCommandPa
 
   if (filteredCommands.length === 0) return null;
 
+  let globalIndex = 0;
+
   return (
     <div ref={paletteRef} className="slash-command-palette">
-      {filteredCommands.map((cmd, i) => (
-        <div
-          key={cmd.name}
-          className={`slash-command-item ${i === selectedIndex ? 'selected' : ''}`}
-          onClick={() => onSelect(cmd)}
-          onMouseEnter={() => setSelectedIndex(i)}
-        >
-          <span className="command-name">{cmd.name}</span>
-          <span className="command-desc">{cmd.description}</span>
-          {cmd.usage && <span className="command-usage">{cmd.usage}</span>}
+      {orderedCategories.map(category => (
+        <div key={category} className="slash-command-group">
+          <div className="slash-command-category">
+            <span className="category-line" />
+            <span className="category-label">{t(`slashCommand.category.${category}`)}</span>
+          </div>
+          {grouped[category].map(cmd => {
+            const idx = globalIndex++;
+            const icon = cmd.category === 'skill' ? '✨' : (COMMAND_ICONS[cmd.name] || '•');
+            return (
+              <div
+                key={cmd.name}
+                className={`slash-command-item ${idx === selectedIndex ? 'selected' : ''}`}
+                onClick={() => onSelect(cmd)}
+                onMouseEnter={() => setSelectedIndex(idx)}
+              >
+                <span className="command-icon">{icon}</span>
+                <span className="command-name">{cmd.name}</span>
+                <span className="command-desc">{cmd.description}</span>
+                {cmd.category === 'skill' && (
+                  <span className="skill-badge">SKILL</span>
+                )}
+                {cmd.usage && <span className="command-usage">{cmd.usage}</span>}
+              </div>
+            );
+          })}
         </div>
       ))}
     </div>

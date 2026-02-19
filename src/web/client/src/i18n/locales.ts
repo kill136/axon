@@ -644,6 +644,11 @@ const en: Translations = {
   'swarm.verification.fixing': 'Fixing',
   'swarm.verification.passed': 'Passed',
   'swarm.verification.failed': 'Failed',
+  'swarm.executionComplete': 'Execution Complete',
+  'swarm.allTasksDone': 'All {{total}} tasks have been completed.',
+  'swarm.deleteBlueprint': 'Delete Blueprint',
+  'swarm.deleting': 'Deleting...',
+  'swarm.confirmDeleteBlueprint': 'Are you sure you want to delete this blueprint? This action cannot be undone.',
 
   // GitPanel
   'git.loading': 'Loading...',
@@ -688,6 +693,16 @@ const en: Translations = {
   'git.currentBranch': 'Current Branch',
   'git.files': '{{count}} files',
   'git.aiEnhanced': 'AI Enhanced',
+
+  // SlashCommandPalette - Categories
+  'slashCommand.category.general': 'General',
+  'slashCommand.category.session': 'Session',
+  'slashCommand.category.config': 'Configuration',
+  'slashCommand.category.utility': 'Utility',
+  'slashCommand.category.integration': 'Integration',
+  'slashCommand.category.auth': 'Auth',
+  'slashCommand.category.development': 'Development',
+  'slashCommand.category.skill': 'Skills',
 };
 
 const zh: Translations = {
@@ -1223,6 +1238,11 @@ const zh: Translations = {
   'swarm.verification.fixing': '修复中',
   'swarm.verification.passed': '通过',
   'swarm.verification.failed': '失败',
+  'swarm.executionComplete': '执行完成',
+  'swarm.allTasksDone': '全部 {{total}} 个任务已完成。',
+  'swarm.deleteBlueprint': '删除蓝图',
+  'swarm.deleting': '删除中...',
+  'swarm.confirmDeleteBlueprint': '确定要删除此蓝图吗？此操作不可撤销。',
 
   // Git Panel
   'git.loading': '加载中...',
@@ -1267,6 +1287,16 @@ const zh: Translations = {
   'git.currentBranch': '当前分支',
   'git.files': '{{count}} 个文件',
   'git.aiEnhanced': 'AI 增强',
+
+  // SlashCommandPalette - Categories
+  'slashCommand.category.general': '常规',
+  'slashCommand.category.session': '会话',
+  'slashCommand.category.config': '配置',
+  'slashCommand.category.utility': '工具',
+  'slashCommand.category.integration': '集成',
+  'slashCommand.category.auth': '认证',
+  'slashCommand.category.development': '开发',
+  'slashCommand.category.skill': 'Skills',
 };
 
 export const locales: Record<Locale, Translations> = { en, zh };

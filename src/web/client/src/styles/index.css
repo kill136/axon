@@ -1527,13 +1527,54 @@ body {
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
-  max-height: 300px;
+  max-height: 360px;
   overflow-y: auto;
   z-index: 100;
   margin-bottom: 12px;
   box-shadow: var(--shadow-lg);
   backdrop-filter: blur(12px);
   padding: 8px;
+  animation: paletteSlideIn 0.15s ease-out both;
+}
+
+@keyframes paletteSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.slash-command-group {
+  margin-bottom: 4px;
+}
+
+.slash-command-category {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 4px;
+  margin-top: 4px;
+}
+
+.category-line {
+  display: inline-block;
+  width: 20px;
+  height: 1px;
+  background: var(--text-muted);
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+
+.category-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
 }
 
 .slash-command-item {
@@ -1552,6 +1593,17 @@ body {
   color: var(--text-primary);
 }
 
+.slash-command-item.selected {
+  box-shadow: inset 2px 0 0 var(--accent-primary);
+}
+
+.command-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+  width: 20px;
+  text-align: center;
+}
+
 .command-name {
   font-weight: 600;
   color: var(--accent-primary);
@@ -1563,6 +1615,26 @@ body {
 .command-desc {
   flex: 1;
   font-size: 13px;
+}
+
+.skill-badge {
+  margin-left: auto;
+  padding: 1px 6px;
+  background: rgba(99, 102, 241, 0.15);
+  color: var(--accent-light);
+  border-radius: var(--radius-full);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+}
+
+.command-usage {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+  margin-left: auto;
+  white-space: nowrap;
 }
 
 /* Dialogs */
