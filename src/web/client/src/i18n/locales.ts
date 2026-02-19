@@ -119,6 +119,8 @@ const en: Translations = {
   'message.role.assistant': 'Claude',
   'message.rewindTooltip': 'Rewind to this message',
   'message.copyTooltip': 'Copy message',
+  'message.speakPlay': 'Read aloud',
+  'message.speakStop': 'Stop reading',
   'message.thinking': '[Thinking]',
   'message.uploadedImage': 'Uploaded image',
   'message.rewindFailed': 'Rewind failed: {{error}}',

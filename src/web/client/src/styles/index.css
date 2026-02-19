@@ -890,6 +890,15 @@ body {
   font-size: 14px;
 }
 
+/* TTS 播放按钮样式 */
+.message-speak-button {
+  font-size: 10px;
+}
+
+.message-speak-button.speaking {
+  color: var(--accent-primary);
+}
+
 /* 消息底部区域（已废弃，但保留以防其他地方使用） */
 .message-footer {
   display: flex;
