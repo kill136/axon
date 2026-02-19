@@ -114,7 +114,7 @@ export function useMonacoDecorations(options: UseMonacoDecorationsOptions): UseM
   const [refactorLoading, setRefactorLoading] = useState(false);
 
   // ============ AI 气泡状态 ============
-  const [bubblesEnabled, setBubblesEnabled] = useState(true); // 默认开启
+  const [bubblesEnabled, setBubblesEnabled] = useState(false); // 默认关闭，避免打开文件时自动触发 AI 请求
   const [aiBubbles, setAiBubbles] = useState<AIBubble[]>([]);
   const [bubblesLoading, setBubblesLoading] = useState(false);
 
