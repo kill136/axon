@@ -1219,8 +1219,9 @@ body {
 }
 
 .send-btn {
-  height: 32px;
-  padding: 0 16px;
+  width: 34px;
+  height: 34px;
+  padding: 0;
   background: var(--accent-primary);
   color: white;
   border: none;
@@ -1230,18 +1231,20 @@ body {
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
   transition: 0.2s;
+  flex-shrink: 0;
 }
 
 .send-btn:hover:not(:disabled) {
   background: var(--accent-hover);
   transform: translateY(-1px);
   box-shadow: var(--shadow-glow);
+  filter: brightness(1.15);
 }
 
 .send-btn:disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: not-allowed;
   background: var(--bg-tertiary);
 }
@@ -2421,9 +2424,9 @@ body {
   }
 
   .send-btn {
-    height: 28px;
-    padding: 0 12px;
-    font-size: 12px;
+    width: 30px;
+    height: 30px;
+    padding: 0;
   }
 
   .stop-btn {
@@ -2487,8 +2490,9 @@ body {
   }
 
   .send-btn {
-    height: 26px;
-    padding: 0 10px;
+    width: 28px;
+    height: 28px;
+    padding: 0;
   }
 
   /* 工具调用面板紧凑化 */
