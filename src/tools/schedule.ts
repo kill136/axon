@@ -15,6 +15,7 @@ import { spawn } from 'child_process';
 import { BaseTool } from './base.js';
 import type { ToolDefinition, ToolResult } from '../types/index.js';
 import { t } from '../i18n/index.js';
+import { fromMsysPath } from '../utils/platform.js';
 import { TaskStore, type ScheduledTask } from '../daemon/store.js';
 import { isDaemonRunning } from '../daemon/index.js';
 import { parseTimeExpression } from '../daemon/time-parser.js';
@@ -196,7 +197,7 @@ export class ScheduleTaskTool extends BaseTool<ScheduleTaskInput> {
       name: input.name,
       triggerAt,
       intervalMs: input.intervalMs,
-      watchPaths: input.watchPaths,
+      watchPaths: input.watchPaths?.map(fromMsysPath),
       watchEvents: input.watchEvents || ['change'],
       debounceMs: input.debounceMs || 2000,
       prompt: input.prompt,

@@ -11,6 +11,7 @@ import { BaseTool } from './base.js';
 import type { ToolResult, ToolDefinition } from '../types/index.js';
 import type { BrowserToolInput } from '../browser/types.js';
 import { t } from '../i18n/index.js';
+import sharp from 'sharp';
 
 export class BrowserTool extends BaseTool<BrowserToolInput, ToolResult> {
   name = 'Browser';
@@ -197,8 +198,25 @@ USAGE NOTES:
         }
 
         case 'screenshot': {
-          const buffer = await controller.screenshot({ fullPage: input.fullPage });
-          const base64 = buffer.toString('base64');
+          const rawBuffer = await controller.screenshot({ fullPage: input.fullPage });
+          // Anthropic API 多图请求要求每张图片任意维度不超过 2000px
+          const MAX_DIM = 2000;
+          let finalBuffer = rawBuffer;
+          let mediaType: 'image/png' | 'image/jpeg' = 'image/png';
+          try {
+            const metadata = await sharp(rawBuffer).metadata();
+            const w = metadata.width || 0;
+            const h = metadata.height || 0;
+            if (w > MAX_DIM || h > MAX_DIM) {
+              finalBuffer = await sharp(rawBuffer)
+                .resize(MAX_DIM, MAX_DIM, { fit: 'inside', withoutEnlargement: true })
+                .png()
+                .toBuffer();
+            }
+          } catch {
+            // sharp 处理失败时用原始 buffer
+          }
+          const base64 = finalBuffer.toString('base64');
           return {
             success: true,
             output: t('browser.screenshotCaptured'),
@@ -206,7 +224,7 @@ USAGE NOTES:
               type: 'image' as const,
               source: {
                 type: 'base64' as const,
-                media_type: 'image/png' as const,
+                media_type: mediaType,
                 data: base64,
               },
             }],

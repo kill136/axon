@@ -1,6 +1,7 @@
 import { BaseTool } from './base.js';
 import type { ToolResult, ToolDefinition } from '../types/index.js';
 import type { REPLInput } from '../repl/types.js';
+import { fromMsysPath } from '../utils/platform.js';
 
 export class REPLTool extends BaseTool<REPLInput, ToolResult> {
   name = 'REPL';
@@ -76,7 +77,7 @@ USAGE NOTES:
           const runtime = input.runtime ?? 'node';
           const config = {
             runtime,
-            cwd: input.cwd ?? process.cwd(),
+            cwd: input.cwd ? fromMsysPath(input.cwd) : process.cwd(),
             env: input.env ?? {},
             timeout,
           };

@@ -1,6 +1,6 @@
 /**
  * MemoryDiagnostics 工具
- * 展示 6 套记忆系统的状态信息
+ * 展示 3 套记忆系统的状态信息
  */
 
 import * as fsModule from 'fs';
@@ -10,8 +10,6 @@ import * as crypto from 'crypto';
 import { BaseTool } from './base.js';
 import type { ToolResult, ToolDefinition } from '../types/index.js';
 import { getNotebookManager } from '../memory/notebook.js';
-import { getMemoryManager } from '../memory/index.js';
-import { getMemoryFilePath } from '../memory/agent-memory.js';
 import { LongTermStore } from '../memory/long-term-store.js';
 import { estimateTokens } from '../utils/token-estimate.js';
 
@@ -33,9 +31,8 @@ function hashProjectPath(projectPath: string): string {
 export class MemoryDiagnosticsTool extends BaseTool<MemoryDiagnosticsInput, ToolResult> {
   name = 'MemoryDiagnostics';
 
-  description = 'Diagnose and display the status of all 6 memory systems: ' +
-    '(1) Notebook, (2) LongTermStore/SQLite, (3) Session Memory, ' +
-    '(4) MEMORY.md scopes, (5) LinkMemory, (6) MemoryManager/KV.';
+  description = 'Diagnose and display the status of all 3 memory systems: ' +
+    '(1) Notebook, (2) LongTermStore/SQLite, (3) Session Memory.';
 
   getInputSchema(): ToolDefinition['inputSchema'] {
     return {
@@ -106,56 +103,6 @@ export class MemoryDiagnosticsTool extends BaseTool<MemoryDiagnosticsInput, Tool
       }
     } catch (e) {
       rows.push('| **Session Memory** | ❌ error | ' + String(e) + ' | - |');
-    }
-
-    // 4. MEMORY.md
-    const memScopes: Array<{ label: string; scope: 'user' | 'project' | 'local' }> = [
-      { label: 'User', scope: 'user' },
-      { label: 'Project', scope: 'project' },
-      { label: 'Local', scope: 'local' },
-    ];
-    for (const { label, scope } of memScopes) {
-      try {
-        const fp = getMemoryFilePath('default', scope);
-        if (fsModule.existsSync(fp)) {
-          const fc = fsModule.readFileSync(fp, 'utf-8');
-          const lc = fc.split('\n').length;
-          rows.push('| **MEMORY.md (' + label + ')** | ✅ | ' + lc + ' lines | ' + fp + ' |');
-        } else {
-          rows.push('| **MEMORY.md (' + label + ')** | ❌ not found | - | ' + fp + ' |');
-        }
-      } catch (e) {
-        rows.push('| **MEMORY.md (' + label + ')** | ❌ error | ' + String(e) + ' | - |');
-      }
-    }
-
-    // 5. LinkMemory
-    try {
-      const lf: Array<[string, string]> = [
-        ['Project', path.join(projectDir, '.claude', 'memory', 'links.json')],
-        ['Global', path.join(claudeDir, 'memory', 'links.json')],
-      ];
-      for (const [label, lp] of lf) {
-        if (fsModule.existsSync(lp)) {
-          const stat = fsModule.statSync(lp);
-          rows.push('| **LinkMemory (' + label + ')** | ✅ | - | ' + formatBytes(stat.size) + ' |');
-        } else {
-          rows.push('| **LinkMemory (' + label + ')** | ❌ not found | - | ' + lp + ' |');
-        }
-      }
-    } catch (e) {
-      rows.push('| **LinkMemory** | ❌ error | ' + String(e) + ' | - |');
-    }
-
-    // 6. MemoryManager
-    try {
-      const mm = getMemoryManager(projectDir);
-      const all = mm.list();
-      const gl = mm.list('global');
-      const pr = mm.list('project');
-      rows.push('| **MemoryManager (KV)** | ✅ | ' + all.length + ' entries (global: ' + gl.length + ', project: ' + pr.length + ') | - |');
-    } catch (e) {
-      rows.push('| **MemoryManager (KV)** | ❌ error | ' + String(e) + ' | - |');
     }
 
     const out = [

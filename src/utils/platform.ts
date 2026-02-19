@@ -221,6 +221,25 @@ export function ensureCorrectSeparator(filePath: string): string {
 }
 
 /**
+ * 将 MSYS/Git Bash 路径转换为 Windows 路径
+ *
+ * Git Bash 输出的路径格式为 /c/Users/... 或 /f/claude-code-open/...
+ * Node.js 的 fs 模块不认识这种格式（会解释为 C:\c\Users\...），需要转换为 C:/Users/...
+ *
+ * 匹配规则：以 / 开头，紧跟单个字母，再跟 /
+ * 例如：/f/claude-code-open → F:/claude-code-open
+ */
+export function fromMsysPath(filePath: string): string {
+  if (!isWindows()) return filePath;
+  // /x/... → X:/...
+  const match = filePath.match(/^\/([a-zA-Z])(\/.*)/);
+  if (match) {
+    return match[1].toUpperCase() + ':' + match[2];
+  }
+  return filePath;
+}
+
+/**
  * 安全地拼接路径
  */
 export function safePath(...paths: string[]): string {

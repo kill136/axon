@@ -36,6 +36,7 @@ import { persistLargeOutputSync } from './output-persistence.js';
 import { runPreToolUseHooks, runPostToolUseHooks } from '../hooks/index.js';
 import { getCurrentCwd } from '../core/cwd-context.js';
 import { t } from '../i18n/index.js';
+import { fromMsysPath } from '../utils/platform.js';
 
 /**
  * 解析文件路径
@@ -46,6 +47,10 @@ import { t } from '../i18n/index.js';
  * @returns 绝对路径
  */
 function resolveFilePath(filePath: string): string {
+  // 处理 MSYS/Git Bash 路径格式：/f/claude-code-open → F:/claude-code-open
+  // 子 agent 从 Bash 输出中拿到的路径可能是 MSYS 格式，Node.js fs 不认识
+  filePath = fromMsysPath(filePath);
+
   if (path.isAbsolute(filePath)) {
     return filePath;
   }

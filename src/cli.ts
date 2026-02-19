@@ -18,7 +18,6 @@ import { Session } from './core/session.js';
 import { toolRegistry } from './tools/index.js';
 import { configManager } from './config/index.js';
 import { listSessions, loadSession, forkSession, findSessionByPr, getSessionsByPr } from './session/index.js';
-import { getMemoryManager } from './memory/index.js';
 import { emitLifecycleEvent } from './lifecycle/index.js';
 import { runHooks, runSessionEndHooks } from './hooks/index.js';
 import { scheduleCleanup } from './session/cleanup.js';
@@ -2896,7 +2895,6 @@ function getDisabledMcpServers(): string[] {
 // 斜杠命令处理 (for text mode)
 async function handleSlashCommand(input: string, loop: ConversationLoop): Promise<void> {
   const [cmd, ...args] = input.slice(1).split(' ');
-  const memory = getMemoryManager();
 
   switch (cmd.toLowerCase()) {
     // === General ===
@@ -2946,7 +2944,6 @@ async function handleSlashCommand(input: string, loop: ConversationLoop): Promis
       console.log('  /todos             - List current todo items');
       console.log('  /add-dir           - Add a new working directory');
       console.log('  /skills            - List available skills');
-      console.log('  /memory            - Edit Claude memory files');
       console.log('  /usage             - Show plan usage limits');
       console.log('  /extra-usage       - Configure extra usage');
       console.log('  /rate-limit-options - Show rate limit options');
@@ -3318,48 +3315,6 @@ async function handleSlashCommand(input: string, loop: ConversationLoop): Promis
       console.log(chalk.bold('\nAvailable Skills:\n'));
       console.log(chalk.gray('  Skills are loaded from ~/.claude/skills/ and .claude/commands/'));
       console.log(chalk.gray('  Use /skills to list or invoke skills.\n'));
-      break;
-    }
-
-    case 'memory': {
-      if (!memory) {
-        console.log(chalk.red('\nMemory manager not available.\n'));
-        break;
-      }
-      const memSubCmd = args[0]?.toLowerCase();
-      if (memSubCmd === 'add' && args.length > 2) {
-        const key = args[1];
-        const value = args.slice(2).join(' ');
-        memory.set(key, value);
-        console.log(chalk.green(`\nMemory set: ${key} = ${value}\n`));
-      } else if (memSubCmd === 'list') {
-        const entries = memory.list();
-        if (entries.length === 0) {
-          console.log(chalk.gray('\nNo memory entries.\n'));
-        } else {
-          console.log(chalk.bold('\nMemory Entries:\n'));
-          entries.forEach((e, i) => {
-            console.log(`  ${chalk.cyan(e.key)}: ${e.value}`);
-          });
-          console.log();
-        }
-      } else if (memSubCmd === 'remove' && args[1]) {
-        const deleted = memory.delete(args[1]);
-        if (deleted) {
-          console.log(chalk.green(`\nRemoved: ${args[1]}\n`));
-        } else {
-          console.log(chalk.red(`\nKey not found: ${args[1]}\n`));
-        }
-      } else if (memSubCmd === 'clear') {
-        memory.clear();
-        console.log(chalk.yellow('\nMemory cleared.\n'));
-      } else {
-        console.log(chalk.bold('\nMemory Management:\n'));
-        console.log('  /memory list              - List all memory entries');
-        console.log('  /memory add <key> <value> - Add a memory entry');
-        console.log('  /memory remove <key>      - Remove a memory entry');
-        console.log('  /memory clear             - Clear all memories\n');
-      }
       break;
     }
 

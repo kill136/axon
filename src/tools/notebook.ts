@@ -15,6 +15,7 @@ import * as path from 'path';
 import { BaseTool } from './base.js';
 import type { NotebookEditInput, ToolResult, ToolDefinition } from '../types/index.js';
 import { t } from '../i18n/index.js';
+import { fromMsysPath } from '../utils/platform.js';
 
 interface NotebookCell {
   id?: string;
@@ -76,7 +77,8 @@ export class NotebookEditTool extends BaseTool<NotebookEditInput, ToolResult> {
   }
 
   async execute(input: NotebookEditInput): Promise<ToolResult> {
-    const { notebook_path, cell_id, new_source, cell_type, edit_mode = 'replace' } = input;
+    const { notebook_path: rawNotebookPath, cell_id, new_source, cell_type, edit_mode = 'replace' } = input;
+    const notebook_path = fromMsysPath(rawNotebookPath);
 
     try {
       // 验证路径是否为绝对路径

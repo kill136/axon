@@ -50,9 +50,6 @@ export {
   contextManager,
 } from './context/index.js';
 
-// 代码解析器
-export * from './parser/index.js';
-
 // Ripgrep 搜索
 export * from './search/ripgrep.js';
 
