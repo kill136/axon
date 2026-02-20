@@ -1146,6 +1146,19 @@ class ExecutionManager {
   // 主 agent 的认证配置（由 ConversationManager 设置，透传给子 agent）
   private clientConfig: { apiKey?: string; authToken?: string; baseUrl?: string } = {};
 
+  // v13.0: 执行队列 - 保证同一时刻只有一个 LeadAgent 在运行
+  // 静态工具上下文（UpdateTaskPlanTool.context 等）是进程级全局变量，
+  // 多个 LeadAgent 并发会互相覆盖上下文，导致任务状态混乱。
+  // 通过串行队列确保安全，直到第二层改造（上下文隔离）完成。
+  private executionQueue: Array<{
+    blueprint: Blueprint;
+    onEvent?: (event: SwarmEvent) => void;
+    options?: { taskPlan?: any; apiKey?: string; authToken?: string; baseUrl?: string };
+    resolve: (session: ExecutionSession) => void;
+    reject: (error: Error) => void;
+  }> = [];
+  private isExecuting: boolean = false;
+
   constructor() {
     this.planner = createSmartPlanner();
   }
@@ -1201,6 +1214,7 @@ class ExecutionManager {
 
   /**
    * 开始执行蓝图
+   * v13.0: 加入执行队列，保证同一时刻只有一个 LeadAgent 在运行
    */
   async startExecution(
     blueprint: Blueprint,
@@ -1214,6 +1228,34 @@ class ExecutionManager {
         throw new Error('该蓝图已有正在执行的任务');
       }
     }
+
+    // v13.0: 如果有 LeadAgent 正在运行，排队等待
+    if (this.isExecuting) {
+      console.log(`[ExecutionQueue] 排队等待: ${blueprint.name || blueprint.id} (队列长度: ${this.executionQueue.length + 1})`);
+      return new Promise<ExecutionSession>((resolve, reject) => {
+        this.executionQueue.push({ blueprint, onEvent, options, resolve, reject });
+        executionEventEmitter.emit('queue:enqueued', {
+          blueprintId: blueprint.id,
+          blueprintName: blueprint.name,
+          position: this.executionQueue.length,
+          queueLength: this.executionQueue.length,
+        });
+      });
+    }
+
+    // 没有正在运行的，直接执行
+    return this.executeNow(blueprint, onEvent, options);
+  }
+
+  /**
+   * v13.0: 立即执行蓝图（内部方法，由 startExecution 和 processQueue 调用）
+   */
+  private async executeNow(
+    blueprint: Blueprint,
+    onEvent?: (event: SwarmEvent) => void,
+    options?: { taskPlan?: any; apiKey?: string; authToken?: string; baseUrl?: string }
+  ): Promise<ExecutionSession> {
+    this.isExecuting = true;
 
     // v9.0: 不再调用 SmartPlanner.createExecutionPlan()
     // LeadAgent 自己负责探索代码库、规划任务、执行
@@ -1601,20 +1643,61 @@ class ExecutionManager {
     }
 
     // 异步执行（存储 Promise 供 Planner Agent 阻塞等待）
-    session.executionPromise = this.runExecution(session, blueprint, executor).catch(error => {
-      console.error('[ExecutionManager] 执行失败:', error);
-      // v2.2: 确保外层异常也设置 completedAt，避免僵尸会话
-      if (!session.completedAt) {
-        session.completedAt = new Date();
-        blueprint.status = 'failed';
-        // v12.1: tp- 临时蓝图不持久化
-        if (!blueprint.id.startsWith('tp-')) {
-          blueprintStore.save(blueprint);
+    // v13.0: .finally() 释放执行锁并触发队列中下一个任务
+    session.executionPromise = this.runExecution(session, blueprint, executor)
+      .catch(error => {
+        console.error('[ExecutionManager] 执行失败:', error);
+        // v2.2: 确保外层异常也设置 completedAt，避免僵尸会话
+        if (!session.completedAt) {
+          session.completedAt = new Date();
+          blueprint.status = 'failed';
+          // v12.1: tp- 临时蓝图不持久化
+          if (!blueprint.id.startsWith('tp-')) {
+            blueprintStore.save(blueprint);
+          }
         }
-      }
-    });
+      })
+      .finally(() => {
+        this.isExecuting = false;
+        this.processQueue();
+      });
 
     return session;
+  }
+
+  /**
+   * v13.0: 处理执行队列中的下一个任务
+   */
+  private processQueue(): void {
+    if (this.executionQueue.length === 0) return;
+    if (this.isExecuting) return;
+
+    const next = this.executionQueue.shift()!;
+    console.log(`[ExecutionQueue] 出队执行: ${next.blueprint.name || next.blueprint.id} (剩余队列: ${this.executionQueue.length})`);
+
+    executionEventEmitter.emit('queue:dequeued', {
+      blueprintId: next.blueprint.id,
+      blueprintName: next.blueprint.name,
+      remainingQueue: this.executionQueue.length,
+    });
+
+    this.executeNow(next.blueprint, next.onEvent, next.options)
+      .then(session => next.resolve(session))
+      .catch(error => next.reject(error));
+  }
+
+  /**
+   * v13.0: 获取执行队列状态
+   */
+  getQueueStatus(): { isExecuting: boolean; queueLength: number; items: Array<{ blueprintId: string; name: string }> } {
+    return {
+      isExecuting: this.isExecuting,
+      queueLength: this.executionQueue.length,
+      items: this.executionQueue.map(item => ({
+        blueprintId: item.blueprint.id,
+        name: item.blueprint.name || item.blueprint.id,
+      })),
+    };
   }
 
   /**

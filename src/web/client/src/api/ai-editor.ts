@@ -192,6 +192,50 @@ export interface BubblesResponse {
   error?: string;
 }
 
+/**
+ * 路径补全请求
+ */
+export interface CompletePathRequest {
+  filePath: string;
+  prefix: string;
+  root?: string;
+}
+
+/**
+ * 路径补全响应
+ */
+export interface CompletePathResponse {
+  success: boolean;
+  items: Array<{
+    label: string;
+    kind: 'file' | 'folder';
+    detail?: string;
+  }>;
+  error?: string;
+}
+
+/**
+ * AI Inline 补全请求
+ */
+export interface InlineCompleteRequest {
+  filePath: string;
+  language: string;
+  prefix: string;
+  suffix: string;
+  currentLine: string;
+  cursorColumn: number;
+}
+
+/**
+ * AI Inline 补全响应
+ */
+export interface InlineCompleteResponse {
+  success: boolean;
+  completion?: string;
+  fromCache?: boolean;
+  error?: string;
+}
+
 // ============================================================================
 // API 调用函数
 // ============================================================================
@@ -403,6 +447,55 @@ export const aiBubblesApi = {
   },
 };
 
+/**
+ * AI Complete API - 自动代码补全
+ */
+export const aiCompleteApi = {
+  /**
+   * 路径补全（import 路径）
+   */
+  completePath: async (request: CompletePathRequest): Promise<CompletePathResponse> => {
+    try {
+      const response = await fetch('/api/ai-editor/complete-path', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(request),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+        return { success: false, items: [], error: error.error || `HTTP ${response.status}` };
+      }
+
+      return response.json();
+    } catch (err: any) {
+      return { success: false, items: [], error: err.message || 'Network error' };
+    }
+  },
+
+  /**
+   * AI Inline 补全（Ghost Text）
+   */
+  inlineComplete: async (request: InlineCompleteRequest): Promise<InlineCompleteResponse> => {
+    try {
+      const response = await fetch('/api/ai-editor/inline-complete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(request),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+        return { success: false, error: error.error || `HTTP ${response.status}` };
+      }
+
+      return response.json();
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Network error' };
+    }
+  },
+};
+
 // ============================================================================
 // 统一导出
 // ============================================================================
@@ -414,6 +507,7 @@ export const aiEditorApi = {
   heatmap: aiHeatmapApi,
   refactor: aiRefactorApi,
   bubbles: aiBubblesApi,
+  complete: aiCompleteApi,
 };
 
 export default aiEditorApi;

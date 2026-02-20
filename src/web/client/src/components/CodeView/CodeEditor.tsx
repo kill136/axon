@@ -6,6 +6,7 @@ import { useAIHover, type LineAnalysisData } from '../../hooks/useAIHover';
 import { useCodeTour } from '../../hooks/useCodeTour';
 import { useAskAI } from '../../hooks/useAskAI';
 import { useMonacoDecorations } from '../../hooks/useMonacoDecorations';
+import { useAutoComplete } from '../../hooks/useAutoComplete';
 
 /**
  * CodeEditor Props
@@ -102,6 +103,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
     // AI 功能开关
     const [beginnerMode, setBeginnerMode] = useState(false);
     const [showMinimap, setShowMinimap] = useState(true);
+    const [autoCompleteEnabled, setAutoCompleteEnabled] = useState(true);
 
     // 编辑器就绪标志
     const [editorReady, setEditorReady] = useState(false);
@@ -149,6 +151,16 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
       editorRef,
       monacoRef,
       editorReady,
+    });
+
+    // 自动代码补全
+    const autoComplete = useAutoComplete({
+      enabled: autoCompleteEnabled,
+      filePath: currentTab?.path || null,
+      language: currentTab?.language || 'plaintext',
+      editorRef,
+      monacoRef,
+      projectPath,
     });
 
     // ========================================================================
@@ -578,6 +590,13 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
             <span className={styles.toolDivider}></span>
 
             <div className={styles.aiToolGroup}>
+              <button
+                className={`${styles.aiBtn} ${autoCompleteEnabled ? styles.active : ''}`}
+                onClick={() => setAutoCompleteEnabled(!autoCompleteEnabled)}
+                title={`AI 代码补全（本地 ${autoComplete.stats.localItems} 项 + ${autoComplete.stats.snippetItems} 片段）`}
+              >
+                ⚡ 补全
+              </button>
               <button
                 className={`${styles.aiBtn} ${showLineDetails ? styles.active : ''}`}
                 onClick={() => setShowLineDetails(!showLineDetails)}
