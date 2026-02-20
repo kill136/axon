@@ -628,7 +628,7 @@ function Install-Npm {
             Push-Location $InstallDir
             # Reset local changes (e.g. package-lock.json modified by npm install)
             git checkout -- .
-            git clean -fd
+            git clean -fd --exclude=.node
             git pull origin private_web_ui
             if ($LASTEXITCODE -ne 0) {
                 Write-Error "Git pull failed. Please check your network connection."
