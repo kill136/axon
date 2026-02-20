@@ -472,6 +472,11 @@ fi
 if [ "$NEED_REBUILD" = true ]; then
     info "Source code changed, rebuilding..."
 
+    # Auto-detect China network and set npm mirror
+    if git remote get-url origin 2>/dev/null | grep -qi 'gitee'; then
+        npm config set registry https://registry.npmmirror.com
+    fi
+
     # Check if package.json changed
     if echo "$CHANGED_FILES" | grep -qE "^package\.json$|^package-lock\.json$"; then
         info "Dependencies changed, running npm install..."
@@ -641,6 +646,12 @@ install_npm() {
 
     # Ensure enough memory for npm install (prevent OOM on low-memory devices)
     ensure_memory_for_npm
+
+    # Auto-detect China network and set npm mirror
+    if echo "$REPO_URL" | grep -qi 'gitee'; then
+        info "Detected China network, setting npm registry to npmmirror..."
+        npm config set registry https://registry.npmmirror.com
+    fi
 
     # Install dependencies
     info "Installing dependencies..."
