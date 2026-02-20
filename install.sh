@@ -876,8 +876,13 @@ main() {
         echo -e "  ${GREEN}1)${NC} npm (from source)  ${CYAN}[recommended]${NC}"
         echo -e "  ${GREEN}2)${NC} Docker"
         echo ""
-        read -p "Choice [1]: " choice < /dev/tty
-        choice="${choice:-1}"
+        if [ -t 0 ] || [ -e /dev/tty ]; then
+            read -p "Choice [1]: " choice < /dev/tty
+            choice="${choice:-1}"
+        else
+            warn "Non-interactive mode, defaulting to npm install"
+            choice="1"
+        fi
         case "$choice" in
             2) install_docker ;;
             *) install_npm ;;
