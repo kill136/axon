@@ -294,7 +294,12 @@ ensure_node() {
     fi
 
     # Reload PATH
-    export PATH="$HOME/.local/bin:$HOME/.nvm/versions/node/$(ls -1 "$HOME/.nvm/versions/node/" 2>/dev/null | tail -1)/bin:/usr/local/bin:/usr/bin:$PATH"
+    if [ -s "$HOME/.nvm/nvm.sh" ]; then
+        export NVM_DIR="$HOME/.nvm"
+        . "$NVM_DIR/nvm.sh"
+    fi
+    export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
+    hash -r  # Refresh command cache
 
     # Verify
     if command -v node &> /dev/null; then
