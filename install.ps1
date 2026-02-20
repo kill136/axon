@@ -456,6 +456,45 @@ set "NODE_EXE=%INSTALL_DIR%\.node\node.exe"
 :node_ready
 for /f "tokens=*" %%v in ('"!NODE_EXE!" -v 2^>nul') do echo [OK] Node.js %%v
 
+REM --- Auto-update from git ---
+echo.
+echo [INFO] Checking for updates...
+cd /d "%INSTALL_DIR%"
+
+REM Check if it's a git repository
+if exist "%INSTALL_DIR%\.git" (
+    REM Discard local changes (protect .node portable directory)
+    git checkout -- . 2>nul
+    git clean -fd --exclude=.node 2>nul
+    
+    REM Pull latest code
+    git pull origin private_web_ui 2>nul
+    if !errorlevel! equ 0 (
+        echo [OK] Code updated
+        
+        REM Auto-detect China network and set npm mirror
+        for /f "tokens=*" %%u in ('git remote get-url origin 2^>nul') do set "GIT_ORIGIN=%%u"
+        echo !GIT_ORIGIN! | findstr /i "gitee" >nul
+        if !errorlevel! equ 0 (
+            echo [INFO] Detected China network, setting npm registry...
+            "!NODE_EXE!" "%INSTALL_DIR%\node_modules\npm\bin\npm-cli.js" config set registry https://registry.npmmirror.com 2>&1
+        )
+        
+        REM Simple rebuild strategy: always rebuild after pull
+        echo [INFO] Rebuilding dependencies...
+        "!NODE_EXE!" "%INSTALL_DIR%\node_modules\npm\bin\npm-cli.js" install --legacy-peer-deps 2>&1 | findstr /v /c:"npm WARN"
+        
+        echo [INFO] Building backend...
+        "!NODE_EXE!" "%INSTALL_DIR%\node_modules\npm\bin\npm-cli.js" run build 2>&1 | findstr /v /c:"npm WARN"
+        
+        echo [OK] Rebuild complete
+    ) else (
+        echo [WARN] Git pull failed, starting with current version...
+    )
+) else (
+    echo [WARN] Not a git repository, skipping update
+)
+
 echo.
 echo [INFO] Starting Claude Code WebUI...
 echo.
