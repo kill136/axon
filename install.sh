@@ -480,7 +480,10 @@ if [ "$NEED_REBUILD" = true ]; then
     # Check if package.json changed
     if echo "$CHANGED_FILES" | grep -qE "^package\.json$|^package-lock\.json$"; then
         info "Dependencies changed, running npm install..."
-        NODE_OPTIONS="--max-old-space-size=3072" npm install 2>&1 | tail -5
+        NODE_OPTIONS="--max-old-space-size=3072" npm install 2>&1 | tail -5 || {
+            echo "[WARN] npm install failed, retrying without optional..."
+            NODE_OPTIONS="--max-old-space-size=3072" npm install --no-optional 2>&1 | tail -5
+        }
     fi
 
     # Rebuild frontend if needed
@@ -655,7 +658,10 @@ install_npm() {
 
     # Install dependencies
     info "Installing dependencies..."
-    NODE_OPTIONS="--max-old-space-size=$NODE_HEAP_MB" npm install
+    NODE_OPTIONS="--max-old-space-size=$NODE_HEAP_MB" npm install || {
+        warn "npm install failed, retrying without optional dependencies..."
+        NODE_OPTIONS="--max-old-space-size=$NODE_HEAP_MB" npm install --no-optional
+    }
 
     # Build frontend
     info "Building frontend..."
