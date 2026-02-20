@@ -569,7 +569,8 @@ cd /d "%USERPROFILE%"
 echo Starting Claude Code WebUI...
 echo Press Ctrl+C to stop the server
 echo.
-docker run -it --rm -p 3456:3456 -e ANTHROPIC_API_KEY=%ANTHROPIC_API_KEY% -v "%USERPROFILE%\.claude:/root/.claude" -v "%cd%:/workspace" $DockerImage
+if defined ANTHROPIC_API_KEY (set "API_KEY_FLAG=-e ANTHROPIC_API_KEY=%ANTHROPIC_API_KEY%") else (set "API_KEY_FLAG=")
+docker run -it --rm -p 3456:3456 %API_KEY_FLAG% -v "%USERPROFILE%\.claude:/root/.claude" -v "%cd%:/workspace" $DockerImage
 pause
 "@
             Set-Content -Path $BatPath -Value $BatContent -Encoding ASCII
@@ -755,8 +756,9 @@ function Install-Docker {
 @echo off
 set IMAGE_NAME=$DockerImage
 if not exist "%USERPROFILE%\.claude" mkdir "%USERPROFILE%\.claude"
+if defined ANTHROPIC_API_KEY (set "API_KEY_FLAG=-e ANTHROPIC_API_KEY=%ANTHROPIC_API_KEY%") else (set "API_KEY_FLAG=")
 docker run -it --rm ^
-    -e ANTHROPIC_API_KEY=%ANTHROPIC_API_KEY% ^
+    %API_KEY_FLAG% ^
     -v "%USERPROFILE%\.claude:/root/.claude" ^
     -v "%cd%:/workspace" ^
     %IMAGE_NAME% %*
