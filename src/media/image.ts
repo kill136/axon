@@ -6,8 +6,25 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import sharp from 'sharp';
+import type sharp from 'sharp';
 import { getMimeTypeSync } from './mime.js';
+
+// 动态加载 sharp
+let _sharp: ((input?: string | Buffer) => any) | null = null;
+let _sharpLoadAttempted = false;
+
+async function getSharp() {
+  if (!_sharpLoadAttempted) {
+    _sharpLoadAttempted = true;
+    try {
+      const mod = await import('sharp');
+      _sharp = mod.default;
+    } catch (e) {
+      console.warn('[Image] sharp 不可用，图片压缩功能已禁用:', (e as Error).message);
+    }
+  }
+  return _sharp;
+}
 
 /**
  * 支持的图片格式
@@ -64,7 +81,7 @@ export interface ImageResult {
  */
 interface CompressContext {
   imageBuffer: Buffer;
-  metadata: sharp.Metadata;
+  metadata: any;
   format: string;
   maxBytes: number;
   originalSize: number;
@@ -102,7 +119,7 @@ function makeCompressedResult(buffer: Buffer, format: string, originalSize: numb
 /**
  * 为指定格式应用最佳压缩参数（对应官方 X39）
  */
-function applyFormatCompression(pipeline: sharp.Sharp, format: string): sharp.Sharp {
+function applyFormatCompression(pipeline: any, format: string): any {
   switch (format) {
     case 'png':
       return pipeline.png({ compressionLevel: 9, palette: true });
@@ -121,6 +138,9 @@ function applyFormatCompression(pipeline: sharp.Sharp, format: string): sharp.Sh
  * 按 [100%, 75%, 50%, 25%] 逐级缩小
  */
 async function tryProgressiveResize(ctx: CompressContext): Promise<CompressedImage | null> {
+  const sharp = await getSharp();
+  if (!sharp) return null;
+
   const scales = [1, 0.75, 0.5, 0.25];
 
   for (const scale of scales) {
@@ -146,6 +166,9 @@ async function tryProgressiveResize(ctx: CompressContext): Promise<CompressedIma
  * 第二级（仅 PNG）：800x800 + palette 64 色（对应官方 j39）
  */
 async function tryPngOptimized(ctx: CompressContext): Promise<CompressedImage | null> {
+  const sharp = await getSharp();
+  if (!sharp) return null;
+
   const buf = await sharp(ctx.imageBuffer)
     .resize(800, 800, { fit: 'inside', withoutEnlargement: true })
     .png({ compressionLevel: 9, palette: true, colors: 64 })
@@ -161,6 +184,9 @@ async function tryPngOptimized(ctx: CompressContext): Promise<CompressedImage | 
  * 第三级：600x600 JPEG（对应官方 D39）
  */
 async function tryMediumJpeg(ctx: CompressContext, quality: number): Promise<CompressedImage | null> {
+  const sharp = await getSharp();
+  if (!sharp) return null;
+
   const buf = await sharp(ctx.imageBuffer)
     .resize(600, 600, { fit: 'inside', withoutEnlargement: true })
     .jpeg({ quality })
@@ -176,6 +202,9 @@ async function tryMediumJpeg(ctx: CompressContext, quality: number): Promise<Com
  * 第四级（兜底）：400x400 JPEG quality 20（对应官方 M39）
  */
 async function fallbackCompress(ctx: CompressContext): Promise<CompressedImage> {
+  const sharp = await getSharp();
+  if (!sharp) return makeCompressedResult(ctx.imageBuffer, ctx.format, ctx.originalSize);
+
   const buf = await sharp(ctx.imageBuffer)
     .resize(400, 400, { fit: 'inside', withoutEnlargement: true })
     .jpeg({ quality: 20 })
@@ -204,8 +233,16 @@ async function compressBuffer(
   imageBuffer: Buffer,
   maxBytes: number
 ): Promise<CompressedImage> {
-  const metadata = await sharp(imageBuffer).metadata();
-  const format = metadata.format || detectMediaType(imageBuffer);
+  const sharpFn = await getSharp();
+  let metadata: any = {};
+  let format: string;
+  if (sharpFn) {
+    const meta = await sharpFn(imageBuffer).metadata();
+    format = meta.format || detectMediaType(imageBuffer);
+    metadata = meta;
+  } else {
+    format = detectMediaType(imageBuffer);
+  }
   const originalSize = imageBuffer.length;
 
   // 已经足够小
@@ -288,7 +325,11 @@ export async function readImageFile(
   if (estimatedTokens <= maxTokens) {
     // 不需要压缩，提取尺寸信息直接返回
     try {
-      const metadata = await sharp(buffer).metadata();
+      const sharpFn = await getSharp();
+      if (!sharpFn) {
+        return createImageResult(buffer, `image/${format}`, stat.size);
+      }
+      const metadata = await sharpFn(buffer).metadata();
       return createImageResult(buffer, `image/${format}`, stat.size, {
         originalWidth: metadata.width,
         originalHeight: metadata.height,

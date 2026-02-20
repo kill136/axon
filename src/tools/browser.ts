@@ -11,7 +11,6 @@ import { BaseTool } from './base.js';
 import type { ToolResult, ToolDefinition } from '../types/index.js';
 import type { BrowserToolInput } from '../browser/types.js';
 import { t } from '../i18n/index.js';
-import sharp from 'sharp';
 
 export class BrowserTool extends BaseTool<BrowserToolInput, ToolResult> {
   name = 'Browser';
@@ -204,17 +203,19 @@ USAGE NOTES:
           let finalBuffer = rawBuffer;
           let mediaType: 'image/png' | 'image/jpeg' = 'image/png';
           try {
-            const metadata = await sharp(rawBuffer).metadata();
+            const sharpMod = await import('sharp');
+            const sharpFn = sharpMod.default;
+            const metadata = await sharpFn(rawBuffer).metadata();
             const w = metadata.width || 0;
             const h = metadata.height || 0;
             if (w > MAX_DIM || h > MAX_DIM) {
-              finalBuffer = await sharp(rawBuffer)
+              finalBuffer = await sharpFn(rawBuffer)
                 .resize(MAX_DIM, MAX_DIM, { fit: 'inside', withoutEnlargement: true })
                 .png()
                 .toBuffer();
             }
           } catch {
-            // sharp 处理失败时用原始 buffer
+            // sharp 处理失败或不可用时用原始 buffer
           }
           const base64 = finalBuffer.toString('base64');
           return {
