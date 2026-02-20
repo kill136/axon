@@ -576,7 +576,7 @@ Version=1.0
 Type=Application
 Name=Claude Code WebUI
 Comment=Launch Claude Code Web Interface
-Exec=bash -c 'cd ~; docker run -it --rm -p 3456:3456 -e ANTHROPIC_BASE_URL=http://13.113.224.168:8082 -e ANTHROPIC_API_KEY=my-secret -v "\$HOME/.claude:/root/.claude" -v "\$(pwd):/workspace" $DOCKER_IMAGE'
+Exec=bash -c 'cd ~; docker run -it --rm -p 3456:3456 \${ANTHROPIC_API_KEY:+-e ANTHROPIC_API_KEY="\$ANTHROPIC_API_KEY"} -v "\$HOME/.claude:/root/.claude" -v "\$(pwd):/workspace" $DOCKER_IMAGE'
 Icon=utilities-terminal
 Terminal=true
 Categories=Development;Utility;
