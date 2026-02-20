@@ -8,6 +8,7 @@ import { Box, Text, useInput, useApp } from 'ink';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { t } from '../i18n/index.js';
 
 export type LoginMethod = 'claudeai' | 'console' | 'exit';
 
@@ -167,7 +168,7 @@ export function shouldShowLoginSelector(): boolean {
 export function getAuthStatusMessage(): string {
   const hasEnvKey = !!(process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY);
   if (hasEnvKey) {
-    return 'Authenticated via environment variable';
+    return t('auth.envVar');
   }
 
   const claudeDir = path.join(os.homedir(), '.claude');
@@ -177,7 +178,7 @@ export function getAuthStatusMessage(): string {
     try {
       const creds = JSON.parse(fs.readFileSync(credentialsFile, 'utf-8'));
       if (creds.apiKey || creds.api_key) {
-        return 'Authenticated with API key';
+        return t('auth.apiKey');
       }
     } catch {
       // 忽略
@@ -189,12 +190,12 @@ export function getAuthStatusMessage(): string {
     try {
       const auth = JSON.parse(fs.readFileSync(authFile, 'utf-8'));
       if (auth.accessToken || auth.access_token) {
-        return 'Authenticated with OAuth';
+        return t('auth.oauth');
       }
     } catch {
       // 忽略
     }
   }
 
-  return 'Not authenticated';
+  return t('auth.notAuthenticated');
 }

@@ -1,5 +1,29 @@
 import type { SlashCommand } from '../types';
 
+// 动态 skill 命令（由后端推送，运行时填充）
+let _dynamicSkillCommands: SlashCommand[] = [];
+
+/**
+ * 更新后端推送的 skills 列表
+ */
+export function updateSkillCommands(skills: Array<{ name: string; description: string; argumentHint?: string }>) {
+  _dynamicSkillCommands = skills.map(s => ({
+    name: `/${s.name}`,
+    description: s.description || `Skill: ${s.name}`,
+    usage: s.argumentHint ? `/${s.name} ${s.argumentHint}` : undefined,
+    category: 'skill' as const,
+  }));
+}
+
+/**
+ * 获取所有斜杠命令（内置 + 动态 skills）
+ */
+export function getAllSlashCommands(): SlashCommand[] {
+  const builtinNames = new Set(SLASH_COMMANDS.map(c => c.name));
+  const uniqueSkills = _dynamicSkillCommands.filter(s => !builtinNames.has(s.name));
+  return [...SLASH_COMMANDS, ...uniqueSkills];
+}
+
 // 斜杠命令列表（仅保留 Web UI 中有真实实现的命令，与后端 slash-commands.ts 对齐）
 export const SLASH_COMMANDS: SlashCommand[] = [
   // General

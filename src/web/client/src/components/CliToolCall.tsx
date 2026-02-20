@@ -29,7 +29,6 @@ const CLI_TOOL_NAMES: Record<string, string> = {
   Browser: 'Browser',
   TestRunner: 'TestRunner',
   Database: 'Database',
-  REPL: 'REPL',
   Debugger: 'Debugger',
 };
 
@@ -123,8 +122,6 @@ function getToolDescription(name: string, input: any): string {
       return input?.path || input?.framework || '';
     case 'Database':
       return input?.action === 'query' ? (input?.sql || input?.command || '') : (input?.action || '');
-    case 'REPL':
-      return input?.action === 'execute' ? `[${input?.session || 'default'}]` : (input?.action || '');
     case 'Debugger':
       return input?.action || '';
     default:
@@ -620,64 +617,6 @@ function DatabaseToolContent({ input, result }: { input: any; result?: any }) {
 }
 
 /**
- * REPL 工具内容渲染
- */
-function REPLToolContent({ input, result }: { input: any; result?: any }) {
-  const [expanded, setExpanded] = useState(false);
-  const { t } = useLanguage();
-  const output = result?.output || result?.error || '';
-  const allLines = output.split('\n');
-  const totalLines = allLines.length;
-  const maxLines = DEFAULT_MAX_LINES;
-  const displayOutput = expanded ? output : allLines.slice(0, maxLines).join('\n');
-  const code = input?.code || input?.expression || '';
-  const session = input?.session || 'default';
-  const runtime = input?.runtime || input?.language || '';
-
-  return (
-    <div className="cli-repl-content">
-      {/* REPL 头部：session + runtime */}
-      <div className="cli-repl-header">
-        <span className="cli-repl-session">{session}</span>
-        {runtime && <span className="cli-repl-runtime">{runtime}</span>}
-      </div>
-
-      {/* IN 区域 */}
-      {code && (
-        <div className="cli-bash-section">
-          <span className="cli-bash-label">{t('cli.inputLabel')}</span>
-          <pre className="cli-bash-code">{code}</pre>
-        </div>
-      )}
-
-      {/* OUT 区域 */}
-      {result && (
-        <div className="cli-bash-section">
-          <span className="cli-bash-label">{t('cli.outputLabel')}</span>
-          <ExpandableContent
-            totalLines={totalLines}
-            maxLines={maxLines}
-            expanded={expanded}
-            onToggle={() => setExpanded(!expanded)}
-            t={t}
-          >
-            <pre className={`cli-bash-code cli-bash-output${result?.error ? ' cli-repl-error' : ''}`}>
-              {displayOutput}
-            </pre>
-            {result?.result != null && (
-              <div className="cli-repl-result">
-                <span className="cli-repl-result-value">{String(result.result)}</span>
-                {result?.type && <span className="cli-repl-result-type"> ({result.type})</span>}
-              </div>
-            )}
-          </ExpandableContent>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/**
  * Debugger 工具内容渲染
  */
 function DebuggerToolContent({ input, result }: { input: any; result?: any }) {
@@ -692,7 +631,7 @@ function DebuggerToolContent({ input, result }: { input: any; result?: any }) {
         return (
           <div className="cli-debug-launch">
             {input?.program && <div className="cli-debug-program">{input.program}</div>}
-            {input?.runtime && <span className="cli-repl-runtime">{input.runtime}</span>}
+            {input?.runtime && <span className="cli-debug-runtime">{input.runtime}</span>}
           </div>
         );
 
@@ -803,8 +742,6 @@ function getSubagentToolInput(name: string, input: any): string {
       return input?.path || input?.framework || '';
     case 'Database':
       return input?.sql || input?.command || input?.action || '';
-    case 'REPL':
-      return input?.code || input?.expression || '';
     case 'Debugger':
       return `${input?.action || ''}${input?.file ? ' ' + input.file : ''}`;
     default:
@@ -944,8 +881,6 @@ export function CliToolCall({ toolUse }: CliToolCallProps) {
         return <TestRunnerToolContent input={input} result={result} />;
       case 'Database':
         return <DatabaseToolContent input={input} result={result} />;
-      case 'REPL':
-        return <REPLToolContent input={input} result={result} />;
       case 'Debugger':
         return <DebuggerToolContent input={input} result={result} />;
       case 'Task':

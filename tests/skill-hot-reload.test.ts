@@ -14,6 +14,7 @@ import {
   clearSkillCache,
   getAllSkills,
 } from '../src/tools/skill.js';
+import { runWithCwd } from '../src/core/cwd-context.js';
 
 describe('技能热重载功能', () => {
   const testDir = path.join(process.cwd(), '.claude-test-hot-reload');
@@ -85,11 +86,8 @@ This is a test skill.
 `
     );
 
-    // 临时修改 process.cwd() 返回值
-    const originalCwd = process.cwd();
-    const cwdSpy = vi.spyOn(process, 'cwd').mockReturnValue(testDir);
-
-    try {
+    // 使用 runWithCwd 设置工作目录上下文
+    await runWithCwd(testDir, async () => {
       // 加载技能
       await initializeSkills();
 
@@ -101,9 +99,7 @@ This is a test skill.
       enableSkillHotReload();
 
       expect(isHotReloadEnabled()).toBe(true);
-    } finally {
-      cwdSpy.mockRestore();
-    }
+    });
   });
 
   it('应该检测到技能文件变化', async () => {
@@ -123,11 +119,7 @@ Version 1 content.
 `
     );
 
-    // 临时修改 process.cwd()
-    const originalCwd = process.cwd();
-    const cwdSpy = vi.spyOn(process, 'cwd').mockReturnValue(testDir);
-
-    try {
+    await runWithCwd(testDir, async () => {
       // 加载技能
       await initializeSkills();
 
@@ -162,9 +154,7 @@ Version 2 content with new features.
       const skillAfter = skillsAfter.find(s => s.skillName.includes('dynamic-skill'));
       expect(skillAfter).toBeDefined();
       expect(skillAfter?.markdownContent).toContain('Version 2');
-    } finally {
-      cwdSpy.mockRestore();
-    }
+    });
   }, 10000); // 增加超时时间
 
   it('防抖机制应该工作', async () => {
@@ -182,9 +172,7 @@ Initial content.
 `
     );
 
-    const cwdSpy = vi.spyOn(process, 'cwd').mockReturnValue(testDir);
-
-    try {
+    await runWithCwd(testDir, async () => {
       await initializeSkills();
       enableSkillHotReload();
 
@@ -206,8 +194,6 @@ Initial content.
       const skills = getAllSkills();
       const skill = skills.find(s => s.skillName.includes('debounce-test'));
       expect(skill?.markdownContent).toContain('Content 3');
-    } finally {
-      cwdSpy.mockRestore();
-    }
+    });
   }, 10000);
 });

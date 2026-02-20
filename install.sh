@@ -21,6 +21,9 @@ REPO_URL=""  # Will be set by detect_repo_url()
 DOCKER_IMAGE="wbj66/claude-code-open:latest"
 INSTALL_DIR="$HOME/.claude-code-open"
 NODE_MAJOR_REQUIRED=18
+NODE_MAJOR_MAX=22  # LTS; native modules may lack prebuilds for newer versions
+NODE_HEAP_MB=3072  # Node.js max heap size for npm install (prevents OOM on low-memory devices)
+MIN_TOTAL_MB=2048  # Minimum required memory (RAM + swap); auto-creates swap if below
 
 print_banner() {
     echo -e "${CYAN}"
@@ -133,6 +136,11 @@ ensure_git() {
 }
 
 # --- C++ Build Tools ---
+# NOTE: C++ build tools and Python are only needed as fallback.
+# All native modules (node-pty, better-sqlite3, leveldown, tree-sitter)
+# ship prebuilt binaries. node-gyp compilation only triggers if prebuild
+# download fails (unusual arch/OS, or network issues).
+
 ensure_build_tools() {
     local need_install=false
     if ! command -v g++ &> /dev/null && ! command -v c++ &> /dev/null && ! command -v clang++ &> /dev/null; then
@@ -147,21 +155,116 @@ ensure_build_tools() {
         return
     fi
 
-    warn "C++ build tools not found, installing..."
+    warn "C++ build tools not found, attempting to install (optional, needed only if prebuilt binaries unavailable)..."
     if [ "$PLATFORM" = "linux" ]; then
         case "$PKG_MGR" in
-            dnf)    pkg_install gcc-c++ make ;;
-            yum)    pkg_install gcc-c++ make ;;
-            apt)    pkg_install build-essential ;;
-            pacman) pkg_install base-devel ;;
-            apk)    pkg_install build-base python3 ;;
-            *)      error "Cannot auto-install build tools. Please install g++ and make manually." ;;
+            dnf)    pkg_install gcc-c++ make || true ;;
+            yum)    pkg_install gcc-c++ make || true ;;
+            apt)    pkg_install build-essential || true ;;
+            pacman) pkg_install base-devel || true ;;
+            apk)    pkg_install build-base python3 || true ;;
+            *)      warn "Cannot auto-install build tools. If npm install fails, install g++ and make manually." ;;
         esac
     elif [ "$PLATFORM" = "macos" ]; then
         xcode-select --install 2>/dev/null || true
-        until xcode-select -p &>/dev/null; do sleep 5; done
+        # Don't block waiting - xcode-select may already be installed
+        sleep 2
     fi
-    success "C++ build tools installed"
+
+    if command -v g++ &> /dev/null || command -v c++ &> /dev/null || command -v clang++ &> /dev/null; then
+        success "C++ build tools installed"
+    else
+        warn "C++ build tools not available. Installation will continue (prebuilt binaries should work)."
+    fi
+}
+
+# --- Python (optional, needed by node-gyp as fallback) ---
+ensure_python() {
+    if command -v python3 &> /dev/null; then
+        success "Python3 detected ($(python3 --version 2>&1))"
+        return
+    fi
+    if command -v python &> /dev/null; then
+        local pyver
+        pyver=$(python --version 2>&1)
+        if echo "$pyver" | grep -q "Python 3"; then
+            success "Python detected ($pyver)"
+            return
+        fi
+    fi
+
+    warn "Python3 not found. Attempting to install (optional, needed only if prebuilt binaries unavailable)..."
+    if [ "$PLATFORM" = "linux" ]; then
+        case "$PKG_MGR" in
+            dnf)    pkg_install python3 || true ;;
+            yum)    pkg_install python3 || true ;;
+            apt)    pkg_install python3 || true ;;
+            pacman) pkg_install python || true ;;
+            apk)    pkg_install python3 || true ;;
+            *)      warn "Cannot auto-install Python3." ;;
+        esac
+    elif [ "$PLATFORM" = "macos" ]; then
+        if command -v brew &> /dev/null; then
+            brew install python@3 || true
+        fi
+        # macOS usually has python3 via Xcode CLT
+    fi
+
+    if command -v python3 &> /dev/null || command -v python &> /dev/null; then
+        success "Python3 installed"
+    else
+        warn "Python3 not available. Installation will continue (prebuilt binaries should work)."
+    fi
+}
+
+# --- Memory check & swap creation (prevents OOM during npm install) ---
+ensure_memory_for_npm() {
+    if [ "$PLATFORM" = "macos" ]; then
+        # macOS manages swap automatically, skip
+        success "macOS: swap managed by system"
+        return
+    fi
+
+    if ! command -v free &>/dev/null; then
+        warn "Cannot detect memory (free command not found), skipping swap check"
+        return
+    fi
+
+    local total_ram_mb total_swap_mb total_mb
+    total_ram_mb=$(free -m | awk '/^Mem:/{print $2}')
+    total_swap_mb=$(free -m | awk '/^Swap:/{print $2}')
+    total_mb=$((total_ram_mb + total_swap_mb))
+    info "Memory: ${total_ram_mb}MB RAM + ${total_swap_mb}MB swap = ${total_mb}MB total"
+
+    if [ "$total_mb" -ge "$MIN_TOTAL_MB" ]; then
+        success "Memory sufficient for npm install"
+        return
+    fi
+
+    local swap_needed_mb=$((MIN_TOTAL_MB - total_mb + 512))
+    warn "Total memory (${total_mb}MB) < ${MIN_TOTAL_MB}MB, creating ${swap_needed_mb}MB swap..."
+
+    if [ -f /swapfile ] && swapon --show | grep -q /swapfile; then
+        warn "/swapfile already active, skipping"
+        return
+    fi
+
+    if [ "$(id -u)" -eq 0 ] || sudo -n true 2>/dev/null; then
+        sudo swapoff /swapfile 2>/dev/null || true
+        sudo rm -f /swapfile
+        if sudo fallocate -l "${swap_needed_mb}M" /swapfile 2>/dev/null || \
+           sudo dd if=/dev/zero of=/swapfile bs=1M count="$swap_needed_mb" status=progress; then
+            sudo chmod 600 /swapfile
+            sudo mkswap /swapfile
+            sudo swapon /swapfile
+            success "Created and enabled ${swap_needed_mb}MB swap"
+        else
+            warn "Failed to create swap. npm install may fail on low-memory devices."
+        fi
+    else
+        warn "No sudo access, cannot create swap. npm install may fail on low-memory devices."
+        warn "Fix: sudo fallocate -l ${swap_needed_mb}M /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile"
+    fi
 }
 
 # --- Node.js ---
@@ -171,11 +274,15 @@ ensure_node() {
         ver=$(node -v | sed 's/v//')
         local major
         major=$(echo "$ver" | cut -d. -f1)
-        if [ "$major" -ge "$NODE_MAJOR_REQUIRED" ]; then
+        if [ "$major" -ge "$NODE_MAJOR_REQUIRED" ] && [ "$major" -le "$NODE_MAJOR_MAX" ]; then
             success "Node.js v$ver detected"
             return
+        elif [ "$major" -gt "$NODE_MAJOR_MAX" ]; then
+            warn "Node.js v$ver is too new (max supported: v${NODE_MAJOR_MAX}.x LTS). Native modules may lack prebuilt binaries."
+            warn "Will install Node.js v22 LTS..."
+        else
+            warn "Node.js v$ver found, but >= $NODE_MAJOR_REQUIRED required. Upgrading..."
         fi
-        warn "Node.js v$ver found, but >= $NODE_MAJOR_REQUIRED required. Upgrading..."
     else
         warn "Node.js not found, installing..."
     fi
@@ -187,7 +294,12 @@ ensure_node() {
     fi
 
     # Reload PATH
-    export PATH="$HOME/.local/bin:$HOME/.nvm/versions/node/$(ls -1 "$HOME/.nvm/versions/node/" 2>/dev/null | tail -1)/bin:/usr/local/bin:/usr/bin:$PATH"
+    if [ -s "$HOME/.nvm/nvm.sh" ]; then
+        export NVM_DIR="$HOME/.nvm"
+        . "$NVM_DIR/nvm.sh"
+    fi
+    export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
+    hash -r  # Refresh command cache
 
     # Verify
     if command -v node &> /dev/null; then
@@ -323,9 +435,9 @@ if [ -d ".git" ]; then
     # Save current commit hash
     OLD_HASH=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
 
-    # Discard local changes (build artifacts, lock files, etc.)
+    # Discard local changes (protect .node portable directory)
     git checkout -- . 2>/dev/null || true
-    git clean -fd 2>/dev/null || true
+    git clean -fd --exclude=.node 2>/dev/null || true
 
     # Pull latest code
     if git pull origin private_web_ui 2>/dev/null; then
@@ -365,19 +477,29 @@ fi
 if [ "$NEED_REBUILD" = true ]; then
     info "Source code changed, rebuilding..."
 
+    # Auto-detect China network and set npm mirror
+    if git remote get-url origin 2>/dev/null | grep -qi 'gitee'; then
+        npm config set registry https://registry.npmmirror.com
+    fi
+
     # Check if package.json changed
     if echo "$CHANGED_FILES" | grep -qE "^package\.json$|^package-lock\.json$"; then
         info "Dependencies changed, running npm install..."
-        npm install 2>&1 | tail -5
+        NODE_OPTIONS="--max-old-space-size=3072" npm install 2>&1 | tail -5 || {
+            echo "[WARN] npm install failed, retrying without optional..."
+            NODE_OPTIONS="--max-old-space-size=3072" npm install --no-optional 2>&1 | tail -5
+        }
     fi
 
     # Rebuild frontend if needed
     if [ "$NEED_FRONTEND_REBUILD" = true ]; then
         info "Frontend changed, rebuilding..."
-        cd src/web/client
-        npm install 2>&1 | tail -3
-        npm run build 2>&1 | tail -3
-        cd ../../..
+        pushd src/web/client > /dev/null || { warn "Frontend dir not found, skipping..."; NEED_FRONTEND_REBUILD=false; }
+        if [ "$NEED_FRONTEND_REBUILD" = true ]; then
+            npm install 2>&1 | tail -3
+            npm run build 2>&1 | tail -3
+            popd > /dev/null
+        fi
     fi
 
     # Rebuild backend
@@ -437,7 +559,13 @@ EOF
             SHORTCUT_FILE="$DESKTOP_DIR/Claude Code WebUI.command"
             cat > "$SHORTCUT_FILE" << EOF
 #!/bin/bash
-exec "$HOME/.claude-code-open/update-and-start.sh"
+"$HOME/.claude-code-open/update-and-start.sh" &
+APP_PID=\$!
+# Wait for server to start and open browser
+sleep 3
+open http://localhost:3456 2>/dev/null || true
+# Bring app to foreground
+wait \$APP_PID
 EOF
             chmod +x "$SHORTCUT_FILE"
             success "Desktop shortcut created: $SHORTCUT_FILE"
@@ -464,7 +592,7 @@ Version=1.0
 Type=Application
 Name=Claude Code WebUI
 Comment=Launch Claude Code Web Interface
-Exec=bash -c 'cd ~; docker run -it --rm -p 3456:3456 -e ANTHROPIC_BASE_URL=http://13.113.224.168:8082 -e ANTHROPIC_API_KEY=my-secret -v "\$HOME/.claude:/root/.claude" -v "\$(pwd):/workspace" $DOCKER_IMAGE'
+Exec=bash -c 'cd ~; docker run -it --rm -p 3456:3456 \${ANTHROPIC_API_KEY:+-e ANTHROPIC_API_KEY="\$ANTHROPIC_API_KEY"} -v "\$HOME/.claude:/root/.claude" -v "\$(pwd):/workspace" $DOCKER_IMAGE'
 Icon=utilities-terminal
 Terminal=true
 Categories=Development;Utility;
@@ -485,7 +613,14 @@ cd ~
 echo "Starting Claude Code WebUI..."
 echo "Press Ctrl+C to stop the server"
 echo ""
-docker run -it --rm -p 3456:3456 -v "\$HOME/.claude:/root/.claude" -v "\$(pwd):/workspace" $DOCKER_IMAGE
+# Start server in background and open browser
+docker run -it --rm -p 3456:3456 \${ANTHROPIC_API_KEY:+-e ANTHROPIC_API_KEY="\$ANTHROPIC_API_KEY"} -v "\$HOME/.claude:/root/.claude" -v "\$(pwd):/workspace" $DOCKER_IMAGE &
+DOCKER_PID=\$!
+# Wait for server to start and open browser
+sleep 3
+open http://localhost:3456 2>/dev/null || true
+# Bring docker to foreground
+wait \$DOCKER_PID
 EOF
             chmod +x "$SHORTCUT_FILE"
             success "Desktop shortcut created: $SHORTCUT_FILE"
@@ -508,7 +643,7 @@ install_npm() {
             info "Updating existing installation..."
             cd "$INSTALL_DIR"
             git checkout -- .
-            git clean -fd
+            git clean -fd --exclude=.node
             git pull origin private_web_ui
             if [ $? -ne 0 ]; then
                 error "Git pull failed. Please check your network connection."
@@ -532,16 +667,28 @@ install_npm() {
         cd "$INSTALL_DIR"
     fi
 
+    # Ensure enough memory for npm install (prevent OOM on low-memory devices)
+    ensure_memory_for_npm
+
+    # Auto-detect China network and set npm mirror
+    if echo "$REPO_URL" | grep -qi 'gitee'; then
+        info "Detected China network, setting npm registry to npmmirror..."
+        npm config set registry https://registry.npmmirror.com
+    fi
+
     # Install dependencies
     info "Installing dependencies..."
-    npm install
+    NODE_OPTIONS="--max-old-space-size=$NODE_HEAP_MB" npm install || {
+        warn "npm install failed, retrying without optional dependencies..."
+        NODE_OPTIONS="--max-old-space-size=$NODE_HEAP_MB" npm install --no-optional
+    }
 
     # Build frontend
     info "Building frontend..."
-    cd src/web/client
-    npm install
-    npm run build
-    cd ../../..
+    pushd src/web/client > /dev/null || error "Frontend directory not found"
+    npm install || error "Frontend npm install failed"
+    npm run build || error "Frontend build failed"
+    popd > /dev/null
 
     # Build backend
     info "Building backend..."
@@ -723,8 +870,11 @@ main() {
     # 1.5. Detect best repo source (GitHub vs Gitee for China)
     detect_repo_url
 
-    # 2. Build tools (needed for native modules)
+    # 2. Build tools (optional, prebuilt binaries usually available)
     ensure_build_tools
+
+    # 2.5. Python (optional, only needed if prebuilt binaries unavailable)
+    ensure_python
 
     # 3. Node.js
     ensure_node
@@ -744,8 +894,13 @@ main() {
         echo -e "  ${GREEN}1)${NC} npm (from source)  ${CYAN}[recommended]${NC}"
         echo -e "  ${GREEN}2)${NC} Docker"
         echo ""
-        read -p "Choice [1]: " choice < /dev/tty
-        choice="${choice:-1}"
+        if [ -t 0 ] || [ -e /dev/tty ]; then
+            read -p "Choice [1]: " choice < /dev/tty
+            choice="${choice:-1}"
+        else
+            warn "Non-interactive mode, defaulting to npm install"
+            choice="1"
+        fi
         case "$choice" in
             2) install_docker ;;
             *) install_npm ;;

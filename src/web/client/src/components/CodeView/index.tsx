@@ -238,6 +238,7 @@ export const CodeView: React.FC<CodeViewProps> = ({
       <div className={styles.editorPanel}>
         <CodeEditor
           ref={codeEditorRef}
+          projectPath={projectPath}
           onSelectionChange={handleSelectionChange}
           onActiveFileChange={handleActiveFileChange}
           onCursorLineChange={handleCursorLineChange}

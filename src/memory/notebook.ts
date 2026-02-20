@@ -15,6 +15,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import * as crypto from 'crypto';
+import { estimateTokens } from '../utils/token-estimate.js';
 
 // ============================================================================
 // 常量
@@ -48,15 +49,6 @@ export interface NotebookStats {
 // ============================================================================
 // 工具函数
 // ============================================================================
-
-/**
- * 粗略估算 token 数
- * 混合中英文内容，约 2.5 字符/token
- */
-function estimateTokens(text: string): number {
-  if (!text) return 0;
-  return Math.ceil(text.length / 2.5);
-}
 
 /** 获取 ~/.claude 目录 */
 function getClaudeDir(): string {

@@ -14,6 +14,8 @@ import type {
 } from '../types';
 import type { Status, PermissionMode } from './useMessageHandler';
 import type { Project } from '../contexts/ProjectContext';
+import { useVoiceRecognition } from './useVoiceRecognition';
+import type { VoiceState } from './useVoiceRecognition';
 
 interface UseChatInputParams {
   connected: boolean;
@@ -58,6 +60,11 @@ interface UseChatInputReturn {
   handlePermissionRespondWithDestination: (response: { approved: boolean; remember: boolean; destination: string }) => void;
   handlePermissionModeChange: (mode: PermissionMode) => void;
   handleDevAction: (action: string, data?: any) => void;
+  // 语音识别
+  voiceState: VoiceState;
+  isVoiceSupported: boolean;
+  voiceTranscript: string;
+  toggleVoice: () => void;
 }
 
 export function useChatInput({
@@ -86,6 +93,28 @@ export function useChatInput({
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 语音识别 - 使用 ref 持有 handleSend，避免循环依赖
+  const handleSendRef = useRef<() => Promise<void>>(async () => {});
+
+  const { voiceState, transcript: voiceTranscript, isSupported: isVoiceSupported, startListening, stopListening } = useVoiceRecognition({
+    wakeWord: 'claude',
+    silenceTimeout: 2000,
+    lang: 'zh-CN',
+    onCommand: (text) => {
+      setInput(text);
+      // 用 setTimeout 确保 setInput 先完成
+      setTimeout(() => { handleSendRef.current(); }, 50);
+    },
+  });
+
+  const toggleVoice = useCallback(() => {
+    if (voiceState === 'idle') {
+      startListening();
+    } else {
+      stopListening();
+    }
+  }, [voiceState, startListening, stopListening]);
 
   // 会话切换时清空输入框
   useEffect(() => {
@@ -293,11 +322,36 @@ export function useChatInput({
     }
   };
 
-  // 命令选择
+  // 保持 handleSendRef 最新，供语音识别回调使用
+  handleSendRef.current = handleSend;
+
+  // 命令选择：选中后直接执行命令（与官方 CLI 行为一致）
   const handleCommandSelect = (command: SlashCommand) => {
-    setInput(command.name + ' ');
+    if (!connected) return;
+
+    // 直接发送命令给后端执行
+    let effectiveProjectPath = currentProjectPath;
+    if (!effectiveProjectPath) {
+      // 没有项目路径时，先填入输入框让用户选择项目后手动发送
+      setInput(command.name + ' ');
+      setShowCommandPalette(false);
+      inputRef.current?.focus();
+      return;
+    }
+
+    send({
+      type: 'chat',
+      payload: {
+        content: command.name,
+        projectPath: effectiveProjectPath,
+      },
+    });
+    setInput('');
     setShowCommandPalette(false);
-    inputRef.current?.focus();
+    setStatus('thinking');
+    if (inputRef.current) {
+      inputRef.current.style.height = 'auto';
+    }
   };
 
   // 用户问答
@@ -355,6 +409,8 @@ export function useChatInput({
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
+      // 命令面板打开时，不处理 Enter——交给 SlashCommandPalette 处理
+      if (showCommandPalette) return;
       e.preventDefault();
       handleSend();
     }
@@ -432,5 +488,10 @@ export function useChatInput({
     handlePermissionRespondWithDestination,
     handlePermissionModeChange,
     handleDevAction,
+    // 语音识别
+    voiceState,
+    isVoiceSupported,
+    voiceTranscript,
+    toggleVoice,
   };
 }

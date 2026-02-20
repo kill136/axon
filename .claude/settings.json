@@ -14,7 +14,8 @@
       "Edit(*.yml)",
       "Write(*.md)",
       "Write(*.ts)",
-      "Edit(*.css)"
+      "Edit(*.css)",
+      "Bash(ls*)"
     ],
     "deny": []
   },

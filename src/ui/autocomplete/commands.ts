@@ -3,6 +3,7 @@
  */
 
 import type { CompletionItem } from './types.js';
+import { getAllSkills } from '../../tools/skill.js';
 
 // 所有可用命令列表 (基于官方 Claude Code v2.1.4)
 export const ALL_COMMANDS: CompletionItem[] = [
@@ -438,6 +439,29 @@ export const ALL_COMMANDS: CompletionItem[] = [
 ];
 
 /**
+ * 从 skill 注册表动态获取 user-invocable skills 作为补全项
+ */
+function getSkillCompletionItems(): CompletionItem[] {
+  try {
+    const skills = getAllSkills();
+    const builtinNames = new Set(ALL_COMMANDS.map(c => c.label.replace(/^\//, '').toLowerCase()));
+
+    return skills
+      .filter(s => s.userInvocable !== false)
+      .filter(s => !builtinNames.has(s.skillName.toLowerCase()))
+      .map(s => ({
+        value: `/${s.skillName} `,
+        label: `/${s.skillName}`,
+        description: s.description || `Skill: ${s.skillName}`,
+        type: 'command' as const,
+        priority: 60, // skills 排在内置命令之后
+      }));
+  } catch {
+    return [];
+  }
+}
+
+/**
  * 获取命令补全建议
  * v2.1.14: 修复输入相似命令时选择错误 (如 /context vs /compact)
  * @param query 查询文本 (不含前导斜杠)
@@ -445,10 +469,11 @@ export const ALL_COMMANDS: CompletionItem[] = [
  */
 export function getCommandCompletions(query: string, maxResults: number = 10): CompletionItem[] {
   const lowerQuery = query.toLowerCase();
+  const allCommands = [...ALL_COMMANDS, ...getSkillCompletionItems()];
 
   if (!lowerQuery) {
     // 无查询时返回最常用的命令
-    return ALL_COMMANDS.slice()
+    return allCommands.slice()
       .sort((a, b) => (a.priority || 100) - (b.priority || 100))
       .slice(0, maxResults);
   }
@@ -457,7 +482,7 @@ export function getCommandCompletions(query: string, maxResults: number = 10): C
   const exactMatches: CompletionItem[] = [];
   const prefixMatches: CompletionItem[] = [];
 
-  ALL_COMMANDS.forEach(cmd => {
+  allCommands.forEach(cmd => {
     // 移除前导斜杠进行匹配
     const cmdName = cmd.label.replace(/^\//, '').toLowerCase();
 

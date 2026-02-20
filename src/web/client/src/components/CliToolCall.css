@@ -932,71 +932,6 @@
   margin-left: auto;
 }
 
-/* ===== REPL 工具样式 ===== */
-.cli-repl-content {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.cli-repl-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 0;
-}
-
-.cli-repl-session {
-  color: var(--text-muted);
-  font-size: 11px;
-  padding: 2px 6px;
-  background: rgba(255, 255, 255, 0.06);
-  border-radius: 3px;
-}
-
-.cli-repl-runtime {
-  color: #fff;
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 3px;
-  font-weight: 600;
-  background: #388e3c;
-}
-
-.cli-repl-runtime[data-runtime="python"],
-.cli-repl-runtime[data-lang="python"] {
-  background: #1565c0;
-}
-
-.cli-repl-runtime[data-runtime="ruby"],
-.cli-repl-runtime[data-lang="ruby"] {
-  background: #b71c1c;
-}
-
-.cli-repl-error {
-  color: #f44336 !important;
-  background: rgba(244, 67, 54, 0.06) !important;
-}
-
-.cli-repl-result {
-  margin-top: 4px;
-  padding: 4px 8px;
-  background: rgba(255, 255, 255, 0.04);
-  border-radius: 4px;
-  font-size: 12px;
-}
-
-.cli-repl-result-value {
-  color: #64b5f6;
-  font-weight: 500;
-}
-
-.cli-repl-result-type {
-  color: var(--text-muted);
-  font-size: 11px;
-  margin-left: 4px;
-}
-
 /* ===== Debugger 工具样式 ===== */
 .cli-debug-content {
   display: flex;
@@ -1020,6 +955,15 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+.cli-debug-runtime {
+  color: #fff;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-weight: 600;
+  background: #388e3c;
 }
 
 .cli-debug-program {

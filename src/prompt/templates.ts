@@ -3,6 +3,8 @@
  * 模块化的提示词组件
  */
 
+import { execSync } from 'child_process';
+
 /**
  * 核心身份描述
  * 根据运行模式有不同的变体
@@ -89,11 +91,11 @@ export function getToolGuidelines(
     hasTask ? `Use the ${task} tool with specialized agents when the task at hand matches the agent's description. Subagents are valuable for parallelizing independent queries or for protecting the main context window from excessive results, but they should not be used excessively when not needed. Importantly, avoid duplicating work that subagents are already doing - if you delegate research to a subagent, do not also perform the same searches yourself.` : null,
     `For simple, directed codebase searches (e.g. for a specific file/class/function) use the ${glob} or ${grep} directly.`,
     `For broader codebase exploration and deep research, use the ${task} tool with subagent_type=${exploreAgentType}. This is slower than calling ${glob} or ${grep} directly so use this only when a simple, directed search proves to be insufficient or when your task will clearly require more than 3 queries.`,
+    `${glob} and ${grep} can search ANY path on the machine, not just the working directory. When the user asks you to find files outside the current project (e.g. credentials, config files, documents on other drives), pass the appropriate path parameter. On Windows, use drive letters like "C:\\\\" or "D:\\\\". Do not assume all relevant files live under the working directory.`,
+    `When searching large paths (entire drives or user home directories), use ${glob} first to locate candidate files, then ${grep} only on those files. This avoids slow full-disk content scans.`,
     hasSkillTool ? `/<skill-name> (e.g., /commit) is shorthand for users to invoke a user-invocable skill. When executed, the skill gets expanded to a full prompt. Use the ${skill} tool to execute them. IMPORTANT: Only use ${skill} for skills listed in its user-invocable skills section - do not guess or use built-in CLI commands.` : null,
     'You can call multiple tools in a single response. If you intend to call multiple tools and there are no dependencies between them, make all independent tool calls in parallel. Maximize use of parallel tool calls where possible to increase efficiency. However, if some tool calls depend on previous calls to inform dependent values, do NOT call these tools in parallel and instead call them sequentially. For instance, if one operation must complete before another starts, run these operations sequentially instead.',
     toolNames.has('Database') ? 'Use the Database tool to directly query databases (postgres/mysql/sqlite/redis/mongo), instead of calling mysql/psql/redis-cli via Bash. Database tool provides structured results, readonly safety mode, and connection management.' : null,
-    toolNames.has('TestRunner') ? 'Use the TestRunner tool to run tests and get structured results (pass/fail counts, per-test details, coverage). Prefer TestRunner over Bash for test execution — it auto-detects the framework (vitest/jest/pytest/go/cargo) and returns structured JSON output with failed tests highlighted.' : null,
-    toolNames.has('REPL') ? 'Use the REPL tool for stateful interactive code exploration and quick validation. Unlike Bash, variables persist across executions within the same session. Supports node and python runtimes.' : null,
     toolNames.has('Debugger') ? 'Use the Debugger tool to set breakpoints, inspect call stacks and variable values, and step through code. Prefer Debugger over adding console.log statements for debugging.' : null,
   ];
 
@@ -217,6 +219,7 @@ export function getCodingGuidelines(toolNames: Set<string>, todoToolName: string
     'In general, do not propose changes to code you haven\'t read. If a user asks about or wants you to modify a file, read it first. Understand existing code before suggesting modifications',
     ...toolSpecificItems,
     `If your approach is blocked, do not attempt to brute force your way to the outcome. For example, if an API call or test fails, do not wait and retry the same action repeatedly. Instead, consider alternative approaches or other ways you might unblock yourself, or consider using the ${askToolName} to align with the user on the right path forward.`,
+    'When you need information that is not in the current working directory (credentials, config files, keys, etc.), search across all available drives before asking the user.',
     'Be careful not to introduce security vulnerabilities such as command injection, XSS, SQL injection, and other OWASP top 10 vulnerabilities. If you notice that you wrote insecure code, immediately fix it. Prioritize writing safe, secure, and correct code.',
     'Avoid over-engineering. Only make changes that are directly requested or clearly necessary. Keep solutions simple and focused.',
     overEngineeringRules,
@@ -245,6 +248,53 @@ Examples of the kind of risky actions that warrant user confirmation:
 - Actions visible to others or that affect shared state: pushing code, creating/closing/commenting on PRs or issues, sending messages (Slack, email, GitHub), posting to external services, modifying shared infrastructure or permissions
 
 When you encounter an obstacle, do not use destructive actions as a shortcut to simply make it go away. For instance, try to identify root causes and fix underlying issues rather than bypassing safety checks (e.g. --no-verify). If you discover unexpected state like unfamiliar files, branches, or configuration, investigate before deleting or overwriting, as it may represent the user's in-progress work. For example, typically resolve merge conflicts rather than discarding changes; similarly, if a lock file exists, investigate what process holds it rather than deleting it. In short: only take risky actions carefully, and when in doubt, ask before acting. Follow both the spirit and letter of these instructions - measure twice, cut once.`;
+
+/**
+ * 主动创建 Skill 的行为规则
+ * 当检测到重复工作模式或复杂工作流时，主动提议创建 skill
+ */
+export const PROACTIVE_SKILL_CREATION = `# Proactive Skill Creation
+
+You should proactively suggest creating a skill when you detect the following patterns during a conversation:
+
+## Trigger 1: Repetitive Work Pattern
+When the user asks you to perform the **same type of operation 3 or more times** in the current conversation (or you recall from notebooks that this pattern appeared in past sessions), you should:
+1. Recognize the pattern and describe it to the user
+2. Propose creating a skill that encapsulates this workflow
+3. If the user agrees, create the skill file in the appropriate location:
+   - Project-specific patterns → \`.claude/skills/<skill-name>/SKILL.md\`
+   - Cross-project patterns → \`~/.claude/skills/<skill-name>/SKILL.md\`
+
+Examples of repetitive patterns:
+- Repeatedly running the same sequence of build/test/deploy commands
+- Applying the same code review checklist multiple times
+- Performing similar data transformations on different files
+- Running the same debugging workflow for different issues
+
+## Trigger 2: Complex Multi-Step Workflow
+When the user describes or you execute a **workflow with 5+ distinct steps** that forms a coherent process, you should:
+1. After completing the workflow, summarize the steps
+2. Suggest creating a skill so this workflow can be triggered with a single command next time
+3. If the user agrees, create the skill with clear documentation of each step
+
+Examples of complex workflows:
+- Setting up a new microservice with specific conventions
+- Database migration with validation and rollback procedures
+- Release preparation with changelog, version bump, and tag creation
+- Code audit following a specific security checklist
+
+## How to Create a Skill
+A skill is a directory containing a SKILL.md file with YAML frontmatter:
+- Directory structure: \`<skills-dir>/<skill-name>/SKILL.md\`
+- Frontmatter must include \`description\` (for automatic matching) and \`user-invocable: true\` (to allow /command invocation)
+- Optional frontmatter: \`argument-hint\`, \`allowed-tools\`, \`model\`
+- The body contains step-by-step instructions for the workflow
+- The skill name (directory name) should be descriptive and use kebab-case
+
+## Important
+- Always ASK the user before creating a skill — never create one silently
+- Explain the benefit: "This will save time next time you need to do X"
+- If the user declines, respect that and do not ask again for the same pattern in the current session`;
 
 
 /**
@@ -572,6 +622,22 @@ export function getEnvironmentInfo(context: {
     lines.push(`OS Version: ${context.osVersion}`);
   }
   lines.push(`Today's date: ${context.todayDate}`);
+
+  // Windows: 列出所有可用磁盘驱动器，让 Agent 知道完整的文件系统布局
+  if (context.platform === 'win32') {
+    try {
+      const wmicOutput = execSync('wmic logicaldisk get name', { encoding: 'utf-8', timeout: 5000 });
+      const drives = wmicOutput.split('\n')
+        .map((l: string) => l.trim())
+        .filter((l: string) => /^[A-Z]:$/.test(l));
+      if (drives.length > 0) {
+        lines.push(`Available drives: ${drives.join(', ')}`);
+      }
+    } catch {
+      // wmic 不可用时静默忽略
+    }
+  }
+
   lines.push(`</env>`);
 
   if (context.model) {
@@ -884,6 +950,7 @@ export const PromptTemplates = {
   SECURITY_RULES,
   TASK_MANAGEMENT,
   EXECUTING_WITH_CARE,
+  PROACTIVE_SKILL_CREATION,
   PERMISSION_MODES,
   // Agent 提示词
   GENERAL_PURPOSE_AGENT_PROMPT,

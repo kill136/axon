@@ -191,6 +191,90 @@
 }
 
 /* ============================================================
+   工具栏配置菜单
+   ============================================================ */
+
+.toolbarMenu {
+  z-index: 10000;
+  min-width: 180px;
+  max-height: 420px;
+  overflow-y: auto;
+  background-color: #1a1a1e;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 6px 0;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.toolbarMenu::-webkit-scrollbar {
+  width: 4px;
+}
+
+.toolbarMenu::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 2px;
+}
+
+.toolbarMenuTitle {
+  padding: 6px 12px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.4);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.toolbarMenuItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.75);
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.toolbarMenuItem:hover {
+  background-color: rgba(255, 255, 255, 0.06);
+}
+
+.toolbarMenuItem input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: #6366f1;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.toolbarMenuDivider {
+  height: 1px;
+  background-color: rgba(255, 255, 255, 0.08);
+  margin: 4px 0;
+}
+
+.toolbarMenuReset {
+  display: block;
+  width: calc(100% - 16px);
+  margin: 4px 8px;
+  padding: 5px 8px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.15s ease;
+}
+
+.toolbarMenuReset:hover {
+  color: rgba(255, 255, 255, 0.8);
+  background-color: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* ============================================================
    编辑器容器
    ============================================================ */
 
@@ -958,4 +1042,860 @@
 
 :global(.bubble-warning) {
   background-color: rgba(255, 152, 0, 0.6);
+}
+
+/* ============================================================
+   Code Review 装饰器样式
+   ============================================================ */
+
+:global(.review-glyph) {
+  width: 4px !important;
+  margin-left: 3px;
+  border-radius: 2px;
+}
+
+:global(.review-bug-error) {
+  background-color: rgba(244, 67, 54, 0.8);
+}
+
+:global(.review-bug-warning) {
+  background-color: rgba(255, 152, 0, 0.7);
+}
+
+:global(.review-perf-error) {
+  background-color: rgba(255, 152, 0, 0.8);
+}
+
+:global(.review-perf-warning) {
+  background-color: rgba(255, 193, 7, 0.7);
+}
+
+:global(.review-security-error) {
+  background-color: rgba(244, 67, 54, 0.9);
+}
+
+:global(.review-security-warning) {
+  background-color: rgba(255, 87, 34, 0.7);
+}
+
+:global(.review-style-error) {
+  background-color: rgba(33, 150, 243, 0.8);
+}
+
+:global(.review-style-info) {
+  background-color: rgba(33, 150, 243, 0.6);
+}
+
+:global(.review-line-bug-error) {
+  background-color: rgba(244, 67, 54, 0.08);
+}
+
+:global(.review-line-bug-warning) {
+  background-color: rgba(255, 152, 0, 0.06);
+}
+
+:global(.review-line-perf-error) {
+  background-color: rgba(255, 152, 0, 0.08);
+}
+
+:global(.review-line-perf-warning) {
+  background-color: rgba(255, 193, 7, 0.06);
+}
+
+:global(.review-line-security-error) {
+  background-color: rgba(244, 67, 54, 0.1);
+}
+
+:global(.review-line-security-warning) {
+  background-color: rgba(255, 87, 34, 0.06);
+}
+
+:global(.review-line-style-error) {
+  background-color: rgba(33, 150, 243, 0.08);
+}
+
+:global(.review-line-style-info) {
+  background-color: rgba(33, 150, 243, 0.04);
+}
+
+/* Code Review 面板 */
+.reviewPanel {
+  width: 320px;
+  min-width: 320px;
+  height: 100%;
+  background-color: #0d0d10;
+  border-left: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.reviewPanel::-webkit-scrollbar {
+  width: 4px;
+}
+
+.reviewPanel::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+}
+
+.reviewHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+}
+
+.reviewTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.reviewCount {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  margin-left: auto;
+}
+
+.reviewClose {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 16px;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all 0.15s ease;
+}
+
+.reviewClose:hover {
+  color: rgba(255, 255, 255, 0.9);
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.reviewSummary {
+  padding: 10px 12px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+  line-height: 1.5;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.reviewIssuesList {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.reviewIssue {
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  background-color: rgba(255, 255, 255, 0.02);
+  border-left: 3px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.reviewIssue:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.reviewIssue[data-type="bug"][data-severity="error"] {
+  border-left-color: rgba(244, 67, 54, 0.8);
+}
+
+.reviewIssue[data-type="bug"][data-severity="warning"] {
+  border-left-color: rgba(255, 152, 0, 0.7);
+}
+
+.reviewIssue[data-type="performance"][data-severity="error"] {
+  border-left-color: rgba(255, 152, 0, 0.8);
+}
+
+.reviewIssue[data-type="performance"][data-severity="warning"] {
+  border-left-color: rgba(255, 193, 7, 0.7);
+}
+
+.reviewIssue[data-type="security"][data-severity="error"] {
+  border-left-color: rgba(244, 67, 54, 0.9);
+}
+
+.reviewIssue[data-type="security"][data-severity="warning"] {
+  border-left-color: rgba(255, 87, 34, 0.7);
+}
+
+.reviewIssue[data-type="style"] {
+  border-left-color: rgba(33, 150, 243, 0.6);
+}
+
+.issueHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.issueIcon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.issueSeverity {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 1px 4px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.issueSeverity[data-severity="error"] {
+  color: #f44336;
+  background-color: rgba(244, 67, 54, 0.1);
+}
+
+.issueSeverity[data-severity="warning"] {
+  color: #ff9800;
+  background-color: rgba(255, 152, 0, 0.1);
+}
+
+.issueSeverity[data-severity="info"] {
+  color: #2196f3;
+  background-color: rgba(33, 150, 243, 0.1);
+}
+
+.issueLine {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.4);
+  margin-left: auto;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+}
+
+.issueMessage {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.8);
+  line-height: 1.4;
+  margin-bottom: 4px;
+}
+
+.issueSuggestion {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  line-height: 1.4;
+  padding-left: 8px;
+  border-left: 2px solid rgba(76, 175, 80, 0.3);
+}
+
+/* ============================================================
+   Dead Code Detection 装饰器样式
+   ============================================================ */
+
+:global(.dead-code-glyph) {
+  width: 4px !important;
+  margin-left: 3px;
+  border-radius: 2px;
+  background-color: rgba(158, 158, 158, 0.7);
+}
+
+:global(.dead-code-unused) {
+  background-color: rgba(158, 158, 158, 0.06);
+}
+
+:global(.dead-code-unreachable) {
+  background-color: rgba(158, 158, 158, 0.08);
+}
+
+:global(.dead-code-redundant) {
+  background-color: rgba(255, 193, 7, 0.06);
+}
+
+:global(.dead-code-suspicious) {
+  background-color: rgba(33, 150, 243, 0.04);
+}
+
+:global(.dead-code-strikethrough) {
+  text-decoration: line-through;
+  text-decoration-color: rgba(255, 255, 255, 0.3);
+}
+
+/* ============================================================
+   Code Conversation 面板样式
+   ============================================================ */
+
+.conversationPanel {
+  width: 350px;
+  min-width: 350px;
+  height: 100%;
+  background-color: #0d0d10;
+  border-left: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  flex-direction: column;
+}
+
+.conversationHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+}
+
+.conversationTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  flex: 1;
+}
+
+.conversationClear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 14px;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all 0.15s ease;
+}
+
+.conversationClear:hover {
+  color: rgba(255, 255, 255, 0.9);
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.conversationClose {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 16px;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all 0.15s ease;
+}
+
+.conversationClose:hover {
+  color: rgba(255, 255, 255, 0.9);
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.conversationMessages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.conversationMessages::-webkit-scrollbar {
+  width: 4px;
+}
+
+.conversationMessages::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+}
+
+.conversationHints {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 20px 0;
+}
+
+.conversationHintItem {
+  padding: 10px 12px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  background-color: rgba(255, 255, 255, 0.03);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.conversationHintItem:hover {
+  color: rgba(255, 255, 255, 0.8);
+  background-color: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.userMessage {
+  align-self: flex-end;
+  max-width: 80%;
+  background-color: rgba(99, 102, 241, 0.12);
+  border-radius: 8px;
+  padding: 8px 12px;
+  border: 1px solid rgba(99, 102, 241, 0.2);
+}
+
+.assistantMessage {
+  align-self: flex-start;
+  max-width: 80%;
+  background-color: rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.messageRole {
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.5);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.messageContent {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.85);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.conversationInputArea {
+  padding: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.conversationInput {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: rgba(255, 255, 255, 0.9);
+  background-color: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  outline: none;
+  resize: vertical;
+  min-height: 60px;
+  max-height: 120px;
+}
+
+.conversationInput:focus {
+  border-color: rgba(99, 102, 241, 0.4);
+  background-color: rgba(255, 255, 255, 0.06);
+}
+
+.conversationInput::placeholder {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.conversationSendBtn {
+  width: 100%;
+  height: 32px;
+  font-size: 12px;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-weight: 500;
+  color: #ffffff;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: opacity 0.15s ease, transform 0.1s ease;
+}
+
+.conversationSendBtn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.conversationSendBtn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.conversationSendBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ============================================================
+   Smart Diff 对话框样式
+   ============================================================ */
+
+.diffImpact {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.diffImpact_safe {
+  color: #4caf50;
+  background-color: rgba(76, 175, 80, 0.12);
+}
+
+.diffImpact_warning {
+  color: #ff9800;
+  background-color: rgba(255, 152, 0, 0.12);
+}
+
+.diffImpact_danger {
+  color: #f44336;
+  background-color: rgba(244, 67, 54, 0.12);
+}
+
+.diffChange {
+  padding: 8px;
+  background-color: rgba(255, 255, 255, 0.02);
+  border-radius: 4px;
+  border-left: 3px solid rgba(255, 255, 255, 0.1);
+}
+
+.diffWarning {
+  padding: 8px 10px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.8);
+  background-color: rgba(255, 152, 0, 0.08);
+  border-radius: 4px;
+  border-left: 3px solid rgba(255, 152, 0, 0.5);
+}
+
+/* ============================================================
+   Time Machine 对话框样式
+   ============================================================ */
+
+.timeMachineSelection {
+  padding: 10px;
+  margin-bottom: 15px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.8);
+  background-color: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+  border-left: 3px solid #2196f3;
+}
+
+.timeMachineSection {
+  margin-bottom: 20px;
+}
+
+.timeMachineSection h4 {
+  margin: 0 0 10px 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.timeMachineTimeline {
+  max-height: 200px;
+  overflow-y: auto;
+  border-left: 2px solid rgba(255, 255, 255, 0.1);
+  padding-left: 15px;
+}
+
+.timeMachineCommit {
+  display: flex;
+  gap: 10px;
+  padding: 8px 0;
+  font-size: 11px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.timeMachineCommit:last-child {
+  border-bottom: none;
+}
+
+.commitHash {
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  color: #4caf50;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.commitAuthor {
+  color: #2196f3;
+  flex-shrink: 0;
+  min-width: 80px;
+}
+
+.commitDate {
+  color: rgba(255, 255, 255, 0.5);
+  flex-shrink: 0;
+  min-width: 140px;
+}
+
+.commitMessage {
+  color: rgba(255, 255, 255, 0.8);
+  flex: 1;
+}
+
+.timeMachineStory {
+  padding: 12px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.85);
+  background-color: rgba(255, 255, 255, 0.02);
+  border-radius: 6px;
+  border-left: 3px solid #9c27b0;
+  white-space: pre-wrap;
+}
+
+.timeMachineKeyChanges {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.timeMachineChange {
+  display: flex;
+  gap: 12px;
+  padding: 8px 10px;
+  background-color: rgba(255, 255, 255, 0.02);
+  border-radius: 4px;
+  border-left: 3px solid #ff9800;
+}
+
+.changeDate {
+  font-size: 11px;
+  font-weight: 600;
+  color: #ff9800;
+  flex-shrink: 0;
+  min-width: 100px;
+}
+
+.changeDescription {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.8);
+  flex: 1;
+}
+
+/* ============================================================
+   Pattern Detector 面板样式
+   ============================================================ */
+
+.patternPanel {
+  flex: 0 0 350px;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid rgba(255, 255, 255, 0.06);
+  background-color: #0d0d0f;
+  overflow: hidden;
+}
+
+.patternHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 15px;
+  background-color: #111113;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+}
+
+.patternTitle {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  flex: 1;
+}
+
+.patternCount {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  background-color: rgba(255, 255, 255, 0.05);
+  padding: 2px 6px;
+  border-radius: 10px;
+}
+
+.patternClose {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s;
+}
+
+.patternClose:hover {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.patternSummary {
+  padding: 12px 15px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.8);
+  background-color: rgba(33, 150, 243, 0.08);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.patternList {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+}
+
+.patternItem {
+  background-color: rgba(255, 255, 255, 0.02);
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 12px;
+  margin-bottom: 10px;
+  transition: background-color 0.2s;
+}
+
+.patternItem:hover {
+  background-color: rgba(255, 255, 255, 0.04);
+}
+
+.patternItemHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.patternIcon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.patternName {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  flex: 1;
+}
+
+.patternImpact {
+  font-size: 9px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+}
+
+.patternImpactHigh {
+  color: #f44336;
+  background-color: rgba(244, 67, 54, 0.12);
+}
+
+.patternImpactMedium {
+  color: #ff9800;
+  background-color: rgba(255, 152, 0, 0.12);
+}
+
+.patternImpactLow {
+  color: #4caf50;
+  background-color: rgba(76, 175, 80, 0.12);
+}
+
+.patternDescription {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.7);
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+
+.patternSuggestion {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.8);
+  padding: 8px;
+  background-color: rgba(76, 175, 80, 0.08);
+  border-radius: 4px;
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+
+.patternLocations {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.patternLocation {
+  font-size: 10px;
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  color: #2196f3;
+  background-color: rgba(33, 150, 243, 0.12);
+  border: 1px solid rgba(33, 150, 243, 0.3);
+  border-radius: 4px;
+  padding: 2px 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.patternLocation:hover {
+  background-color: rgba(33, 150, 243, 0.2);
+  border-color: rgba(33, 150, 243, 0.5);
+}
+
+/* Pattern Detector 装饰器样式（Monaco 编辑器用） */
+:global(.pattern-glyph) {
+  width: 12px !important;
+  height: 12px !important;
+  margin-left: 2px !important;
+}
+
+:global(.pattern-duplicate) {
+  background-color: #9c27b0 !important;
+  border-radius: 50% !important;
+}
+
+:global(.pattern-similar-logic) {
+  background-color: #00bcd4 !important;
+  border-radius: 50% !important;
+}
+
+:global(.pattern-extract-candidate) {
+  background-color: #4caf50 !important;
+  border-radius: 50% !important;
+}
+
+:global(.pattern-design-pattern) {
+  background-color: #2196f3 !important;
+  border-radius: 50% !important;
+}
+
+:global(.pattern-line-duplicate) {
+  background-color: rgba(156, 39, 176, 0.08) !important;
+}
+
+:global(.pattern-line-similar-logic) {
+  background-color: rgba(0, 188, 212, 0.08) !important;
+}
+
+:global(.pattern-line-extract-candidate) {
+  background-color: rgba(76, 175, 80, 0.08) !important;
+}
+
+:global(.pattern-line-design-pattern) {
+  background-color: rgba(33, 150, 243, 0.08) !important;
 }

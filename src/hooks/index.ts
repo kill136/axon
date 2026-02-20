@@ -443,7 +443,13 @@ async function executeCommandHook(
     let stderr = '';
 
     // 替换命令中的环境变量
-    const command = replaceCommandVariables(hook.command, input);
+    let command = replaceCommandVariables(hook.command, input);
+
+    // Windows 兼容：.sh 文件在 Windows 上会被文本编辑器打开而非执行
+    // 自动添加 bash 前缀来正确执行
+    if (process.platform === 'win32' && /\.sh(?:\s|$|")/.test(command)) {
+      command = `bash ${command}`;
+    }
 
     // 准备环境变量
     const env = {

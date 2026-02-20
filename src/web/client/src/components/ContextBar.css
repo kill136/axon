@@ -81,17 +81,23 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  padding: 2px 10px;
+  background: rgba(99, 102, 241, 0.12);
+  border-radius: 10px;
+  border: 1px solid rgba(99, 102, 241, 0.2);
   animation: contextCompactPulse 1.5s ease-in-out infinite;
 }
 
 .context-bar__compact-icon {
   display: inline-flex;
+  font-size: 14px;
   animation: contextCompactSpin 1s linear infinite;
 }
 
 .context-bar__compact-text {
-  color: var(--accent-info);
+  color: var(--accent-info, #818cf8);
   font-size: 11px;
+  font-weight: 500;
 }
 
 /* 压缩完成消息 */

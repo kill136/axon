@@ -24,27 +24,43 @@ function resolveLocale(language?: string): string {
 }
 
 /**
- * 从系统环境检测语言
+ * 从系统环境和操作系统语言检测 locale
+ * 优先级：CLAUDE_CODE_LANG > LC_ALL > LC_MESSAGES > LANG > OS locale
  */
 function detectSystemLocale(): string {
+  // 1. 环境变量（Linux/macOS 常见，Windows 上用户也可手动设置）
   const envLang = process.env.CLAUDE_CODE_LANG
     || process.env.LC_ALL
     || process.env.LC_MESSAGES
     || process.env.LANG
     || '';
-  if (envLang.toLowerCase().startsWith('zh')) {
-    return 'zh';
+  if (envLang) {
+    return resolveLocale(envLang);
   }
+
+  // 2. 操作系统 locale（跨平台，Windows/macOS/Linux 均可用）
+  try {
+    const osLocale = Intl.DateTimeFormat().resolvedOptions().locale || '';
+    if (osLocale) {
+      return resolveLocale(osLocale);
+    }
+  } catch {
+    // Intl 不可用，忽略
+  }
+
   return 'en';
 }
 
 /**
  * 初始化 i18n
- * 优先级：language 参数 > 默认 en
- * 只有用户在 settings.json 中显式配置了 language 才会切换语言
+ * 优先级：settings.json language > 环境变量 > 操作系统语言 > en
  */
 export async function initI18n(language?: string): Promise<void> {
-  const locale = language ? resolveLocale(language) : 'en';
+  const locale = language ? resolveLocale(language) : detectSystemLocale();
+
+  // i18next 在初始化时通过 console.info 打印赞助广告，临时静默
+  const origInfo = console.info;
+  console.info = () => {};
 
   await i18next.init({
     lng: locale,
@@ -57,6 +73,8 @@ export async function initI18n(language?: string): Promise<void> {
       zh: { translation: zh },
     },
   });
+
+  console.info = origInfo;
 }
 
 /**

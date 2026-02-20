@@ -406,7 +406,8 @@ function AppContent({
               {visibleMessages.length === 0 && messages.length === 0 ? (
                 <WelcomeScreen onBlueprintCreated={onNavigateToBlueprint} />
               ) : (
-                visibleMessages.map(msg => (
+                <>
+                {visibleMessages.map(msg => (
                   <Message
                     key={msg.id}
                     message={msg}
@@ -420,7 +421,30 @@ function AppContent({
                     getRewindPreview={getRewindPreview}
                     canRewind={canRewind}
                   />
-                ))
+                ))}
+                {/* 上下文压缩进度指示器 — 在聊天区域底部显示醒目的压缩状态 */}
+                {compactState.phase === 'compacting' && (
+                  <div className="compact-progress-indicator">
+                    <div className="compact-progress-icon">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="4 14 10 14 10 20" />
+                        <polyline points="20 10 14 10 14 4" />
+                        <line x1="14" y1="10" x2="21" y2="3" />
+                        <line x1="3" y1="21" x2="10" y2="14" />
+                      </svg>
+                    </div>
+                    <div className="compact-progress-content">
+                      <span className="compact-progress-title">正在压缩上下文…</span>
+                      <span className="compact-progress-desc">AI 正在生成对话摘要以释放上下文窗口空间</span>
+                    </div>
+                    <div className="compact-progress-dots">
+                      <span className="compact-dot" />
+                      <span className="compact-dot" />
+                      <span className="compact-dot" />
+                    </div>
+                  </div>
+                )}
+              </>
               )}
             </div>
 
@@ -466,6 +490,10 @@ function AppContent({
               isPinned={chatInput.isPinned}
               onTogglePin={chatInput.togglePin}
               onVisibilityChange={setIsInputVisible}
+              voiceState={chatInput.voiceState}
+              isVoiceSupported={chatInput.isVoiceSupported}
+              voiceTranscript={chatInput.voiceTranscript}
+              onToggleVoice={chatInput.toggleVoice}
             />
           </div>
 

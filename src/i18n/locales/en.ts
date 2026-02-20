@@ -759,6 +759,114 @@ const en = {
   'stats.timeCompare': 'Your longest session is ~{{ratio}}x longer than {{name}}',
   'stats.in': 'In',
   'stats.out': 'Out',
+
+  // ============ UI Components (App.tsx) ============
+  'ui.shortcutHint': '? for shortcuts',
+  'ui.modeShortcut': 'shift+tab: mode',
+  'ui.escToInterrupt': 'esc to interrupt',
+  'ui.processing': 'Processing...',
+  'ui.ready': 'Ready',
+  'ui.undoRequested': 'Undo requested',
+  'ui.thinkingEnabled': 'Extended thinking enabled',
+  'ui.thinkingDisabled': 'Extended thinking disabled',
+  'ui.movingToBackground': 'Moving current task to background...',
+  'ui.requestInterrupted': 'Request interrupted by ESC',
+  'ui.claudeMdDeclined': 'CLAUDE.md import declined',
+  'ui.claudeMdSkipped': 'CLAUDE.md import skipped',
+  'ui.loginCancelled': 'Login cancelled',
+  'ui.oauthCompleted': 'OAuth login completed and client reinitialized',
+  'ui.oauthCompletedButFailed': 'OAuth login completed but client reinitialization failed',
+  'ui.oauthFailed': 'OAuth login failed',
+  'ui.clientReinitialized': 'Client reinitialized',
+  'ui.clientReinitFailed': 'Client reinitialization failed',
+  'ui.thinkingEnabledMsg': '🧠 Extended thinking enabled\n\nClaude will now use extended thinking for complex reasoning tasks.',
+  'ui.thinkingDisabledMsg': '💤 Extended thinking disabled\n\nClaude will respond without extended thinking.',
+  'ui.stashedPrompt': 'Stashed prompt: "{{prompt}}"',
+  'ui.stashedPromptHint': 'You can reference this later.',
+
+  // ============ Bash Tool ============
+  'bash.gitBashNotFound': 'Claude Code was unable to find CLAUDE_CODE_GIT_BASH_PATH path "{{path}}"',
+  'bash.gitCommitBlocked': '🛡️ Security Protection: Git commit blocked\n\nReason: {{message}}\n\nThis is to protect your system security. Please use safe commit messages without special characters like $(), `, ;, |, &&, ||, <, > etc.',
+  'bash.adminRequired': '🔐 Detected command requiring admin privileges: {{command}}',
+  'bash.adminReason': 'Reason: {{reason}}',
+  'bash.waitingConfirm': 'Waiting for user confirmation...',
+  'bash.userCancelled': 'User cancelled',
+  'bash.adminDenied': '❌ Admin permission denied: {{message}}',
+  'bash.adminDeniedHint': "This command requires admin privileges to execute. You can:\n1. Inform the user to run this command manually\n2. Try alternative approaches that don't require admin privileges",
+  'bash.adminExecOutput': '🔐 [Executed with admin privileges]',
+  'bash.adminExecFailed': 'Admin execution failed: {{error}}',
+
+  // ============ Browser Tool ============
+  'browser.stopped': 'Browser stopped successfully.',
+  'browser.notRunning': 'Browser is not running. Use "start" action to launch browser.',
+  'browser.missingUrl': 'Missing required parameter: url',
+  'browser.missingRef': 'Missing required parameter: ref',
+  'browser.missingRefValue': 'Missing required parameters: ref, value',
+  'browser.missingText': 'Missing required parameter: text',
+  'browser.missingKey': 'Missing required parameter: key',
+  'browser.missingIndex': 'Missing required parameter: index',
+  'browser.missingExpression': 'Missing required parameter: expression',
+  'browser.missingNameValue': 'Missing required parameters: name, value',
+  'browser.navigatedBack': 'Navigated back',
+  'browser.navigatedForward': 'Navigated forward',
+  'browser.pageReloaded': 'Page reloaded',
+  'browser.cookiesCleared': 'All cookies cleared',
+  'browser.screenshotCaptured': 'Screenshot captured successfully.',
+
+  // ============ Schedule Tool ============
+  'schedule.unknownAction': 'Unknown action: {{action}}. Use create, cancel, list, or watch.',
+  'schedule.nameRequired': 'Error: "name" is required for create action.',
+  'schedule.typeRequired': 'Error: "type" is required for create action. Use once, interval, or watch.',
+  'schedule.promptRequired': 'Error: "prompt" is required for create action.',
+  'schedule.duplicateTask': 'Error: Task "{{name}}" already exists (ID: {{id}}, created {{seconds}}s ago). A single create call is sufficient — do NOT call ScheduleTask again for the same task.',
+  'schedule.triggerAtRequired': 'Error: "triggerAt" is required for type=once.',
+  'schedule.timeParseError': 'Error parsing time: {{error}}',
+  'schedule.intervalRequired': 'Error: "intervalMs" must be a positive number for type=interval.',
+  'schedule.watchPathsRequired': 'Error: "watchPaths" is required for type=watch.',
+  'schedule.cancelIdRequired': 'Error: "taskId" is required for cancel action.',
+  'schedule.cancelled': 'Task {{taskId}} cancelled successfully.',
+  'schedule.notFound': 'Task {{taskId}} not found.',
+  'schedule.noTasks': 'No scheduled tasks.',
+  'schedule.watchIdRequired': 'Error: "taskId" is required for watch action.',
+  'schedule.noHistory': 'Task "{{name}}" has no execution history yet.',
+
+  // ============ CreateTool ============
+  'createTool.noSkills': 'No custom skills found. Use CreateTool to create your first skill.',
+  'createTool.nameRequiredDelete': 'Skill name is required for delete action.',
+  'createTool.nameRequired': 'Skill name is required.',
+  'createTool.descRequired': 'Skill description is required.',
+  'createTool.codeRequired': 'Skill executeCode is required.',
+  'createTool.invalidName': 'Skill name must start with a letter and contain only letters, numbers, hyphens, and underscores.',
+
+  // ============ TaskV2 ============
+  'taskV2.disabled': 'Task management system is disabled. Set CLAUDE_CODE_ENABLE_TASKS=true to enable.',
+  'taskV2.notFound': 'Task not found',
+  'taskV2.created': 'Created task #{{id}}: {{subject}}',
+  'taskV2.noTasks': 'No tasks found.',
+  'taskV2.invalidStatus': 'Invalid status "{{status}}". Valid statuses: {{valid}}',
+
+  // ============ Base Tool ============
+  'base.toolNotFound': "Tool '{{name}}' not found",
+  'base.permissionDenied': 'Permission denied by user',
+  'base.permissionDeniedByCheck': 'Permission denied by tool permission check',
+  'base.permissionRequired': 'Permission required but no permission handler available',
+
+  // ============ MemorySearch ============
+  'memorySearch.notInitialized': 'Long-term memory search is not initialized.',
+  'memorySearch.noResults': 'No matching memories found.',
+
+  // ============ SelfEvolve ============
+  'selfEvolve.noProjectRoot': 'Cannot determine project root directory.',
+
+  // ============ StructuredOutput ============
+  'structuredOutput.schemaError': 'Output does not match required schema: {{errors}}',
+  'structuredOutput.success': 'Structured output provided successfully',
+
+  // ============ Auth ============
+  'auth.envVar': 'Authenticated via environment variable',
+  'auth.apiKey': 'Authenticated with API key',
+  'auth.oauth': 'Authenticated with OAuth',
+  'auth.notAuthenticated': 'Not authenticated',
 } as const;
 
 export type LocaleKeys = keyof typeof en;

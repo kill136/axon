@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Discord Community
+    url: https://discord.gg/bNyJKk6PVZ
+    about: Ask questions and get help from the community
+  - name: Discussions
+    url: https://github.com/kill136/claude-code-open/discussions
+    about: General questions and ideas

@@ -6,6 +6,7 @@
 import { useState } from 'react';
 import { McpPanel } from './McpPanel';
 import { PluginsPanel } from './PluginsPanel';
+import { PromptSnippetsPanel } from './PromptSnippetsPanel';
 import {
   ApiConfigPanel,
   PermissionsConfigPanel,
@@ -35,6 +36,7 @@ type SettingsTab =
   | 'import-export'
   | 'mcp'
   | 'plugins'
+  | 'prompts'
   | 'about';
 
 // Tab id -> i18n key 映射
@@ -48,6 +50,7 @@ const TAB_KEYS: { id: SettingsTab; i18nKey: string; icon: string }[] = [
 { id: 'import-export', i18nKey: 'settings.tab.importExport', icon: '📦' },
   { id: 'mcp', i18nKey: 'settings.tab.mcp', icon: '🔌' },
   { id: 'plugins', i18nKey: 'settings.tab.plugins', icon: '🧩' },
+  { id: 'prompts', i18nKey: 'settings.tab.prompts', icon: '📝' },
   { id: 'about', i18nKey: 'settings.tab.about', icon: 'ℹ️' },
 ];
 
@@ -196,6 +199,9 @@ export function SettingsPanel({
 
       case 'plugins':
         return <PluginsPanel onClose={onClose} onSendMessage={onSendMessage} addMessageHandler={addMessageHandler} />;
+
+      case 'prompts':
+        return <PromptSnippetsPanel onClose={onClose} onSendMessage={onSendMessage} addMessageHandler={addMessageHandler} />;
 
       case 'about':
         return (

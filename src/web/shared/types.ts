@@ -89,6 +89,13 @@ export type ClientMessage =
   | { type: 'tool_list_get' }
   | { type: 'system_prompt_update'; payload: SystemPromptUpdatePayload }
   | { type: 'system_prompt_get' }
+  // 提示词片段管理
+  | { type: 'prompt_snippets_list' }
+  | { type: 'prompt_snippets_create'; payload: { name: string; content: string; description?: string; position?: 'prepend' | 'append'; tags?: string[]; enabled?: boolean; priority?: number } }
+  | { type: 'prompt_snippets_update'; payload: { id: string; name?: string; content?: string; description?: string; position?: 'prepend' | 'append'; tags?: string[]; enabled?: boolean; priority?: number } }
+  | { type: 'prompt_snippets_delete'; payload: { id: string } }
+  | { type: 'prompt_snippets_toggle'; payload: { id: string } }
+  | { type: 'prompt_snippets_reorder'; payload: { orders: Array<{ id: string; priority: number }> } }
   | { type: 'task_list'; payload?: TaskListRequestPayload }
   | { type: 'task_cancel'; payload: { taskId: string } }
   | { type: 'task_output'; payload: { taskId: string } }
@@ -223,6 +230,7 @@ export type ServerMessage =
   | { type: 'tool_list_response'; payload: ToolListPayload }
   | { type: 'tool_filter_updated'; payload: { success: boolean; config: ToolFilterConfig } }
   | { type: 'system_prompt_response'; payload: SystemPromptGetPayload }
+  | { type: 'prompt_snippets_response'; payload: { snippets: any[]; created?: any; updated?: any; toggled?: any; deleted?: string } }
   | { type: 'task_list_response'; payload: TaskListPayload }
   | { type: 'task_status'; payload: TaskStatusPayload }
   | { type: 'task_cancelled'; payload: { taskId: string; success: boolean } }

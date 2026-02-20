@@ -8,7 +8,6 @@
  * 4. 支持任务重试时清空旧日志
  */
 
-import Database from 'better-sqlite3';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -74,46 +73,46 @@ export interface LogQueryOptions {
 // ============================================================================
 
 export class SwarmLogDB {
-  private db: Database.Database;
+  private db!: import('better-sqlite3').Database;
   private static instance: SwarmLogDB | null = null;
   private cleanupInterval: NodeJS.Timeout | null = null;
   private retentionDays: number;
 
-  private constructor(dbPath?: string, retentionDays: number = 7) {
-    // 默认存储在 ~/.claude/swarm-logs.db
-    const defaultPath = path.join(os.homedir(), '.claude', 'swarm-logs.db');
-    const actualPath = dbPath || defaultPath;
-
-    // 确保目录存在
-    const dir = path.dirname(actualPath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-
-    this.db = new Database(actualPath);
+  private constructor(retentionDays: number = 7) {
     this.retentionDays = retentionDays;
-
-    // 启用 WAL 模式，提高并发性能
-    this.db.pragma('journal_mode = WAL');
-    this.db.pragma('synchronous = NORMAL');
-
-    // 初始化表结构
-    this.initTables();
-
-    // 启动定期清理（每小时检查一次）
-    this.startCleanupScheduler();
-
-    console.log(`[SwarmLogDB] 数据库初始化完成: ${actualPath}`);
   }
 
   /**
    * 获取单例实例
    */
-  static getInstance(dbPath?: string, retentionDays?: number): SwarmLogDB {
+  static async getInstance(dbPath?: string, retentionDays?: number): Promise<SwarmLogDB> {
     if (!SwarmLogDB.instance) {
-      SwarmLogDB.instance = new SwarmLogDB(dbPath, retentionDays);
+      SwarmLogDB.instance = await SwarmLogDB._create(dbPath, retentionDays);
     }
     return SwarmLogDB.instance;
+  }
+
+  private static async _create(dbPath?: string, retentionDays: number = 7): Promise<SwarmLogDB> {
+    const instance = new SwarmLogDB(retentionDays);
+    const mod = await import('better-sqlite3').catch(e => {
+      throw new Error(
+        'better-sqlite3 模块加载失败。请确保已安装编译依赖：\n' +
+        '  Ubuntu/Debian: apt-get install python3 make g++\n' +
+        '  然后重新运行: npm install better-sqlite3\n' +
+        '原始错误: ' + e.message
+      );
+    });
+    const defaultPath = path.join(os.homedir(), '.claude', 'swarm-logs.db');
+    const actualPath = dbPath || defaultPath;
+    const dir = path.dirname(actualPath);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    instance.db = new mod.default(actualPath);
+    instance.db.pragma('journal_mode = WAL');
+    instance.db.pragma('synchronous = NORMAL');
+    instance.initTables();
+    instance.startCleanupScheduler();
+    console.log(`[SwarmLogDB] 数据库初始化完成: ${actualPath}`);
+    return instance;
   }
 
   /**
@@ -634,7 +633,7 @@ export class SwarmLogDB {
 }
 
 // 导出单例获取函数
-export function getSwarmLogDB(): SwarmLogDB {
+export async function getSwarmLogDB(): Promise<SwarmLogDB> {
   return SwarmLogDB.getInstance();
 }
 

@@ -18,8 +18,14 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// 全局检查点管理器实例
-const checkpointManager = new CheckpointManager();
+// 全局检查点管理器实例（惰性初始化）
+let _cpManager: CheckpointManager | null = null;
+function getCheckpointManager(): CheckpointManager {
+  if (!_cpManager) {
+    _cpManager = new CheckpointManager();
+  }
+  return _cpManager;
+}
 
 export function setupApiRoutes(app: Express, conversationManager: ConversationManager): void {
   // ============ 蓝图系统 API ============
@@ -748,13 +754,13 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
       const sortBy = (req.query.sortBy as 'timestamp' | 'description') || 'timestamp';
       const sortOrder = (req.query.sortOrder as 'asc' | 'desc') || 'desc';
 
-      const checkpoints = checkpointManager.listCheckpoints({
+      const checkpoints = getCheckpointManager().listCheckpoints({
         limit,
         sortBy,
         sortOrder,
       });
 
-      const stats = checkpointManager.getStats();
+      const stats = getCheckpointManager().getStats();
 
       const checkpointSummaries = checkpoints.map(cp => ({
         id: cp.id,
@@ -797,7 +803,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
         return;
       }
 
-      const checkpoint = await checkpointManager.createCheckpoint(
+      const checkpoint = await getCheckpointManager().createCheckpoint(
         description,
         filePaths,
         workingDirectory,
@@ -826,7 +832,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
       const { id } = req.params;
       const { dryRun } = req.body;
 
-      const result = await checkpointManager.restoreCheckpoint(id, {
+      const result = await getCheckpointManager().restoreCheckpoint(id, {
         dryRun: dryRun || false,
         skipBackup: false,
       });
@@ -851,7 +857,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
   app.delete('/api/checkpoints/:id', (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      const success = checkpointManager.deleteCheckpoint(id);
+      const success = getCheckpointManager().deleteCheckpoint(id);
 
       if (success) {
         res.json({
@@ -879,7 +885,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
   app.get('/api/checkpoints/:id/diff', async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      const diffs = await checkpointManager.diffCheckpoint(id);
+      const diffs = await getCheckpointManager().diffCheckpoint(id);
 
       const stats = {
         added: diffs.filter(d => d.type === 'added').length,
@@ -905,7 +911,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
   // 清除所有检查点
   app.delete('/api/checkpoints', (req: Request, res: Response) => {
     try {
-      const count = checkpointManager.clearCheckpoints();
+      const count = getCheckpointManager().clearCheckpoints();
 
       res.json({
         success: true,

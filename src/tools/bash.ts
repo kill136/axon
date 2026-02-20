@@ -31,19 +31,18 @@ import type { BashInput, BashResult, ToolDefinition } from '../types/index.js';
 import { needsElevation, getElevationReason, executeElevated } from '../permissions/elevated-commands.js';
 import { truncateString } from '../utils/truncated-buffer.js';
 import { t } from '../i18n/index.js';
-import { openTerminalForTask } from '../utils/terminal-tab.js';
+
 
 // WebUI 模式下的 WebSocket 广播（可选依赖）
+// 仅在 WebUI 服务器模式下加载，通过 setBroadcastMessage() 注入
 let broadcastMessage: ((message: any) => void) | null = null;
-(async () => {
-  try {
-    // 动态导入，避免在 CLI 模式下加载 WebSocket 模块
-    const wsModule = await import('../web/server/websocket.js');
-    broadcastMessage = wsModule.broadcastMessage;
-  } catch {
-    // WebSocket 模块不可用（CLI 模式），忽略
-  }
-})();
+
+/**
+ * 设置 WebSocket 广播函数（由 WebUI 服务器启动时调用）
+ */
+export function setBroadcastMessage(fn: (message: any) => void): void {
+  broadcastMessage = fn;
+}
 
 const execAsync = promisify(exec);
 
@@ -133,7 +132,7 @@ function findGitBash(): string | null {
     if (fs.existsSync(envPath)) {
       return envPath;
     }
-    console.error(`Claude Code was unable to find CLAUDE_CODE_GIT_BASH_PATH path "${envPath}"`);
+    console.error(t('bash.gitBashNotFound', { path: envPath }));
     return null;
   }
 
@@ -296,6 +295,34 @@ function fixHeredocTemplateLiterals(command: string): string {
   }
 
   return result;
+}
+
+/**
+ * Windows 路径反斜杠修复
+ *
+ * 问题：AI 模型有时会在 bash 命令中使用 Windows 反斜杠路径（如 F:\dir\file），
+ * 但命令是通过 Git Bash 执行的。bash 会将 \d、\f、\t 等视为转义序列，
+ * 导致路径被损坏（反斜杠被吞掉），文件创建在错误位置。
+ *
+ * 修复：在 Windows + Git Bash 环境下，将命令中 Windows 风格的路径
+ * （驱动器号 + 反斜杠）转换为正斜杠。
+ *
+ * 匹配模式：[A-Z]:\ 开头的路径片段，将后续连续的 \ 都替换为 /
+ * 不处理引号内的 \n \t 等显式转义（这些是用户有意的）
+ */
+function fixWindowsPathsForBash(command: string): string {
+  if (!IS_WINDOWS) return command;
+
+  // 匹配 Windows 驱动器路径：X:\ 后面跟着路径字符（字母、数字、下划线、点、横杠和反斜杠）
+  // 例如：F:\claude-code-open\tests\file.ts → F:/claude-code-open/tests/file.ts
+  // 注意：不匹配空格，因为空格在 bash 中是分词符。
+  // 带空格的路径应该用引号括起来，引号内的反斜杠由 bash 自己处理。
+  return command.replace(
+    /([A-Za-z]):\\([\w.\-\\]+)/g,
+    (_match, drive: string, rest: string) => {
+      return drive + ':/' + rest.replace(/\\/g, '/');
+    }
+  );
 }
 
 /** 获取平台适配的终止信号类型 */
@@ -885,6 +912,10 @@ Important:
     const config = configManager.getAll();
     const modelId = config.model;
 
+    // Windows 路径修复：将命令中的 Windows 反斜杠路径转为正斜杠
+    // 防止 Git Bash 将 \t \n 等视为转义序列导致路径损坏
+    command = fixWindowsPathsForBash(command);
+
     // v2.1.32: 修复 heredoc 中 JavaScript 模板字面量导致的 "Bad substitution" 错误
     // 当 heredoc 使用未引用的定界符且内容包含 ${...} 时，bash 会尝试变量展开
     // 修复方法：自动将未引用的定界符加上引号（如 <<EOF 变为 <<'EOF'）
@@ -911,7 +942,7 @@ Important:
 
         return {
           success: false,
-          error: `🛡️ 安全防护：Git commit 已被阻止\n\n原因：${error.message}\n\n这是为了保护您的系统安全。请使用安全的提交消息，避免包含特殊字符如 $()、\`、;、|、&&、||、<、> 等。`,
+          error: t('bash.gitCommitBlocked', { message: error.message }),
           blocked: true,
         };
       }
@@ -950,9 +981,9 @@ Important:
     // 用户确认后才会执行，被拒绝则返回错误
     if (needsElevation(command)) {
       const reason = getElevationReason(command);
-      console.log(`\n🔐 检测到需要管理员权限的命令: ${command}`);
-      console.log(`   原因: ${reason}`);
-      console.log(`   等待用户确认...`);
+      console.log(`\n${t('bash.adminRequired', { command })}`);
+      console.log(`   ${t('bash.adminReason', { reason })}`);
+      console.log(`   ${t('bash.waitingConfirm')}`);
 
       // 这里会触发权限弹框（通过 hook 机制）
       // 用户可以选择: 批准(会触发 UAC/sudo)、拒绝、手动处理
@@ -965,11 +996,7 @@ Important:
       if (!hookResult.allowed) {
         return {
           success: false,
-          error: `❌ 管理员权限被拒绝: ${hookResult.message || '用户取消'}
-
-此命令需要管理员权限才能执行。你可以：
-1. 告知用户需要手动执行此命令
-2. 尝试其他不需要管理员权限的替代方案`,
+          error: t('bash.adminDenied', { message: hookResult.message || t('bash.userCancelled') }) + '\n\n' + t('bash.adminDeniedHint'),
         };
       }
 
@@ -996,7 +1023,7 @@ Important:
 
         return {
           success: elevatedResult.success,
-          output: `🔐 [以管理员权限执行]\n${output}`,
+          output: `${t('bash.adminExecOutput')}\n${output}`,
           stdout: elevatedResult.stdout,
           stderr: elevatedResult.stderr,
           exitCode: elevatedResult.exitCode,
@@ -1005,7 +1032,7 @@ Important:
       } catch (error) {
         return {
           success: false,
-          error: `管理员权限执行失败: ${error instanceof Error ? error.message : String(error)}`,
+          error: t('bash.adminExecFailed', { error: error instanceof Error ? error.message : String(error) }),
         };
       }
     }
@@ -1393,9 +1420,6 @@ Important:
       status: 'running',
     });
 
-    // 在新终端 tab 中打开输出查看器（如果终端支持）
-    const terminalOpened = openTerminalForTask({ taskId, command, logFile: outputFile });
-
     // WebUI: 向前端发送任务启动消息
     if (broadcastMessage) {
       broadcastMessage({
@@ -1409,12 +1433,11 @@ Important:
     }
 
     // 返回与官方一致的格式（使用 task_id）
-    const terminalNote = terminalOpened ? '\nOutput is streaming in a new terminal tab.' : '';
     const statusMsg = `<task-id>${taskId}</task-id>
 <task-type>bash</task-type>
 <output-file>${outputFile}</output-file>
 <status>running</status>
-<summary>Background command "${command.substring(0, 50)}${command.length > 50 ? '...' : ''}" started.${terminalNote}</summary>
+<summary>Background command "${command.substring(0, 50)}${command.length > 50 ? '...' : ''}" started.</summary>
 Use TaskOutput tool with task_id="${taskId}" to retrieve the output.`;
 
     return {

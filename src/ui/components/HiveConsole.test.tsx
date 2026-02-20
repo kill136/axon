@@ -36,7 +36,7 @@ describe('HiveConsole Component', () => {
       const output = lastFrame();
       
       expect(output).toBeDefined();
-      expect(output).toContain('蜂群控制台');
+      expect(output).toContain('Hive Console');
     });
 
     it('应该显示Queen Agent信息', () => {
@@ -168,7 +168,7 @@ describe('HiveConsole Component', () => {
       const { lastFrame } = render(<HiveConsole {...props} />);
       const output = lastFrame();
       
-      expect(output).toContain('时间线');
+      expect(output).toContain('Timeline');
       expect(output).toContain('开始执行Task 1');
       expect(output).toContain('完成Task 1');
     });
@@ -276,7 +276,7 @@ describe('HiveConsole Component', () => {
       
       // 紧凑模式应该显示基本信息
       expect(output).toBeDefined();
-      expect(output).toContain('蜂群控制台');
+      expect(output).toContain('Hive Console');
     });
 
     it('在compact模式下不应该显示详细的Worker面板', () => {

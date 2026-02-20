@@ -458,9 +458,8 @@ export function useMessageHandler({
           if (payload.sessionId) {
             sessionIdRef.current = payload.sessionId as string;
             // 不在此处调用 refreshSessions()：
-            // session_created 发出时 messageCount=0，服务端 handleSessionList 会过滤掉它，
-            // 导致 session_list_response 覆盖 useSessionManager 的乐观插入。
-            // 列表刷新由 message_complete 事件负责，届时 messageCount>0。
+            // 让 useSessionManager 的乐观插入先展示，避免刷新时数据不一致。
+            // 列表刷新由 message_complete 事件负责。
           }
           break;
 
@@ -481,13 +480,21 @@ export function useMessageHandler({
         case 'task_status': {
           if (!payload.taskId) break;
 
+          const taskToolUseId = payload.toolUseId as string | undefined;
+
+          // 查找匹配的 Task tool_use 块：优先用 toolUseId 精确匹配，fallback 到名称匹配
+          const findTaskTool = (content: ChatContent[]): ChatContent | undefined => {
+            if (taskToolUseId) {
+              return content.find(c => c.type === 'tool_use' && c.id === taskToolUseId);
+            }
+            return content.find(c => c.type === 'tool_use' && (c.name === 'Task' || c.name === 'ScheduleTask'));
+          };
+
           let targetMsg = currentMessageRef.current;
           let taskTool: ChatContent | undefined;
 
           if (targetMsg) {
-            taskTool = targetMsg.content.find(
-              c => c.type === 'tool_use' && (c.name === 'Task' || c.name === 'ScheduleTask')
-            );
+            taskTool = findTaskTool(targetMsg.content);
           }
 
           if (!taskTool) {
@@ -495,9 +502,7 @@ export function useMessageHandler({
               for (let i = prev.length - 1; i >= 0; i--) {
                 const msg = prev[i];
                 if (msg.role !== 'assistant') continue;
-                const found = msg.content.find(
-                  c => c.type === 'tool_use' && (c.name === 'Task' || c.name === 'ScheduleTask')
-                );
+                const found = findTaskTool(msg.content);
                 if (found && found.type === 'tool_use') {
                   found.toolUseCount = payload.toolUseCount as number | undefined;
                   found.lastToolInfo = payload.lastToolInfo as string | undefined;
@@ -540,14 +545,21 @@ export function useMessageHandler({
           if (!payload.taskId || !payload.toolCall) break;
 
           const tc = payload.toolCall as { id: string; name: string; input?: unknown; status: 'running' | 'completed' | 'error'; startTime: number };
+          const startToolUseId = payload.toolUseId as string | undefined;
+
+          // 查找匹配的 Task tool_use 块：优先用 toolUseId 精确匹配，fallback 到名称匹配
+          const findStartTaskTool = (content: ChatContent[]): ChatContent | undefined => {
+            if (startToolUseId) {
+              return content.find(c => c.type === 'tool_use' && c.id === startToolUseId);
+            }
+            return content.find(c => c.type === 'tool_use' && (c.name === 'Task' || c.name === 'ScheduleTask'));
+          };
 
           let targetMsg = currentMessageRef.current;
           let taskTool: ChatContent | undefined;
 
           if (targetMsg) {
-            taskTool = targetMsg.content.find(
-              c => c.type === 'tool_use' && (c.name === 'Task' || c.name === 'ScheduleTask')
-            );
+            taskTool = findStartTaskTool(targetMsg.content);
           }
 
           if (!taskTool) {
@@ -555,9 +567,7 @@ export function useMessageHandler({
               for (let i = prev.length - 1; i >= 0; i--) {
                 const msg = prev[i];
                 if (msg.role !== 'assistant') continue;
-                const found = msg.content.find(
-                  c => c.type === 'tool_use' && (c.name === 'Task' || c.name === 'ScheduleTask')
-                );
+                const found = findStartTaskTool(msg.content);
                 if (found && found.type === 'tool_use') {
                   if (!found.subagentToolCalls) {
                     found.subagentToolCalls = [];
@@ -600,14 +610,24 @@ export function useMessageHandler({
           if (!payload.taskId || !payload.toolCall) break;
 
           const tc = payload.toolCall as { id: string; name: string; status: 'running' | 'completed' | 'error'; result?: string; error?: string; endTime?: number };
+          const endToolUseId = payload.toolUseId as string | undefined;
+
+          // 查找匹配的 Task tool_use 块：优先用 toolUseId 精确匹配，fallback 到名称匹配
+          const findEndTaskTool = (content: ChatContent[]): ChatContent | undefined => {
+            if (endToolUseId) {
+              return content.find(c => c.type === 'tool_use' && c.id === endToolUseId);
+            }
+            // fallback: 找有 subagentToolCalls 的 Task 块
+            return content.find(
+              c => c.type === 'tool_use' && (c.name === 'Task' || c.name === 'ScheduleTask') && c.subagentToolCalls?.length
+            );
+          };
 
           let targetMsg = currentMessageRef.current;
           let taskTool: ChatContent | undefined;
 
           if (targetMsg) {
-            taskTool = targetMsg.content.find(
-              c => c.type === 'tool_use' && (c.name === 'Task' || c.name === 'ScheduleTask')
-            );
+            taskTool = findEndTaskTool(targetMsg.content);
           }
 
           if (!taskTool) {
@@ -615,9 +635,7 @@ export function useMessageHandler({
               for (let i = prev.length - 1; i >= 0; i--) {
                 const msg = prev[i];
                 if (msg.role !== 'assistant') continue;
-                const found = msg.content.find(
-                  c => c.type === 'tool_use' && (c.name === 'Task' || c.name === 'ScheduleTask') && c.subagentToolCalls?.length
-                );
+                const found = findEndTaskTool(msg.content);
                 if (found && found.type === 'tool_use' && found.subagentToolCalls) {
                   const existingCall = found.subagentToolCalls.find(call => call.id === tc.id);
                   if (existingCall) {

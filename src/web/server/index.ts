@@ -17,45 +17,16 @@ import { setupApiRoutes } from './routes/api.js';
 import { setupConfigApiRoutes } from './routes/config-api.js';
 import { initI18n } from '../../i18n/index.js';
 import { configManager } from '../../config/index.js';
+import {
+  requestEvolveRestart,
+  isEvolveEnabled,
+  triggerGracefulShutdown,
+  isEvolveRestartRequested,
+  registerGracefulShutdown,
+} from './evolve-state.js';
 
-// ============================================================================
-// Self-Evolve: 进化重启支持
-// AI 修改自身源码后，通过退出码 42 触发 --evolve 监控进程自动重启
-// ============================================================================
-let evolveRestartRequested = false;
-
-/** 存储 gracefulShutdown 闭包的引用，供 SelfEvolveTool 跨平台调用 */
-let gracefulShutdownFn: ((signal: string) => Promise<void>) | null = null;
-
-/**
- * 请求进化重启（由 SelfEvolveTool 调用）
- * 设置标志后，gracefulShutdown 会使用退出码 42 而非 0
- */
-export function requestEvolveRestart(): void {
-  evolveRestartRequested = true;
-}
-
-/**
- * 触发优雅关闭（由 SelfEvolveTool 调用）
- * Windows 上 SIGTERM 不会触发 process.on('SIGTERM') 监听器，
- * 所以需要这个函数来直接调用 gracefulShutdown 闭包。
- */
-export function triggerGracefulShutdown(): void {
-  if (gracefulShutdownFn) {
-    gracefulShutdownFn('SelfEvolve');
-  } else {
-    // 兜底：如果 gracefulShutdown 还没初始化，直接退出
-    console.error('[Evolve] gracefulShutdown not initialized, forcing exit(42)');
-    process.exit(42);
-  }
-}
-
-/**
- * 检查进化模式是否启用（通过 --evolve 标志启动时设置 CLAUDE_EVOLVE_ENABLED=1）
- */
-export function isEvolveEnabled(): boolean {
-  return process.env.CLAUDE_EVOLVE_ENABLED === '1';
-}
+// Re-export for backward compatibility
+export { requestEvolveRestart, isEvolveEnabled, triggerGracefulShutdown };
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -160,7 +131,6 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
 
   // 蓝图 API 路由（项目导航、符号浏览、调用图等）
   const blueprintRouter = await import('./routes/blueprint-api.js');
-  blueprintRouter.initBlueprintStore(cwd);
   app.use('/api/blueprint', blueprintRouter.default);
 
   // tRPC API 路由（端到端类型安全）
@@ -183,6 +153,10 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
   // AI Editor API 路由（代码导游、热力图、重构建议、AI气泡）
   const aiEditorRouter = await import('./routes/ai-editor.js');
   app.use('/api/ai-editor', aiEditorRouter.default);
+
+  // AutoComplete API 路由（路径补全、AI Inline 补全）
+  const autocompleteRouter = await import('./routes/autocomplete-api.js');
+  app.use('/api/ai-editor', autocompleteRouter.default);
 
   // 前端静态文件路径
   // 在生产环境下，代码在 dist/web/server，需要找到 src/web/client/dist
@@ -231,6 +205,25 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
 
   // 设置 WebSocket 处理
   setupWebSocket(wss, conversationManager);
+
+  // 注入 WebSocket 广播函数到 BashTool（仅 WebUI 模式需要）
+  try {
+    const { setBroadcastMessage } = await import('../../tools/bash.js');
+    const { broadcastMessage: wsBroadcast } = await import('./websocket.js');
+    setBroadcastMessage(wsBroadcast);
+  } catch {
+    // 忽略
+  }
+
+  // 延迟恢复未完成的蓝图执行（仅在 WebUI 服务器模式下）
+  setTimeout(async () => {
+    try {
+      const { executionManager } = await import('./routes/blueprint-api.js');
+      await executionManager.initRecovery();
+    } catch (error) {
+      console.error('[ExecutionManager] 初始化恢复失败:', error);
+    }
+  }, 1000);
 
   // 用于存储 ngrok 隧道 listener
   let ngrokListener: any = null;
@@ -336,8 +329,8 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
     }
 
     // 进化重启使用退出码 42，正常退出使用 0
-    const exitCode = evolveRestartRequested ? 42 : 0;
-    if (evolveRestartRequested) {
+    const exitCode = isEvolveRestartRequested() ? 42 : 0;
+    if (isEvolveRestartRequested()) {
       console.log('   [Evolve] 进化重启: 退出码 42');
     }
 
@@ -351,8 +344,8 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
     setTimeout(() => process.exit(exitCode), 3000);
   };
 
-  // 存储到模块级变量，供 SelfEvolveTool 通过 triggerGracefulShutdown() 调用
-  gracefulShutdownFn = gracefulShutdown;
+  // 注册到 evolve-state，供 SelfEvolveTool 通过 triggerGracefulShutdown() 调用
+  registerGracefulShutdown(gracefulShutdown);
 
   process.on('SIGINT', () => gracefulShutdown('SIGINT'));
   process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));

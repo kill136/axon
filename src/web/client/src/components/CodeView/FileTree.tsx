@@ -625,7 +625,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
       setError(null);
 
       try {
-        const response = await fetch(`/api/files/tree?path=${encodeURIComponent(projectPath)}&depth=3`);
+        const response = await fetch(`/api/files/tree?root=${encodeURIComponent(projectPath)}&path=.&depth=3`);
 
         if (!response.ok) {
           const errorData = await response.json();
@@ -663,7 +663,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`/api/files/tree?path=${encodeURIComponent(projectPath)}&depth=3`);
+      const response = await fetch(`/api/files/tree?root=${encodeURIComponent(projectPath)}&path=.&depth=3`);
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || '加载文件树失败');
@@ -699,7 +699,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
         const response = await fetch('/api/files/move', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sourcePath: clipboard.node.path, destPath }),
+          body: JSON.stringify({ sourcePath: clipboard.node.path, destPath, root: projectPath }),
         });
         
         if (!response.ok) {
@@ -713,7 +713,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
         const response = await fetch('/api/files/copy', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sourcePath: clipboard.node.path, destPath }),
+          body: JSON.stringify({ sourcePath: clipboard.node.path, destPath, root: projectPath }),
         });
         
         if (!response.ok) {
@@ -745,7 +745,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
       const response = await fetch('/api/files/delete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: node.path }),
+        body: JSON.stringify({ path: node.path, root: projectPath }),
       });
       
       if (response.ok) {
@@ -784,7 +784,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
       await fetch('/api/files/reveal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: node.path }),
+        body: JSON.stringify({ path: node.path, root: projectPath }),
       });
     } catch (err) {
       console.error('[FileTree] Reveal失败:', err);
@@ -805,7 +805,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
         const response = await fetch('/api/files/rename', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ oldPath, newPath }),
+          body: JSON.stringify({ oldPath, newPath, root: projectPath }),
         });
         
         if (!response.ok) {
@@ -819,7 +819,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
         const response = await fetch('/api/files/create', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ path: filePath, content: '' }),
+          body: JSON.stringify({ path: filePath, content: '', root: projectPath }),
         });
         
         if (!response.ok) {
@@ -833,7 +833,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
         const response = await fetch('/api/files/mkdir', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ path: dirPath }),
+          body: JSON.stringify({ path: dirPath, root: projectPath }),
         });
         
         if (!response.ok) {

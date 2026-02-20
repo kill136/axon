@@ -25,6 +25,8 @@ export default defineConfig({
       'src/permissions/rule-parser.test.ts',
       'src/permissions/tools.test.ts',
       'src/context/__tests__/enhanced.test.ts',
+      // 可视化渲染测试脚本（非 vitest 格式，无 describe/it）
+      'src/ui/components/StatusBar.test.tsx',
     ],
     coverage: {
       provider: 'v8',

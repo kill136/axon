@@ -7,6 +7,8 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { randomUUID } from 'crypto';
 import { ConversationManager } from './conversation.js';
 import { isSlashCommand, executeSlashCommand } from './slash-commands.js';
+import { initializeSkills, getAllSkills, findSkill } from '../../tools/skill.js';
+import { runWithCwd } from '../../core/cwd-context.js';
 import { apiManager } from './api-manager.js';
 import { authManager } from './auth-manager.js';
 import { oauthManager } from './oauth-manager.js';
@@ -14,6 +16,7 @@ import { CheckpointManager } from './checkpoint-manager.js';
 import type { ClientMessage, ServerMessage, Attachment, AgentDebugPayload } from '../shared/types.js';
 import { changeLocale, getCurrentLocale } from '../../i18n/index.js';
 import { configManager } from '../../config/index.js';
+import { promptSnippetsManager, type PromptSnippetCreateInput, type PromptSnippetUpdateInput } from './prompt-snippets.js';
 // 导入蓝图存储和执行管理器（用于 WebSocket 订阅）
 import { blueprintStore, executionEventEmitter, executionManager, activeWorkers } from './routes/blueprint-api.js';
 // v4.5: 导入 Worker 类型
@@ -191,8 +194,14 @@ interface ClientConnection {
   permissionMode?: string; // 客户端级别的权限模式（跨会话持久化）
 }
 
-// 全局检查点管理器实例
-const checkpointManager = new CheckpointManager();
+// 全局检查点管理器实例（惰性初始化，避免模块加载时的副作用日志）
+let _checkpointManager: CheckpointManager | null = null;
+function getCheckpointManager(): CheckpointManager {
+  if (!_checkpointManager) {
+    _checkpointManager = new CheckpointManager();
+  }
+  return _checkpointManager;
+}
 
 // 全局终端管理器实例
 const terminalManager = new TerminalManager();
@@ -265,20 +274,22 @@ export function setupWebSocket(
     const bufferKey = `${workerId}:${taskId}`;
     const buffer = streamBuffers.get(bufferKey);
     if (buffer && buffer.content.trim()) {
-      try {
-        const logDB = getSwarmLogDB();
-        logDB.insertStream({
-          id: `stream-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          blueprintId: buffer.blueprintId,
-          taskId: buffer.taskId,
-          workerId: buffer.workerId,
-          timestamp: buffer.timestamp,
-          streamType: buffer.type,
-          content: buffer.content,
-        });
-      } catch (err) {
-        console.error('[SwarmLogDB] 刷新缓冲区失败:', err);
-      }
+      (async () => {
+        try {
+          const logDB = await getSwarmLogDB();
+          logDB.insertStream({
+            id: `stream-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            blueprintId: buffer.blueprintId,
+            taskId: buffer.taskId,
+            workerId: buffer.workerId,
+            timestamp: buffer.timestamp,
+            streamType: buffer.type,
+            content: buffer.content,
+          });
+        } catch (err) {
+          console.error('[SwarmLogDB] 刷新缓冲区失败:', err);
+        }
+      })();
     }
     streamBuffers.delete(bufferKey);
   };
@@ -1202,22 +1213,24 @@ export function setupWebSocket(
 
     // v4.0: 存储到 SQLite
     if (data.taskId) {
-      try {
-        const logDB = getSwarmLogDB();
-        logDB.insertLog({
-          id: data.log.id,
-          blueprintId: data.blueprintId,
-          taskId: data.taskId,
-          workerId: data.workerId,
-          timestamp: data.log.timestamp,
-          level: data.log.level,
-          type: data.log.type,
-          message: data.log.message,
-          details: data.log.details,
-        });
-      } catch (err) {
-        console.error('[SwarmLogDB] 存储日志失败:', err);
-      }
+      (async () => {
+        try {
+          const logDB = await getSwarmLogDB();
+          logDB.insertLog({
+            id: data.log.id,
+            blueprintId: data.blueprintId,
+            taskId: data.taskId,
+            workerId: data.workerId,
+            timestamp: data.log.timestamp,
+            level: data.log.level,
+            type: data.log.type,
+            message: data.log.message,
+            details: data.log.details,
+          });
+        } catch (err) {
+          console.error('[SwarmLogDB] 存储日志失败:', err);
+        }
+      })();
     }
 
     broadcastToSubscribers(data.blueprintId, {
@@ -1279,8 +1292,9 @@ export function setupWebSocket(
     // v5.0: 存储所有 stream 类型到 SQLite（修复历史日志加载为空的问题）
     // thinking/text 使用缓冲区聚合后再写入，避免碎片化
     if (data.taskId) {
+      (async () => {
       try {
-        const logDB = getSwarmLogDB();
+        const logDB = await getSwarmLogDB();
         const bufferKey = `${data.workerId}:${data.taskId}`;
 
         if (data.streamType === 'thinking' || data.streamType === 'text') {
@@ -1344,6 +1358,7 @@ export function setupWebSocket(
       } catch (err) {
         console.error('[SwarmLogDB] 存储流失败:', err);
       }
+      })();
     }
 
     broadcastToSubscribers(data.blueprintId, {
@@ -1688,6 +1703,37 @@ export function setupWebSocket(
       } as any);
     }
 
+    // 推送已加载的 skills 列表（供前端斜杠命令补全使用）
+    // initializeSkills 内部使用 getCurrentCwd()，需要在 runWithCwd 上下文中执行
+    const skillsCwd = client.projectPath || process.cwd();
+    runWithCwd(skillsCwd, () => {
+      initializeSkills().then(() => {
+        const allSkills = getAllSkills().filter(s => s.userInvocable !== false);
+
+        // 按 base name（冒号后面的部分）去重，后出现的覆盖先出现的（高优先级 source 后加载）
+        // 推送给前端时用完整 skillName（供执行时精确匹配），但用 baseName 作为显示名
+        const deduped = new Map<string, { name: string; description: string; argumentHint?: string }>();
+        for (const s of allSkills) {
+          const baseName = s.skillName.includes(':') ? s.skillName.split(':').pop()! : s.skillName;
+          deduped.set(baseName, {
+            name: baseName,
+            description: s.description || '',
+            argumentHint: s.argumentHint,
+          });
+        }
+        const skills = Array.from(deduped.values());
+
+        if (skills.length > 0) {
+          sendMessage(ws, {
+            type: 'skills_list',
+            payload: { skills },
+          } as any);
+        }
+      }).catch((err) => {
+        console.error('[WebSocket] Skills 加载失败:', err);
+      });
+    });
+
     // 处理心跳
     ws.on('pong', () => {
       client.isAlive = true;
@@ -2011,6 +2057,31 @@ async function handleClientMessage(
 
     case 'system_prompt_get':
       await handleSystemPromptGet(client, conversationManager);
+      break;
+
+    // ========== 提示词片段管理 ==========
+    case 'prompt_snippets_list':
+      handlePromptSnippetsList(client);
+      break;
+
+    case 'prompt_snippets_create':
+      handlePromptSnippetsCreate(client, message.payload);
+      break;
+
+    case 'prompt_snippets_update':
+      handlePromptSnippetsUpdate(client, message.payload.id, message.payload);
+      break;
+
+    case 'prompt_snippets_delete':
+      handlePromptSnippetsDelete(client, message.payload.id);
+      break;
+
+    case 'prompt_snippets_toggle':
+      handlePromptSnippetsToggle(client, message.payload.id);
+      break;
+
+    case 'prompt_snippets_reorder':
+      handlePromptSnippetsReorder(client, message.payload.orders);
       break;
 
     case 'debug_get_messages':
@@ -2689,6 +2760,38 @@ async function handleSlashCommand(
       model,
     });
 
+    console.log(`[WebSocket] handleSlashCommand result: success=${result.success}, message=${result.message?.substring(0, 60)}`);
+
+    // 如果内置命令未找到，尝试作为 skill 执行
+    if (!result.success && result.message?.startsWith('未知命令:')) {
+      const trimmed = command.trim();
+      const parts = trimmed.slice(1).split(/\s+/);
+      const skillName = parts[0];
+      const skillArgs = parts.slice(1).join(' ');
+
+      console.log(`[WebSocket] 尝试查找 skill: ${skillName}`);
+
+      // 确保 skills 已加载（需要 runWithCwd 上下文，因为 initializeSkills 内部使用 getCurrentCwd）
+      const skill = await runWithCwd(cwd, async () => {
+        await initializeSkills();
+        return findSkill(skillName);
+      });
+
+      console.log(`[WebSocket] findSkill(${skillName}): ${skill ? 'FOUND' : 'NOT FOUND'}`);
+      if (skill) {
+        // 找到 skill，将其内容作为消息发送给 AI
+        let skillContent = skill.markdownContent;
+        // 替换 $ARGUMENTS 占位符
+        if (skillArgs) {
+          skillContent = skillContent.replace(/\$ARGUMENTS/g, skillArgs);
+        }
+        const messageContent = `[Skill: ${skill.skillName}]\n\n${skillContent}`;
+        console.log(`[WebSocket] 执行 skill ${skill.skillName}, 内容长度: ${skillContent.length}`);
+        await handleChatMessage(client, messageContent, undefined, conversationManager);
+        return;
+      }
+    }
+
     // /resume <id> 成功后需要切换会话
     if (result.data?.switchToSessionId) {
       await handleSessionSwitch(client, result.data.switchToSessionId, conversationManager);
@@ -2752,9 +2855,12 @@ async function handleSessionList(
       projectPath,
     });
 
-    // 官方规范：只显示有消息的会话（messageCount > 0）
-    // 会话只有在发送第一条消息后才会出现在列表中
-    const sessions = allSessions.filter(s => s.messageCount > 0).slice(0, limit);
+    // 对齐官方：过滤掉没有任何内容标识的空会话
+    // 官方 CLI 通过 firstPrompt/customTitle 判断，我们用 name/summary/messageCount
+    // 不再仅依赖 messageCount > 0，避免强制重启后 WAL 未 checkpoint 导致会话消失
+    const sessions = allSessions.filter(s =>
+      s.messageCount > 0 || s.name || s.summary
+    ).slice(0, limit);
 
     sendMessage(ws, {
       type: 'session_list_response',
@@ -3017,6 +3123,143 @@ async function handleSessionSwitch(
           } as any);
           console.log(`[WebSocket] 重发待处理用户问题: ${q.header} (${q.requestId})`);
         }
+      } else if (conversationManager.needsContinuation(sessionId)) {
+        // SelfEvolve 重启等场景：工具结果已保存但模型还没来得及继续回复
+        // 自动触发对话继续，让模型接着上次中断的地方回复
+        console.log(`[WebSocket] 会话 ${sessionId} 需要继续对话（最后一条是 tool_result），自动触发`);
+
+        const continueMessageId = randomUUID();
+        const chatSessionId = sessionId;
+        const getActiveWs = (): WebSocket => {
+          return conversationManager.getWebSocket(chatSessionId) || ws;
+        };
+
+        sendMessage(getActiveWs(), {
+          type: 'message_start',
+          payload: { messageId: continueMessageId, sessionId: chatSessionId },
+        });
+        sendMessage(getActiveWs(), {
+          type: 'status',
+          payload: { status: 'thinking', sessionId: chatSessionId },
+        });
+
+        // 异步触发，不阻塞 handleSessionSwitch 返回
+        conversationManager.continueAfterRestore(chatSessionId, {
+          onThinkingStart: () => {
+            sendMessage(getActiveWs(), {
+              type: 'thinking_start',
+              payload: { messageId: continueMessageId, sessionId: chatSessionId },
+            });
+          },
+          onThinkingDelta: (text: string) => {
+            sendMessage(getActiveWs(), {
+              type: 'thinking_delta',
+              payload: { messageId: continueMessageId, text, sessionId: chatSessionId },
+            });
+          },
+          onThinkingComplete: () => {
+            sendMessage(getActiveWs(), {
+              type: 'thinking_complete',
+              payload: { messageId: continueMessageId, sessionId: chatSessionId },
+            });
+          },
+          onTextDelta: (text: string) => {
+            sendMessage(getActiveWs(), {
+              type: 'text_delta',
+              payload: { messageId: continueMessageId, text, sessionId: chatSessionId },
+            });
+          },
+          onToolUseStart: (toolUseId: string, toolName: string, input: unknown) => {
+            sendMessage(getActiveWs(), {
+              type: 'tool_use_start',
+              payload: { messageId: continueMessageId, toolUseId, toolName, input, sessionId: chatSessionId },
+            });
+            sendMessage(getActiveWs(), {
+              type: 'status',
+              payload: { status: 'tool_executing', message: `执行 ${toolName}...`, sessionId: chatSessionId },
+            });
+          },
+          onToolUseDelta: (toolUseId: string, partialJson: string) => {
+            sendMessage(getActiveWs(), {
+              type: 'tool_use_delta',
+              payload: { toolUseId, partialJson, sessionId: chatSessionId },
+            });
+          },
+          onToolResult: (toolUseId: string, success: boolean, output?: string, error?: string, data?: unknown) => {
+            sendMessage(getActiveWs(), {
+              type: 'tool_result',
+              payload: {
+                toolUseId,
+                success,
+                output,
+                error,
+                data: data as any,
+                defaultCollapsed: true,
+                sessionId: chatSessionId,
+              },
+            });
+          },
+          onPermissionRequest: (request: any) => {
+            sendMessage(getActiveWs(), {
+              type: 'permission_request',
+              payload: { ...request, sessionId: chatSessionId },
+            });
+          },
+          onComplete: async (stopReason: string | null, usage?: { inputTokens: number; outputTokens: number }) => {
+            await conversationManager.persistSession(chatSessionId);
+            sendMessage(getActiveWs(), {
+              type: 'message_complete',
+              payload: {
+                messageId: continueMessageId,
+                stopReason: (stopReason || 'end_turn') as 'end_turn' | 'max_tokens' | 'stop_sequence' | 'tool_use',
+                usage,
+                sessionId: chatSessionId,
+              },
+            });
+            sendMessage(getActiveWs(), {
+              type: 'status',
+              payload: { status: 'idle', sessionId: chatSessionId },
+            });
+          },
+          onError: (error: Error) => {
+            sendMessage(getActiveWs(), {
+              type: 'error',
+              payload: { message: error.message, sessionId: chatSessionId },
+            });
+            sendMessage(getActiveWs(), {
+              type: 'status',
+              payload: { status: 'idle', sessionId: chatSessionId },
+            });
+          },
+          onContextUpdate: (usage: { usedTokens: number; maxTokens: number; percentage: number; model: string }) => {
+            sendMessage(getActiveWs(), {
+              type: 'context_update',
+              payload: { ...usage, sessionId: chatSessionId },
+            });
+          },
+          onContextCompact: (phase: 'start' | 'end' | 'error', info?: Record<string, any>) => {
+            sendMessage(getActiveWs(), {
+              type: 'context_compact',
+              payload: { phase, ...info, sessionId: chatSessionId },
+            });
+            if (phase === 'start') {
+              sendMessage(getActiveWs(), {
+                type: 'status',
+                payload: { status: 'thinking', message: '正在压缩上下文...', sessionId: chatSessionId },
+              });
+            }
+          },
+        }).catch((err) => {
+          console.error(`[WebSocket] 自动继续对话失败:`, err);
+          sendMessage(getActiveWs(), {
+            type: 'error',
+            payload: { message: '自动继续对话失败: ' + (err instanceof Error ? err.message : String(err)), sessionId: chatSessionId },
+          });
+          sendMessage(getActiveWs(), {
+            type: 'status',
+            payload: { status: 'idle', sessionId: chatSessionId },
+          });
+        });
       }
     } else {
       sendMessage(ws, {
@@ -3331,6 +3574,121 @@ async function handleSystemPromptGet(
       payload: {
         message: error instanceof Error ? error.message : '获取系统提示失败',
       },
+    });
+  }
+}
+
+
+// ============================================================================
+// Prompt Snippets 处理函数
+// ============================================================================
+
+function handlePromptSnippetsList(client: ClientConnection): void {
+  const { ws } = client;
+  try {
+    const snippets = promptSnippetsManager.list();
+    sendMessage(ws, {
+      type: 'prompt_snippets_response',
+      payload: { snippets },
+    });
+  } catch (error) {
+    sendMessage(ws, {
+      type: 'error',
+      payload: { message: error instanceof Error ? error.message : '获取提示词片段失败' },
+    });
+  }
+}
+
+function handlePromptSnippetsCreate(client: ClientConnection, input: PromptSnippetCreateInput): void {
+  const { ws } = client;
+  try {
+    const snippet = promptSnippetsManager.create(input);
+    sendMessage(ws, {
+      type: 'prompt_snippets_response',
+      payload: { snippets: promptSnippetsManager.list(), created: snippet },
+    });
+  } catch (error) {
+    sendMessage(ws, {
+      type: 'error',
+      payload: { message: error instanceof Error ? error.message : '创建提示词片段失败' },
+    });
+  }
+}
+
+function handlePromptSnippetsUpdate(client: ClientConnection, id: string, input: PromptSnippetUpdateInput): void {
+  const { ws } = client;
+  try {
+    const updated = promptSnippetsManager.update(id, input);
+    if (!updated) {
+      sendMessage(ws, { type: 'error', payload: { message: `片段 ${id} 不存在` } });
+      return;
+    }
+    sendMessage(ws, {
+      type: 'prompt_snippets_response',
+      payload: { snippets: promptSnippetsManager.list(), updated },
+    });
+  } catch (error) {
+    sendMessage(ws, {
+      type: 'error',
+      payload: { message: error instanceof Error ? error.message : '更新提示词片段失败' },
+    });
+  }
+}
+
+function handlePromptSnippetsDelete(client: ClientConnection, id: string): void {
+  const { ws } = client;
+  try {
+    const success = promptSnippetsManager.delete(id);
+    if (!success) {
+      sendMessage(ws, { type: 'error', payload: { message: `片段 ${id} 不存在` } });
+      return;
+    }
+    sendMessage(ws, {
+      type: 'prompt_snippets_response',
+      payload: { snippets: promptSnippetsManager.list(), deleted: id },
+    });
+  } catch (error) {
+    sendMessage(ws, {
+      type: 'error',
+      payload: { message: error instanceof Error ? error.message : '删除提示词片段失败' },
+    });
+  }
+}
+
+function handlePromptSnippetsToggle(client: ClientConnection, id: string): void {
+  const { ws } = client;
+  try {
+    const toggled = promptSnippetsManager.toggle(id);
+    if (!toggled) {
+      sendMessage(ws, { type: 'error', payload: { message: `片段 ${id} 不存在` } });
+      return;
+    }
+    sendMessage(ws, {
+      type: 'prompt_snippets_response',
+      payload: { snippets: promptSnippetsManager.list(), toggled },
+    });
+  } catch (error) {
+    sendMessage(ws, {
+      type: 'error',
+      payload: { message: error instanceof Error ? error.message : '切换提示词片段失败' },
+    });
+  }
+}
+
+function handlePromptSnippetsReorder(client: ClientConnection, orders: Array<{ id: string; priority: number }>): void {
+  const { ws } = client;
+  try {
+    for (const { id, priority } of orders) {
+      promptSnippetsManager.update(id, { priority });
+    }
+    sendMessage(ws, {
+      type: 'prompt_snippets_response',
+      payload: { snippets: promptSnippetsManager.list() },
+    });
+  } catch (error) {
+    sendMessage(ws, {
+      type: 'error',
+      payload: { message: error instanceof Error ? error.message : '排序提示词片段失败' },
     });
   }
 }
@@ -3940,7 +4298,7 @@ async function handleCheckpointCreate(
       return;
     }
 
-    const checkpoint = await checkpointManager.createCheckpoint(
+    const checkpoint = await getCheckpointManager().createCheckpoint(
       description,
       filePaths,
       workingDirectory,
@@ -3985,13 +4343,13 @@ async function handleCheckpointList(
     const sortBy = payload?.sortBy || 'timestamp';
     const sortOrder = payload?.sortOrder || 'desc';
 
-    const checkpoints = checkpointManager.listCheckpoints({
+    const checkpoints = getCheckpointManager().listCheckpoints({
       limit,
       sortBy,
       sortOrder,
     });
 
-    const stats = checkpointManager.getStats();
+    const stats = getCheckpointManager().getStats();
 
     const checkpointSummaries = checkpoints.map(cp => ({
       id: cp.id,
@@ -4049,7 +4407,7 @@ async function handleCheckpointRestore(
       return;
     }
 
-    const result = await checkpointManager.restoreCheckpoint(checkpointId, {
+    const result = await getCheckpointManager().restoreCheckpoint(checkpointId, {
       dryRun: dryRun || false,
       skipBackup: false,
     });
@@ -4101,7 +4459,7 @@ async function handleCheckpointDelete(
       return;
     }
 
-    const success = checkpointManager.deleteCheckpoint(checkpointId);
+    const success = getCheckpointManager().deleteCheckpoint(checkpointId);
 
     console.log(`[WebSocket] 删除检查点: ${checkpointId} (${success ? '成功' : '失败'})`);
 
@@ -4144,7 +4502,7 @@ async function handleCheckpointDiff(
       return;
     }
 
-    const diffs = await checkpointManager.diffCheckpoint(checkpointId);
+    const diffs = await getCheckpointManager().diffCheckpoint(checkpointId);
 
     const stats = {
       added: diffs.filter(d => d.type === 'added').length,
@@ -4187,7 +4545,7 @@ async function handleCheckpointClear(
   const { ws } = client;
 
   try {
-    const count = checkpointManager.clearCheckpoints();
+    const count = getCheckpointManager().clearCheckpoints();
 
     console.log(`[WebSocket] 清除所有检查点: ${count} 个`);
 

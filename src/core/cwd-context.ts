@@ -45,6 +45,11 @@ export function getCurrentCwd(): string {
     return stored;
   }
 
+  // 测试环境下回退到 process.cwd()，避免测试文件需要逐个包装 runWithCwd
+  if (process.env.VITEST || process.env.NODE_ENV === 'test') {
+    return process.cwd();
+  }
+
   throw new Error(
     'getCurrentCwd: 未在工作目录上下文中。\n' +
     '可能原因：\n' +

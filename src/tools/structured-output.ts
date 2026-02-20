@@ -14,6 +14,7 @@ import * as path from 'path';
 const Ajv = (AjvModule as any).default || AjvModule;
 import { BaseTool } from './base.js';
 import type { ToolResult, ToolDefinition } from '../types/index.js';
+import { t } from '../i18n/index.js';
 
 // 工具名称常量
 export const STRUCTURED_OUTPUT_TOOL_NAME = 'StructuredOutput';
@@ -115,7 +116,7 @@ export class StructuredOutputTool extends BaseTool<StructuredOutputInput> {
 
       return {
         success: false,
-        error: `Output does not match required schema: ${errors}`,
+        error: t('structuredOutput.schemaError', { errors }),
       };
     }
 
@@ -123,7 +124,7 @@ export class StructuredOutputTool extends BaseTool<StructuredOutputInput> {
     // 官方实现返回 { data: "...", structured_output: z }
     return {
       success: true,
-      output: 'Structured output provided successfully',
+      output: t('structuredOutput.success'),
       // 附加验证后的数据
       data: input,
     };

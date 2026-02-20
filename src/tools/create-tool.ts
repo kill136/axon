@@ -16,6 +16,7 @@
 import { BaseTool } from './base.js';
 import type { ToolDefinition, ToolResult } from '../types/index.js';
 import { clearSkillCache, initializeSkills } from './skill.js';
+import { t } from '../i18n/index.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -107,14 +108,14 @@ Available in executeCode: require (Node.js modules), process, Buffer, console, f
   private listSkills(): ToolResult {
     const dir = getUserSkillsDir();
     if (!fs.existsSync(dir)) {
-      return this.success('No custom skills found. Use CreateTool to create your first skill.');
+      return this.success(t('createTool.noSkills'));
     }
 
     const entries = fs.readdirSync(dir, { withFileTypes: true });
     const skillDirs = entries.filter(e => e.isDirectory());
 
     if (skillDirs.length === 0) {
-      return this.success('No custom skills found. Use CreateTool to create your first skill.');
+      return this.success(t('createTool.noSkills'));
     }
 
     const skills: string[] = [];
@@ -139,7 +140,7 @@ Available in executeCode: require (Node.js modules), process, Buffer, console, f
    */
   private deleteSkill(name: string): ToolResult {
     if (!name) {
-      return this.error('Skill name is required for delete action.');
+      return this.error(t('createTool.nameRequiredDelete'));
     }
 
     const dir = getUserSkillsDir();
@@ -169,13 +170,13 @@ Available in executeCode: require (Node.js modules), process, Buffer, console, f
     const { name, description, executeCode, inputSchema } = input;
 
     // 验证
-    if (!name) return this.error('Skill name is required.');
-    if (!description) return this.error('Skill description is required.');
-    if (!executeCode) return this.error('Skill executeCode is required.');
+    if (!name) return this.error(t('createTool.nameRequired'));
+    if (!description) return this.error(t('createTool.descRequired'));
+    if (!executeCode) return this.error(t('createTool.codeRequired'));
 
     // 名称格式验证（允许 kebab-case, camelCase, PascalCase, snake_case）
     if (!/^[A-Za-z][A-Za-z0-9_-]*$/.test(name)) {
-      return this.error('Skill name must start with a letter and contain only letters, numbers, hyphens, and underscores.');
+      return this.error(t('createTool.invalidName'));
     }
 
     // 构建 SKILL.md 内容

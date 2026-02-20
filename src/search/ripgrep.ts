@@ -108,7 +108,7 @@ export function getVendoredRgPath(): string | null {
  */
 export function getSystemRgPath(): string | null {
   try {
-    const result = execSync('which rg 2>/dev/null || where rg 2>nul', {
+    const result = execSync('which rg 2>/dev/null || where rg 2>/dev/null', {
       encoding: 'utf-8',
     });
     return result.trim().split('\n')[0];

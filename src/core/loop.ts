@@ -74,6 +74,7 @@ import { configManager } from '../config/index.js';
 import { accountUsageManager } from '../ratelimit/index.js';
 import { initNotebookManager, getNotebookManager } from '../memory/notebook.js';
 import { initMemorySearchManager, getMemorySearchManager } from '../memory/memory-search.js';
+import { estimateTokens } from '../utils/token-estimate.js';
 import {
   isSessionMemoryEnabled as checkSessionMemoryEnabled,
   SESSION_MEMORY_TEMPLATE,
@@ -373,17 +374,6 @@ function isEnvTrue(value: string | undefined): boolean {
   if (typeof value === 'boolean') return value;
   const normalized = value.toLowerCase().trim();
   return ['1', 'true', 'yes', 'on'].includes(normalized);
-}
-
-/**
- * 简单的 token 估算函数
- * 官方实现：使用字符数除以 4 作为近似值
- * 这个估算足够用于决策是否清理
- * @param content 文本内容
- * @returns 估算的 token 数
- */
-function estimateTokens(content: string): number {
-  return Math.ceil(content.length / 4);
 }
 
 /**
@@ -698,8 +688,22 @@ function calculateTotalTokens(messages: Message[]): number {
           // PDF 文档用固定常量，不能 JSON.stringify base64 数据（否则 1MB PDF 会估算出 ~340k tokens 直接触发 AutoCompact）
           // Anthropic API 对 PDF document block 的实际 token 消耗约 2000-8000/页，这里用固定常量粗略估算
           totalTokens += 4000;
-        } else if (block.type === 'tool_result' && 'content' in block && typeof block.content === 'string') {
-          totalTokens += estimateTokens(block.content);
+        } else if (block.type === 'tool_result' && 'content' in block) {
+          if (typeof block.content === 'string') {
+            totalTokens += estimateTokens(block.content);
+          } else if (Array.isArray(block.content)) {
+            // content 是数组（如 Browser screenshot 的 [TextBlock, ImageBlock]）
+            // 逐个 block 处理，避免 JSON.stringify base64 导致 token 估算膨胀
+            for (const item of block.content) {
+              if (item.type === 'image') {
+                totalTokens += 2000;
+              } else if (item.type === 'text' && typeof item.text === 'string') {
+                totalTokens += estimateTokens(item.text);
+              } else {
+                totalTokens += estimateTokens(JSON.stringify(item));
+              }
+            }
+          }
         } else {
           totalTokens += estimateTokens(JSON.stringify(block));
         }
@@ -834,6 +838,8 @@ export function generateSummaryPrompt(customInstructions?: string): string {
   let prompt = `Your task is to create a detailed summary of the conversation so far, paying close attention to the user's explicit requests and your previous actions.
 This summary should be thorough in capturing technical details, code patterns, and architectural decisions that would be essential for continuing development work without losing context.
 
+CRITICAL: If the conversation contains a previous summary (marked with <conversation-summary> tags or "Conversation Compacted" markers), you MUST incorporate ALL information from that previous summary into your new summary. Previous summaries contain essential context from earlier parts of the conversation that would otherwise be lost. Treat previous summary content with the same importance as direct conversation messages.
+
 Before providing your final summary, wrap your analysis in <analysis> tags to organize your thoughts and ensure you've covered all necessary points. In your analysis process:
 
 1. Chronologically analyze each message and section of the conversation. For each section thoroughly identify:
@@ -861,6 +867,7 @@ Your summary should include the following sections:
 8. Current Work: Describe in detail precisely what was being worked on immediately before this summary request, paying special attention to the most recent messages from both user and assistant. Include file names and code snippets where applicable.
 9. Optional Next Step: List the next step that you will take that is related to the most recent work you were doing. IMPORTANT: ensure that this step is DIRECTLY in line with the user's most recent explicit requests, and the task you were working on immediately before this summary request. If your last task was concluded, then only list next steps if they are explicitly in line with the users request. Do not start on tangential requests or really old requests that were already completed without confirming with the user first.
                        If there is a next step, include direct quotes from the most recent conversation showing exactly what task you were working on and where you left off. This should be verbatim to ensure there's no drift in task interpretation.
+10. Language: Write the summary in the same language as the majority of the conversation. If the conversation is primarily in Chinese, write the summary in Chinese (keep technical terms, file paths, and code in English). This avoids translation loss and preserves the original nuance of user requests and feedback.
 
 IMPORTANT: Do NOT use any tools. You MUST respond with ONLY the <summary>...</summary> block as your text output.`;
 
@@ -1144,7 +1151,9 @@ async function trySessionMemoryCompact(
   messages: Message[],
   agentId?: string,
   autoCompactThreshold?: number,
-  session?: Session
+  session?: Session,
+  projectPath?: string,
+  sessionId?: string
 ): Promise<{
   success: boolean;
   messages: Message[];
@@ -1168,8 +1177,21 @@ async function trySessionMemoryCompact(
   // 3. 获取最后一次压缩的UUID（从会话状态中读取）
   const lastCompactedUuid = getLastCompactedUuid(session);
 
-  // 4. 获取Session Memory模板
-  const template = getSessionMemoryTemplate();
+  // 4. 获取Session Memory内容（优先使用实际内容，fallback到模板）
+  let template: string | null = null;
+  if (projectPath && sessionId) {
+    const actualContent = readSessionMemory(projectPath, sessionId);
+    if (actualContent && actualContent.trim()) {
+      template = actualContent;
+      console.log(chalk.blue('[TJ1] 使用实际Session Memory内容进行压缩'));
+    }
+  }
+  if (!template) {
+    template = getSessionMemoryTemplate();
+    if (template) {
+      console.log(chalk.blue('[TJ1] 使用Session Memory模板（未找到实际内容）'));
+    }
+  }
   if (!template) {
     return null;
   }
@@ -1426,9 +1448,10 @@ async function autoCompact(
   console.log(chalk.yellow(`[AutoCompact] 超出: ${(currentTokens - threshold).toLocaleString()} tokens`));
 
   // 2. 优先尝试 TJ1 (Session Memory 压缩)
-  const tj1Result = await trySessionMemoryCompact(messages, undefined, threshold, session);
+  const tj1Result = await trySessionMemoryCompact(messages, undefined, threshold, session, session?.cwd, session?.sessionId);
   if (tj1Result && tj1Result.success) {
     console.log(chalk.green(`[AutoCompact] Session Memory压缩成功，节省 ${tj1Result.savedTokens.toLocaleString()} tokens`));
+    console.log(chalk.green(`[AutoCompact] 压缩比: ${tj1Result.preCompactTokenCount.toLocaleString()} → ${tj1Result.postCompactTokenCount.toLocaleString()} tokens (${Math.round(tj1Result.postCompactTokenCount / tj1Result.preCompactTokenCount * 100)}%)`));
     // 获取边界标记的 UUID（用于增量压缩）
     const boundaryUuid = tj1Result.boundaryMarker?.uuid;
     return { wasCompacted: true, messages: tj1Result.messages, boundaryUuid };
@@ -1438,6 +1461,7 @@ async function autoCompact(
   const nj1Result = await tryConversationSummary(messages, client);
   if (nj1Result && nj1Result.success) {
     console.log(chalk.green(`[AutoCompact] 对话摘要成功，节省 ${nj1Result.savedTokens.toLocaleString()} tokens`));
+    console.log(chalk.green(`[AutoCompact] 压缩比: ${nj1Result.preCompactTokenCount.toLocaleString()} → ${nj1Result.postCompactTokenCount.toLocaleString()} tokens (${Math.round(nj1Result.postCompactTokenCount / nj1Result.preCompactTokenCount * 100)}%)`));
     return { wasCompacted: true, messages: nj1Result.messages };
   }
 
@@ -1905,9 +1929,11 @@ export class ConversationLoop {
     const notebookMgr = initNotebookManager(effectiveWorkingDir);
     const notebookSummary = notebookMgr.getNotebookSummaryForPrompt();
 
-    // 初始化长期记忆搜索系统
+    // 初始化长期记忆搜索系统（异步，fire-and-forget）
     const projectHash = crypto.createHash('md5').update(effectiveWorkingDir).digest('hex').slice(0, 12);
-    initMemorySearchManager(effectiveWorkingDir, projectHash);
+    initMemorySearchManager(effectiveWorkingDir, projectHash).catch(err => {
+      console.warn('[MemorySearch] 初始化失败:', err);
+    });
 
     this.promptContext = {
       workingDir: effectiveWorkingDir,
@@ -3179,6 +3205,8 @@ ${currentProject || '(空)'}
 5. 如果有更新，返回完整的笔记本内容（不是增量，是完整替换）
 6. experience 不超过 4000 tokens，project 不超过 8000 tokens
 7. 保留原有内容，只追加或修改有变化的部分
+8. 特别关注用户纠正你的内容（如用户说"不对""错了""不是这样"等），这些纠正意味着你之前的理解有误，是最高优先级的记忆
+9. 特别注意提取决策链——即"尝试了A方案→发现问题→最终选择B方案"这种过程。记录最终决策及其原因，而不是中间的探索过程
 
 输出格式（严格遵守）：
 如果无需更新：
@@ -3194,7 +3222,8 @@ NO_UPDATE
 (完整的 project 笔记本内容)
 ===END_PROJECT===
 
-可以同时更新两个，也可以只更新一个。`;
+可以同时更新两个，也可以只更新一个。
+8. 在笔记本末尾维护一行统计："<!-- autoMemorize: 更新于 {YYYY-MM-DD}, 累计 N 次 -->"，每次更新时 N+1`;
 
       // 将对话消息精简为文本摘要（只取用户和助手的文本内容，忽略工具调用细节）
       const conversationSummary = messages
@@ -3202,12 +3231,12 @@ NO_UPDATE
         .map((m: Message) => {
           const role = m.role === 'user' ? '用户' : '助手';
           if (typeof m.content === 'string') {
-            return `${role}: ${m.content.substring(0, 500)}`;
+            return `${role}: ${m.content.substring(0, m.role === 'user' ? 1000 : 800)}`;
           }
           if (Array.isArray(m.content)) {
             const textBlocks = m.content
               .filter((b: any) => b.type === 'text' && b.text)
-              .map((b: any) => b.text.substring(0, 300));
+              .map((b: any) => b.text.substring(0, m.role === 'user' ? 1000 : 800));
             if (textBlocks.length > 0) {
               return `${role}: ${textBlocks.join(' ')}`;
             }
@@ -3223,7 +3252,7 @@ NO_UPDATE
       // 使用轻量模型调用 API
       const response = await this.client.createMessage(
         [
-          { role: 'user', content: `${extractionPrompt}\n\n===对话内容===\n${conversationSummary.substring(0, 8000)}` },
+          { role: 'user', content: `${extractionPrompt}\n\n===对话内容===\n${conversationSummary.substring(0, 20000)}` },
         ],
         [], // 不需要工具
         '你是记忆提取器，只输出指定格式，不输出其他内容。',
@@ -3260,8 +3289,9 @@ NO_UPDATE
       if (memSearchMgr) {
         memSearchMgr.markDirty();
       }
-    } catch {
-      // 静默失败，不影响退出流程
+    } catch (error) {
+      // 非静默失败，记录错误信息
+      console.error(chalk.gray('[AutoMemory] 记忆提取失败:', error instanceof Error ? error.message : String(error)));
     }
   }
 

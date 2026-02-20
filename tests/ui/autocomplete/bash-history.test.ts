@@ -10,8 +10,8 @@ import {
   addToHistory,
   clearBashHistory,
   getBashHistoryStats,
-} from '../../src/ui/autocomplete/bash-history.js';
-import { getHistoryManager } from '../../src/ui/utils/history-manager.js';
+} from '../../../src/ui/autocomplete/bash-history.js';
+import { getHistoryManager } from '../../../src/ui/utils/history-manager.js';
 
 describe('Bash History Autocomplete (v2.1.14)', () => {
   beforeEach(() => {
@@ -40,7 +40,7 @@ describe('Bash History Autocomplete (v2.1.14)', () => {
     });
 
     it('应该检测到  ! 前缀', () => {
-      const text = 'Bash("!git');
+      const text = `Bash("!git`;
       const result = isTypingBashHistory(text, text.length);
       expect(result).toBe(true);
     });
@@ -82,7 +82,7 @@ describe('Bash History Autocomplete (v2.1.14)', () => {
     });
 
     it('应该去除 ! 前缀', () => {
-      const text = 'Bash("!git';
+      const text = `Bash("!git`;
       const result = extractBashHistoryQuery(text, text.length);
       
       expect(result.query).toBe('git');
@@ -177,7 +177,7 @@ describe('Bash History Autocomplete (v2.1.14)', () => {
     it('不应该添加看起来敏感的命令', () => {
       const initialCount = getBashHistoryStats().total;
       
-      add ToHistory('export PASSWORD=secret');
+      addToHistory('export PASSWORD=secret');
       addToHistory('echo $API_KEY');
       
       expect(getBashHistoryStats().total).toBe(initialCount);

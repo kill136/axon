@@ -4,6 +4,7 @@
  */
 
 import type { ToolDefinition, ToolResult } from '../types/index.js';
+import { t } from '../i18n/index.js';
 import {
   withRetry,
   withTimeout,
@@ -231,7 +232,7 @@ export class ToolRegistry {
   ): Promise<ToolResult> {
     const tool = this.get(name);
     if (!tool) {
-      return { success: false, error: `Tool '${name}' not found` };
+      return { success: false, error: t('base.toolNotFound', { name }) };
     }
 
     try {
@@ -243,7 +244,7 @@ export class ToolRegistry {
         // 拒绝执行
         return {
           success: false,
-          error: permResult.message || 'Permission denied by tool permission check',
+          error: permResult.message || t('base.permissionDeniedByCheck'),
         };
       }
 
@@ -253,7 +254,7 @@ export class ToolRegistry {
         if (!onPermissionRequest) {
           return {
             success: false,
-            error: permResult.message || 'Permission required but no permission handler available',
+            error: permResult.message || t('base.permissionRequired'),
           };
         }
 
@@ -263,7 +264,7 @@ export class ToolRegistry {
         if (!approved) {
           return {
             success: false,
-            error: 'Permission denied by user',
+            error: t('base.permissionDenied'),
           };
         }
       }

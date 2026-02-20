@@ -273,7 +273,7 @@ function isOfficialFormat(data: any): data is OfficialSessionData {
 function convertOfficialToMetadata(data: OfficialSessionData): SessionMetadata {
   return {
     id: data.state.sessionId,
-    name: data.metadata?.firstPrompt?.substring(0, 50) || `会话 ${data.state.sessionId.substring(0, 8)}`,
+    name: (data.metadata as any)?.customTitle || data.metadata?.firstPrompt?.substring(0, 50) || undefined,
     createdAt: data.metadata?.created || data.state.startTime || Date.now(),
     updatedAt: data.metadata?.modified || data.state.startTime || Date.now(),
     workingDirectory: data.state.cwd || data.metadata?.projectPath || process.cwd(),
@@ -530,9 +530,17 @@ export function saveSession(session: SessionData, options?: { useResumedPath?: b
   session.metadata.updatedAt = Date.now();
   session.metadata.messageCount = session.messages.length;
 
-  fs.writeFileSync(sessionPath, JSON.stringify(session, null, 2), {
-    mode: 0o600,
-  });
+  // 原子写入：先写临时文件再 rename，防止进程中途被杀导致文件半写损坏
+  const content = JSON.stringify(session, null, 2);
+  const tmpFile = `${sessionPath}.tmp.${process.pid}.${Date.now()}`;
+  try {
+    fs.writeFileSync(tmpFile, content, { mode: 0o600, flush: true });
+    fs.renameSync(tmpFile, sessionPath);
+  } catch {
+    // rename 失败（Windows 上目标被锁定时可能发生），降级为直接写
+    try { fs.unlinkSync(tmpFile); } catch { /* ignore */ }
+    fs.writeFileSync(sessionPath, content, { mode: 0o600, flush: true });
+  }
 
   // 使该会话的缓存失效（因为文件已更新）
   invalidateSessionCache(sessionId);
@@ -688,6 +696,19 @@ export function listSessions(options: SessionListOptions = {}): SessionMetadata[
       }
 
       if (metadata) {
+        // WAL 感知：如果存在未 checkpoint 的 WAL 文件，修正 messageCount
+        // 强制重启时主 JSON 可能未更新，messageCount=0 会导致会话被列表过滤掉
+        const walPath = getWalPath(sessionId);
+        if (fs.existsSync(walPath)) {
+          const walEntries = walRead(sessionId);
+          const walMsgCount = walEntries.filter(e => e.op === 'msg').length;
+          const extraMsgs = walMsgCount - (metadata.messageCount || 0);
+          if (extraMsgs > 0) {
+            // 浅拷贝 metadata 避免污染缓存
+            metadata = { ...metadata, messageCount: (metadata.messageCount || 0) + extraMsgs };
+          }
+        }
+
         // 更新缓存（stat 已在前面获取）
         sessionMetadataCache.set(sessionId, {
           metadata,
@@ -1663,7 +1684,15 @@ export function cleanupSessions(options: {
           // 清除父会话引用而不是删除会话
           session.metadata.parentId = undefined;
           session.metadata.forkPoint = undefined;
-          fs.writeFileSync(sessionPath, JSON.stringify(session, null, 2));
+          const repairContent = JSON.stringify(session, null, 2);
+          const repairTmp = `${sessionPath}.tmp.${process.pid}.${Date.now()}`;
+          try {
+            fs.writeFileSync(repairTmp, repairContent, { flush: true });
+            fs.renameSync(repairTmp, sessionPath);
+          } catch {
+            try { fs.unlinkSync(repairTmp); } catch { /* ignore */ }
+            fs.writeFileSync(sessionPath, repairContent, { flush: true });
+          }
         }
       }
     } catch {
@@ -2131,9 +2160,30 @@ export class SessionManager {
   }
 }
 
-// 默认实例（从配置管理器读取配置）
-const config = configManager.getAll();
-export const sessionManager = new SessionManager(config.sessionManager || {});
+// 默认实例（懒加载，避免模块级副作用导致测试环境崩溃）
+let _sessionManager: SessionManager | null = null;
+export function getSessionManagerInstance(): SessionManager {
+  if (!_sessionManager) {
+    const config = configManager.getAll();
+    _sessionManager = new SessionManager(config.sessionManager || {});
+  }
+  return _sessionManager;
+}
+// 保持向后兼容的导出（通过 getter 延迟初始化）
+export const sessionManager: SessionManager = new Proxy({} as SessionManager, {
+  get(_target, prop, receiver) {
+    const instance = getSessionManagerInstance();
+    const value = Reflect.get(instance, prop, instance);
+    if (typeof value === 'function') {
+      return value.bind(instance);
+    }
+    return value;
+  },
+  set(_target, prop, value) {
+    const instance = getSessionManagerInstance();
+    return Reflect.set(instance, prop, value);
+  },
+});
 
 // 导出增强的列表功能
 export {

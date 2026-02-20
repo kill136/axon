@@ -28,6 +28,7 @@ import { startOAuthLogin } from '../auth/index.js';
 import { thinkingManager } from '../models/thinking.js';
 import type { TodoItem } from '../types/index.js';
 import { v4 as uuidv4 } from 'uuid';
+import { t } from '../i18n/index.js';
 
 import {
   createBackgroundTask,
@@ -392,12 +393,12 @@ export const App: React.FC<AppProps> = ({
     onStashPrompt: (prompt) => {
       setStashedPrompt(prompt);
       if (prompt) {
-        addActivity(`Stashed prompt: ${prompt.slice(0, 30)}...`);
-        addMessage('assistant', `Prompt stashed: "${prompt.slice(0, 50)}${prompt.length > 50 ? '...' : ''}"\n\nYou can reference this later.`);
+        addActivity(t('ui.stashedPrompt', { prompt: prompt.slice(0, 30) + (prompt.length > 30 ? '...' : '') }));
+        addMessage('assistant', t('ui.stashedPrompt', { prompt: prompt.slice(0, 50) + (prompt.length > 50 ? '...' : '') }) + '\n\n' + t('ui.stashedPromptHint'));
       }
     },
     onUndo: () => {
-      addActivity('Undo requested');
+      addActivity(t('ui.undoRequested'));
       // Note: Undo is handled within Input component for Vim mode
     },
     onThinkingToggle: () => {
@@ -405,20 +406,20 @@ export const App: React.FC<AppProps> = ({
       if (newState) {
         thinkingManager.enable();
         setThinkingEnabled(true);
-        addActivity('Extended thinking enabled');
-        addMessage('assistant', '🧠 Extended thinking enabled\n\nClaude will now use extended thinking for complex reasoning tasks.');
+        addActivity(t('ui.thinkingEnabled'));
+        addMessage('assistant', t('ui.thinkingEnabledMsg'));
       } else {
         thinkingManager.disable();
         setThinkingEnabled(false);
-        addActivity('Extended thinking disabled');
-        addMessage('assistant', '💤 Extended thinking disabled\n\nClaude will respond without extended thinking.');
+        addActivity(t('ui.thinkingDisabled'));
+        addMessage('assistant', t('ui.thinkingDisabledMsg'));
       }
     },
     onBackgroundTask: () => {
       if (isProcessing) {
         // 如果有任务正在运行，设置标志将其转到后台
         setShouldMoveToBackground(true);
-        addActivity('Moving current task to background...');
+        addActivity(t('ui.movingToBackground'));
       } else {
         // 如果没有正在运行的任务，切换后台面板显示
         setShowBackgroundPanel((v) => !v);
@@ -465,7 +466,7 @@ export const App: React.FC<AppProps> = ({
             isStreaming: false,
           },
         ]);
-        addActivity('Request interrupted by ESC');
+        addActivity(t('ui.requestInterrupted'));
         return;
       }
       // 2. 关闭弹窗
@@ -539,7 +540,7 @@ export const App: React.FC<AppProps> = ({
       addMessage('assistant', `Imported ${result.approvedFiles.length} CLAUDE.md file(s).\n\nProject instructions have been loaded.`);
       addActivity(`Imported ${result.approvedFiles.length} CLAUDE.md files`);
     } else {
-      addActivity('CLAUDE.md import declined');
+      addActivity(t('ui.claudeMdDeclined'));
     }
   }, [claudeMdImport, addMessage, addActivity]);
 
@@ -547,7 +548,7 @@ export const App: React.FC<AppProps> = ({
   const handleClaudeMdCancel = useCallback(() => {
     setShowClaudeMdDialog(false);
     claudeMdImport.skipApproval();
-    addActivity('CLAUDE.md import skipped');
+    addActivity(t('ui.claudeMdSkipped'));
   }, [claudeMdImport, addActivity]);
 
   // 检查是否需要显示 CLAUDE.md 导入对话框
@@ -602,7 +603,7 @@ export const App: React.FC<AppProps> = ({
     setLoginPreselect(null);
 
     if (method === 'exit') {
-      addActivity('Login cancelled');
+      addActivity(t('ui.loginCancelled'));
       return;
     }
 
@@ -626,15 +627,15 @@ export const App: React.FC<AppProps> = ({
         const reinitSuccess = loop.reinitializeClient();
         if (reinitSuccess) {
           addMessage('assistant', `✅ Login successful!\n\nYou are now authenticated with ${isClaudeAi ? 'Claude.ai' : 'Anthropic Console'}.\n\nClient has been reinitialized with new credentials. You can now start chatting!`);
-          addActivity('OAuth login completed and client reinitialized');
+          addActivity(t('ui.oauthCompleted'));
         } else {
           addMessage('assistant', `✅ Login successful!\n\nYou are now authenticated with ${isClaudeAi ? 'Claude.ai' : 'Anthropic Console'}.\n\n⚠️ Note: Could not reinitialize client. Please restart the application.`);
-          addActivity('OAuth login completed but client reinitialization failed');
+          addActivity(t('ui.oauthCompletedButFailed'));
         }
       }
     } catch (error) {
       addMessage('assistant', `❌ Login failed: ${error instanceof Error ? error.message : String(error)}\n\nPlease try again or use /login --api-key to set up an API key.`);
-      addActivity('OAuth login failed');
+      addActivity(t('ui.oauthFailed'));
     } finally {
       // OAuth流程结束 - 恢复stdin状态并清屏
       // readline会把stdin设置为line mode，需要恢复raw mode让Ink正常工作
@@ -706,10 +707,10 @@ export const App: React.FC<AppProps> = ({
         const reinitSuccess = loop.reinitializeClient();
         if (reinitSuccess) {
           addMessage('assistant', '\n�?Client reinitialized with new credentials. You can now start chatting!');
-          addActivity('Client reinitialized');
+          addActivity(t('ui.clientReinitialized'));
         } else {
           addMessage('assistant', '\n⚠️ Could not reinitialize client. Please restart the application.');
-          addActivity('Client reinitialization failed');
+          addActivity(t('ui.clientReinitFailed'));
         }
       } else if (result.action === 'switchModel' && result.data?.model) {
         // v2.1.30: /model 立即切换模型
@@ -1308,24 +1309,24 @@ export const App: React.FC<AppProps> = ({
         <Box justifyContent="space-between" paddingX={1} marginTop={1}>
           <Box>
             <Text color="gray" dimColor>
-              ? for shortcuts
+              {t('ui.shortcutHint')}
             </Text>
             {/* Shift+Tab 快捷键提示 - 官方 v2.1.2 */}
             <Text color="gray" dimColor> · </Text>
             <Text color="cyan" dimColor>
-              shift+tab: mode
+              {t('ui.modeShortcut')}
             </Text>
           </Box>
           <Box>
             {/* 当正在处理时显示 esc to interrupt */}
             {isProcessing && (
               <Text color="yellow" bold>
-                esc to interrupt
+                {t('ui.escToInterrupt')}
               </Text>
             )}
             {isProcessing && <Text color="gray" dimColor> · </Text>}
             <Text color="gray" dimColor>
-              {isProcessing ? 'Processing...' : 'Ready'}
+              {isProcessing ? t('ui.processing') : t('ui.ready')}
             </Text>
           </Box>
         </Box>

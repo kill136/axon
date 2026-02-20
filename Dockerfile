@@ -23,9 +23,15 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm config set registry https://registry.npmmirror.com && npm install
 
-# 复制源码并编译
+# 复制源码并编译后端
 COPY . .
 RUN npm run build
+
+# 前端构建
+RUN cd src/web/client && \
+    npm config set registry https://registry.npmmirror.com && \
+    npm install && \
+    npm run build
 
 # ============================================
 # Stage 2: Production (with Self-Evolve support)
@@ -38,9 +44,10 @@ RUN sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debia
     sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list 2>/dev/null; \
     true
 
-# 运行时依赖 + Chromium 系统依赖
+# 运行时依赖 + Chromium 系统依赖 + curl（用于健康检查）
 RUN apt-get update && apt-get install -y --fix-missing \
     git \
+    curl \
     # Chromium 运行时依赖
     libnss3 libnspr4 libdbus-1-3 libatk1.0-0 libatk-bridge2.0-0 \
     libcups2 libdrm2 libxkbcommon0 libatspi2.0-0 libxcomposite1 \
@@ -52,6 +59,12 @@ RUN apt-get update && apt-get install -y --fix-missing \
 
 WORKDIR /app
 
+# 安装 playwright-cli 并下载 Chromium（放在 COPY 源码之前，利用 Docker 层缓存）
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN npm config set registry https://registry.npmmirror.com && \
+    npm install -g @playwright/cli@latest && \
+    npx playwright install chromium
+
 # 复制编译产物 + 完整 node_modules（含 tsx、typescript）
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
@@ -59,14 +72,13 @@ COPY --from=builder /app/package.json ./
 
 # 自进化模式需要：源码 + tsconfig（tsx 直接运行 .ts，tsc --noEmit 做编译检查）
 COPY --from=builder /app/src ./src
+
+# 复制前端构建产物
+COPY --from=builder /app/src/web/client/dist ./src/web/client/dist
+
 COPY --from=builder /app/tsconfig.json ./
 
 COPY .claude/skills /app/.claude/skills
-
-# 安装 playwright-cli 并下载 Chromium
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-RUN npm install -g @playwright/cli@latest \
-    && npx playwright install chromium
 
 # 创建 .claude 目录（会被 volume 覆盖，但保底存在）
 RUN mkdir -p /root/.claude /app/.claude/skills/playwright-cli
@@ -78,5 +90,9 @@ RUN chmod +x /app/docker-entrypoint.sh
 # 工作目录映射点
 RUN mkdir -p /workspace
 WORKDIR /workspace
+
+# 健康检查
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+    CMD curl -f http://localhost:3456/api/health || exit 1
 
 ENTRYPOINT ["/app/docker-entrypoint.sh"]

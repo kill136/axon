@@ -37,7 +37,6 @@ export interface FileContext {
   encoding?: string;
   metadata?: Record<string, any>;
 }
-
 /**
  * 工具执行结果
  */

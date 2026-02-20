@@ -11,6 +11,7 @@ export {
   PERMISSION_MODES,
   SECURITY_RULES,
   EXECUTING_WITH_CARE,
+  PROACTIVE_SKILL_CREATION,
   getSystemSection,
   getCodingGuidelines,
   getToolGuidelines,
@@ -22,7 +23,6 @@ export {
   getEnvironmentInfo,
 } from './templates.js';
 export { PromptCache, promptCache } from './cache.js';
-export { PromptPreview, promptPreview } from './preview.js';
 export type {
   PromptContext,
   Attachment,
@@ -30,10 +30,3 @@ export type {
   SystemPromptOptions,
   PromptHashInfo,
 } from './types.js';
-export type {
-  PreviewOptions,
-  PromptSection,
-  AnalysisResult,
-  DiffResult,
-  DiffLine,
-} from './preview.js';

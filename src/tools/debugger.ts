@@ -1,6 +1,7 @@
 import { BaseTool } from './base.js';
 import type { ToolResult, ToolDefinition } from '../types/index.js';
 import type { DebuggerInput } from '../debugger/types.js';
+import { fromMsysPath } from '../utils/platform.js';
 
 export class DebuggerTool extends BaseTool<DebuggerInput, ToolResult> {
   name = 'Debugger';
@@ -151,6 +152,11 @@ SUPPORTED RUNTIMES:
   }
 
   async execute(input: DebuggerInput): Promise<ToolResult> {
+    // 转换 MSYS 路径格式
+    if (input.program) input = { ...input, program: fromMsysPath(input.program) };
+    if (input.file) input = { ...input, file: fromMsysPath(input.file) };
+    if (input.cwd) input = { ...input, cwd: fromMsysPath(input.cwd) };
+
     try {
       const { debugManager } = await import('../debugger/index.js');
       const timeout = input.timeout || 60000;

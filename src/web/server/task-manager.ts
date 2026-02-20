@@ -56,6 +56,8 @@ export interface TaskInfo {
   };
   workingDirectory?: string;
   metadata?: Record<string, any>;
+  /** 对应的 Claude API tool_use block ID，用于前端精确匹配 */
+  toolUseId?: string;
   /** 子 agent 执行的工具调用列表 */
   toolCalls?: SubagentToolCall[];
   /** 工具调用计数 */
@@ -175,6 +177,7 @@ export class TaskManager {
           type: 'task_status',
           payload: {
             taskId: task.id,
+            toolUseId: task.toolUseId,
             status: task.status,
             result: task.result,
             error: task.error,
@@ -192,13 +195,14 @@ export class TaskManager {
   /**
    * 发送子 agent 工具开始事件
    */
-  private sendSubagentToolStart(taskId: string, toolCall: SubagentToolCall): void {
+  private sendSubagentToolStart(taskId: string, toolCall: SubagentToolCall, toolUseId?: string): void {
     if (this.ws && this.ws.readyState === 1) {
       try {
         this.ws.send(JSON.stringify({
           type: 'subagent_tool_start',
           payload: {
             taskId,
+            toolUseId,
             toolCall: {
               id: toolCall.id,
               name: toolCall.name,
@@ -217,13 +221,14 @@ export class TaskManager {
   /**
    * 发送子 agent 工具结束事件
    */
-  private sendSubagentToolEnd(taskId: string, toolCall: SubagentToolCall): void {
+  private sendSubagentToolEnd(taskId: string, toolCall: SubagentToolCall, toolUseId?: string): void {
     if (this.ws && this.ws.readyState === 1) {
       try {
         this.ws.send(JSON.stringify({
           type: 'subagent_tool_end',
           payload: {
             taskId,
+            toolUseId,
             toolCall: {
               id: toolCall.id,
               name: toolCall.name,
@@ -254,6 +259,8 @@ export class TaskManager {
       workingDirectory?: string;
       /** 主 agent 的认证信息，传递给子 agent 复用 */
       clientConfig?: { apiKey?: string; authToken?: string; baseUrl?: string };
+      /** 对应的 Claude API tool_use block ID，用于前端精确匹配多个 Task */
+      toolUseId?: string;
     }
   ): Promise<string> {
     // 验证代理类型
@@ -277,6 +284,7 @@ export class TaskManager {
       startTime: new Date(),
       workingDirectory: options?.workingDirectory || process.cwd(),
       metadata: {},
+      toolUseId: options?.toolUseId,
     };
 
     // 构建初始消息
@@ -507,7 +515,7 @@ export class TaskManager {
               console.log(`[SubAgent:${task.agentType}] 🔧 Tool #${toolCallCounter}: ${event.toolName}${inputPreview ? ` | Input: ${inputPreview}${inputPreview.length >= 200 ? '...' : ''}` : ''}`);
 
               // 推送到前端
-              this.sendSubagentToolStart(task.id, toolCall);
+              this.sendSubagentToolStart(task.id, toolCall, task.toolUseId);
 
               // 更新任务状态（带进度信息）
               this.sendTaskStatus(task);
@@ -536,7 +544,7 @@ export class TaskManager {
                 activeToolCalls.delete(event.toolName);
 
                 // 推送到前端
-                this.sendSubagentToolEnd(task.id, toolCall);
+                this.sendSubagentToolEnd(task.id, toolCall, task.toolUseId);
               }
             }
             break;
@@ -684,6 +692,8 @@ export class TaskManager {
       workingDirectory?: string;
       /** 主 agent 的认证信息，传递给子 agent 复用 */
       clientConfig?: { apiKey?: string; authToken?: string; baseUrl?: string };
+      /** 对应的 Claude API tool_use block ID，用于前端精确匹配多个 Task */
+      toolUseId?: string;
     }
   ): Promise<{ success: boolean; output?: string; error?: string; taskId: string; structuredError?: TaskInfo['structuredError'] }> {
     const taskId = await this.createTask(description, prompt, agentType, {

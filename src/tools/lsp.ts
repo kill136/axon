@@ -11,6 +11,7 @@ import { pathToFileURL } from 'url';
 import * as path from 'path';
 import { getCurrentCwd } from '../core/cwd-context.js';
 import { t } from '../i18n/index.js';
+import { fromMsysPath } from '../utils/platform.js';
 
 /**
  * LSP 操作类型
@@ -914,7 +915,7 @@ Note: LSP servers must be configured for the file type. If no server is availabl
       };
     }
 
-    const filePath = path.resolve(input.filePath);
+    const filePath = path.resolve(fromMsysPath(input.filePath));
     const workingDir = getCurrentCwd();
 
     // 构建 LSP 请求

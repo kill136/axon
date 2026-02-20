@@ -1,16 +1,38 @@
-import Database from 'better-sqlite3';
 import type { DriverInterface, ConnectionConfig, QueryResult, ColumnInfo } from '../types.js';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _Database: any = null;
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function getDatabase(): Promise<any> {
+  if (!_Database) {
+    try {
+      const mod = await import('better-sqlite3');
+      _Database = mod.default;
+    } catch (e) {
+      throw new Error(
+        'better-sqlite3 模块加载失败。请确保已安装编译依赖：\n' +
+        '  Ubuntu/Debian: apt-get install python3 make g++\n' +
+        '  然后重新运行: npm install better-sqlite3\n' +
+        '原始错误: ' + (e as Error).message
+      );
+    }
+  }
+  return _Database;
+}
 
 const WRITE_KEYWORDS = /^\s*(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE|REPLACE|MERGE)/i;
 
 export class SQLiteDriver implements DriverInterface {
-  private db: Database.Database | null = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private db: any = null;
   private config: ConnectionConfig | null = null;
 
   async connect(config: ConnectionConfig): Promise<void> {
     this.config = config;
     const filePath = config.connectionString ?? config.database ?? ':memory:';
-    const options: Database.Options = config.readonly ? { readonly: true } : {};
+    const options = config.readonly ? { readonly: true } : {};
+    const Database = await getDatabase();
     this.db = new Database(filePath, options);
   }
 

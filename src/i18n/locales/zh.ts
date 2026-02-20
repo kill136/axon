@@ -761,6 +761,114 @@ const zh: Record<LocaleKeys, string> = {
   'stats.timeCompare': '你最长的会话约为 {{name}} 的 {{ratio}} 倍',
   'stats.in': '输入',
   'stats.out': '输出',
+
+  // ============ UI Components (App.tsx) ============
+  'ui.shortcutHint': '? 查看快捷键',
+  'ui.modeShortcut': 'shift+tab：模式',
+  'ui.escToInterrupt': 'esc 中断',
+  'ui.processing': '处理中...',
+  'ui.ready': '就绪',
+  'ui.undoRequested': '撤销请求',
+  'ui.thinkingEnabled': '扩展思考已启用',
+  'ui.thinkingDisabled': '扩展思考已禁用',
+  'ui.movingToBackground': '正在将当前任务移至后台...',
+  'ui.requestInterrupted': '请求已被 ESC 中断',
+  'ui.claudeMdDeclined': 'CLAUDE.md 导入已拒绝',
+  'ui.claudeMdSkipped': 'CLAUDE.md 导入已跳过',
+  'ui.loginCancelled': '登录已取消',
+  'ui.oauthCompleted': 'OAuth 登录完成，客户端已重新初始化',
+  'ui.oauthCompletedButFailed': 'OAuth 登录完成但客户端重新初始化失败',
+  'ui.oauthFailed': 'OAuth 登录失败',
+  'ui.clientReinitialized': '客户端已重新初始化',
+  'ui.clientReinitFailed': '客户端重新初始化失败',
+  'ui.thinkingEnabledMsg': '🧠 扩展思考已启用\n\nClaude 将在复杂推理任务中使用扩展思考。',
+  'ui.thinkingDisabledMsg': '💤 扩展思考已禁用\n\nClaude 将不使用扩展思考进行响应。',
+  'ui.stashedPrompt': '已暂存提示词："{{prompt}}"',
+  'ui.stashedPromptHint': '你可以在之后引用它。',
+
+  // ============ Bash Tool ============
+  'bash.gitBashNotFound': 'Claude Code 无法找到 CLAUDE_CODE_GIT_BASH_PATH 路径 "{{path}}"',
+  'bash.gitCommitBlocked': '🛡️ 安全防护：Git commit 已被阻止\n\n原因：{{message}}\n\n这是为了保护您的系统安全。请使用安全的提交消息，避免包含特殊字符如 $()、`、;、|、&&、||、<、> 等。',
+  'bash.adminRequired': '🔐 检测到需要管理员权限的命令：{{command}}',
+  'bash.adminReason': '原因：{{reason}}',
+  'bash.waitingConfirm': '等待用户确认...',
+  'bash.userCancelled': '用户取消',
+  'bash.adminDenied': '❌ 管理员权限被拒绝：{{message}}',
+  'bash.adminDeniedHint': '此命令需要管理员权限才能执行。你可以：\n1. 告知用户需要手动执行此命令\n2. 尝试其他不需要管理员权限的替代方案',
+  'bash.adminExecOutput': '🔐 [以管理员权限执行]',
+  'bash.adminExecFailed': '管理员权限执行失败：{{error}}',
+
+  // ============ Browser Tool ============
+  'browser.stopped': '浏览器已成功停止。',
+  'browser.notRunning': '浏览器未运行。使用 "start" 操作启动浏览器。',
+  'browser.missingUrl': '缺少必需参数：url',
+  'browser.missingRef': '缺少必需参数：ref',
+  'browser.missingRefValue': '缺少必需参数：ref, value',
+  'browser.missingText': '缺少必需参数：text',
+  'browser.missingKey': '缺少必需参数：key',
+  'browser.missingIndex': '缺少必需参数：index',
+  'browser.missingExpression': '缺少必需参数：expression',
+  'browser.missingNameValue': '缺少必需参数：name, value',
+  'browser.navigatedBack': '已后退',
+  'browser.navigatedForward': '已前进',
+  'browser.pageReloaded': '页面已重新加载',
+  'browser.cookiesCleared': '所有 Cookie 已清除',
+  'browser.screenshotCaptured': '截图已成功捕获。',
+
+  // ============ Schedule Tool ============
+  'schedule.unknownAction': '未知操作：{{action}}。可用：create, cancel, list, watch。',
+  'schedule.nameRequired': '错误：create 操作需要 "name" 参数。',
+  'schedule.typeRequired': '错误：create 操作需要 "type" 参数。可用：once, interval, watch。',
+  'schedule.promptRequired': '错误：create 操作需要 "prompt" 参数。',
+  'schedule.duplicateTask': '错误：任务 "{{name}}" 已存在（ID：{{id}}，创建于 {{seconds}} 秒前）。一次 create 调用即可，不要重复创建。',
+  'schedule.triggerAtRequired': '错误：type=once 需要 "triggerAt" 参数。',
+  'schedule.timeParseError': '时间解析错误：{{error}}',
+  'schedule.intervalRequired': '错误：type=interval 的 "intervalMs" 必须为正数。',
+  'schedule.watchPathsRequired': '错误：type=watch 需要 "watchPaths" 参数。',
+  'schedule.cancelIdRequired': '错误：cancel 操作需要 "taskId" 参数。',
+  'schedule.cancelled': '任务 {{taskId}} 已成功取消。',
+  'schedule.notFound': '任务 {{taskId}} 未找到。',
+  'schedule.noTasks': '没有计划任务。',
+  'schedule.watchIdRequired': '错误：watch 操作需要 "taskId" 参数。',
+  'schedule.noHistory': '任务 "{{name}}" 尚无执行历史。',
+
+  // ============ CreateTool ============
+  'createTool.noSkills': '没有找到自定义技能。使用 CreateTool 创建你的第一个技能。',
+  'createTool.nameRequiredDelete': '删除操作需要技能名称。',
+  'createTool.nameRequired': '需要技能名称。',
+  'createTool.descRequired': '需要技能描述。',
+  'createTool.codeRequired': '需要技能执行代码。',
+  'createTool.invalidName': '技能名称必须以字母开头，只能包含字母、数字、连字符和下划线。',
+
+  // ============ TaskV2 ============
+  'taskV2.disabled': '任务管理系统已禁用。设置 CLAUDE_CODE_ENABLE_TASKS=true 以启用。',
+  'taskV2.notFound': '任务未找到',
+  'taskV2.created': '已创建任务 #{{id}}：{{subject}}',
+  'taskV2.noTasks': '没有找到任务。',
+  'taskV2.invalidStatus': '无效状态 "{{status}}"。有效状态：{{valid}}',
+
+  // ============ Base Tool ============
+  'base.toolNotFound': "工具 '{{name}}' 未找到",
+  'base.permissionDenied': '用户拒绝了权限',
+  'base.permissionDeniedByCheck': '工具权限检查拒绝了操作',
+  'base.permissionRequired': '需要权限但没有可用的权限处理程序',
+
+  // ============ MemorySearch ============
+  'memorySearch.notInitialized': '长期记忆搜索未初始化。',
+  'memorySearch.noResults': '没有找到匹配的记忆。',
+
+  // ============ SelfEvolve ============
+  'selfEvolve.noProjectRoot': '无法确定项目根目录。',
+
+  // ============ StructuredOutput ============
+  'structuredOutput.schemaError': '输出不匹配所需的模式：{{errors}}',
+  'structuredOutput.success': '结构化输出提供成功',
+
+  // ============ Auth ============
+  'auth.envVar': '已通过环境变量认证',
+  'auth.apiKey': '已通过 API Key 认证',
+  'auth.oauth': '已通过 OAuth 认证',
+  'auth.notAuthenticated': '未认证',
 };
 
 export default zh;

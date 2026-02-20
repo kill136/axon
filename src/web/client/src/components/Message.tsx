@@ -61,6 +61,7 @@ export function Message({
   const [rewindMenuPosition, setRewindMenuPosition] = useState({ x: 0, y: 0 });
   const [copyButtonText, setCopyButtonText] = useState('📋');
   const [isUserMessageExpanded, setIsUserMessageExpanded] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
   const { t } = useLanguage();
 
   // 获取内容数组
@@ -125,6 +126,44 @@ export function Message({
     }
     return texts.join('\n\n');
   };
+
+  // TTS 朗读处理
+  const handleSpeak = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!window.speechSynthesis) return;
+    if (isSpeaking) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+      return;
+    }
+    const rawText = extractMessageText();
+    if (!rawText) return;
+    // 简单去除常见 markdown 标记
+    const text = rawText
+      .replace(/```[\s\S]*?```/g, '')        // 代码块
+      .replace(/`[^`]*`/g, '')               // 行内代码
+      .replace(/\*\*([^*]+)\*\*/g, '$1')     // 粗体
+      .replace(/\*([^*]+)\*/g, '$1')         // 斜体
+      .replace(/^#{1,6}\s+/gm, '')           // 标题符号
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // 链接 → 链接文字
+      .trim();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'zh-CN';
+    const voices = window.speechSynthesis.getVoices();
+    const zhVoice = voices.find(v => v.lang.includes('zh'));
+    if (zhVoice) utterance.voice = zhVoice;
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => setIsSpeaking(false);
+    setIsSpeaking(true);
+    window.speechSynthesis.speak(utterance);
+  };
+
+  // 组件卸载时停止播放
+  useEffect(() => {
+    return () => {
+      window.speechSynthesis?.cancel();
+    };
+  }, []);
 
   // 复制消息内容
   const handleCopyMessage = async (e: React.MouseEvent) => {
@@ -248,7 +287,7 @@ export function Message({
           data={item.data}
           onPause={() => onDevAction?.('pause')}
           onResume={() => onDevAction?.('resume')}
-          onCancel={() => onDevAction?.('cancel')} // TODO: 实现 cancel
+          onCancel={() => onDevAction?.('cancel')}
         />
       );
     }
@@ -421,6 +460,16 @@ export function Message({
                 title={t('message.rewindTooltip')}
               >
                 ↻
+              </button>
+            )}
+            {/* TTS 播放按钮 - 仅 assistant 消息显示 */}
+            {role === 'assistant' && (
+              <button
+                className={`message-action-button message-speak-button${isSpeaking ? ' speaking' : ''}`}
+                onClick={handleSpeak}
+                title={isSpeaking ? t('message.speakStop') : t('message.speakPlay')}
+              >
+                {isSpeaking ? '■' : '▶'}
               </button>
             )}
             {/* 复制按钮 */}

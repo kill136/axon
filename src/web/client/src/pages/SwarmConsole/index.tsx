@@ -8,7 +8,7 @@ import { FadeIn } from '../../components/swarm/common';
 import { ConflictPanel } from './components/ConflictPanel';
 import { AskUserDialog } from './components/AskUserDialog';
 import { useSwarmState } from './hooks/useSwarmState';
-import { coordinatorApi } from '../../api/blueprint';
+import { coordinatorApi, blueprintApi } from '../../api/blueprint';
 import { useProject } from '../../contexts/ProjectContext';
 import { DebugPanel } from '../../components/DebugPanel';
 import { useLanguage } from '../../i18n';
@@ -243,6 +243,33 @@ export default function SwarmConsole({ initialBlueprintId }: SwarmConsoleProps) 
     return hasPending;
   }, [executionPlan, state.leadAgent.phase]);
 
+  // 检测执行计划是否全部完成（用于显示完成横幅）
+  const isAllCompleted = useMemo(() => {
+    if (!executionPlan || executionPlan.tasks.length === 0) return false;
+    return executionPlan.tasks.every(
+      t => t.status === 'completed' || t.status === 'failed' || t.status === 'skipped'
+    );
+  }, [executionPlan]);
+
+  const [isDeletingBlueprint, setIsDeletingBlueprint] = useState(false);
+
+  const handleDeleteBlueprint = useCallback(async () => {
+    if (!selectedBlueprintId || isDeletingBlueprint) return;
+    if (!confirm(t('swarm.confirmDeleteBlueprint'))) return;
+
+    setIsDeletingBlueprint(true);
+    try {
+      await blueprintApi.deleteBlueprint(selectedBlueprintId);
+      setSelectedBlueprintId(null);
+      setBlueprintName('');
+    } catch (err) {
+      console.error('[SwarmConsole] 删除蓝图失败:', err);
+      alert(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsDeletingBlueprint(false);
+    }
+  }, [selectedBlueprintId, isDeletingBlueprint, t]);
+
   const [isResuming, setIsResuming] = useState(false);
 
   const handleResumeLead = useCallback(() => {
@@ -375,6 +402,22 @@ export default function SwarmConsole({ initialBlueprintId }: SwarmConsoleProps) 
               🔍 {t('swarm.probe')}
             </button>
           </div>
+          {/* 执行完成横幅 */}
+          {isAllCompleted && executionPlan && (
+            <div className={styles.completionBanner}>
+              <div className={styles.completionInfo}>
+                <span className={styles.completionIcon}>✅</span>
+                <span>{t('swarm.executionComplete')} — {t('swarm.allTasksDone', { total: executionPlan.tasks.length })}</span>
+              </div>
+              <button
+                className={styles.deleteBlueprintButton}
+                onClick={handleDeleteBlueprint}
+                disabled={isDeletingBlueprint}
+              >
+                {isDeletingBlueprint ? t('swarm.deleting') : t('swarm.deleteBlueprint')}
+              </button>
+            </div>
+          )}
           <div className={styles.panelContent}>
             {/* LeadAgent 入口 — 点击可切到 LeadAgent 对话 */}
             {state.leadAgent.phase !== 'idle' && (

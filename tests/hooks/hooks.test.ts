@@ -448,17 +448,10 @@ describe('Hooks System', () => {
 
   describe('Blocking and Non-Blocking Hooks', () => {
     it('should block operation when hook returns blocked', async () => {
-      // Create a script that returns blocked status
-      const blockScript = path.join(testDir, 'block.sh');
-      fs.writeFileSync(
-        blockScript,
-        '#!/bin/bash\necho \'{"blocked": true, "message": "Operation blocked"}\'\nexit 1',
-        { mode: 0o755 }
-      );
-
+      // Use node -e for cross-platform compatibility (bash scripts don't work on Windows)
       const hook: CommandHookConfig = {
         type: 'command',
-        command: blockScript,
+        command: 'node -e "process.stdout.write(JSON.stringify({blocked:true,message:\'Operation blocked\'})); process.exit(1)"',
         blocking: true,
       };
 
@@ -474,13 +467,6 @@ describe('Hooks System', () => {
     });
 
     it('should stop executing hooks after blocking hook', async () => {
-      const blockScript = path.join(testDir, 'block.sh');
-      fs.writeFileSync(
-        blockScript,
-        '#!/bin/bash\necho \'{"blocked": true, "message": "Blocked"}\'\nexit 1',
-        { mode: 0o755 }
-      );
-
       const hook1: CommandHookConfig = {
         type: 'command',
         command: 'echo "First"',
@@ -488,7 +474,7 @@ describe('Hooks System', () => {
       };
       const hook2: CommandHookConfig = {
         type: 'command',
-        command: blockScript,
+        command: 'node -e "process.stdout.write(JSON.stringify({blocked:true,message:\'Blocked\'})); process.exit(1)"',
         blocking: true,
       };
       const hook3: CommandHookConfig = {

@@ -16,6 +16,7 @@ import {
   TASK_MANAGEMENT,
   SECURITY_RULES,
   EXECUTING_WITH_CARE,
+  PROACTIVE_SKILL_CREATION,
   getCodingGuidelines,
   getToolGuidelines,
   getToneAndStyle,
@@ -29,33 +30,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { getNotebookManager } from '../memory/notebook.js';
-
-/**
- * 估算 tokens
- */
-function estimateTokens(text: string): number {
-  if (!text) return 0;
-
-  const hasAsian = /[\u4e00-\u9fa5\u3040-\u309f\u30a0-\u30ff]/.test(text);
-  const hasCode = /^```|function |class |const |let |var |import |export /.test(text);
-
-  let charsPerToken = 3.5;
-
-  if (hasAsian) {
-    charsPerToken = 2.0;
-  } else if (hasCode) {
-    charsPerToken = 3.0;
-  }
-
-  let tokens = text.length / charsPerToken;
-  const specialChars = (text.match(/[{}[\]().,;:!?<>]/g) || []).length;
-  tokens += specialChars * 0.1;
-
-  const newlines = (text.match(/\n/g) || []).length;
-  tokens += newlines * 0.5;
-
-  return Math.ceil(tokens);
-}
+import { estimateTokens } from '../utils/token-estimate.js';
 
 /**
  * 默认选项
@@ -196,6 +171,9 @@ You have access to the ${askTool} tool to ask the user questions when you need c
 
     // 9. 谨慎操作 (N2z) - 告知 AI 对高风险操作需谨慎确认
     staticParts.push(EXECUTING_WITH_CARE);
+
+    // 9.5 主动创建 Skill 规则 - 检测重复模式和复杂工作流时提议创建 skill
+    staticParts.push(PROACTIVE_SKILL_CREATION);
 
     // 10. 安全规则 (BV6)
     staticParts.push(SECURITY_RULES);

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { WSMessage } from '../types';
+import { updateSkillCommands } from '../utils/constants';
 
 export interface UseWebSocketReturn {
   connected: boolean;
@@ -100,6 +101,12 @@ export function useWebSocket(url: string): UseWebSocketReturn {
             setSessionId(payload.sessionId);
           }
           setModel(payload.model);
+        }
+
+        // 接收后端推送的 skills 列表，更新到斜杠命令补全中
+        if (message.type === 'skills_list') {
+          const payload = message.payload as { skills: Array<{ name: string; description: string; argumentHint?: string }> };
+          updateSkillCommands(payload.skills);
         }
 
         // 处理会话切换 - 更新 sessionId 并持久化

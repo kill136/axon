@@ -11,6 +11,7 @@
 
 import { BaseTool } from './base.js';
 import type { ToolResult, ToolDefinition } from '../types/index.js';
+import { t } from '../i18n/index.js';
 import {
   createTask,
   getTask,
@@ -94,7 +95,7 @@ export class TaskCreateTool extends BaseTool<TaskCreateInput, ToolResult> {
     if (!isTasksEnabled()) {
       return {
         success: false,
-        error: 'Task management system is disabled. Set CLAUDE_CODE_ENABLE_TASKS=true to enable.',
+        error: t('taskV2.disabled'),
       };
     }
 
@@ -120,7 +121,7 @@ export class TaskCreateTool extends BaseTool<TaskCreateInput, ToolResult> {
 
     return {
       success: true,
-      output: `Created task #${taskId}: ${input.subject}`,
+      output: t('taskV2.created', { id: taskId, subject: input.subject }),
       data: result,
     };
   }
@@ -168,7 +169,7 @@ export class TaskGetTool extends BaseTool<TaskGetInput, ToolResult> {
     if (!isTasksEnabled()) {
       return {
         success: false,
-        error: 'Task management system is disabled. Set CLAUDE_CODE_ENABLE_TASKS=true to enable.',
+        error: t('taskV2.disabled'),
       };
     }
 
@@ -179,7 +180,7 @@ export class TaskGetTool extends BaseTool<TaskGetInput, ToolResult> {
       const result: TaskGetOutput = { task: null };
       return {
         success: false,
-        error: 'Task not found',
+        error: t('taskV2.notFound'),
         data: result,
       };
     }
@@ -314,7 +315,7 @@ export class TaskUpdateTool extends BaseTool<TaskUpdateInput, ToolResult> {
     if (!isTasksEnabled()) {
       return {
         success: false,
-        error: 'Task management system is disabled. Set CLAUDE_CODE_ENABLE_TASKS=true to enable.',
+        error: t('taskV2.disabled'),
       };
     }
 
@@ -326,11 +327,11 @@ export class TaskUpdateTool extends BaseTool<TaskUpdateInput, ToolResult> {
         success: false,
         taskId: input.taskId,
         updatedFields: [],
-        error: 'Task not found',
+        error: t('taskV2.notFound'),
       };
       return {
         success: false,
-        error: 'Task not found',
+        error: t('taskV2.notFound'),
         data: result,
       };
     }
@@ -381,7 +382,7 @@ export class TaskUpdateTool extends BaseTool<TaskUpdateInput, ToolResult> {
           success: false,
           taskId: input.taskId,
           updatedFields: [],
-          error: `Invalid status "${input.status}". Valid statuses: ${VALID_STATUSES.join(', ')}`,
+          error: t('taskV2.invalidStatus', { status: input.status, valid: VALID_STATUSES.join(', ') }),
         };
         return {
           success: false,
@@ -483,7 +484,7 @@ export class TaskListTool extends BaseTool<Record<string, never>, ToolResult> {
     if (!isTasksEnabled()) {
       return {
         success: false,
-        error: 'Task management system is disabled. Set CLAUDE_CODE_ENABLE_TASKS=true to enable.',
+        error: t('taskV2.disabled'),
       };
     }
 
@@ -511,7 +512,7 @@ export class TaskListTool extends BaseTool<Record<string, never>, ToolResult> {
     if (allTasks.length === 0) {
       return {
         success: true,
-        output: 'No tasks found.',
+        output: t('taskV2.noTasks'),
         data: result,
       };
     }

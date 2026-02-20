@@ -13,6 +13,8 @@
  */
 
 import type { Message, ContentBlock, AnyContentBlock } from '../types/index.js';
+export { estimateTokens } from '../utils/token-estimate.js';
+import { estimateTokens } from '../utils/token-estimate.js';
 
 // Token 估算常量
 const CHARS_PER_TOKEN = 3.5; // 更精确的估算（英文约4，中文约2）
@@ -79,36 +81,49 @@ export interface CompressionResult {
 }
 
 /**
- * 估算文本 token 数（更精确的算法）
+ * 估算 tool_result.content 的 token 数
+ * 正确处理 content 为数组（包含 image/text block）的情况，
+ * 避免对 base64 图片数据做 JSON.stringify 导致 token 估算膨胀
  */
-export function estimateTokens(text: string): number {
-  if (!text) return 0;
-
-  // 检测文本类型
-  const hasAsian = /[\u4e00-\u9fa5\u3040-\u309f\u30a0-\u30ff]/.test(text);
-  const hasCode = /^```|function |class |const |let |var |import |export /.test(text);
-
-  // 根据内容类型调整估算
-  let charsPerToken = CHARS_PER_TOKEN;
-
-  if (hasAsian) {
-    charsPerToken = 2.0; // 中日韩字符
-  } else if (hasCode) {
-    charsPerToken = 3.0; // 代码通常更密集
+function estimateToolResultTokens(content: string | Array<any> | undefined): number {
+  if (!content) return 0;
+  if (typeof content === 'string') {
+    return estimateTokens(content);
   }
+  // content 是数组，逐个 block 处理
+  let total = 0;
+  for (const item of content) {
+    if (item.type === 'image') {
+      total += 2000; // 图片固定常量
+    } else if (item.type === 'text') {
+      total += estimateTokens(item.text || '');
+    } else {
+      total += estimateTokens(JSON.stringify(item));
+    }
+  }
+  return total;
+}
 
-  // 计算基础 token
-  let tokens = text.length / charsPerToken;
-
-  // 为特殊字符添加权重
-  const specialChars = (text.match(/[{}[\]().,;:!?<>]/g) || []).length;
-  tokens += specialChars * 0.1; // 特殊字符略微增加 token
-
-  // 换行符也会占用 token
-  const newlines = (text.match(/\n/g) || []).length;
-  tokens += newlines * 0.5;
-
-  return Math.ceil(tokens);
+/**
+ * 从 tool_result.content 中提取纯文本内容
+ * 对数组 content 中的 image 块用占位符替代，避免将 base64 混入文本流
+ */
+function extractToolResultText(content: string | Array<any> | undefined): string {
+  if (!content) return '';
+  if (typeof content === 'string') return content;
+  const parts: string[] = [];
+  let imageCount = 0;
+  for (const item of content) {
+    if (item.type === 'image') {
+      imageCount++;
+    } else if (item.type === 'text') {
+      parts.push(item.text || '');
+    }
+  }
+  if (imageCount > 0) {
+    parts.push(`[${imageCount} image${imageCount > 1 ? 's' : ''}]`);
+  }
+  return parts.join('\n');
 }
 
 /**
@@ -127,10 +142,7 @@ export function estimateMessageTokens(message: Message): number {
     } else if (block.type === 'tool_use') {
       total += estimateTokens(block.name || '') + estimateTokens(JSON.stringify(block.input));
     } else if (block.type === 'tool_result') {
-      const content = typeof block.content === 'string'
-        ? block.content
-        : JSON.stringify(block.content);
-      total += estimateTokens(content);
+      total += estimateToolResultTokens(block.content);
     } else if (block.type === 'image') {
       // 图片按固定大小估算（对齐官方 Nr4=2000）
       total += 2000;
@@ -287,13 +299,11 @@ function extractMessageCore(message: Message): string {
       const inputStr = JSON.stringify(block.input, null, 2);
       parts.push(`[Tool: ${block.name || 'unknown'}]\nInput: ${inputStr.slice(0, 200)}`);
     } else if (block.type === 'tool_result') {
-      const content = typeof block.content === 'string'
-        ? block.content
-        : JSON.stringify(block.content);
-
-      // 智能压缩工具输出
-      const compressed = compressToolOutput(content, 300);
+      const textContent = extractToolResultText(block.content);
+      const compressed = compressToolOutput(textContent, 300);
       parts.push(`[Result: ${block.tool_use_id || 'unknown'}]\n${compressed}`);
+    } else if (block.type === 'image') {
+      parts.push('[image]');
     }
   }
 
@@ -401,18 +411,38 @@ export function compressMessage(message: Message, config?: ContextConfig): Messa
 
   for (const block of message.content) {
     if (block.type === 'tool_result') {
-      const content = typeof block.content === 'string'
-        ? block.content
-        : JSON.stringify(block.content);
-
       const maxChars = config?.toolOutputMaxChars || TOOL_OUTPUT_MAX_CHARS;
 
-      if (content.length > maxChars) {
-        const compressed = compressToolOutput(content, maxChars);
-        compressedBlocks.push({
-          ...block,
-          content: compressed,
-        });
+      if (typeof block.content === 'string') {
+        // string content：直接压缩
+        if (block.content.length > maxChars) {
+          compressedBlocks.push({
+            ...block,
+            content: compressToolOutput(block.content, maxChars),
+          });
+        } else {
+          compressedBlocks.push(block);
+        }
+      } else if (Array.isArray(block.content)) {
+        // 数组 content（如 Browser screenshot 的 [TextBlock, ImageBlock]）
+        // 逐个 block 处理：压缩 text，保留 image 不动
+        const compressedContent: any[] = [];
+        for (const item of block.content) {
+          if (item.type === 'image') {
+            // 图片块原样保留，不做任何压缩
+            compressedContent.push(item);
+          } else if (item.type === 'text') {
+            const text = item.text || '';
+            if (text.length > maxChars) {
+              compressedContent.push({ ...item, text: compressToolOutput(text, maxChars) });
+            } else {
+              compressedContent.push(item);
+            }
+          } else {
+            compressedContent.push(item);
+          }
+        }
+        compressedBlocks.push({ ...block, content: compressedContent });
       } else {
         compressedBlocks.push(block);
       }
@@ -1161,9 +1191,7 @@ export function extractContextKeyInfo(messages: Message[]): {
             return JSON.stringify(block.input);
           }
           if (block.type === 'tool_result') {
-            return typeof block.content === 'string'
-              ? block.content
-              : JSON.stringify(block.content);
+            return extractToolResultText(block.content);
           }
           return '';
         }).join(' ');

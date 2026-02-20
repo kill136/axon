@@ -11,7 +11,7 @@ import {
   reverseSearchHistory,
   getHistoryFilePath,
   clearHistoryCache,
-} from '../tools/bash-history.js';
+} from '../src/tools/bash-history.js';
 
 describe('Bash History - System Level', () => {
   beforeEach(() => {
@@ -107,7 +107,7 @@ describe('Bash History - System Level', () => {
 
 describe('Bash History - UI Integration', () => {
   it('应该能从 autocomplete 模块获取历史补全', async () => {
-    const { getBashHistoryCompletions } = await import('../ui/autocomplete/bash-history.js');
+    const { getBashHistoryCompletions } = await import('../src/ui/autocomplete/bash-history.js');
     
     // 无查询时返回最近的命令
     const recent = getBashHistoryCompletions('', 5);
@@ -120,7 +120,7 @@ describe('Bash History - UI Integration', () => {
   });
 
   it('应该能识别补全类型为 bash-history', async () => {
-    const { getBashHistoryCompletions } = await import('../ui/autocomplete/bash-history.js');
+    const { getBashHistoryCompletions } = await import('../src/ui/autocomplete/bash-history.js');
     
     const results = getBashHistoryCompletions('test', 5);
     
@@ -132,7 +132,7 @@ describe('Bash History - UI Integration', () => {
   });
 
   it('UI 历史应该有更高优先级', async () => {
-    const { getBashHistoryCompletions, addToHistory } = await import('../ui/autocomplete/bash-history.js');
+    const { getBashHistoryCompletions, addToHistory } = await import('../src/ui/autocomplete/bash-history.js');
     
     // 添加一个测试命令到 UI 历史
     const testCommand = 'test_ui_priority_' + Date.now();

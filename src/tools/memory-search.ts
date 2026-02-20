@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { BaseTool } from './base.js';
 import type { ToolResult, ToolDefinition } from '../types/index.js';
 import { getMemorySearchManager } from '../memory/memory-search.js';
+import { t } from '../i18n/index.js';
 
 /**
  * 格式化时间差
@@ -73,7 +74,7 @@ IMPORTANT: This searches a supplementary long-term memory layer. The primary sou
   async execute(input: MemorySearchInput): Promise<ToolResult> {
     const manager = getMemorySearchManager();
     if (!manager) {
-      return this.error('Long-term memory search is not initialized.');
+      return this.error(t('memorySearch.notInitialized'));
     }
 
     const results = manager.search(input.query, {
@@ -82,7 +83,7 @@ IMPORTANT: This searches a supplementary long-term memory layer. The primary sou
     });
 
     if (results.length === 0) {
-      return this.success('No matching memories found.');
+      return this.success(t('memorySearch.noResults'));
     }
 
     // 格式化结果，包含来源标注

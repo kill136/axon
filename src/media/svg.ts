@@ -5,8 +5,28 @@
  */
 
 import * as fs from 'fs';
-import { Resvg } from '@resvg/resvg-js';
 import type { ImageResult } from './image.js';
+
+let _Resvg: any = null;
+let _resvgLoadAttempted = false;
+
+async function getResvg(): Promise<any> {
+  if (!_resvgLoadAttempted) {
+    _resvgLoadAttempted = true;
+    try {
+      const mod = await import('@resvg/resvg-js');
+      _Resvg = mod.Resvg;
+    } catch {
+      try {
+        const wasmMod = await import('@resvg/resvg-wasm');
+        _Resvg = wasmMod.Resvg;
+      } catch (e) {
+        console.warn('[SVG] resvg 不可用，SVG 渲染功能已禁用:', (e as Error).message);
+      }
+    }
+  }
+  return _Resvg;
+}
 
 /**
  * SVG 渲染选项
@@ -62,6 +82,11 @@ export async function renderSvgToPng(
   const renderOptions = { ...DEFAULT_RENDER_OPTIONS, ...options };
 
   try {
+    const Resvg = await getResvg();
+    if (!Resvg) {
+      throw new Error('SVG 渲染不可用：resvg-js 和 resvg-wasm 均未安装');
+    }
+
     // 配置 resvg 选项
     const resvgOptions: any = {
       dpi: renderOptions.dpi,
@@ -137,6 +162,11 @@ export async function renderSvgStringToPng(
   const renderOptions = { ...DEFAULT_RENDER_OPTIONS, ...options };
 
   try {
+    const Resvg = await getResvg();
+    if (!Resvg) {
+      throw new Error('SVG 渲染不可用：resvg-js 和 resvg-wasm 均未安装');
+    }
+
     // 配置 resvg 选项
     const resvgOptions: any = {
       dpi: renderOptions.dpi,

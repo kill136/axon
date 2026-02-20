@@ -7,6 +7,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import * as child_process from 'child_process';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 const { exec } = child_process;
 import { detectProvider, validateProviderConfig } from '../providers/index.js';
 import {

@@ -29,6 +29,7 @@ import { blueprintStore, executionManager } from './routes/blueprint-api.js';
 import type { Blueprint } from '../../blueprint/types.js';
 import { StartLeadAgentTool } from '../../tools/start-lead-agent.js';
 import { geminiImageService } from './services/gemini-image-service.js';
+import { compressRawBase64 } from '../../media/image.js';
 import {
   initSessionMemory,
   readSessionMemory,
@@ -37,6 +38,7 @@ import {
   isSessionMemoryEnabled,
 } from '../../context/session-memory.js';
 import { initNotebookManager, getNotebookManager } from '../../memory/notebook.js';
+import { initMemorySearchManager, getMemorySearchManager } from '../../memory/memory-search.js';
 import { registerMcpServer, connectMcpServer, createMcpTools, getMcpServers, callMcpTool, disconnectMcpServer, unregisterMcpServer, type McpToolDefinition } from '../../tools/mcp.js';
 import { getChromeIntegrationConfig } from '../../chrome-mcp/index.js';
 import { CHROME_MCP_TOOLS } from '../../chrome-mcp/tools.js';
@@ -46,6 +48,7 @@ import { TaskStore, type ScheduledTask } from '../../daemon/store.js';
 import { isDaemonRunning } from '../../daemon/index.js';
 import { parseTimeExpression } from '../../daemon/time-parser.js';
 import { appendRunLog } from '../../daemon/run-log.js';
+import { promptSnippetsManager } from './prompt-snippets.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -439,6 +442,16 @@ export class ConversationManager {
       await this.initializeAllMcpServers();
     } catch (error) {
       console.warn('[ConversationManager] MCP 服务器初始化失败:', error);
+    }
+
+    // 初始化长期记忆搜索系统（在 initialize 中而非 getOrCreateSession 中，确保首次搜索就可用）
+    try {
+      const crypto = await import('crypto');
+      const projectHash = crypto.createHash('md5').update(this.cwd).digest('hex').slice(0, 12);
+      await initMemorySearchManager(this.cwd, projectHash);
+      console.log(`[ConversationManager] 初始化 MemorySearchManager: ${this.cwd}`);
+    } catch (error) {
+      console.warn('[ConversationManager] 初始化 MemorySearchManager 失败:', error);
     }
 
     // 确保工具已注册
@@ -1037,16 +1050,17 @@ export class ConversationManager {
         content: content,
       };
 
-      // 如果有图片附件，转换为多内容块格式（直接传递给 Claude API）
+      // 如果有图片附件，压缩后转换为多内容块格式传递给 Claude API
       if (mediaAttachments && mediaAttachments.length > 0) {
         const contentBlocks: any[] = [{ type: 'text', text: content }];
         for (const attachment of mediaAttachments) {
+          const compressed = await compressRawBase64(attachment.data, attachment.mimeType);
           contentBlocks.push({
             type: 'image',
             source: {
               type: 'base64',
-              media_type: attachment.mimeType,
-              data: attachment.data,
+              media_type: compressed.mediaType,
+              data: compressed.data,
             },
           });
         }
@@ -2151,6 +2165,7 @@ export class ConversationManager {
                 authToken: mainClientConfig.authToken,
                 baseUrl: mainClientConfig.baseUrl,
               },
+              toolUseId: toolUse.id,
             }
           );
 
@@ -2948,6 +2963,19 @@ export class ConversationManager {
       prompt += '\n\n' + codebaseContext;
     }
 
+    // 注入用户自定义提示词片段（~/.claude/prompt-snippets/）
+    try {
+      const { prepend, append } = promptSnippetsManager.getInjectionTexts();
+      if (prepend) {
+        prompt = prepend + '\n\n' + prompt;
+      }
+      if (append) {
+        prompt += '\n\n' + append;
+      }
+    } catch {
+      // 片段加载失败不影响主流程
+    }
+
     return prompt;
   }
 
@@ -3366,6 +3394,12 @@ Guidelines:
       try {
         const state = this.sessions.get(id);
         if (state) {
+          // 跳过空会话：没有消息也没有聊天历史的会话不需要持久化
+          // 否则 session.save() 会用 Session 内部 UUID 写入一个空 JSON，
+          // 导致 listSessions 扫描时发现这些"幽灵"空会话
+          if (state.messages.length === 0 && state.chatHistory.length === 0) {
+            continue;
+          }
           this.syncChatHistoryFromMessages(state);
           this.autoSaveSession(state);
         }
@@ -3442,6 +3476,58 @@ Guidelines:
     } catch (error) {
       console.error(`[ConversationManager] 恢复会话失败:`, error);
       return false;
+    }
+  }
+
+  /**
+   * 检查恢复的会话是否需要继续对话（最后一条消息是 tool_result）
+   * 典型场景：SelfEvolve 重启后，工具结果已保存但模型还没来得及继续回复
+   */
+  needsContinuation(sessionId: string): boolean {
+    const state = this.sessions.get(sessionId);
+    if (!state || state.messages.length === 0) return false;
+
+    const lastMsg = state.messages[state.messages.length - 1];
+    if (lastMsg.role !== 'user') return false;
+
+    // 检查最后一条消息是否包含 tool_result
+    if (Array.isArray(lastMsg.content)) {
+      return lastMsg.content.some((block: any) => block.type === 'tool_result');
+    }
+    return false;
+  }
+
+  /**
+   * 恢复会话后继续对话（不添加新用户消息，直接进入对话循环）
+   * 用于 SelfEvolve 重启等场景：工具结果已保存在 messages 中，模型需要继续回复
+   */
+  async continueAfterRestore(
+    sessionId: string,
+    callbacks: StreamCallbacks,
+  ): Promise<void> {
+    const state = this.sessions.get(sessionId);
+    if (!state) {
+      callbacks.onError?.(new Error('会话不存在'));
+      return;
+    }
+
+    if (state.isProcessing) {
+      callbacks.onError?.(new Error('会话正在处理中'));
+      return;
+    }
+
+    state.cancelled = false;
+    state.isProcessing = true;
+
+    try {
+      console.log(`[ConversationManager] 恢复后继续对话: ${sessionId}, 消息数: ${state.messages.length}`);
+      await runWithCwd(state.session.cwd, async () => {
+        await this.conversationLoop(state, callbacks, sessionId);
+      });
+    } catch (error) {
+      callbacks.onError?.(error instanceof Error ? error : new Error(String(error)));
+    } finally {
+      state.isProcessing = false;
     }
   }
 

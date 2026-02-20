@@ -14,6 +14,8 @@ import * as os from 'os';
 import { spawn } from 'child_process';
 import { BaseTool } from './base.js';
 import type { ToolDefinition, ToolResult } from '../types/index.js';
+import { t } from '../i18n/index.js';
+import { fromMsysPath } from '../utils/platform.js';
 import { TaskStore, type ScheduledTask } from '../daemon/store.js';
 import { isDaemonRunning } from '../daemon/index.js';
 import { parseTimeExpression } from '../daemon/time-parser.js';
@@ -137,20 +139,20 @@ export class ScheduleTaskTool extends BaseTool<ScheduleTaskInput> {
       case 'watch':
         return this.handleWatch(store, input);
       default:
-        return { success: false, output: `Unknown action: ${input.action}. Use create, cancel, list, or watch.` };
+        return { success: false, output: t('schedule.unknownAction', { action: input.action }) };
     }
   }
 
   private async handleCreate(store: TaskStore, input: ScheduleTaskInput): Promise<ToolResult> {
     // 校验必填参数
     if (!input.name) {
-      return { success: false, output: 'Error: "name" is required for create action.' };
+      return { success: false, output: t('schedule.nameRequired') };
     }
     if (!input.type) {
-      return { success: false, output: 'Error: "type" is required for create action. Use once, interval, or watch.' };
+      return { success: false, output: t('schedule.typeRequired') };
     }
     if (!input.prompt) {
-      return { success: false, output: 'Error: "prompt" is required for create action.' };
+      return { success: false, output: t('schedule.promptRequired') };
     }
 
     // 重复任务检测：同名任务在 2 分钟内已创建，拒绝重复（不限 enabled 状态，已执行完的任务 enabled=false）
@@ -162,31 +164,31 @@ export class ScheduleTaskTool extends BaseTool<ScheduleTaskInput> {
     if (duplicate) {
       return {
         success: false,
-        output: `Error: Task "${input.name}" already exists (ID: ${duplicate.id}, created ${Math.round((now - duplicate.createdAt) / 1000)}s ago). A single create call is sufficient — do NOT call ScheduleTask again for the same task.`,
+        output: t('schedule.duplicateTask', { name: input.name, id: duplicate.id, seconds: Math.round((now - duplicate.createdAt) / 1000) }),
       };
     }
 
     let triggerAt: number | undefined;
     if (input.type === 'once') {
       if (!input.triggerAt) {
-        return { success: false, output: 'Error: "triggerAt" is required for type=once.' };
+        return { success: false, output: t('schedule.triggerAtRequired') };
       }
       try {
         triggerAt = parseTimeExpression(input.triggerAt);
       } catch (err) {
-        return { success: false, output: `Error parsing time: ${err instanceof Error ? err.message : String(err)}` };
+        return { success: false, output: t('schedule.timeParseError', { error: err instanceof Error ? err.message : String(err) }) };
       }
     }
 
     if (input.type === 'interval') {
       if (!input.intervalMs || input.intervalMs <= 0) {
-        return { success: false, output: 'Error: "intervalMs" must be a positive number for type=interval.' };
+        return { success: false, output: t('schedule.intervalRequired') };
       }
     }
 
     if (input.type === 'watch') {
       if (!input.watchPaths || input.watchPaths.length === 0) {
-        return { success: false, output: 'Error: "watchPaths" is required for type=watch.' };
+        return { success: false, output: t('schedule.watchPathsRequired') };
       }
     }
 
@@ -195,7 +197,7 @@ export class ScheduleTaskTool extends BaseTool<ScheduleTaskInput> {
       name: input.name,
       triggerAt,
       intervalMs: input.intervalMs,
-      watchPaths: input.watchPaths,
+      watchPaths: input.watchPaths?.map(fromMsysPath),
       watchEvents: input.watchEvents || ['change'],
       debounceMs: input.debounceMs || 2000,
       prompt: input.prompt,
@@ -276,15 +278,15 @@ export class ScheduleTaskTool extends BaseTool<ScheduleTaskInput> {
 
   private handleCancel(store: TaskStore, input: ScheduleTaskInput): ToolResult {
     if (!input.taskId) {
-      return { success: false, output: 'Error: "taskId" is required for cancel action.' };
+      return { success: false, output: t('schedule.cancelIdRequired') };
     }
 
     const removed = store.removeTask(input.taskId);
     if (removed) {
       store.signalReload();
-      return { success: true, output: `Task ${input.taskId} cancelled successfully.` };
+      return { success: true, output: t('schedule.cancelled', { taskId: input.taskId }) };
     } else {
-      return { success: false, output: `Task ${input.taskId} not found.` };
+      return { success: false, output: t('schedule.notFound', { taskId: input.taskId }) };
     }
   }
 
@@ -292,33 +294,33 @@ export class ScheduleTaskTool extends BaseTool<ScheduleTaskInput> {
     const tasks = store.listTasks();
 
     if (tasks.length === 0) {
-      return { success: true, output: 'No scheduled tasks.' };
+      return { success: true, output: t('schedule.noTasks') };
     }
 
-    const lines = tasks.map((t) => {
-      let info = `- [${t.type}] "${t.name}" (ID: ${t.id})`;
-      if (t.type === 'once' && t.triggerAt) {
-        info += `\n  Trigger: ${new Date(t.triggerAt).toLocaleString()}`;
+    const lines = tasks.map((task) => {
+      let info = `- [${task.type}] "${task.name}" (ID: ${task.id})`;
+      if (task.type === 'once' && task.triggerAt) {
+        info += `\n  Trigger: ${new Date(task.triggerAt).toLocaleString()}`;
       }
-      if (t.type === 'interval' && t.intervalMs) {
-        info += `\n  Every: ${Math.round(t.intervalMs / 60000)} min`;
+      if (task.type === 'interval' && task.intervalMs) {
+        info += `\n  Every: ${Math.round(task.intervalMs / 60000)} min`;
       }
-      if (t.type === 'watch' && t.watchPaths) {
-        info += `\n  Watch: ${t.watchPaths.join(', ')}`;
+      if (task.type === 'watch' && task.watchPaths) {
+        info += `\n  Watch: ${task.watchPaths.join(', ')}`;
       }
-      info += `\n  Prompt: ${t.prompt.slice(0, 100)}${t.prompt.length > 100 ? '...' : ''}`;
-      info += `\n  Notify: ${t.notify.join(', ')}`;
-      info += `\n  Enabled: ${t.enabled}`;
+      info += `\n  Prompt: ${task.prompt.slice(0, 100)}${task.prompt.length > 100 ? '...' : ''}`;
+      info += `\n  Notify: ${task.notify.join(', ')}`;
+      info += `\n  Enabled: ${task.enabled}`;
       // 执行状态
-      if (t.lastRunAt) {
-        const statusIcon = t.lastRunStatus === 'success' ? 'OK' : t.lastRunStatus === 'timeout' ? 'TIMEOUT' : 'FAILED';
-        info += `\n  Last run: ${new Date(t.lastRunAt).toLocaleString()} [${statusIcon}]`;
-        if (t.lastRunError) {
-          info += `\n  Error: ${t.lastRunError.slice(0, 200)}`;
+      if (task.lastRunAt) {
+        const statusIcon = task.lastRunStatus === 'success' ? 'OK' : task.lastRunStatus === 'timeout' ? 'TIMEOUT' : 'FAILED';
+        info += `\n  Last run: ${new Date(task.lastRunAt).toLocaleString()} [${statusIcon}]`;
+        if (task.lastRunError) {
+          info += `\n  Error: ${task.lastRunError.slice(0, 200)}`;
         }
       }
-      if (t.runCount) {
-        info += `\n  Run count: ${t.runCount}`;
+      if (task.runCount) {
+        info += `\n  Run count: ${task.runCount}`;
       }
       return info;
     });
@@ -331,18 +333,18 @@ export class ScheduleTaskTool extends BaseTool<ScheduleTaskInput> {
    */
   private handleWatch(store: TaskStore, input: ScheduleTaskInput): ToolResult {
     if (!input.taskId) {
-      return { success: false, output: 'Error: "taskId" is required for watch action.' };
+      return { success: false, output: t('schedule.watchIdRequired') };
     }
 
     const task = store.getTask(input.taskId);
     if (!task) {
-      return { success: false, output: `Task ${input.taskId} not found.` };
+      return { success: false, output: t('schedule.notFound', { taskId: input.taskId }) };
     }
 
     const entries = readRunLogEntries(input.taskId, { limit: 20 });
 
     if (entries.length === 0) {
-      return { success: true, output: `Task "${task.name}" has no execution history yet.` };
+      return { success: true, output: t('schedule.noHistory', { name: task.name }) };
     }
 
     const lines = entries.map(e => {

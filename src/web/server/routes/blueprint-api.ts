@@ -122,7 +122,6 @@ export const activeWorkers = new Map<string, AutonomousWorkerExecutor>();
  */
 class BlueprintStore {
   private blueprints: Map<string, Blueprint> = new Map();
-  private cwd: string = process.cwd(); // 当前工作目录
 
   // v3.5: 写入队列机制，解决并发写入冲突问题
   private pendingWrites: Map<string, Blueprint> = new Map(); // 待写入的蓝图（按 ID 合并）
@@ -130,13 +129,6 @@ class BlueprintStore {
   private writeRetryCount: Map<string, number> = new Map(); // 重试计数器
   private readonly MAX_WRITE_RETRIES = 3; // 最大重试次数
   private readonly WRITE_RETRY_DELAY = 100; // 重试延迟（毫秒）
-
-  /**
-   * 设置当前工作目录
-   */
-  setCwd(cwd: string): void {
-    this.cwd = cwd;
-  }
 
   /**
    * 获取项目的蓝图目录
@@ -315,11 +307,20 @@ class BlueprintStore {
 
   /**
    * 获取所有蓝图
-   * 只加载当前工作目录（或指定路径）下的蓝图，不扫描所有历史项目
+   * 传入 projectPath 时从磁盘加载该项目的蓝图，不传时返回内存中所有已知蓝图（跨项目视图）
    */
   getAll(projectPath?: string): Blueprint[] {
-    const targetPath = projectPath || this.cwd;
-    const blueprints = this.loadFromProject(targetPath);
+    if (!projectPath) {
+      // 无参调用：返回内存缓存中所有蓝图（跨项目视图）
+      return Array.from(this.blueprints.values())
+        .filter(bp => !bp.id.startsWith('tp-'))
+        .sort((a, b) => {
+          const timeA = new Date(a.updatedAt).getTime();
+          const timeB = new Date(b.updatedAt).getTime();
+          return timeB - timeA;
+        });
+    }
+    const blueprints = this.loadFromProject(projectPath);
 
     // v12.1: 过滤 tp- 临时蓝图（不应出现在前端列表中）
     return blueprints
@@ -333,25 +334,28 @@ class BlueprintStore {
 
   /**
    * 获取单个蓝图
+   * 优先从内存缓存查找，找不到时可传 projectPath 从磁盘加载
    */
-  get(id: string): Blueprint | null {
+  get(id: string, projectPath?: string): Blueprint | null {
     // 先从缓存查找
     if (this.blueprints.has(id)) {
       return this.blueprints.get(id) || null;
     }
 
-    // 缓存未命中，从当前工作目录加载
-    const blueprintDir = this.getBlueprintDir(this.cwd);
-    const filePath = path.join(blueprintDir, `${id}.json`);
+    // 缓存未命中：如果提供了 projectPath，从磁盘加载
+    if (projectPath) {
+      const blueprintDir = this.getBlueprintDir(projectPath);
+      const filePath = path.join(blueprintDir, `${id}.json`);
 
-    if (fs.existsSync(filePath)) {
-      try {
-        const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-        const blueprint = this.deserializeBlueprint(data, this.cwd);
-        this.blueprints.set(id, blueprint);
-        return blueprint;
-      } catch (e) {
-        console.error(`[BlueprintStore] 读取蓝图失败: ${filePath}`, e);
+      if (fs.existsSync(filePath)) {
+        try {
+          const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+          const blueprint = this.deserializeBlueprint(data, projectPath);
+          this.blueprints.set(id, blueprint);
+          return blueprint;
+        } catch (e) {
+          console.error(`[BlueprintStore] 读取蓝图失败: ${filePath}`, e);
+        }
       }
     }
 
@@ -516,14 +520,6 @@ class BlueprintStore {
 
 // 全局蓝图存储实例
 export const blueprintStore = new BlueprintStore();
-
-/**
- * 初始化蓝图存储（设置当前工作目录）
- * 应在服务启动时调用
- */
-export function initBlueprintStore(cwd: string): void {
-  blueprintStore.setCwd(cwd);
-}
 
 // ============================================================================
 // 执行管理器 - v2.0 新架构（完整集成版）
@@ -1150,6 +1146,19 @@ class ExecutionManager {
   // 主 agent 的认证配置（由 ConversationManager 设置，透传给子 agent）
   private clientConfig: { apiKey?: string; authToken?: string; baseUrl?: string } = {};
 
+  // v13.0: 执行队列 - 保证同一时刻只有一个 LeadAgent 在运行
+  // 静态工具上下文（UpdateTaskPlanTool.context 等）是进程级全局变量，
+  // 多个 LeadAgent 并发会互相覆盖上下文，导致任务状态混乱。
+  // 通过串行队列确保安全，直到第二层改造（上下文隔离）完成。
+  private executionQueue: Array<{
+    blueprint: Blueprint;
+    onEvent?: (event: SwarmEvent) => void;
+    options?: { taskPlan?: any; apiKey?: string; authToken?: string; baseUrl?: string };
+    resolve: (session: ExecutionSession) => void;
+    reject: (error: Error) => void;
+  }> = [];
+  private isExecuting: boolean = false;
+
   constructor() {
     this.planner = createSmartPlanner();
   }
@@ -1205,6 +1214,7 @@ class ExecutionManager {
 
   /**
    * 开始执行蓝图
+   * v13.0: 加入执行队列，保证同一时刻只有一个 LeadAgent 在运行
    */
   async startExecution(
     blueprint: Blueprint,
@@ -1218,6 +1228,34 @@ class ExecutionManager {
         throw new Error('该蓝图已有正在执行的任务');
       }
     }
+
+    // v13.0: 如果有 LeadAgent 正在运行，排队等待
+    if (this.isExecuting) {
+      console.log(`[ExecutionQueue] 排队等待: ${blueprint.name || blueprint.id} (队列长度: ${this.executionQueue.length + 1})`);
+      return new Promise<ExecutionSession>((resolve, reject) => {
+        this.executionQueue.push({ blueprint, onEvent, options, resolve, reject });
+        executionEventEmitter.emit('queue:enqueued', {
+          blueprintId: blueprint.id,
+          blueprintName: blueprint.name,
+          position: this.executionQueue.length,
+          queueLength: this.executionQueue.length,
+        });
+      });
+    }
+
+    // 没有正在运行的，直接执行
+    return this.executeNow(blueprint, onEvent, options);
+  }
+
+  /**
+   * v13.0: 立即执行蓝图（内部方法，由 startExecution 和 processQueue 调用）
+   */
+  private async executeNow(
+    blueprint: Blueprint,
+    onEvent?: (event: SwarmEvent) => void,
+    options?: { taskPlan?: any; apiKey?: string; authToken?: string; baseUrl?: string }
+  ): Promise<ExecutionSession> {
+    this.isExecuting = true;
 
     // v9.0: 不再调用 SmartPlanner.createExecutionPlan()
     // LeadAgent 自己负责探索代码库、规划任务、执行
@@ -1279,10 +1317,10 @@ class ExecutionManager {
 
     // Worker 创建事件
     coordinator.on('worker:created', (data: any) => {
-      // 更新全局 workerTracker
+      // 更新全局 workerTracker（传入 blueprintId 用于项目隔离）
       workerTracker.update(data.workerId, {
         status: 'working',
-      });
+      }, blueprint.id);
 
       executionEventEmitter.emit('worker:update', {
         blueprintId: blueprint.id,
@@ -1297,12 +1335,12 @@ class ExecutionManager {
 
     // Worker 空闲事件
     coordinator.on('worker:idle', (data: any) => {
-      // 更新全局 workerTracker
+      // 更新全局 workerTracker（传入 blueprintId 用于项目隔离）
       workerTracker.update(data.workerId, {
         status: 'idle',
         currentTaskId: undefined,
         currentTaskName: undefined,
-      });
+      }, blueprint.id);
 
       executionEventEmitter.emit('worker:update', {
         blueprintId: blueprint.id,
@@ -1317,15 +1355,15 @@ class ExecutionManager {
 
     // 任务开始事件
     coordinator.on('task:started', (data: any) => {
-      // 更新全局 workerTracker
+      // 更新全局 workerTracker（传入 blueprintId 用于项目隔离）
       workerTracker.update(data.workerId, {
         status: 'working',
         currentTaskId: data.taskId,
         currentTaskName: data.taskName,
-      });
+      }, blueprint.id);
 
-      // 建立任务和 Worker 的关联
-      workerTracker.setTaskWorker(data.taskId, data.workerId);
+      // 建立任务和 Worker 的关联（传入 blueprintId 用于项目隔离）
+      workerTracker.setTaskWorker(data.taskId, data.workerId, blueprint.id);
 
       // 添加日志条目（v4.1: 传入 taskId）
       const logEntry = workerTracker.addLog(data.workerId, {
@@ -1605,20 +1643,61 @@ class ExecutionManager {
     }
 
     // 异步执行（存储 Promise 供 Planner Agent 阻塞等待）
-    session.executionPromise = this.runExecution(session, blueprint, executor).catch(error => {
-      console.error('[ExecutionManager] 执行失败:', error);
-      // v2.2: 确保外层异常也设置 completedAt，避免僵尸会话
-      if (!session.completedAt) {
-        session.completedAt = new Date();
-        blueprint.status = 'failed';
-        // v12.1: tp- 临时蓝图不持久化
-        if (!blueprint.id.startsWith('tp-')) {
-          blueprintStore.save(blueprint);
+    // v13.0: .finally() 释放执行锁并触发队列中下一个任务
+    session.executionPromise = this.runExecution(session, blueprint, executor)
+      .catch(error => {
+        console.error('[ExecutionManager] 执行失败:', error);
+        // v2.2: 确保外层异常也设置 completedAt，避免僵尸会话
+        if (!session.completedAt) {
+          session.completedAt = new Date();
+          blueprint.status = 'failed';
+          // v12.1: tp- 临时蓝图不持久化
+          if (!blueprint.id.startsWith('tp-')) {
+            blueprintStore.save(blueprint);
+          }
         }
-      }
-    });
+      })
+      .finally(() => {
+        this.isExecuting = false;
+        this.processQueue();
+      });
 
     return session;
+  }
+
+  /**
+   * v13.0: 处理执行队列中的下一个任务
+   */
+  private processQueue(): void {
+    if (this.executionQueue.length === 0) return;
+    if (this.isExecuting) return;
+
+    const next = this.executionQueue.shift()!;
+    console.log(`[ExecutionQueue] 出队执行: ${next.blueprint.name || next.blueprint.id} (剩余队列: ${this.executionQueue.length})`);
+
+    executionEventEmitter.emit('queue:dequeued', {
+      blueprintId: next.blueprint.id,
+      blueprintName: next.blueprint.name,
+      remainingQueue: this.executionQueue.length,
+    });
+
+    this.executeNow(next.blueprint, next.onEvent, next.options)
+      .then(session => next.resolve(session))
+      .catch(error => next.reject(error));
+  }
+
+  /**
+   * v13.0: 获取执行队列状态
+   */
+  getQueueStatus(): { isExecuting: boolean; queueLength: number; items: Array<{ blueprintId: string; name: string }> } {
+    return {
+      isExecuting: this.isExecuting,
+      queueLength: this.executionQueue.length,
+      items: this.executionQueue.map(item => ({
+        blueprintId: item.blueprint.id,
+        name: item.blueprint.name || item.blueprint.id,
+      })),
+    };
   }
 
   /**
@@ -1996,9 +2075,8 @@ class ExecutionManager {
    * 现在通过蓝图 ID 查找并恢复，不再使用 execution-state.json
    */
   async recoverFromProject(projectPath: string): Promise<ExecutionSession | null> {
-    // 查找项目路径对应的蓝图
-    const blueprints = blueprintStore.getAll();
-    const blueprint = blueprints.find(b => b.projectPath === projectPath);
+    // 查找项目路径对应的蓝图（直接使用 projectPath 查询，避免全局 getAll）
+    const blueprint = blueprintStore.getByProjectPath(projectPath);
 
     if (!blueprint) {
       console.log(`[ExecutionManager] 找不到项目路径对应的蓝图: ${projectPath}`);
@@ -2347,7 +2425,7 @@ class ExecutionManager {
   ): void {
     // Worker 创建事件
     coordinator.on('worker:created', (data: any) => {
-      workerTracker.update(data.workerId, { status: 'working' });
+      workerTracker.update(data.workerId, { status: 'working' }, blueprint.id);
       executionEventEmitter.emit('worker:created', {
         blueprintId: blueprint.id,
         workerId: data.workerId,
@@ -2360,7 +2438,7 @@ class ExecutionManager {
         status: 'idle',
         currentTaskId: undefined,
         currentTaskName: undefined,
-      });
+      }, blueprint.id);
       executionEventEmitter.emit('worker:update', {
         blueprintId: blueprint.id,
         workerId: data.workerId,
@@ -2374,8 +2452,8 @@ class ExecutionManager {
         status: 'working',
         currentTaskId: data.taskId,
         currentTaskName: data.taskName,
-      });
-      workerTracker.setTaskWorker(data.taskId, data.workerId);
+      }, blueprint.id);
+      workerTracker.setTaskWorker(data.taskId, data.workerId, blueprint.id);
 
       // v4.1: 传入 taskId
       const logEntry = workerTracker.addLog(data.workerId, {
@@ -2606,12 +2684,9 @@ class ExecutionManager {
 export const executionManager = new ExecutionManager();
 
 // 服务器启动时自动恢复未完成的执行
-// 使用 setTimeout 延迟执行，确保其他模块先初始化完成
-setTimeout(() => {
-  executionManager.initRecovery().catch(error => {
-    console.error('[ExecutionManager] 初始化恢复失败:', error);
-  });
-}, 1000);
+// 仅在 WebUI 服务器模式下触发，避免 CLI 模式下保持 event loop 活跃导致进程不退出
+// WebUI 服务器通过调用 executionManager.initRecovery() 显式触发
+// 在 web/server/index.ts 的 startWebServer() 中调用
 
 // ============================================================================
 // 蓝图 API 路由 - v2.0
@@ -3253,6 +3328,7 @@ export interface WorkerLogEntry {
 class WorkerStateTracker {
   private workers: Map<string, {
     id: string;
+    blueprintId?: string;  // v12.2: 所属蓝图 ID，用于项目隔离
     status: 'idle' | 'working' | 'waiting' | 'error';
     currentTaskId?: string;
     currentTaskName?: string;
@@ -3273,18 +3349,23 @@ class WorkerStateTracker {
 
   /**
    * 获取所有 Workers
+   * 传入 blueprintId 时按蓝图过滤，不传时返回所有
    */
-  getAll() {
-    return Array.from(this.workers.values());
+  getAll(blueprintId?: string) {
+    const all = Array.from(this.workers.values());
+    if (!blueprintId) return all;
+    return all.filter(w => w.blueprintId === blueprintId);
   }
 
   /**
    * 获取或创建 Worker
+   * v12.2: 支持传入 blueprintId 用于项目隔离
    */
-  getOrCreate(workerId: string) {
+  getOrCreate(workerId: string, blueprintId?: string) {
     if (!this.workers.has(workerId)) {
       this.workers.set(workerId, {
         id: workerId,
+        blueprintId,
         status: 'idle',
         progress: 0,
         decisions: [],
@@ -3293,15 +3374,24 @@ class WorkerStateTracker {
         lastActiveAt: new Date().toISOString(),
         logs: [],  // 初始化日志数组
       });
+    } else if (blueprintId) {
+      // 如果已存在但未设置 blueprintId，补充设置
+      const w = this.workers.get(workerId)!;
+      if (!w.blueprintId) w.blueprintId = blueprintId;
     }
     return this.workers.get(workerId)!;
   }
 
   /**
    * 设置任务和 Worker 的关联
+   * v12.2: 支持传入 blueprintId 用于项目隔离
    */
-  setTaskWorker(taskId: string, workerId: string) {
+  setTaskWorker(taskId: string, workerId: string, blueprintId?: string) {
     this.taskWorkerMap.set(taskId, workerId);
+    // 顺便确保 worker 有 blueprintId
+    if (blueprintId) {
+      this.getOrCreate(workerId, blueprintId);
+    }
   }
 
   /**
@@ -3369,9 +3459,10 @@ class WorkerStateTracker {
 
   /**
    * 更新 Worker 状态
+   * v12.2: 支持传入 blueprintId 用于项目隔离
    */
-  update(workerId: string, updates: Partial<ReturnType<typeof this.getOrCreate>>) {
-    const worker = this.getOrCreate(workerId);
+  update(workerId: string, updates: Partial<ReturnType<typeof this.getOrCreate>>, blueprintId?: string) {
+    const worker = this.getOrCreate(workerId, blueprintId);
     Object.assign(worker, updates, { lastActiveAt: new Date().toISOString() });
   }
 
@@ -3392,11 +3483,29 @@ class WorkerStateTracker {
   }
 
   /**
-   * 清除所有 Workers
+   * 清除 Workers
+   * v12.2: 传入 blueprintId 时只清除该蓝图的 workers，不传时清除全部
    */
-  clear() {
-    this.workers.clear();
-    this.taskWorkerMap.clear();  // 同时清除任务映射
+  clear(blueprintId?: string) {
+    if (!blueprintId) {
+      this.workers.clear();
+      this.taskWorkerMap.clear();  // 同时清除任务映射
+    } else {
+      // 只清除该蓝图的 workers
+      for (const [id, worker] of this.workers.entries()) {
+        if (worker.blueprintId === blueprintId) {
+          this.workers.delete(id);
+        }
+      }
+      // 清除该蓝图 workers 的任务映射
+      for (const [taskId, workerId] of this.taskWorkerMap.entries()) {
+        const worker = this.workers.get(workerId);
+        if (!worker) {
+          // worker 已被删除，清除其任务映射
+          this.taskWorkerMap.delete(taskId);
+        }
+      }
+    }
   }
 
   /**
@@ -3421,9 +3530,10 @@ class WorkerStateTracker {
 
   /**
    * 获取统计信息
+   * v12.2: 传入 blueprintId 时只统计该蓝图的 workers
    */
-  getStats() {
-    const workers = this.getAll();
+  getStats(blueprintId?: string) {
+    const workers = this.getAll(blueprintId);
     return {
       total: workers.length,
       active: workers.filter(w => w.status === 'working').length,
@@ -6379,12 +6489,12 @@ router.post('/coordinator/conflicts/:conflictId/resolve', (req: Request, res: Re
  * GET /logs/task/:taskId
  * 获取指定任务的执行日志
  */
-router.get('/logs/task/:taskId', (req: Request, res: Response) => {
+router.get('/logs/task/:taskId', async (req: Request, res: Response) => {
   try {
     const { taskId } = req.params;
     const { limit = '100', offset = '0', since, until } = req.query;
 
-    const logDB = getSwarmLogDB();
+    const logDB = await getSwarmLogDB();
 
     // 获取任务执行历史
     const history = logDB.getTaskHistory(taskId);
@@ -6427,12 +6537,12 @@ router.get('/logs/task/:taskId', (req: Request, res: Response) => {
  * GET /logs/blueprint/:blueprintId
  * 获取指定蓝图的所有执行日志
  */
-router.get('/logs/blueprint/:blueprintId', (req: Request, res: Response) => {
+router.get('/logs/blueprint/:blueprintId', async (req: Request, res: Response) => {
   try {
     const { blueprintId } = req.params;
     const { limit = '500', offset = '0' } = req.query;
 
-    const logDB = getSwarmLogDB();
+    const logDB = await getSwarmLogDB();
 
     // 获取所有执行记录
     const executions = logDB.getExecutions({
@@ -6468,12 +6578,12 @@ router.get('/logs/blueprint/:blueprintId', (req: Request, res: Response) => {
  * DELETE /logs/task/:taskId
  * 清空指定任务的日志（用于重试前）
  */
-router.delete('/logs/task/:taskId', (req: Request, res: Response) => {
+router.delete('/logs/task/:taskId', async (req: Request, res: Response) => {
   try {
     const { taskId } = req.params;
     const { keepLatest = 'false' } = req.query;
 
-    const logDB = getSwarmLogDB();
+    const logDB = await getSwarmLogDB();
     const deletedCount = logDB.clearTaskLogs(taskId, keepLatest === 'true');
 
     res.json({
@@ -6493,9 +6603,9 @@ router.delete('/logs/task/:taskId', (req: Request, res: Response) => {
  * GET /logs/stats
  * 获取日志数据库统计信息
  */
-router.get('/logs/stats', (_req: Request, res: Response) => {
+router.get('/logs/stats', async (_req: Request, res: Response) => {
   try {
-    const logDB = getSwarmLogDB();
+    const logDB = await getSwarmLogDB();
     const stats = logDB.getStats();
 
     res.json({
@@ -6515,9 +6625,9 @@ router.get('/logs/stats', (_req: Request, res: Response) => {
  * POST /logs/cleanup
  * 手动触发日志清理
  */
-router.post('/logs/cleanup', (_req: Request, res: Response) => {
+router.post('/logs/cleanup', async (_req: Request, res: Response) => {
   try {
-    const logDB = getSwarmLogDB();
+    const logDB = await getSwarmLogDB();
     const deletedCount = logDB.cleanupOldLogs();
 
     res.json({

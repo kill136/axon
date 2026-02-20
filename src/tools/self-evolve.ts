@@ -21,11 +21,12 @@
 
 import { BaseTool } from './base.js';
 import type { ToolDefinition, ToolResult } from '../types/index.js';
+import { t } from '../i18n/index.js';
 import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { requestEvolveRestart, isEvolveEnabled, triggerGracefulShutdown } from '../web/server/index.js';
+import { requestEvolveRestart, isEvolveEnabled, triggerGracefulShutdown } from '../web/server/evolve-state.js';
 
 export interface SelfEvolveInput {
   /** 重启原因（记录到日志） */
@@ -79,7 +80,7 @@ export class SelfEvolveTool extends BaseTool<SelfEvolveInput, ToolResult> {
     // 2. 获取项目根目录
     const projectRoot = this.getProjectRoot();
     if (!projectRoot) {
-      return this.error('Cannot determine project root directory.');
+      return this.error(t('selfEvolve.noProjectRoot'));
     }
 
     // 3. TypeScript 编译检查（后端）

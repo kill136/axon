@@ -18,6 +18,7 @@ export function WelcomeScreen({ onBlueprintCreated: _onBlueprintCreated }: Welco
     <div className="welcome-screen">
       <img src="/logo.png" alt="Claude Code" className="welcome-logo" />
       <h2 className="welcome-title">Claude Code WebUI</h2>
+      <span className="welcome-version">v2.1.20</span>
 
       {isEmptyProject && !hasBlueprint ? (
         // 空项目且无蓝图：引导用户在聊天框输入需求
@@ -28,15 +29,15 @@ export function WelcomeScreen({ onBlueprintCreated: _onBlueprintCreated }: Welco
 
           {/* 快捷提示 */}
           <div className="welcome-hints">
-            <div className="welcome-hint-item">
+            <div className="welcome-hint-item hint-item-1">
               <span className="hint-icon">💡</span>
               <span className="hint-text">{t('welcome.emptyProject.hint1')}</span>
             </div>
-            <div className="welcome-hint-item">
+            <div className="welcome-hint-item hint-item-2">
               <span className="hint-icon">📋</span>
               <span className="hint-text">{t('welcome.emptyProject.hint2')}</span>
             </div>
-            <div className="welcome-hint-item">
+            <div className="welcome-hint-item hint-item-3">
               <span className="hint-icon">🚀</span>
               <span className="hint-text">{t('welcome.emptyProject.hint3')}</span>
             </div>
@@ -51,15 +52,15 @@ export function WelcomeScreen({ onBlueprintCreated: _onBlueprintCreated }: Welco
 
           {/* 快捷提示 */}
           <div className="welcome-hints">
-            <div className="welcome-hint-item">
+            <div className="welcome-hint-item hint-item-1">
               <span className="hint-icon">💡</span>
               <span className="hint-text">{t('welcome.project.hint1')}</span>
             </div>
-            <div className="welcome-hint-item">
+            <div className="welcome-hint-item hint-item-2">
               <span className="hint-icon">🔍</span>
               <span className="hint-text">{t('welcome.project.hint2')}</span>
             </div>
-            <div className="welcome-hint-item">
+            <div className="welcome-hint-item hint-item-3">
               <span className="hint-icon">📎</span>
               <span className="hint-text">{t('welcome.project.hint3')}</span>
             </div>

@@ -890,6 +890,15 @@ body {
   font-size: 14px;
 }
 
+/* TTS 播放按钮样式 */
+.message-speak-button {
+  font-size: 10px;
+}
+
+.message-speak-button.speaking {
+  color: var(--accent-primary);
+}
+
 /* 消息底部区域（已废弃，但保留以防其他地方使用） */
 .message-footer {
   display: flex;
@@ -1191,6 +1200,92 @@ body {
   color: var(--text-primary);
 }
 
+/* Voice Button */
+.voice-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: color 0.2s, background 0.2s, box-shadow 0.2s;
+  font-size: 14px;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.voice-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+}
+
+.voice-btn.voice-listening {
+  color: var(--accent-primary);
+  animation: voice-pulse-soft 2s ease-in-out infinite;
+}
+
+.voice-btn.voice-activated {
+  color: #ef4444;
+  animation: voice-pulse-strong 1s ease-in-out infinite;
+}
+
+@keyframes voice-pulse-soft {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(99, 102, 241, 0);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(99, 102, 241, 0.18);
+  }
+}
+
+@keyframes voice-pulse-strong {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(239, 68, 68, 0.22);
+  }
+}
+
+/* Voice Status Bar */
+.voice-status-bar {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: 6px;
+  padding: 5px 12px;
+  background: rgba(15, 15, 30, 0.85);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  pointer-events: none;
+  animation: voice-status-fadein 0.2s ease;
+  z-index: 10;
+}
+
+.voice-transcript-preview {
+  color: var(--accent-light);
+  font-style: normal;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: inline-block;
+  vertical-align: bottom;
+}
+
+@keyframes voice-status-fadein {
+  from { opacity: 0; transform: translateX(-50%) translateY(4px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
 /* Pin Toggle Button */
 .pin-toggle-btn {
   width: 32px;
@@ -1219,8 +1314,9 @@ body {
 }
 
 .send-btn {
-  height: 32px;
-  padding: 0 16px;
+  width: 34px;
+  height: 34px;
+  padding: 0;
   background: var(--accent-primary);
   color: white;
   border: none;
@@ -1230,18 +1326,20 @@ body {
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
   transition: 0.2s;
+  flex-shrink: 0;
 }
 
 .send-btn:hover:not(:disabled) {
   background: var(--accent-hover);
   transform: translateY(-1px);
   box-shadow: var(--shadow-glow);
+  filter: brightness(1.15);
 }
 
 .send-btn:disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: not-allowed;
   background: var(--bg-tertiary);
 }
@@ -1321,6 +1419,17 @@ body {
   color: white;
 }
 
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .welcome-screen {
   display: flex;
   flex-direction: column;
@@ -1329,13 +1438,14 @@ body {
   height: 100%;
   text-align: center;
   padding: 40px;
+  background: radial-gradient(ellipse at center, rgba(99,102,241,0.08) 0%, transparent 70%);
 }
 
 .welcome-logo {
   width: 120px;
   height: 120px;
   margin-bottom: 32px;
-  animation: pulse-glow 4s infinite;
+  animation: pulse-glow 4s infinite, fadeInUp 0.6s ease-out both;
   filter: drop-shadow(0 0 30px rgba(99, 102, 241, 0.5));
   object-fit: contain;
 }
@@ -1343,10 +1453,24 @@ body {
 .welcome-title {
   font-size: 32px;
   font-weight: 700;
-  margin-bottom: 16px;
+  margin-bottom: 8px;
   background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+  animation: fadeInUp 0.6s ease-out 0.1s both;
+}
+
+.welcome-version {
+  display: inline-block;
+  margin-bottom: 16px;
+  padding: 2px 10px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: 0.05em;
+  animation: fadeInUp 0.6s ease-out 0.15s both;
 }
 
 .welcome-subtitle {
@@ -1354,6 +1478,7 @@ body {
   color: var(--text-muted);
   max-width: 600px;
   line-height: 1.6;
+  animation: fadeInUp 0.6s ease-out 0.2s both;
 }
 
 /* Welcome Actions */
@@ -1418,6 +1543,7 @@ body {
   margin-top: 32px;
   max-width: 500px;
   text-align: left;
+  animation: fadeInUp 0.6s ease-out 0.25s both;
 }
 
 .welcome-hint-item {
@@ -1429,11 +1555,38 @@ body {
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   transition: all 0.2s var(--ease-smooth);
+  position: relative;
+  overflow: hidden;
+  padding-left: 20px;
+}
+
+.welcome-hint-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: 0;
+}
+
+.welcome-hint-item:nth-child(1)::before {
+  background: var(--accent-primary);
+}
+
+.welcome-hint-item:nth-child(2)::before {
+  background: var(--accent-success);
+}
+
+.welcome-hint-item:nth-child(3)::before {
+  background: var(--accent-warning);
 }
 
 .welcome-hint-item:hover {
   background: var(--bg-tertiary);
-  border-color: var(--border-hover);
+  border-color: var(--border-color);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
 }
 
 .hint-icon {
@@ -1472,13 +1625,54 @@ body {
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
-  max-height: 300px;
+  max-height: 360px;
   overflow-y: auto;
   z-index: 100;
   margin-bottom: 12px;
   box-shadow: var(--shadow-lg);
   backdrop-filter: blur(12px);
   padding: 8px;
+  animation: paletteSlideIn 0.15s ease-out both;
+}
+
+@keyframes paletteSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.slash-command-group {
+  margin-bottom: 4px;
+}
+
+.slash-command-category {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 4px;
+  margin-top: 4px;
+}
+
+.category-line {
+  display: inline-block;
+  width: 20px;
+  height: 1px;
+  background: var(--text-muted);
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+
+.category-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
 }
 
 .slash-command-item {
@@ -1497,6 +1691,17 @@ body {
   color: var(--text-primary);
 }
 
+.slash-command-item.selected {
+  box-shadow: inset 2px 0 0 var(--accent-primary);
+}
+
+.command-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+  width: 20px;
+  text-align: center;
+}
+
 .command-name {
   font-weight: 600;
   color: var(--accent-primary);
@@ -1508,6 +1713,26 @@ body {
 .command-desc {
   flex: 1;
   font-size: 13px;
+}
+
+.skill-badge {
+  margin-left: auto;
+  padding: 1px 6px;
+  background: rgba(99, 102, 241, 0.15);
+  color: var(--accent-light);
+  border-radius: var(--radius-full);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+}
+
+.command-usage {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+  margin-left: auto;
+  white-space: nowrap;
 }
 
 /* Dialogs */
@@ -2294,9 +2519,9 @@ body {
   }
 
   .send-btn {
-    height: 28px;
-    padding: 0 12px;
-    font-size: 12px;
+    width: 30px;
+    height: 30px;
+    padding: 0;
   }
 
   .stop-btn {
@@ -2360,8 +2585,9 @@ body {
   }
 
   .send-btn {
-    height: 26px;
-    padding: 0 10px;
+    width: 28px;
+    height: 28px;
+    padding: 0;
   }
 
   /* 工具调用面板紧凑化 */
@@ -2438,5 +2664,116 @@ body {
 
   .chat-input {
     max-height: 80px;
+  }
+}
+
+/* =========================================
+   Context Compact Progress Indicator
+   聊天区域内的上下文压缩进度指示器
+   ========================================= */
+
+.compact-progress-indicator {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 16px auto;
+  padding: 16px 24px;
+  max-width: 520px;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(139, 92, 246, 0.12));
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  border-radius: 12px;
+  animation: compactIndicatorSlideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.compact-progress-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: rgba(99, 102, 241, 0.15);
+  color: var(--accent-primary, #818cf8);
+  flex-shrink: 0;
+  animation: compactIconPulse 2s ease-in-out infinite;
+}
+
+.compact-progress-icon svg {
+  animation: compactIconShrink 1.5s ease-in-out infinite;
+}
+
+.compact-progress-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.compact-progress-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, #f8fafc);
+  letter-spacing: 0.01em;
+}
+
+.compact-progress-desc {
+  font-size: 11px;
+  color: var(--text-muted, #64748b);
+  line-height: 1.4;
+}
+
+.compact-progress-dots {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.compact-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-primary, #818cf8);
+  animation: compactDotBounce 1.4s ease-in-out infinite;
+}
+
+.compact-dot:nth-child(2) {
+  animation-delay: 0.16s;
+}
+
+.compact-dot:nth-child(3) {
+  animation-delay: 0.32s;
+}
+
+@keyframes compactIndicatorSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes compactIconPulse {
+  0%, 100% { background: rgba(99, 102, 241, 0.15); }
+  50% { background: rgba(99, 102, 241, 0.25); }
+}
+
+@keyframes compactIconShrink {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(0.85); }
+}
+
+@keyframes compactDotBounce {
+  0%, 80%, 100% {
+    transform: scale(0.6);
+    opacity: 0.4;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
   }
 }

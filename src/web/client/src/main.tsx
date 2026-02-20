@@ -9,12 +9,18 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   </React.StrictMode>
 );
 
-// 注册 Service Worker (PWA)
-if ('serviceWorker' in navigator) {
+// 注册 Service Worker (PWA) - 仅在生产模式下注册
+// dev 模式下 SW 会缓存旧文件导致 HMR 失效
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').catch(() => {
       // Service Worker 注册失败不影响正常使用
     });
+  });
+} else if ('serviceWorker' in navigator && import.meta.env.DEV) {
+  // dev 模式下注销已有的 SW，避免缓存干扰
+  navigator.serviceWorker.getRegistrations().then(registrations => {
+    registrations.forEach(r => r.unregister());
   });
 }
 

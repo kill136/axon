@@ -114,14 +114,14 @@ export function useSessionManager({
 
         case 'session_created':
           if (payload.sessionId) {
-            // 直接将新会话插入列表头部，不依赖 refreshSessions
-            // 因为 session_created 在第一条消息处理前就发出，此时 messageCount=0，
-            // 服务端 handleSessionList 会过滤掉 messageCount=0 的会话，导致刷新后看不到
+            // 直接将新会话插入列表头部（乐观更新）
+            // 服务端会话列表通过 name/summary/messageCount 过滤，
+            // 新会话有 name 所以不会被过滤，但乐观插入可以避免等待刷新
             const newSession: Session = {
               id: payload.sessionId as string,
               name: (payload.name as string) || '新会话',
               updatedAt: (payload.createdAt as number) || Date.now(),
-              messageCount: 1,
+              messageCount: 0,
             };
             setSessions(prev => {
               if (prev.some(s => s.id === newSession.id)) return prev;
