@@ -489,10 +489,12 @@ if [ "$NEED_REBUILD" = true ]; then
     # Rebuild frontend if needed
     if [ "$NEED_FRONTEND_REBUILD" = true ]; then
         info "Frontend changed, rebuilding..."
-        cd src/web/client
-        npm install 2>&1 | tail -3
-        npm run build 2>&1 | tail -3
-        cd ../../..
+        pushd src/web/client > /dev/null || { warn "Frontend dir not found, skipping..."; NEED_FRONTEND_REBUILD=false; }
+        if [ "$NEED_FRONTEND_REBUILD" = true ]; then
+            npm install 2>&1 | tail -3
+            npm run build 2>&1 | tail -3
+            popd > /dev/null
+        fi
     fi
 
     # Rebuild backend
@@ -665,10 +667,10 @@ install_npm() {
 
     # Build frontend
     info "Building frontend..."
-    cd src/web/client
-    npm install
-    npm run build
-    cd ../../..
+    pushd src/web/client > /dev/null || error "Frontend directory not found"
+    npm install || error "Frontend npm install failed"
+    npm run build || error "Frontend build failed"
+    popd > /dev/null
 
     # Build backend
     info "Building backend..."
