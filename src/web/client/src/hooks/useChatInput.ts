@@ -325,11 +325,33 @@ export function useChatInput({
   // 保持 handleSendRef 最新，供语音识别回调使用
   handleSendRef.current = handleSend;
 
-  // 命令选择
+  // 命令选择：选中后直接执行命令（与官方 CLI 行为一致）
   const handleCommandSelect = (command: SlashCommand) => {
-    setInput(command.name + ' ');
+    if (!connected) return;
+
+    // 直接发送命令给后端执行
+    let effectiveProjectPath = currentProjectPath;
+    if (!effectiveProjectPath) {
+      // 没有项目路径时，先填入输入框让用户选择项目后手动发送
+      setInput(command.name + ' ');
+      setShowCommandPalette(false);
+      inputRef.current?.focus();
+      return;
+    }
+
+    send({
+      type: 'chat',
+      payload: {
+        content: command.name,
+        projectPath: effectiveProjectPath,
+      },
+    });
+    setInput('');
     setShowCommandPalette(false);
-    inputRef.current?.focus();
+    setStatus('thinking');
+    if (inputRef.current) {
+      inputRef.current.style.height = 'auto';
+    }
   };
 
   // 用户问答
@@ -387,6 +409,8 @@ export function useChatInput({
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
+      // 命令面板打开时，不处理 Enter——交给 SlashCommandPalette 处理
+      if (showCommandPalette) return;
       e.preventDefault();
       handleSend();
     }

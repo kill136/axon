@@ -7,6 +7,9 @@ import { useCodeTour } from '../../hooks/useCodeTour';
 import { useAskAI } from '../../hooks/useAskAI';
 import { useMonacoDecorations } from '../../hooks/useMonacoDecorations';
 import { useAutoComplete } from '../../hooks/useAutoComplete';
+import { useIntentToCode } from '../../hooks/useIntentToCode';
+import { useCodeReview } from '../../hooks/useCodeReview';
+import { useTestGenerator } from '../../hooks/useTestGenerator';
 
 /**
  * CodeEditor Props
@@ -160,7 +163,32 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
       language: currentTab?.language || 'plaintext',
       editorRef,
       monacoRef,
+      editorReady,
       projectPath,
+    });
+
+    // Intent-to-Code 意图编程
+    const intentToCode = useIntentToCode({
+      filePath: currentTab?.path || null,
+      language: currentTab?.language || 'plaintext',
+      editorRef,
+    });
+
+    // AI Code Review 代码审查
+    const codeReview = useCodeReview({
+      filePath: currentTab?.path || null,
+      content: currentTab?.content || '',
+      language: currentTab?.language || 'plaintext',
+      editorRef,
+      monacoRef,
+      editorReady,
+    });
+
+    // Test Generator 测试生成
+    const testGenerator = useTestGenerator({
+      filePath: currentTab?.path || null,
+      language: currentTab?.language || 'plaintext',
+      editorRef,
     });
 
     // ========================================================================
@@ -265,6 +293,28 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
         contextMenuOrder: 0,
         run: () => {
           openAskAI();
+        },
+      });
+
+      // 注册右键菜单 "意图编程" action
+      editor.addAction({
+        id: 'intent-to-code',
+        label: '✏️ 意图编程',
+        contextMenuGroupId: 'navigation',
+        contextMenuOrder: 1,
+        run: () => {
+          intentToCode.openIntent();
+        },
+      });
+
+      // 注册右键菜单 "生成测试" action
+      editor.addAction({
+        id: 'generate-test',
+        label: '\u{1F9EA} 生成测试',
+        contextMenuGroupId: 'navigation',
+        contextMenuOrder: 2,
+        run: () => {
+          testGenerator.openGenerator();
         },
       });
     };
@@ -391,8 +441,11 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
         );
       }
 
+      const showReviewPanel = codeReview.enabled && codeReview.issues.length > 0;
+      const showAnyPanel = showLineDetails || showReviewPanel;
+
       return (
-        <div className={showLineDetails ? styles.editorWithPanel : styles.editorFull}>
+        <div className={showAnyPanel ? styles.editorWithPanel : styles.editorFull}>
           {/* Monaco 编辑器 */}
           <div className={styles.monacoContainer}>
             <Editor
@@ -514,6 +567,67 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
               )}
             </div>
           )}
+
+          {/* Code Review 问题面板 */}
+          {showReviewPanel && (
+            <div className={styles.reviewPanel}>
+              <div className={styles.reviewHeader}>
+                <span className={styles.reviewTitle}>🎯 代码审查</span>
+                <span className={styles.reviewCount}>{codeReview.issues.length} 个问题</span>
+                <button
+                  className={styles.reviewClose}
+                  onClick={codeReview.toggle}
+                >
+                  ×
+                </button>
+              </div>
+
+              {/* 摘要 */}
+              {codeReview.summary && (
+                <div className={styles.reviewSummary}>
+                  {codeReview.summary}
+                </div>
+              )}
+
+              {/* 问题列表 */}
+              <div className={styles.reviewIssuesList}>
+                {codeReview.issues.map((issue, idx) => {
+                  const typeIcon = 
+                    issue.type === 'bug' ? '🐛' :
+                    issue.type === 'performance' ? '⚡' :
+                    issue.type === 'security' ? '🔒' : '💅';
+
+                  return (
+                    <div
+                      key={idx}
+                      className={styles.reviewIssue}
+                      data-type={issue.type}
+                      data-severity={issue.severity}
+                      onClick={() => {
+                        if (editorRef.current) {
+                          editorRef.current.revealLineInCenter(issue.line);
+                          editorRef.current.setPosition({ lineNumber: issue.line, column: 1 });
+                          editorRef.current.focus();
+                        }
+                      }}
+                    >
+                      <div className={styles.issueHeader}>
+                        <span className={styles.issueIcon}>{typeIcon}</span>
+                        <span className={styles.issueSeverity} data-severity={issue.severity}>
+                          {issue.severity}
+                        </span>
+                        <span className={styles.issueLine}>L{issue.line}</span>
+                      </div>
+                      <div className={styles.issueMessage}>{issue.message}</div>
+                      {issue.suggestion && (
+                        <div className={styles.issueSuggestion}>💡 {issue.suggestion}</div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       );
     };
@@ -585,6 +699,14 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
               >
                 💬 气泡 {bubbles.loading && '⏳'}
               </button>
+              <button
+                className={`${styles.aiBtn} ${codeReview.enabled ? styles.active : ''}`}
+                onClick={codeReview.toggle}
+                disabled={codeReview.loading}
+                title="AI 代码审查"
+              >
+                🎯 审查 {codeReview.loading && '⏳'}
+              </button>
             </div>
 
             <span className={styles.toolDivider}></span>
@@ -596,6 +718,20 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
                 title={`AI 代码补全（本地 ${autoComplete.stats.localItems} 项 + ${autoComplete.stats.snippetItems} 片段）`}
               >
                 ⚡ 补全
+              </button>
+              <button
+                className={styles.aiBtn}
+                onClick={intentToCode.openIntent}
+                title="意图编程：根据意图改写或生成代码"
+              >
+                ✏️ 意图
+              </button>
+              <button
+                className={styles.aiBtn}
+                onClick={testGenerator.openGenerator}
+                title="测试生成：为函数生成单元测试"
+              >
+                🧪 测试
               </button>
               <button
                 className={`${styles.aiBtn} ${showLineDetails ? styles.active : ''}`}
@@ -757,6 +893,121 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
                   ✨ 提示3：如何优化？
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Intent-to-Code 对话框 */}
+        {intentToCode.state.visible && (
+          <div className={styles.askAIOverlay}>
+            <div className={styles.askAIDialog}>
+              <div className={styles.askAIHeader}>
+                <span className={styles.askAITitle}>
+                  ✏️ 意图编程（{intentToCode.state.mode === 'rewrite' ? '改写' : '生成'}）
+                </span>
+                {intentToCode.state.selectedRange && (
+                  <span className={styles.askAIRange}>
+                    第 {intentToCode.state.selectedRange.startLine}
+                    {intentToCode.state.selectedRange.endLine !== intentToCode.state.selectedRange.startLine
+                      ? `-${intentToCode.state.selectedRange.endLine}`
+                      : ''} 行
+                  </span>
+                )}
+                <button className={styles.askAIClose} onClick={intentToCode.close}>×</button>
+              </div>
+
+              <pre className={styles.askAICode}>{intentToCode.state.selectedCode}</pre>
+
+              <input
+                className={styles.askAIInput}
+                placeholder={
+                  intentToCode.state.mode === 'rewrite'
+                    ? '输入你的意图（例如：添加错误处理）'
+                    : '输入你的意图（例如：实现这个函数）'
+                }
+                value={intentToCode.state.intent}
+                onChange={(e) => intentToCode.setIntent(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    intentToCode.executeIntent();
+                  }
+                }}
+                autoFocus
+              />
+
+              <button
+                className={styles.askAISubmit}
+                onClick={intentToCode.executeIntent}
+                disabled={intentToCode.state.loading || !intentToCode.state.intent.trim()}
+              >
+                {intentToCode.state.loading ? '⏳ AI 生成中...' : '🚀 执行意图'}
+              </button>
+
+              {intentToCode.state.result && (
+                <div className={styles.askAIAnswer}>
+                  <div className={styles.askAIAnswerLabel}>✨ 生成的代码：</div>
+                  <pre className={styles.askAICode}>{intentToCode.state.result.code}</pre>
+                  {intentToCode.state.result.explanation && (
+                    <div className={styles.askAIAnswerContent}>
+                      {intentToCode.state.result.explanation}
+                    </div>
+                  )}
+                  <button
+                    className={styles.askAISubmit}
+                    onClick={intentToCode.applyResult}
+                    style={{ marginTop: '10px' }}
+                  >
+                    ✅ 应用到编辑器
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Test Generator 对话框 */}
+        {testGenerator.state.visible && (
+          <div className={styles.askAIOverlay}>
+            <div className={styles.askAIDialog}>
+              <div className={styles.askAIHeader}>
+                <span className={styles.askAITitle}>🧪 测试生成</span>
+                <span className={styles.askAIRange}>
+                  函数: {testGenerator.state.functionName}
+                </span>
+                <button className={styles.askAIClose} onClick={testGenerator.close}>×</button>
+              </div>
+
+              <pre className={styles.askAICode}>{testGenerator.state.selectedCode}</pre>
+
+              <button
+                className={styles.askAISubmit}
+                onClick={testGenerator.generate}
+                disabled={testGenerator.state.loading}
+              >
+                {testGenerator.state.loading ? '⏳ AI 生成中...' : '🚀 生成测试'}
+              </button>
+
+              {testGenerator.state.result && (
+                <div className={styles.askAIAnswer}>
+                  <div className={styles.askAIAnswerLabel}>
+                    ✨ 测试代码（{testGenerator.state.result.testFramework} - {testGenerator.state.result.testCount} 个用例）：
+                  </div>
+                  <pre className={styles.askAICode}>{testGenerator.state.result.testCode}</pre>
+                  {testGenerator.state.result.explanation && (
+                    <div className={styles.askAIAnswerContent}>
+                      {testGenerator.state.result.explanation}
+                    </div>
+                  )}
+                  <button
+                    className={styles.askAISubmit}
+                    onClick={testGenerator.copyToClipboard}
+                    style={{ marginTop: '10px' }}
+                  >
+                    📋 复制到剪贴板
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}

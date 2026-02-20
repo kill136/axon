@@ -52,6 +52,24 @@ const bubblesCache = new LRUCache<string, BubblesResponse>({
   ttl: 1000 * 60 * 15,
 });
 
+// Intent-to-Code 结果缓存
+const intentCache = new LRUCache<string, IntentToCodeResponse>({
+  max: 500,
+  ttl: 1000 * 60 * 15,
+});
+
+// Code Review 结果缓存
+const reviewCache = new LRUCache<string, CodeReviewResponse>({
+  max: 500,
+  ttl: 1000 * 60 * 15,
+});
+
+// Test Generator 结果缓存
+const testGenCache = new LRUCache<string, GenerateTestResponse>({
+  max: 200,
+  ttl: 1000 * 60 * 15,
+});
+
 // 防止重复请求
 const pendingRequests = new Map<string, Promise<any>>();
 
@@ -148,6 +166,63 @@ interface BubblesRequest {
 interface BubblesResponse {
   success: boolean;
   bubbles: AIBubble[];
+  fromCache?: boolean;
+  error?: string;
+}
+
+interface IntentToCodeRequest {
+  filePath: string;
+  code: string;
+  intent: string;
+  language: string;
+  mode: 'rewrite' | 'generate';
+}
+
+interface IntentToCodeResponse {
+  success: boolean;
+  code?: string;
+  explanation?: string;
+  error?: string;
+  fromCache?: boolean;
+}
+
+interface CodeReviewIssue {
+  line: number;
+  endLine: number;
+  type: 'bug' | 'performance' | 'security' | 'style';
+  severity: 'error' | 'warning' | 'info';
+  message: string;
+  suggestion?: string;
+}
+
+interface CodeReviewRequest {
+  filePath: string;
+  content: string;
+  language: string;
+}
+
+interface CodeReviewResponse {
+  success: boolean;
+  issues: CodeReviewIssue[];
+  summary?: string;
+  fromCache?: boolean;
+  error?: string;
+}
+
+interface GenerateTestRequest {
+  filePath: string;
+  code: string;
+  functionName: string;
+  language: string;
+  framework?: string;
+}
+
+interface GenerateTestResponse {
+  success: boolean;
+  testCode?: string;
+  testFramework?: string;
+  testCount?: number;
+  explanation?: string;
   fromCache?: boolean;
   error?: string;
 }
@@ -753,6 +828,358 @@ ${content}
     res.status(500).json({
       success: false,
       bubbles: [],
+      error: error.message || '服务器内部错误',
+    });
+  }
+});
+
+/**
+ * POST /intent-to-code - Intent-to-Code (意图编程)
+ */
+router.post('/intent-to-code', async (req: Request, res: Response) => {
+  try {
+    const { filePath, code, intent, language, mode }: IntentToCodeRequest = req.body;
+
+    if (!filePath || !code || !intent || !language || !mode) {
+      return res.status(400).json({
+        success: false,
+        error: '缺少必需参数: filePath, code, intent, language 和 mode',
+      });
+    }
+
+    // 检查缓存
+    const cacheKey = `intent:${hashContent(code)}:${hashContent(intent)}:${mode}`;
+    const cached = intentCache.get(cacheKey);
+    if (cached) {
+      return res.json({ ...cached, fromCache: true });
+    }
+
+    // 检查是否有正在进行的相同请求
+    const pending = pendingRequests.get(cacheKey);
+    if (pending) {
+      const result = await pending;
+      return res.json({ ...result, fromCache: true });
+    }
+
+    // 创建新请求
+    const requestPromise = (async (): Promise<IntentToCodeResponse> => {
+      let prompt = '';
+
+      if (mode === 'rewrite') {
+        prompt = `你是一个专业的代码编写助手。用户选中了一段代码，并提出了修改意图，请按照意图改写代码。
+
+## 原代码
+文件路径: ${filePath}
+语言: ${language}
+
+\`\`\`${language}
+${code}
+\`\`\`
+
+## 用户意图
+${intent}
+
+## 输出要求
+返回 JSON 格式：
+{
+  "code": "改写后的完整代码（保持格式和风格）",
+  "explanation": "简短说明改动了什么（中文，1-2句话）"
+}
+
+只输出 JSON，不要有其他内容。`;
+      } else {
+        // generate 模式
+        prompt = `你是一个专业的代码编写助手。用户在代码注释后要求生成代码，请根据意图生成代码。
+
+## 上下文
+文件路径: ${filePath}
+语言: ${language}
+注释内容: ${code}
+
+## 用户意图
+${intent}
+
+## 输出要求
+返回 JSON 格式：
+{
+  "code": "生成的代码（格式规范，可直接使用）",
+  "explanation": "简短说明生成了什么（中文，1-2句话）"
+}
+
+只输出 JSON，不要有其他内容。`;
+      }
+
+      try {
+        const response = await callClaude(prompt);
+        if (!response) {
+          return { success: false, error: '无法获取 AI 响应' };
+        }
+
+        const parsed = extractJSON(response);
+        return {
+          success: true,
+          code: parsed.code || '',
+          explanation: parsed.explanation || '',
+        };
+      } catch (error: any) {
+        return {
+          success: false,
+          error: error.message || 'AI 生成失败',
+        };
+      }
+    })();
+
+    pendingRequests.set(cacheKey, requestPromise);
+
+    try {
+      const result = await requestPromise;
+
+      // 只缓存成功的结果
+      if (result.success) {
+        intentCache.set(cacheKey, result);
+      }
+
+      res.json(result);
+    } finally {
+      pendingRequests.delete(cacheKey);
+    }
+  } catch (error: any) {
+    console.error('[AI Editor] /intent-to-code 请求处理失败:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || '服务器内部错误',
+    });
+  }
+});
+
+/**
+ * POST /code-review - AI Code Review (代码审查)
+ */
+router.post('/code-review', async (req: Request, res: Response) => {
+  try {
+    const { filePath, content, language }: CodeReviewRequest = req.body;
+
+    if (!filePath || !content || !language) {
+      return res.status(400).json({
+        success: false,
+        issues: [],
+        error: '缺少必需参数: filePath, content 和 language',
+      });
+    }
+
+    // 检查缓存
+    const cacheKey = `review:${filePath}:${hashContent(content)}`;
+    const cached = reviewCache.get(cacheKey);
+    if (cached) {
+      return res.json({ ...cached, fromCache: true });
+    }
+
+    // 检查是否有正在进行的相同请求
+    const pending = pendingRequests.get(cacheKey);
+    if (pending) {
+      const result = await pending;
+      return res.json({ ...result, fromCache: true });
+    }
+
+    // 创建新请求
+    const requestPromise = (async (): Promise<CodeReviewResponse> => {
+      const prompt = `你是一个代码审查专家。请分析下方代码，找出潜在问题，按类型分类。
+
+## 代码文件: ${filePath}
+语言: ${language}
+
+\`\`\`${language}
+${content}
+\`\`\`
+
+## 问题分类
+- bug: 潜在 bug（空指针、未初始化变量、竞态条件、边界条件等）
+- performance: 性能问题（N+1查询、不必要的渲染、内存泄漏、低效算法等）
+- security: 安全隐患（注入漏洞、XSS、敏感信息泄露、不安全的随机数等）
+- style: 代码风格和最佳实践（命名规范、代码重复、可读性、设计模式等）
+
+## 严重程度
+- error: 严重问题，必须修复
+- warning: 警告，建议修复
+- info: 信息提示，可选优化
+
+## 输出要求
+返回 JSON 格式：
+{
+  "issues": [
+    {
+      "line": 起始行号（从1开始）,
+      "endLine": 结束行号,
+      "type": "bug" | "performance" | "security" | "style",
+      "severity": "error" | "warning" | "info",
+      "message": "问题描述（中文，1句话）",
+      "suggestion": "修复建议（中文，1句话，可选）"
+    }
+  ],
+  "summary": "整体代码质量总结（中文，2-3句话）"
+}
+
+只返回最重要的 5-15 个问题。只输出 JSON，不要有其他内容。`;
+
+      try {
+        const response = await callClaude(prompt);
+        if (!response) {
+          return { success: false, issues: [], error: '无法获取 AI 响应' };
+        }
+
+        const parsed = extractJSON(response);
+        return {
+          success: true,
+          issues: parsed.issues || [],
+          summary: parsed.summary || '',
+        };
+      } catch (error: any) {
+        return {
+          success: false,
+          issues: [],
+          error: error.message || 'AI 分析失败',
+        };
+      }
+    })();
+
+    pendingRequests.set(cacheKey, requestPromise);
+
+    try {
+      const result = await requestPromise;
+
+      // 只缓存成功的结果
+      if (result.success) {
+        reviewCache.set(cacheKey, result);
+      }
+
+      res.json(result);
+    } finally {
+      pendingRequests.delete(cacheKey);
+    }
+  } catch (error: any) {
+    console.error('[AI Editor] /code-review 请求处理失败:', error);
+    res.status(500).json({
+      success: false,
+      issues: [],
+      error: error.message || '服务器内部错误',
+    });
+  }
+});
+
+/**
+ * POST /generate-test - Test Generator (测试生成)
+ */
+router.post('/generate-test', async (req: Request, res: Response) => {
+  try {
+    const { filePath, code, functionName, language, framework }: GenerateTestRequest = req.body;
+
+    if (!filePath || !code || !functionName || !language) {
+      return res.status(400).json({
+        success: false,
+        error: '缺少必需参数: filePath, code, functionName 和 language',
+      });
+    }
+
+    // 检查缓存
+    const cacheKey = `testgen:${hashContent(code)}:${functionName}:${language}`;
+    const cached = testGenCache.get(cacheKey);
+    if (cached) {
+      return res.json({ ...cached, fromCache: true });
+    }
+
+    // 检查是否有正在进行的相同请求
+    const pending = pendingRequests.get(cacheKey);
+    if (pending) {
+      const result = await pending;
+      return res.json({ ...result, fromCache: true });
+    }
+
+    // 创建新请求
+    const requestPromise = (async (): Promise<GenerateTestResponse> => {
+      // 自动检测测试框架
+      const detectFramework = (lang: string): string => {
+        const frameworks: Record<string, string> = {
+          'typescript': 'vitest',
+          'javascript': 'vitest',
+          'python': 'pytest',
+          'go': 'testing',
+          'rust': 'rust-test',
+          'java': 'junit',
+        };
+        return frameworks[lang] || 'vitest';
+      };
+
+      const testFramework = framework || detectFramework(language);
+
+      const prompt = `你是一个测试代码生成专家。请为下方函数生成完整的单元测试。
+
+## 函数代码
+文件路径: ${filePath}
+语言: ${language}
+函数名: ${functionName}
+
+\`\`\`${language}
+${code}
+\`\`\`
+
+## 测试要求
+- 测试框架: ${testFramework}
+- 覆盖正常情况、边界条件、异常情况
+- 测试代码要完整可运行，包含必要的 import 和 setup
+- 测试用例命名清晰
+- 每个测试一个独立的 test case
+
+## 输出要求
+返回 JSON 格式：
+{
+  "testCode": "完整的测试文件代码",
+  "testFramework": "${testFramework}",
+  "testCount": 测试用例数量（数字）,
+  "explanation": "测试覆盖了哪些场景（中文，1-2句话）"
+}
+
+只输出 JSON，不要有其他内容。`;
+
+      try {
+        const response = await callClaude(prompt);
+        if (!response) {
+          return { success: false, error: '无法获取 AI 响应' };
+        }
+
+        const parsed = extractJSON(response);
+        return {
+          success: true,
+          testCode: parsed.testCode || '',
+          testFramework: parsed.testFramework || testFramework,
+          testCount: parsed.testCount || 0,
+          explanation: parsed.explanation || '',
+        };
+      } catch (error: any) {
+        return {
+          success: false,
+          error: error.message || 'AI 生成失败',
+        };
+      }
+    })();
+
+    pendingRequests.set(cacheKey, requestPromise);
+
+    try {
+      const result = await requestPromise;
+
+      // 只缓存成功的结果
+      if (result.success) {
+        testGenCache.set(cacheKey, result);
+      }
+
+      res.json(result);
+    } finally {
+      pendingRequests.delete(cacheKey);
+    }
+  } catch (error: any) {
+    console.error('[AI Editor] /generate-test 请求处理失败:', error);
+    res.status(500).json({
+      success: false,
       error: error.message || '服务器内部错误',
     });
   }

@@ -236,6 +236,84 @@ export interface InlineCompleteResponse {
   error?: string;
 }
 
+/**
+ * Intent-to-Code 请求
+ */
+export interface IntentToCodeRequest {
+  filePath: string;
+  code: string;
+  intent: string;
+  language: string;
+  mode: 'rewrite' | 'generate';
+}
+
+/**
+ * Intent-to-Code 响应
+ */
+export interface IntentToCodeResponse {
+  success: boolean;
+  code?: string;
+  explanation?: string;
+  error?: string;
+  fromCache?: boolean;
+}
+
+/**
+ * Code Review Issue
+ */
+export interface CodeReviewIssue {
+  line: number;
+  endLine: number;
+  type: 'bug' | 'performance' | 'security' | 'style';
+  severity: 'error' | 'warning' | 'info';
+  message: string;
+  suggestion?: string;
+}
+
+/**
+ * Code Review 请求
+ */
+export interface CodeReviewRequest {
+  filePath: string;
+  content: string;
+  language: string;
+}
+
+/**
+ * Code Review 响应
+ */
+export interface CodeReviewResponse {
+  success: boolean;
+  issues: CodeReviewIssue[];
+  summary?: string;
+  fromCache?: boolean;
+  error?: string;
+}
+
+/**
+ * Test Generator 请求
+ */
+export interface GenerateTestRequest {
+  filePath: string;
+  code: string;
+  functionName: string;
+  language: string;
+  framework?: string;
+}
+
+/**
+ * Test Generator 响应
+ */
+export interface GenerateTestResponse {
+  success: boolean;
+  testCode?: string;
+  testFramework?: string;
+  testCount?: number;
+  explanation?: string;
+  fromCache?: boolean;
+  error?: string;
+}
+
 // ============================================================================
 // API 调用函数
 // ============================================================================
@@ -496,6 +574,107 @@ export const aiCompleteApi = {
   },
 };
 
+/**
+ * AI Intent-to-Code API - 意图编程
+ */
+export const aiIntentApi = {
+  /**
+   * 执行意图编程
+   */
+  execute: async (request: IntentToCodeRequest): Promise<IntentToCodeResponse> => {
+    try {
+      const response = await fetch('/api/ai-editor/intent-to-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(request),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+        return {
+          success: false,
+          error: error.error || `HTTP ${response.status}`,
+        };
+      }
+
+      return response.json();
+    } catch (err: any) {
+      return {
+        success: false,
+        error: err.message || 'Network error',
+      };
+    }
+  },
+};
+
+/**
+ * AI Code Review API - 代码审查
+ */
+export const aiCodeReviewApi = {
+  /**
+   * 分析代码问题
+   */
+  analyze: async (request: CodeReviewRequest): Promise<CodeReviewResponse> => {
+    try {
+      const response = await fetch('/api/ai-editor/code-review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(request),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+        return {
+          success: false,
+          issues: [],
+          error: error.error || `HTTP ${response.status}`,
+        };
+      }
+
+      return response.json();
+    } catch (err: any) {
+      return {
+        success: false,
+        issues: [],
+        error: err.message || 'Network error',
+      };
+    }
+  },
+};
+
+/**
+ * AI Test Generator API - 测试生成
+ */
+export const aiTestGenApi = {
+  /**
+   * 生成测试代码
+   */
+  generate: async (request: GenerateTestRequest): Promise<GenerateTestResponse> => {
+    try {
+      const response = await fetch('/api/ai-editor/generate-test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(request),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+        return {
+          success: false,
+          error: error.error || `HTTP ${response.status}`,
+        };
+      }
+
+      return response.json();
+    } catch (err: any) {
+      return {
+        success: false,
+        error: err.message || 'Network error',
+      };
+    }
+  },
+};
+
 // ============================================================================
 // 统一导出
 // ============================================================================
@@ -508,6 +687,9 @@ export const aiEditorApi = {
   refactor: aiRefactorApi,
   bubbles: aiBubblesApi,
   complete: aiCompleteApi,
+  intent: aiIntentApi,
+  codeReview: aiCodeReviewApi,
+  testGen: aiTestGenApi,
 };
 
 export default aiEditorApi;

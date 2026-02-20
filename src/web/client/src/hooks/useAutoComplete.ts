@@ -26,6 +26,8 @@ export interface UseAutoCompleteOptions {
   editorRef: React.MutableRefObject<MonacoEditor.editor.IStandaloneCodeEditor | null>;
   /** Monaco 命名空间引用 */
   monacoRef: React.MutableRefObject<typeof Monaco | null>;
+  /** Editor 是否已准备就绪（必须用 state 驱动，ref 变化不触发 effect） */
+  editorReady: boolean;
   /** 项目根路径（用于路径补全） */
   projectPath?: string;
 }
@@ -140,21 +142,24 @@ function isInImportPath(lineContent: string, column: number): { isImport: boolea
  * useAutoComplete Hook
  */
 export function useAutoComplete(options: UseAutoCompleteOptions): UseAutoCompleteReturn {
-  const { enabled, filePath, language, editorRef, monacoRef, projectPath } = options;
+  const { enabled, filePath, language, editorRef, monacoRef, editorReady, projectPath } = options;
 
   const [internalEnabled, setInternalEnabled] = useState(enabled);
   const [stats, setStats] = useState({ localItems: 0, snippetItems: CODE_SNIPPETS.length });
 
-  // Provider 注册标志，避免重复注册
-  const registeredRef = useRef(false);
   const completionProviderRef = useRef<{ dispose: () => void } | null>(null);
   const inlineProviderRef = useRef<{ dispose: () => void } | null>(null);
 
-  // 本地标识符缓存
-  const identifiersCacheRef = useRef<Set<string>>(new Set());
+  // 用 ref 存可变值，供 provider 回调闭包读取最新值
+  const filePathRef = useRef(filePath);
+  const languageRef = useRef(language);
+  const projectPathRef = useRef(projectPath);
+  filePathRef.current = filePath;
+  languageRef.current = language;
+  projectPathRef.current = projectPath;
 
   // AI 补全防抖 timer
-  const aiDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const aiDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 更新内部启用状态
   useEffect(() => {
@@ -162,29 +167,24 @@ export function useAutoComplete(options: UseAutoCompleteOptions): UseAutoComplet
   }, [enabled]);
 
   // ========================================================================
-  // 第一层：本地快速补全（CompletionItemProvider）
+  // 第一层 + 第二层：CompletionItemProvider
+  // 依赖 editorReady（state）来感知 editor mount，而不是 editorRef（ref）
+  // provider 只注册一次，通过 ref 读取最新的 filePath/language
   // ========================================================================
 
   useEffect(() => {
     const monaco = monacoRef.current;
-    const editor = editorRef.current;
 
-    if (!internalEnabled || !monaco || !editor) {
+    if (!internalEnabled || !editorReady || !monaco) {
       // 清理已注册的 provider
       if (completionProviderRef.current) {
         completionProviderRef.current.dispose();
         completionProviderRef.current = null;
-        registeredRef.current = false;
       }
       return;
     }
 
-    // 避免重复注册
-    if (registeredRef.current) {
-      return;
-    }
-
-    // 注册 CompletionItemProvider
+    // 注册 CompletionItemProvider（对所有支持的语言注册一次）
     const provider = monaco.languages.registerCompletionItemProvider(
       ['typescript', 'javascript', 'typescriptreact', 'javascriptreact', 'python', 'go', 'rust', 'java', 'css', 'html', 'json'],
       {
@@ -201,16 +201,21 @@ export function useAutoComplete(options: UseAutoCompleteOptions): UseAutoComplet
 
           const suggestions: any[] = [];
 
+          // 从 ref 读取最新值
+          const currentFilePath = filePathRef.current;
+          const currentLanguage = languageRef.current;
+          const currentProjectPath = projectPathRef.current;
+
           // 检查是否在 import 路径中
           const { isImport, prefix } = isInImportPath(lineContent, position.column);
           
-          if (isImport && filePath) {
+          if (isImport && currentFilePath) {
             // 第二层：import 路径补全
             try {
               const response = await aiEditorApi.complete.completePath({
-                filePath,
+                filePath: currentFilePath,
                 prefix,
-                root: projectPath,
+                root: currentProjectPath,
               });
 
               if (response.success && response.items) {
@@ -223,7 +228,7 @@ export function useAutoComplete(options: UseAutoCompleteOptions): UseAutoComplet
                     insertText: item.label,
                     detail: item.detail,
                     range,
-                    sortText: `0_${item.label}`, // 路径补全优先级最高
+                    sortText: `0_${item.label}`,
                   });
                 });
               }
@@ -234,22 +239,16 @@ export function useAutoComplete(options: UseAutoCompleteOptions): UseAutoComplet
             return { suggestions };
           }
 
-          // 否则返回本地标识符 + 关键字 + 代码片段
+          // 第一层：本地标识符 + 关键字 + 代码片段
 
-          // 1. 本地标识符
+          // 1. 本地标识符（从当前编辑器内容提取）
           const currentContent = model.getValue();
           const identifiers = extractIdentifiers(currentContent);
-          identifiersCacheRef.current = identifiers;
           
-          const prefix_lower = word.word.toLowerCase();
+          const prefixLower = word.word.toLowerCase();
           identifiers.forEach(id => {
-            const id_lower = id.toLowerCase();
-            let sortText = '2_'; // 默认排序
-            
-            // 精确前缀匹配优先
-            if (id_lower.startsWith(prefix_lower)) {
-              sortText = '1_';
-            }
+            const idLower = id.toLowerCase();
+            const sortText = idLower.startsWith(prefixLower) ? '1_' : '2_';
             
             suggestions.push({
               label: id,
@@ -261,14 +260,10 @@ export function useAutoComplete(options: UseAutoCompleteOptions): UseAutoComplet
           });
 
           // 2. 关键字（仅 TypeScript/JavaScript）
-          if (['typescript', 'javascript', 'typescriptreact', 'javascriptreact'].includes(language)) {
+          const tsLangs = ['typescript', 'javascript', 'typescriptreact', 'javascriptreact'];
+          if (tsLangs.includes(currentLanguage)) {
             TS_JS_KEYWORDS.forEach(keyword => {
-              const keyword_lower = keyword.toLowerCase();
-              let sortText = '2_';
-              
-              if (keyword_lower.startsWith(prefix_lower)) {
-                sortText = '1_';
-              }
+              const sortText = keyword.startsWith(prefixLower) ? '1_' : '2_';
               
               suggestions.push({
                 label: keyword,
@@ -281,12 +276,7 @@ export function useAutoComplete(options: UseAutoCompleteOptions): UseAutoComplet
 
             // 3. 代码片段
             CODE_SNIPPETS.forEach(snippet => {
-              const snippet_lower = snippet.label.toLowerCase();
-              let sortText = '2_';
-              
-              if (snippet_lower.startsWith(prefix_lower)) {
-                sortText = '1_';
-              }
+              const sortText = snippet.label.startsWith(prefixLower) ? '1_' : '2_';
               
               suggestions.push({
                 label: snippet.label,
@@ -302,8 +292,8 @@ export function useAutoComplete(options: UseAutoCompleteOptions): UseAutoComplet
 
           // 更新统计
           setStats({
-            localItems: identifiers.size + TS_JS_KEYWORDS.length,
-            snippetItems: CODE_SNIPPETS.length,
+            localItems: identifiers.size + (tsLangs.includes(currentLanguage) ? TS_JS_KEYWORDS.length : 0),
+            snippetItems: tsLangs.includes(currentLanguage) ? CODE_SNIPPETS.length : 0,
           });
 
           return { suggestions };
@@ -312,27 +302,24 @@ export function useAutoComplete(options: UseAutoCompleteOptions): UseAutoComplet
     );
 
     completionProviderRef.current = provider;
-    registeredRef.current = true;
 
     return () => {
       if (completionProviderRef.current) {
         completionProviderRef.current.dispose();
         completionProviderRef.current = null;
-        registeredRef.current = false;
       }
     };
-  }, [internalEnabled, filePath, language, editorRef, monacoRef, projectPath]);
+  }, [internalEnabled, editorReady]);
 
   // ========================================================================
   // 第三层：AI Inline Completion（Ghost Text）
+  // 同样依赖 editorReady，provider 回调通过 ref 读取最新值
   // ========================================================================
 
   useEffect(() => {
     const monaco = monacoRef.current;
-    const editor = editorRef.current;
 
-    if (!internalEnabled || !monaco || !editor || !filePath) {
-      // 清理 inline provider
+    if (!internalEnabled || !editorReady || !monaco) {
       if (inlineProviderRef.current) {
         inlineProviderRef.current.dispose();
         inlineProviderRef.current = null;
@@ -340,18 +327,17 @@ export function useAutoComplete(options: UseAutoCompleteOptions): UseAutoComplet
       return;
     }
 
-    // 注册 InlineCompletionsProvider
     const provider = monaco.languages.registerInlineCompletionsProvider(
       ['typescript', 'javascript', 'typescriptreact', 'javascriptreact', 'python', 'go', 'rust', 'java'],
       {
-        provideInlineCompletions: async (model, position, context, token) => {
+        provideInlineCompletions: async (model, position, _context, token) => {
           // 取消之前的防抖 timer
           if (aiDebounceTimerRef.current) {
             clearTimeout(aiDebounceTimerRef.current);
           }
 
           // 防抖 800ms
-          await new Promise(resolve => {
+          await new Promise<void>(resolve => {
             aiDebounceTimerRef.current = setTimeout(resolve, 800);
           });
 
@@ -360,18 +346,24 @@ export function useAutoComplete(options: UseAutoCompleteOptions): UseAutoComplet
             return { items: [] };
           }
 
+          const currentFilePath = filePathRef.current;
+          const currentLanguage = languageRef.current;
+          if (!currentFilePath) {
+            return { items: [] };
+          }
+
           // 获取上下文
           const currentLine = model.getLineContent(position.lineNumber);
           const currentLinePrefix = currentLine.substring(0, position.column - 1);
           
-          // 只有在有实际前缀文本时才触发（光标不在行首空白处）
+          // 只有在有实际输入文本时才触发
           if (!currentLinePrefix.trim()) {
             return { items: [] };
           }
 
           // 获取光标前 50 行
           const startLine = Math.max(1, position.lineNumber - 50);
-          const prefixLines = [];
+          const prefixLines: string[] = [];
           for (let i = startLine; i < position.lineNumber; i++) {
             prefixLines.push(model.getLineContent(i));
           }
@@ -380,7 +372,7 @@ export function useAutoComplete(options: UseAutoCompleteOptions): UseAutoComplet
 
           // 获取光标后 20 行
           const endLine = Math.min(model.getLineCount(), position.lineNumber + 20);
-          const suffixLines = [];
+          const suffixLines: string[] = [];
           const currentLineSuffix = currentLine.substring(position.column - 1);
           if (currentLineSuffix) {
             suffixLines.push(currentLineSuffix);
@@ -390,15 +382,25 @@ export function useAutoComplete(options: UseAutoCompleteOptions): UseAutoComplet
           }
           const suffix = suffixLines.join('\n');
 
+          // 再次检查取消（网络请求前）
+          if (token.isCancellationRequested) {
+            return { items: [] };
+          }
+
           try {
             const response = await aiEditorApi.complete.inlineComplete({
-              filePath,
-              language,
+              filePath: currentFilePath,
+              language: currentLanguage,
               prefix,
               suffix,
               currentLine,
               cursorColumn: position.column,
             });
+
+            // 请求返回后再次检查取消
+            if (token.isCancellationRequested) {
+              return { items: [] };
+            }
 
             if (response.success && response.completion) {
               const completion = response.completion.trim();
@@ -440,7 +442,7 @@ export function useAutoComplete(options: UseAutoCompleteOptions): UseAutoComplet
         clearTimeout(aiDebounceTimerRef.current);
       }
     };
-  }, [internalEnabled, filePath, language, editorRef, monacoRef]);
+  }, [internalEnabled, editorReady]);
 
   // ========================================================================
   // 返回 API
