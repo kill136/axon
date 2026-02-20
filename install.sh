@@ -620,7 +620,7 @@ install_npm() {
             info "Updating existing installation..."
             cd "$INSTALL_DIR"
             git checkout -- .
-            git clean -fd
+            git clean -fd --exclude=.node
             git pull origin private_web_ui
             if [ $? -ne 0 ]; then
                 error "Git pull failed. Please check your network connection."
