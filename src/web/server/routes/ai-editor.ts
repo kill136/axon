@@ -16,6 +16,8 @@ import { getAuth } from '../../../auth/index.js';
 import { LRUCache } from 'lru-cache';
 import crypto from 'crypto';
 import { execSync } from 'child_process';
+import fs from 'fs';
+import path from 'path';
 
 const router = Router();
 
@@ -99,6 +101,12 @@ const patternCache = new LRUCache<string, PatternDetectorResponse>({
 const apiDocCache = new LRUCache<string, ApiDocResponse>({
   max: 500,
   ttl: 1000 * 60 * 30, // 30分钟（API文档不常变）
+});
+
+// Inline Complete 结果缓存
+const inlineCompleteCache = new LRUCache<string, { completion: string }>({
+  max: 200,
+  ttl: 1000 * 60 * 5, // 5分钟（代码上下文变化快）
 });
 
 // 防止重复请求
@@ -334,6 +342,35 @@ async function callClaude(prompt: string): Promise<string | null> {
  * 从 AI 响应中提取 JSON
  */
 function extractJSON(text: string): any {
+  // 1. 尝试从 markdown 代码块中提取
+  const codeBlockMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)```/);
+  if (codeBlockMatch) {
+    const inner = codeBlockMatch[1].trim();
+    try {
+      return JSON.parse(inner);
+    } catch {}
+  }
+
+  // 2. 尝试匹配最外层 JSON 对象（使用大括号计数而非贪婪正则）
+  const firstBrace = text.indexOf('{');
+  if (firstBrace === -1) {
+    throw new Error('无法从响应中提取 JSON');
+  }
+
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = firstBrace; i < text.length; i++) {
+    const ch = text[i];
+    if (escape) { escape = false; continue; }
+    if (ch === '\\' && inString) { escape = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === '{') depth++;
+    if (ch === '}') { depth--; if (depth === 0) return JSON.parse(text.slice(firstBrace, i + 1)); }
+  }
+
+  // 3. fallback: 贪婪正则
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
     throw new Error('无法从响应中提取 JSON');
@@ -1929,7 +1966,7 @@ router.post('/time-machine', async (req: Request, res: Response) => {
 
         try {
           // 获取文件的整体历史（最近20条）
-          const gitLogCmd = `git log --follow --format='%H|%an|%ae|%ad|%s' -20 -- "${filePath}"`;
+          const gitLogCmd = `git log --follow --format="%H|%an|%ae|%ad|%s" -20 -- "${filePath}"`;
           const gitOutput = execSync(gitLogCmd, {
             cwd: process.cwd(),
             encoding: 'utf-8',
@@ -1952,7 +1989,7 @@ router.post('/time-machine', async (req: Request, res: Response) => {
           // 如果指定了行号范围，还获取该区域的历史
           if (startLine && endLine) {
             try {
-              const gitLineLogCmd = `git log -L ${startLine},${endLine}:"${filePath}" --format='%H|%an|%ad|%s' -10`;
+              const gitLineLogCmd = `git log -L ${startLine},${endLine}:"${filePath}" --format="%H|%an|%ad|%s" -10`;
               const lineLogOutput = execSync(gitLineLogCmd, {
                 cwd: process.cwd(),
                 encoding: 'utf-8',
@@ -2360,9 +2397,16 @@ ${codeContext}
           { enableThinking: false }
         );
 
-        const rawText = response.content[0]?.type === 'text' ? response.content[0].text : '';
+        // 从 content blocks 中提取所有 text（跳过 thinking blocks）
+        const rawText = response.content
+          .filter((b: any) => b.type === 'text')
+          .map((b: any) => b.text)
+          .join('\n');
+
+        console.log(`[AI Editor] /api-doc rawText (${rawText.length} chars):`, rawText.slice(0, 500));
 
         if (!rawText) {
+          console.error('[AI Editor] /api-doc 无 text content, blocks:', response.content.map((b: any) => b.type));
           return {
             success: false,
             error: 'AI 未返回有效文档',
@@ -2417,6 +2461,219 @@ ${codeContext}
     }
   } catch (error: any) {
     console.error('[AI Editor] /api-doc 请求处理失败:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || '服务器内部错误',
+    });
+  }
+});
+
+// ============================================================================
+// POST /complete-path - Import 路径补全
+// ============================================================================
+
+router.post('/complete-path', async (req: Request, res: Response) => {
+  try {
+    const { filePath, prefix, root } = req.body;
+
+    if (!filePath) {
+      return res.status(400).json({
+        success: false,
+        items: [],
+        error: '缺少必要参数 filePath',
+      });
+    }
+
+    // 解析基准目录
+    const fileDir = path.dirname(filePath);
+    let resolveBase: string;
+
+    if (prefix.startsWith('.')) {
+      // 相对路径：基于当前文件目录
+      resolveBase = path.resolve(fileDir, prefix);
+    } else if (root) {
+      // 非相对路径：从项目根目录的 node_modules 查找
+      resolveBase = path.resolve(root, 'node_modules', prefix);
+    } else {
+      return res.json({ success: true, items: [] });
+    }
+
+    // 判断 resolveBase 是文件夹还是需要列出其父目录的匹配项
+    let dirToList: string;
+    let filterPrefix = '';
+
+    try {
+      const stat = fs.statSync(resolveBase);
+      if (stat.isDirectory()) {
+        dirToList = resolveBase;
+      } else {
+        return res.json({ success: true, items: [] });
+      }
+    } catch {
+      // resolveBase 不存在，列出其父目录并用最后一段做前缀过滤
+      dirToList = path.dirname(resolveBase);
+      filterPrefix = path.basename(resolveBase).toLowerCase();
+    }
+
+    // 读取目录
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dirToList, { withFileTypes: true });
+    } catch {
+      return res.json({ success: true, items: [] });
+    }
+
+    const items: Array<{ label: string; kind: 'file' | 'folder'; detail?: string }> = [];
+
+    for (const entry of entries) {
+      // 跳过隐藏文件
+      if (entry.name.startsWith('.')) continue;
+
+      const nameLower = entry.name.toLowerCase();
+      if (filterPrefix && !nameLower.startsWith(filterPrefix)) continue;
+
+      if (entry.isDirectory()) {
+        items.push({
+          label: entry.name,
+          kind: 'folder',
+          detail: '📁 目录',
+        });
+      } else if (entry.isFile()) {
+        // 只显示代码相关文件
+        const ext = path.extname(entry.name).toLowerCase();
+        const codeExts = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.json', '.css', '.scss', '.less', '.vue', '.svelte'];
+        if (codeExts.includes(ext)) {
+          // 显示时去掉 .ts/.tsx/.js/.jsx 扩展名
+          const stripExts = ['.ts', '.tsx', '.js', '.jsx'];
+          const label = stripExts.includes(ext) ? entry.name.replace(/\.(ts|tsx|js|jsx)$/, '') : entry.name;
+          items.push({
+            label,
+            kind: 'file',
+            detail: ext,
+          });
+        }
+      }
+
+      if (items.length >= 50) break;
+    }
+
+    // 文件夹排前面
+    items.sort((a, b) => {
+      if (a.kind !== b.kind) return a.kind === 'folder' ? -1 : 1;
+      return a.label.localeCompare(b.label);
+    });
+
+    res.json({ success: true, items });
+  } catch (error: any) {
+    console.error('[AI Editor] /complete-path 失败:', error);
+    res.status(500).json({
+      success: false,
+      items: [],
+      error: error.message || '服务器内部错误',
+    });
+  }
+});
+
+// ============================================================================
+// POST /inline-complete - AI Inline 补全（Ghost Text）
+// ============================================================================
+
+router.post('/inline-complete', async (req: Request, res: Response) => {
+  try {
+    const { filePath, language, prefix, suffix, currentLine, cursorColumn } = req.body;
+
+    if (!filePath || !prefix) {
+      return res.status(400).json({
+        success: false,
+        error: '缺少必要参数',
+      });
+    }
+
+    // 缓存键：基于前缀最后 3 行 + 当前行前缀
+    const lastLines = prefix.split('\n').slice(-3).join('\n');
+    const cacheKey = crypto
+      .createHash('md5')
+      .update(`inline:${filePath}:${lastLines}`)
+      .digest('hex');
+
+    const cached = inlineCompleteCache.get(cacheKey);
+    if (cached) {
+      return res.json({ success: true, completion: cached.completion, fromCache: true });
+    }
+
+    // 检查重复请求
+    if (pendingRequests.has(cacheKey)) {
+      const result = await pendingRequests.get(cacheKey);
+      return res.json(result);
+    }
+
+    const requestPromise = (async () => {
+      try {
+        const client = createClient();
+        if (!client) {
+          return { success: false, error: 'API 客户端未初始化' };
+        }
+
+        // 截取上下文（避免 token 过多）
+        const prefixLines = prefix.split('\n');
+        const trimmedPrefix = prefixLines.slice(-30).join('\n');
+        const suffixLines = suffix ? suffix.split('\n').slice(0, 10).join('\n') : '';
+
+        const prompt = `你是一个代码补全引擎。根据上下文预测用户接下来要写的代码。
+
+文件: ${path.basename(filePath)} (${language})
+
+== 光标前的代码 ==
+${trimmedPrefix}
+== 光标位置（在此处补全）==
+${suffixLines ? `== 光标后的代码 ==\n${suffixLines}` : ''}
+
+规则：
+- 只输出要补全的代码片段，不要解释，不要 markdown
+- 补全应该自然地续接光标前的代码
+- 通常补全 1-3 行，不要过长
+- 如果当前行已经写了一半，先补完当前行
+- 如果无法确定应该补全什么，返回空字符串
+- 不要重复已有的代码`;
+
+        const response = await client.createMessage(
+          [{ role: 'user', content: [{ type: 'text', text: prompt }] }],
+          undefined,
+          undefined,
+          { enableThinking: false }
+        );
+
+        const rawText = response.content
+          .filter((b: any) => b.type === 'text')
+          .map((b: any) => b.text)
+          .join('\n');
+
+        // 清理：去除可能的 markdown 包裹
+        let completion = rawText.trim();
+        completion = completion.replace(/^```\w*\n?/, '').replace(/\n?```$/, '').trim();
+
+        if (!completion) {
+          return { success: true, completion: '' };
+        }
+
+        const result = { success: true, completion };
+        inlineCompleteCache.set(cacheKey, { completion });
+        return result;
+      } catch (error: any) {
+        console.error('[AI Editor] /inline-complete AI 调用失败:', error);
+        return { success: false, error: error.message || 'AI 调用失败' };
+      }
+    })();
+
+    pendingRequests.set(cacheKey, requestPromise);
+    try {
+      const result = await requestPromise;
+      res.json(result);
+    } finally {
+      pendingRequests.delete(cacheKey);
+    }
+  } catch (error: any) {
+    console.error('[AI Editor] /inline-complete 请求处理失败:', error);
     res.status(500).json({
       success: false,
       error: error.message || '服务器内部错误',

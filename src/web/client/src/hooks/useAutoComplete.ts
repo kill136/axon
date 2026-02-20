@@ -336,9 +336,9 @@ export function useAutoComplete(options: UseAutoCompleteOptions): UseAutoComplet
             clearTimeout(aiDebounceTimerRef.current);
           }
 
-          // 防抖 800ms
+          // 防抖 300ms（平衡响应速度和请求频率）
           await new Promise<void>(resolve => {
-            aiDebounceTimerRef.current = setTimeout(resolve, 800);
+            aiDebounceTimerRef.current = setTimeout(resolve, 300);
           });
 
           // 检查是否被取消

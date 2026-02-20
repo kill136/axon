@@ -3,7 +3,7 @@
  * API 文档叠加：鼠标悬停第三方库函数时显示 API 文档
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import type { Monaco } from '@monaco-editor/react';
 import type * as MonacoEditor from 'monaco-editor';
 import { aiApiDocApi } from '../api/ai-editor';
@@ -23,7 +23,6 @@ export interface UseApiDocOverlayOptions {
 
 export interface UseApiDocOverlayReturn {
   enabled: boolean;
-  toggle: () => void;
 }
 
 // ============================================================================
@@ -31,13 +30,7 @@ export interface UseApiDocOverlayReturn {
 // ============================================================================
 
 export function useApiDocOverlay(options: UseApiDocOverlayOptions): UseApiDocOverlayReturn {
-  const { enabled: externalEnabled, filePath, language, editorRef, monacoRef, editorReady } = options;
-
-  // 内部状态（用于 toggle）
-  const [internalEnabled, setInternalEnabled] = useState(false);
-
-  // 合并外部和内部的 enabled 状态
-  const enabled = externalEnabled && internalEnabled;
+  const { enabled, filePath, language, editorRef, monacoRef, editorReady } = options;
 
   // HoverProvider 引用
   const hoverProviderRef = useRef<MonacoEditor.IDisposable | null>(null);
@@ -55,13 +48,6 @@ export function useApiDocOverlay(options: UseApiDocOverlayOptions): UseApiDocOve
 
   // 防抖定时器
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
-
-  /**
-   * Toggle 开关
-   */
-  const toggle = () => {
-    setInternalEnabled(prev => !prev);
-  };
 
   /**
    * 注册 HoverProvider
@@ -244,7 +230,6 @@ export function useApiDocOverlay(options: UseApiDocOverlayOptions): UseApiDocOve
   }, [filePath]);
 
   return {
-    enabled: internalEnabled,
-    toggle,
+    enabled,
   };
 }

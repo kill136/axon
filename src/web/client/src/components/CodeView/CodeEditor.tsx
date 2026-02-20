@@ -1,4 +1,5 @@
-import React, { useState, useRef, useImperativeHandle, forwardRef, useEffect } from 'react';
+import React, { useState, useRef, useImperativeHandle, forwardRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import Editor, { OnMount } from '@monaco-editor/react';
 import type * as Monaco from 'monaco-editor';
 import styles from './CodeEditor.module.css';
@@ -16,6 +17,8 @@ import { useDeadCode } from '../../hooks/useDeadCode';
 import { useTimeMachine } from '../../hooks/useTimeMachine';
 import { usePatternDetector } from '../../hooks/usePatternDetector';
 import { useApiDocOverlay } from '../../hooks/useApiDocOverlay';
+import { getSyntaxExplanation, extractKeywordsFromLine } from '../../utils/syntaxDictionary';
+import { aiHoverApi } from '../../api/ai-editor';
 
 /**
  * CodeEditor Props
@@ -111,9 +114,63 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
 
     // AI 功能开关
     const [beginnerMode, setBeginnerMode] = useState(false);
-    const [showMinimap, setShowMinimap] = useState(true);
+    const [showMinimap, setShowMinimap] = useState(false);
     const [autoCompleteEnabled, setAutoCompleteEnabled] = useState(true);
     const [apiDocEnabled, setApiDocEnabled] = useState(false); // API Doc Overlay 默认关闭
+
+    // 工具栏按钮显隐配置
+    const TOOLBAR_STORAGE_KEY = 'codeEditor.toolbarButtons';
+    const DEFAULT_VISIBLE_BUTTONS = new Set([
+      'autocomplete', 'review', 'intent', 'test', 'diff',
+    ]);
+    const [visibleButtons, setVisibleButtons] = useState<Set<string>>(() => {
+      try {
+        const saved = localStorage.getItem(TOOLBAR_STORAGE_KEY);
+        if (saved) return new Set(JSON.parse(saved));
+      } catch {}
+      return new Set(DEFAULT_VISIBLE_BUTTONS);
+    });
+    const [showToolbarMenu, setShowToolbarMenu] = useState(false);
+    const [toolbarMenuPos, setToolbarMenuPos] = useState({ top: 0, right: 0 });
+    const toolbarMenuRef = useRef<HTMLDivElement>(null);
+    const toolbarBtnRef = useRef<HTMLButtonElement>(null);
+
+    const toggleToolbarButton = (key: string) => {
+      setVisibleButtons(prev => {
+        const next = new Set(prev);
+        if (next.has(key)) next.delete(key);
+        else next.add(key);
+        localStorage.setItem(TOOLBAR_STORAGE_KEY, JSON.stringify([...next]));
+        return next;
+      });
+    };
+
+    const openToolbarMenu = useCallback(() => {
+      if (toolbarBtnRef.current) {
+        const rect = toolbarBtnRef.current.getBoundingClientRect();
+        setToolbarMenuPos({
+          top: rect.bottom + 4,
+          right: window.innerWidth - rect.right,
+        });
+      }
+      setShowToolbarMenu(true);
+    }, []);
+
+    // 点击外部关闭工具栏菜单
+    useEffect(() => {
+      if (!showToolbarMenu) return;
+      const handler = (e: MouseEvent) => {
+        const target = e.target as Node;
+        if (
+          toolbarMenuRef.current && !toolbarMenuRef.current.contains(target) &&
+          toolbarBtnRef.current && !toolbarBtnRef.current.contains(target)
+        ) {
+          setShowToolbarMenu(false);
+        }
+      };
+      document.addEventListener('mousedown', handler);
+      return () => document.removeEventListener('mousedown', handler);
+    }, [showToolbarMenu]);
 
     // 编辑器就绪标志
     const [editorReady, setEditorReady] = useState(false);
@@ -130,16 +187,114 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
     // ========================================================================
 
     // AI Hover（三层悬浮提示）
+    const handleLineAnalysis = useCallback((analysis: LineAnalysisData | null) => {
+      setLineAnalysis(analysis);
+      setShowLineDetails(analysis !== null);
+    }, []);
+
     const { dispose: disposeAIHover } = useAIHover({
       enabled: beginnerMode,
       filePath: currentTab?.path || null,
       editorRef,
       monacoRef,
-      onLineAnalysis: (analysis) => {
-        setLineAnalysis(analysis);
-        setShowLineDetails(analysis !== null);
-      },
+      onLineAnalysis: handleLineAnalysis,
     });
+
+    // 语法详情面板：独立监听光标变化，主动获取行分析数据
+    const lineAnalysisCacheRef = useRef<Map<string, LineAnalysisData>>(new Map());
+    useEffect(() => {
+      const editor = editorRef.current;
+      if (!showLineDetails || !editor || !currentTab?.path) return;
+
+      // 如果新手模式已开启，useAIHover 会处理数据，不需要重复
+      if (beginnerMode) return;
+
+      const analyzeCurrentLine = (lineNumber: number) => {
+        const model = editor.getModel();
+        if (!model) return;
+
+        const lineContent = model.getLineContent(lineNumber);
+        const filePath = currentTab.path;
+        const cacheKey = `${filePath}:${lineNumber}`;
+
+        // 检查缓存
+        const cached = lineAnalysisCacheRef.current.get(cacheKey);
+        if (cached && cached.lineContent === lineContent) {
+          setLineAnalysis(cached);
+          return;
+        }
+
+        // 提取关键词（同步）
+        const keywords = extractKeywordsFromLine(lineContent)
+          .map(kw => getSyntaxExplanation(kw))
+          .filter(Boolean)
+          .map(exp => ({
+            keyword: exp!.keyword,
+            brief: exp!.brief,
+            detail: exp!.detail,
+            example: exp!.example,
+          }));
+
+        // 先显示静态数据
+        const staticData: LineAnalysisData = {
+          lineNumber,
+          lineContent,
+          keywords,
+          aiAnalysis: null,
+          loading: true,
+        };
+        setLineAnalysis(staticData);
+
+        // 异步获取 AI 分析
+        const startLine = Math.max(1, lineNumber - 5);
+        const endLine = Math.min(model.getLineCount(), lineNumber + 5);
+        const contextLines: string[] = [];
+        for (let i = startLine; i <= endLine; i++) {
+          const prefix = i === lineNumber ? '>>>' : '   ';
+          const lineNum = String(i).padStart(4, ' ');
+          contextLines.push(`${prefix} ${lineNum} | ${model.getLineContent(i)}`);
+        }
+
+        aiHoverApi.generate({
+          filePath,
+          symbolName: lineContent.trim(),
+          codeContext: contextLines.join('\n'),
+          line: lineNumber,
+          language: currentTab.language || 'typescript',
+        }).then(result => {
+          const fullData: LineAnalysisData = {
+            lineNumber,
+            lineContent,
+            keywords,
+            aiAnalysis: result.success ? result : null,
+            loading: false,
+          };
+          lineAnalysisCacheRef.current.set(cacheKey, fullData);
+          setLineAnalysis(fullData);
+        }).catch(() => {
+          const errorData: LineAnalysisData = {
+            lineNumber,
+            lineContent,
+            keywords,
+            aiAnalysis: null,
+            loading: false,
+          };
+          lineAnalysisCacheRef.current.set(cacheKey, errorData);
+          setLineAnalysis(errorData);
+        });
+      };
+
+      // 分析当前行
+      const pos = editor.getPosition();
+      if (pos) analyzeCurrentLine(pos.lineNumber);
+
+      // 监听光标变化
+      const disposable = editor.onDidChangeCursorPosition((e) => {
+        analyzeCurrentLine(e.position.lineNumber);
+      });
+
+      return () => disposable.dispose();
+    }, [showLineDetails, beginnerMode, currentTab?.path, currentTab?.language, editorRef]);
 
     // 代码导游
     const { tourState, startTour, stopTour, navigate, goToStep } = useCodeTour({
@@ -890,141 +1045,188 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
         {currentTab && (
           <div className={styles.aiToolbar}>
             <div className={styles.aiToolGroup}>
-              <button
-                className={`${styles.aiBtn} ${tourState.active ? styles.active : ''}`}
-                onClick={() => tourState.active ? stopTour() : startTour()}
-                disabled={tourState.loading}
-                title="代码导游"
-              >
-                🚀 导游 {tourState.loading && '⏳'}
-              </button>
-              <button
-                className={`${styles.aiBtn} ${heatmap.enabled ? styles.active : ''}`}
-                onClick={heatmap.toggle}
-                disabled={heatmap.loading}
-                title="代码复杂度热力图"
-              >
-                🔥 热力图 {heatmap.loading && '⏳'}
-              </button>
-              <button
-                className={`${styles.aiBtn} ${refactor.enabled ? styles.active : ''}`}
-                onClick={refactor.toggle}
-                disabled={refactor.loading}
-                title="AI 重构建议"
-              >
-                ✨ 重构 {refactor.loading && '⏳'}
-              </button>
-              <button
-                className={`${styles.aiBtn} ${bubbles.enabled ? styles.active : ''}`}
-                onClick={bubbles.toggle}
-                disabled={bubbles.loading}
-                title="AI 代码气泡"
-              >
-                💬 气泡 {bubbles.loading && '⏳'}
-              </button>
-              <button
-                className={`${styles.aiBtn} ${codeReview.enabled ? styles.active : ''}`}
-                onClick={codeReview.toggle}
-                disabled={codeReview.loading}
-                title="AI 代码审查"
-              >
-                🎯 审查 {codeReview.loading && '⏳'}
-              </button>
-              <button
-                className={`${styles.aiBtn} ${deadCode.enabled ? styles.active : ''}`}
-                onClick={deadCode.toggle}
-                disabled={deadCode.loading}
-                title={`死代码检测${deadCode.items.length > 0 ? ` (${deadCode.items.length})` : ''}`}
-              >
-                💀 死代码 {deadCode.loading && '⏳'}
-              </button>
-              <button
-                className={`${styles.aiBtn} ${pattern.enabled ? styles.active : ''}`}
-                onClick={pattern.toggle}
-                disabled={pattern.loading}
-                title={`模式检测${pattern.patterns.length > 0 ? ` (${pattern.patterns.length})` : ''}`}
-              >
-                🔍 模式 {pattern.loading && '⏳'}
-              </button>
-            </div>
-
-            <span className={styles.toolDivider}></span>
-
-            <div className={styles.aiToolGroup}>
-              <button
-                className={`${styles.aiBtn} ${autoCompleteEnabled ? styles.active : ''}`}
-                onClick={() => setAutoCompleteEnabled(!autoCompleteEnabled)}
-                title={`AI 代码补全（本地 ${autoComplete.stats.localItems} 项 + ${autoComplete.stats.snippetItems} 片段）`}
-              >
-                ⚡ 补全
-              </button>
-              <button
-                className={styles.aiBtn}
-                onClick={intentToCode.openIntent}
-                title="意图编程：根据意图改写或生成代码"
-              >
-                ✏️ 意图
-              </button>
-              <button
-                className={styles.aiBtn}
-                onClick={testGenerator.openGenerator}
-                title="测试生成：为函数生成单元测试"
-              >
-                🧪 测试
-              </button>
-              <button
-                className={`${styles.aiBtn} ${conversation.state.visible ? styles.active : ''}`}
-                onClick={conversation.open}
-                title="代码对话：与 AI 讨论代码"
-              >
-                💬 对话
-              </button>
-              {currentTab?.modified && (
+              {visibleButtons.has('tour') && (
+                <button
+                  className={`${styles.aiBtn} ${tourState.active ? styles.active : ''}`}
+                  onClick={() => tourState.active ? stopTour() : startTour()}
+                  disabled={tourState.loading}
+                  title="代码导游"
+                >
+                  🚀 导游 {tourState.loading && '⏳'}
+                </button>
+              )}
+              {visibleButtons.has('heatmap') && (
+                <button
+                  className={`${styles.aiBtn} ${heatmap.enabled ? styles.active : ''}`}
+                  onClick={heatmap.toggle}
+                  disabled={heatmap.loading}
+                  title="代码复杂度热力图"
+                >
+                  🔥 热力图 {heatmap.loading && '⏳'}
+                </button>
+              )}
+              {visibleButtons.has('refactor') && (
+                <button
+                  className={`${styles.aiBtn} ${refactor.enabled ? styles.active : ''}`}
+                  onClick={refactor.toggle}
+                  disabled={refactor.loading}
+                  title="AI 重构建议"
+                >
+                  ✨ 重构 {refactor.loading && '⏳'}
+                </button>
+              )}
+              {visibleButtons.has('bubbles') && (
+                <button
+                  className={`${styles.aiBtn} ${bubbles.enabled ? styles.active : ''}`}
+                  onClick={bubbles.toggle}
+                  disabled={bubbles.loading}
+                  title="AI 代码气泡"
+                >
+                  💬 气泡 {bubbles.loading && '⏳'}
+                </button>
+              )}
+              {visibleButtons.has('review') && (
+                <button
+                  className={`${styles.aiBtn} ${codeReview.enabled ? styles.active : ''}`}
+                  onClick={codeReview.toggle}
+                  disabled={codeReview.loading}
+                  title="AI 代码审查"
+                >
+                  🎯 审查 {codeReview.loading && '⏳'}
+                </button>
+              )}
+              {visibleButtons.has('deadcode') && (
+                <button
+                  className={`${styles.aiBtn} ${deadCode.enabled ? styles.active : ''}`}
+                  onClick={deadCode.toggle}
+                  disabled={deadCode.loading}
+                  title={`死代码检测${deadCode.items.length > 0 ? ` (${deadCode.items.length})` : ''}`}
+                >
+                  💀 死代码 {deadCode.loading && '⏳'}
+                </button>
+              )}
+              {visibleButtons.has('pattern') && (
+                <button
+                  className={`${styles.aiBtn} ${pattern.enabled ? styles.active : ''}`}
+                  onClick={pattern.toggle}
+                  disabled={pattern.loading}
+                  title={`模式检测${pattern.patterns.length > 0 ? ` (${pattern.patterns.length})` : ''}`}
+                >
+                  🔍 模式 {pattern.loading && '⏳'}
+                </button>
+              )}
+              {visibleButtons.has('autocomplete') && (
+                <button
+                  className={`${styles.aiBtn} ${autoCompleteEnabled ? styles.active : ''}`}
+                  onClick={() => setAutoCompleteEnabled(!autoCompleteEnabled)}
+                  title={`AI 代码补全（本地 ${autoComplete.stats.localItems} 项 + ${autoComplete.stats.snippetItems} 片段）`}
+                >
+                  ⚡ 补全
+                </button>
+              )}
+              {visibleButtons.has('intent') && (
+                <button
+                  className={`${styles.aiBtn} ${intentToCode.state.visible ? styles.active : ''}`}
+                  onClick={() => {
+                    if (intentToCode.state.visible) {
+                      intentToCode.close();
+                    } else {
+                      const editor = editorRef.current;
+                      const selection = editor?.getSelection();
+                      const hasSelection = selection && editor?.getModel()?.getValueInRange(selection)?.trim();
+                      if (!hasSelection) {
+                        const pos = editor?.getPosition();
+                        const line = pos ? editor?.getModel()?.getLineContent(pos.lineNumber)?.trim() : '';
+                        const isComment = line && (/^(\/\/|#|\/\*|\*|--|<!--)/).test(line);
+                        if (!isComment) {
+                          alert('请先选中代码，或将光标放在注释行上');
+                          return;
+                        }
+                      }
+                      intentToCode.openIntent();
+                    }
+                  }}
+                  title="意图编程：选中代码后改写，或在注释行生成代码"
+                >
+                  ✏️ 意图
+                </button>
+              )}
+              {visibleButtons.has('test') && (
+                <button
+                  className={styles.aiBtn}
+                  onClick={testGenerator.openGenerator}
+                  title="测试生成：为函数生成单元测试"
+                >
+                  🧪 测试
+                </button>
+              )}
+              {visibleButtons.has('conversation') && (
+                <button
+                  className={`${styles.aiBtn} ${conversation.state.visible ? styles.active : ''}`}
+                  onClick={() => conversation.state.visible ? conversation.close() : conversation.open()}
+                  title="代码对话：与 AI 讨论代码"
+                >
+                  💬 对话
+                </button>
+              )}
+              {visibleButtons.has('diff') && (
                 <button
                   className={styles.aiBtn}
                   onClick={smartDiff.analyze}
-                  disabled={smartDiff.state.loading}
-                  title="语义 Diff 分析：分析代码改动的影响"
+                  disabled={smartDiff.state.loading || !currentTab?.modified}
+                  title={currentTab?.modified ? "语义 Diff 分析：分析代码改动的影响" : "语义 Diff 分析：需要先修改文件"}
                 >
                   🔍 Diff {smartDiff.state.loading && '⏳'}
                 </button>
               )}
-              <button
-                className={`${styles.aiBtn} ${showLineDetails ? styles.active : ''}`}
-                onClick={() => setShowLineDetails(!showLineDetails)}
-                title="语法详情面板"
-              >
-                📖 语法详情
-              </button>
-              <button
-                className={`${styles.aiBtn} ${beginnerMode ? styles.active : ''}`}
-                onClick={() => setBeginnerMode(!beginnerMode)}
-                title="新手模式（AI 悬浮提示）"
-              >
-                🎓 新手模式
-              </button>
-              <button
-                className={`${styles.aiBtn} ${showMinimap ? styles.active : ''}`}
-                onClick={() => setShowMinimap(!showMinimap)}
-                title="代码小地图"
-              >
-                🗺️ 小地图
-              </button>
-              <button
-                className={styles.aiBtn}
-                onClick={timeMachine.open}
-                title="代码时光机：查看代码演变历史"
-              >
-                ⏰ 时光机
-              </button>
-              <button
-                className={`${styles.aiBtn} ${apiDocEnabled ? styles.active : ''}`}
-                onClick={() => setApiDocEnabled(!apiDocEnabled)}
-                title="API 文档叠加：悬停显示第三方 API 文档"
-              >
-                📚 API
-              </button>
+              {visibleButtons.has('beginner') && (
+                <button
+                  className={`${styles.aiBtn} ${beginnerMode ? styles.active : ''}`}
+                  onClick={() => setBeginnerMode(!beginnerMode)}
+                  title="新手模式（AI 悬浮提示）"
+                >
+                  🎓 新手模式
+                </button>
+              )}
+              {visibleButtons.has('minimap') && (
+                <button
+                  className={`${styles.aiBtn} ${showMinimap ? styles.active : ''}`}
+                  onClick={() => setShowMinimap(!showMinimap)}
+                  title="代码小地图"
+                >
+                  🗺️ 小地图
+                </button>
+              )}
+              {visibleButtons.has('timemachine') && (
+                <button
+                  className={styles.aiBtn}
+                  onClick={timeMachine.open}
+                  title="代码时光机：查看代码演变历史"
+                >
+                  ⏰ 时光机
+                </button>
+              )}
+              {visibleButtons.has('apidoc') && (
+                <button
+                  className={`${styles.aiBtn} ${apiDocEnabled ? styles.active : ''}`}
+                  onClick={() => setApiDocEnabled(!apiDocEnabled)}
+                  title="API 文档叠加：悬停显示第三方 API 文档"
+                >
+                  📚 API
+                </button>
+              )}
             </div>
+
+            {/* 工具栏配置按钮 */}
+            <span className={styles.toolDivider}></span>
+            <button
+              ref={toolbarBtnRef}
+              className={`${styles.aiBtn} ${showToolbarMenu ? styles.active : ''}`}
+              onClick={() => showToolbarMenu ? setShowToolbarMenu(false) : openToolbarMenu()}
+              title="配置工具栏按钮"
+            >
+              ⋯
+            </button>
           </div>
         )}
 
@@ -1426,6 +1628,59 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
               </div>
             </div>
           </div>
+        )}
+
+        {/* 工具栏配置菜单 (Portal 到 body，避免被 overflow 裁剪) */}
+        {showToolbarMenu && createPortal(
+          <div
+            ref={toolbarMenuRef}
+            className={styles.toolbarMenu}
+            style={{
+              position: 'fixed',
+              top: toolbarMenuPos.top,
+              right: toolbarMenuPos.right,
+            }}
+          >
+            <div className={styles.toolbarMenuTitle}>工具栏按钮</div>
+            {[
+              { key: 'autocomplete', label: '⚡ 补全' },
+              { key: 'review', label: '🎯 审查' },
+              { key: 'conversation', label: '💬 对话' },
+              { key: 'intent', label: '✏️ 意图' },
+              { key: 'test', label: '🧪 测试' },
+              { key: 'diff', label: '🔍 Diff' },
+              { key: 'tour', label: '🚀 导游' },
+              { key: 'heatmap', label: '🔥 热力图' },
+              { key: 'refactor', label: '✨ 重构' },
+              { key: 'bubbles', label: '💬 气泡' },
+              { key: 'deadcode', label: '💀 死代码' },
+              { key: 'pattern', label: '🔍 模式' },
+              { key: 'beginner', label: '🎓 新手模式' },
+              { key: 'minimap', label: '🗺️ 小地图' },
+              { key: 'timemachine', label: '⏰ 时光机' },
+              { key: 'apidoc', label: '📚 API' },
+            ].map(item => (
+              <label key={item.key} className={styles.toolbarMenuItem}>
+                <input
+                  type="checkbox"
+                  checked={visibleButtons.has(item.key)}
+                  onChange={() => toggleToolbarButton(item.key)}
+                />
+                <span>{item.label}</span>
+              </label>
+            ))}
+            <div className={styles.toolbarMenuDivider} />
+            <button
+              className={styles.toolbarMenuReset}
+              onClick={() => {
+                setVisibleButtons(new Set(DEFAULT_VISIBLE_BUTTONS));
+                localStorage.setItem(TOOLBAR_STORAGE_KEY, JSON.stringify([...DEFAULT_VISIBLE_BUTTONS]));
+              }}
+            >
+              恢复默认
+            </button>
+          </div>,
+          document.body,
         )}
       </div>
     );
