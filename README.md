@@ -60,38 +60,63 @@ npm install -g @anthropic-ai/claude-code
 
 ## Quick Installation (Recommended)
 
-### Windows Quick Install (Easiest) 🪟
+### Windows Quick Install (Easiest)
 
-**Download and double-click to install - no command line needed!**
+**Option A: One-Click Installer** — download and double-click, no command line needed!
 
 [![Windows Installer](https://img.shields.io/badge/Windows-Download%20Installer-blue?style=for-the-badge&logo=windows)](https://raw.githubusercontent.com/kill136/claude-code-open/private_web_ui/install.bat)
+[![Gitee Mirror](https://img.shields.io/badge/Gitee-China%20Mirror-orange?style=for-the-badge&logo=gitee)](https://gitee.com/lubanbbs/claude-code-open/raw/private_web_ui/install.bat)
 
-**3 Simple Steps:**
 1. Click the button above to download `install.bat`
 2. Double-click the downloaded file to run
-3. Done! The installer will handle everything automatically
+3. Done! The installer handles everything (Node.js, dependencies, build, shortcut)
 
-**China users (GitHub not accessible):**
+**Option B: Pre-built Package** — download, unzip, run. No build needed!
 
-[![Gitee Mirror](https://img.shields.io/badge/Gitee-下载安装器-orange?style=for-the-badge&logo=gitee)](https://gitee.com/lubanbbs/claude-code-open/raw/private_web_ui/install.bat)
+[![Download Release](https://img.shields.io/badge/Download-Pre--built%20Package-green?style=for-the-badge&logo=github)](https://github.com/kill136/claude-code-open/releases/latest)
+
+1. Download `claude-code-open-windows-x64-*.zip` from the latest Release
+2. Unzip to any folder
+3. Double-click `start.bat` to launch (requires [Node.js](https://nodejs.org/) pre-installed)
 
 ---
 
-### One-Click Install Script
+### macOS / Linux Quick Install
 
-**Windows (PowerShell):**
-```powershell
-irm https://raw.githubusercontent.com/kill136/claude-code-open/private_web_ui/install.ps1 | iex
-```
+**Option A: One-Click Install Script**
 
-**macOS / Linux:**
 ```bash
 curl -fsSL https://raw.githubusercontent.com/kill136/claude-code-open/private_web_ui/install.sh | bash
 ```
 
-**China users (GitHub not accessible):**
+China mirror:
 ```bash
 curl -fsSL https://gitee.com/lubanbbs/claude-code-open/raw/private_web_ui/install.sh | bash
+```
+
+**Option B: Pre-built Package** — download, extract, run!
+
+[![Download Release](https://img.shields.io/badge/Download-Pre--built%20Package-green?style=for-the-badge&logo=github)](https://github.com/kill136/claude-code-open/releases/latest)
+
+| Platform | File |
+| --- | --- |
+| macOS Apple Silicon (M1/M2/M3/M4) | `claude-code-open-macos-arm64-*.tar.gz` |
+| macOS Intel | `claude-code-open-macos-x64-*.tar.gz` |
+| Linux x64 | `claude-code-open-linux-x64-*.tar.gz` |
+
+```bash
+# Extract and run (requires Node.js pre-installed)
+tar -xzf claude-code-open-*.tar.gz
+cd claude-code-open-*/
+./start.sh
+```
+
+---
+
+### Advanced: PowerShell (Windows)
+
+```powershell
+irm https://raw.githubusercontent.com/kill136/claude-code-open/private_web_ui/install.ps1 | iex
 ```
 
 The install script will automatically:

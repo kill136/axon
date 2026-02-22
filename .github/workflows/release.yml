@@ -68,10 +68,30 @@ jobs:
           prerelease: false
           generate_release_notes: true
 
-  build-windows:
-    name: Build Windows Precompiled Package
-    runs-on: windows-latest
+  build-packages:
+    name: Build ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
     needs: release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            label: Windows x64
+            artifact: claude-code-open-windows-x64
+            shell: pwsh
+          - os: ubuntu-latest
+            label: Linux x64
+            artifact: claude-code-open-linux-x64
+            shell: bash
+          - os: macos-13
+            label: macOS x64 (Intel)
+            artifact: claude-code-open-macos-x64
+            shell: bash
+          - os: macos-latest
+            label: macOS arm64 (Apple Silicon)
+            artifact: claude-code-open-macos-arm64
+            shell: bash
 
     steps:
       - name: Checkout
@@ -83,7 +103,12 @@ jobs:
           node-version: 20.x
           cache: npm
 
-      - name: Install dependencies
+      # Linux: install native build dependencies
+      - name: Install build tools (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y build-essential python3
+
+      - name: Install all dependencies (for build)
         run: npm ci
 
       - name: Build backend
@@ -95,38 +120,92 @@ jobs:
           npm install
           npm run build
 
-      - name: Create Windows package
+      - name: Reinstall production-only dependencies
+        run: |
+          rm -rf node_modules
+          npm ci --omit=dev
+        shell: bash
+        if: runner.os != 'Windows'
+
+      - name: Reinstall production-only dependencies (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          Remove-Item -Recurse -Force node_modules
+          npm ci --omit=dev
+        shell: pwsh
+
+      - name: Create package (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          VERSION="${{ github.ref_name }}"
+          PKG_DIR="${{ matrix.artifact }}"
+          TAR_NAME="${{ matrix.artifact }}-${VERSION}.tar.gz"
+
+          mkdir -p "$PKG_DIR/src/web/client"
+
+          # Copy compiled output
+          cp -r dist "$PKG_DIR/"
+          cp -r src/web/client/dist "$PKG_DIR/src/web/client/"
+
+          # Copy production node_modules
+          cp -r node_modules "$PKG_DIR/"
+
+          # Remove unnecessary files to reduce size
+          find "$PKG_DIR/node_modules" -type f \( -name "*.md" -o -name "*.txt" -o -name "CHANGELOG*" -o -name "HISTORY*" -o -name ".npmignore" -o -name ".eslintrc*" -o -name ".prettierrc*" \) -delete 2>/dev/null || true
+          find "$PKG_DIR/node_modules" -type d \( -name "test" -o -name "tests" -o -name "__tests__" -o -name "example" -o -name "examples" -o -name "docs" -o -name ".github" \) -exec rm -rf {} + 2>/dev/null || true
+
+          # Copy config and scripts
+          cp package.json "$PKG_DIR/"
+          cp start.sh "$PKG_DIR/"
+          chmod +x "$PKG_DIR/start.sh"
+          cp README.md "$PKG_DIR/"
+          cp LICENSE "$PKG_DIR/"
+
+          # Create tar.gz
+          tar -czf "$TAR_NAME" "$PKG_DIR"
+
+          SIZE_MB=$(du -m "$TAR_NAME" | cut -f1)
+          echo "Created $TAR_NAME (${SIZE_MB} MB)"
+          echo "ASSET_NAME=$TAR_NAME" >> $GITHUB_ENV
+
+      - name: Create package (Windows)
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $version = "${{ github.ref_name }}"
-          $zipName = "claude-code-open-windows-x64-$version.zip"
-          
-          # Create package directory
-          $pkgDir = "claude-code-open-windows-x64"
-          New-Item -ItemType Directory -Path $pkgDir -Force | Out-Null
-          
-          # Copy essential files
-          Copy-Item -Path "dist" -Destination "$pkgDir/dist" -Recurse
-          Copy-Item -Path "src/web/client/dist" -Destination "$pkgDir/src/web/client/dist" -Recurse -Force
-          Copy-Item -Path "node_modules" -Destination "$pkgDir/node_modules" -Recurse
-          Copy-Item -Path "package.json" -Destination "$pkgDir/"
-          Copy-Item -Path "install.bat" -Destination "$pkgDir/"
-          Copy-Item -Path "install.ps1" -Destination "$pkgDir/"
-          Copy-Item -Path "create-shortcut.ps1" -Destination "$pkgDir/"
-          Copy-Item -Path "update-and-start.bat" -Destination "$pkgDir/"
-          Copy-Item -Path "start.bat" -Destination "$pkgDir/"
-          Copy-Item -Path "README.md" -Destination "$pkgDir/"
-          Copy-Item -Path "README.zh-CN.md" -Destination "$pkgDir/"
-          Copy-Item -Path "LICENSE" -Destination "$pkgDir/"
-          
-          # Create zip
-          Compress-Archive -Path $pkgDir -DestinationPath $zipName -Force
-          
-          Write-Host "Created $zipName"
-          Write-Host "ZIP_NAME=$zipName" >> $env:GITHUB_ENV
+          $pkgDir = "${{ matrix.artifact }}"
+          $zipName = "${{ matrix.artifact }}-$version.zip"
 
-      - name: Upload Windows Package to Release
+          New-Item -ItemType Directory -Path $pkgDir -Force | Out-Null
+
+          # Copy compiled output
+          Copy-Item -Path "dist" -Destination "$pkgDir/dist" -Recurse
+          New-Item -ItemType Directory -Path "$pkgDir/src/web/client" -Force | Out-Null
+          Copy-Item -Path "src/web/client/dist" -Destination "$pkgDir/src/web/client/dist" -Recurse
+
+          # Copy production node_modules
+          Copy-Item -Path "node_modules" -Destination "$pkgDir/node_modules" -Recurse
+
+          # Remove unnecessary files to reduce size
+          Get-ChildItem -Path "$pkgDir/node_modules" -Recurse -Include "*.md","*.txt","CHANGELOG*","HISTORY*",".npmignore",".eslintrc*",".prettierrc*" -File | Remove-Item -Force -ErrorAction SilentlyContinue
+          Get-ChildItem -Path "$pkgDir/node_modules" -Recurse -Directory -Include "test","tests","__tests__","example","examples","docs",".github" | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+
+          # Copy config and scripts
+          Copy-Item -Path "package.json" -Destination "$pkgDir/"
+          Copy-Item -Path "start.bat" -Destination "$pkgDir/"
+          Copy-Item -Path "create-shortcut.ps1" -Destination "$pkgDir/"
+          Copy-Item -Path "README.md" -Destination "$pkgDir/"
+          Copy-Item -Path "LICENSE" -Destination "$pkgDir/"
+
+          Compress-Archive -Path $pkgDir -DestinationPath $zipName -Force
+
+          $sizeMB = [math]::Round((Get-Item $zipName).Length / 1MB, 1)
+          Write-Host "Created $zipName ($sizeMB MB)"
+          "ASSET_NAME=$zipName" | Out-File -Append $env:GITHUB_ENV -Encoding utf8
+
+      - name: Upload package to Release
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ env.ZIP_NAME }}
+          files: ${{ env.ASSET_NAME }}
           fail_on_unmatched_files: true

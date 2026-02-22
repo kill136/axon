@@ -60,38 +60,63 @@ npm install -g @anthropic-ai/claude-code
 
 ## 快速安装（推荐）
 
-### Windows 快速安装（最简单）🪟
+### Windows 快速安装（最简单）
 
-**下载后双击即可安装 - 无需命令行操作！**
+**方式 A：一键安装器** — 下载后双击即可，无需命令行操作！
 
 [![Windows 安装器](https://img.shields.io/badge/Windows-下载安装器-blue?style=for-the-badge&logo=windows)](https://raw.githubusercontent.com/kill136/claude-code-open/private_web_ui/install.bat)
+[![Gitee 镜像](https://img.shields.io/badge/Gitee-国内镜像-orange?style=for-the-badge&logo=gitee)](https://gitee.com/lubanbbs/claude-code-open/raw/private_web_ui/install.bat)
 
-**超简单 3 步：**
 1. 点击上方按钮下载 `install.bat`
 2. 双击下载的文件运行
-3. 完成！安装器会自动处理一切
+3. 完成！安装器会自动处理一切（Node.js、依赖安装、编译构建、桌面快捷方式）
 
-**中国用户（无法访问 GitHub）：**
+**方式 B：预编译包** — 下载解压即用，无需编译！
 
-[![Gitee 镜像](https://img.shields.io/badge/Gitee-下载安装器-orange?style=for-the-badge&logo=gitee)](https://gitee.com/lubanbbs/claude-code-open/raw/private_web_ui/install.bat)
+[![下载预编译包](https://img.shields.io/badge/下载-预编译安装包-green?style=for-the-badge&logo=github)](https://github.com/kill136/claude-code-open/releases/latest)
+
+1. 从最新 Release 下载 `claude-code-open-windows-x64-*.zip`
+2. 解压到任意文件夹
+3. 双击 `start.bat` 启动（需预装 [Node.js](https://nodejs.org/)）
 
 ---
 
-### 一键安装脚本
+### macOS / Linux 快速安装
 
-**Windows (PowerShell):**
-```powershell
-irm https://raw.githubusercontent.com/kill136/claude-code-open/private_web_ui/install.ps1 | iex
-```
+**方式 A：一键安装脚本**
 
-**macOS / Linux:**
 ```bash
 curl -fsSL https://raw.githubusercontent.com/kill136/claude-code-open/private_web_ui/install.sh | bash
 ```
 
-**中国用户（无法访问 GitHub）：**
+国内镜像：
 ```bash
 curl -fsSL https://gitee.com/lubanbbs/claude-code-open/raw/private_web_ui/install.sh | bash
+```
+
+**方式 B：预编译包** — 下载解压即用！
+
+[![下载预编译包](https://img.shields.io/badge/下载-预编译安装包-green?style=for-the-badge&logo=github)](https://github.com/kill136/claude-code-open/releases/latest)
+
+| 平台 | 文件名 |
+| --- | --- |
+| macOS Apple Silicon (M1/M2/M3/M4) | `claude-code-open-macos-arm64-*.tar.gz` |
+| macOS Intel | `claude-code-open-macos-x64-*.tar.gz` |
+| Linux x64 | `claude-code-open-linux-x64-*.tar.gz` |
+
+```bash
+# 解压并运行（需预装 Node.js）
+tar -xzf claude-code-open-*.tar.gz
+cd claude-code-open-*/
+./start.sh
+```
+
+---
+
+### 进阶：PowerShell 安装（Windows）
+
+```powershell
+irm https://raw.githubusercontent.com/kill136/claude-code-open/private_web_ui/install.ps1 | iex
 ```
 
 安装脚本会自动完成：
