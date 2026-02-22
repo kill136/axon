@@ -46,6 +46,7 @@ USAGE NOTES:
             'goto',
             'snapshot',
             'screenshot',
+            'screenshot_labeled',
             'click',
             'fill',
             'type',
@@ -64,6 +65,9 @@ USAGE NOTES:
             'cookie_set',
             'cookie_clear',
             'console_log',
+            'profile_list',
+            'profile_create',
+            'profile_delete',
           ],
           description: 'The browser action to perform',
         },
@@ -111,6 +115,14 @@ USAGE NOTES:
           type: 'boolean',
           description: 'Show only interactive elements in snapshot (default: false)',
         },
+        profileName: {
+          type: 'string',
+          description: 'Profile name for start, profile_create, profile_delete actions',
+        },
+        useRelay: {
+          type: 'boolean',
+          description: 'Use extension relay for anti-detection (start action only)',
+        },
       },
       required: ['action'],
     };
@@ -140,15 +152,22 @@ USAGE NOTES:
 
       switch (input.action) {
         case 'start': {
-          await manager.start({ headless: false });
+          await manager.start({ 
+            headless: false,
+            profileName: input.profileName,
+            useExtensionRelay: input.useRelay,
+          });
           const mode = manager.getMode();
           const cdpUrl = manager.getCdpUrl();
+          const profileName = manager.getProfileName();
           const profileDir = manager.getProfileDir();
+          const relayMode = manager.isExtensionRelayMode();
           const info = mode === 'connected'
             ? `Connected to existing Chrome at ${cdpUrl}`
-            : `Launched Chrome (profile: ${profileDir})`;
+            : `Launched Chrome (profile: ${profileName}, dir: ${profileDir})`;
+          const relayInfo = relayMode ? '\nExtension relay mode: ENABLED (anti-detection active)' : '';
           return this.success(
-            `Browser started successfully. ${info}\n` +
+            `Browser started successfully. ${info}${relayInfo}\n` +
             `Use "snapshot" action to get page structure.`
           );
         }
@@ -166,6 +185,8 @@ USAGE NOTES:
 
           const page = await manager.getPage();
           const pages = manager.getAllPages();
+          const relayMode = manager.isExtensionRelayMode();
+          const extensionConnected = manager.isExtensionConnected();
           const status = {
             running: true,
             url: page.url(),
@@ -173,11 +194,16 @@ USAGE NOTES:
             tabCount: pages.length,
             mode: manager.getMode(),
             cdpUrl: manager.getCdpUrl(),
+            relayMode,
+            extensionConnected,
           };
 
-          return this.success(
-            `Browser Status:\n- Running: ${status.running}\n- Mode: ${status.mode}\n- CDP: ${status.cdpUrl}\n- URL: ${status.url}\n- Title: ${status.title}\n- Tabs: ${status.tabCount}`
-          );
+          let statusStr = `Browser Status:\n- Running: ${status.running}\n- Mode: ${status.mode}\n- CDP: ${status.cdpUrl}\n- URL: ${status.url}\n- Title: ${status.title}\n- Tabs: ${status.tabCount}`;
+          if (relayMode) {
+            statusStr += `\n- Extension Relay: ENABLED\n- Extension Connected: ${extensionConnected ? 'YES' : 'NO'}`;
+          }
+
+          return this.success(statusStr);
         }
 
         case 'goto': {
@@ -222,6 +248,42 @@ USAGE NOTES:
           return {
             success: true,
             output: t('browser.screenshotCaptured'),
+            images: [{
+              type: 'image' as const,
+              source: {
+                type: 'base64' as const,
+                media_type: mediaType,
+                data: base64,
+              },
+            }],
+          } as any;
+        }
+
+        case 'screenshot_labeled': {
+          const result = await controller.screenshotWithLabels({ fullPage: input.fullPage });
+          // Resize if needed
+          const MAX_DIM = 2000;
+          let finalBuffer = result.buffer;
+          let mediaType: 'image/png' | 'image/jpeg' = 'image/png';
+          try {
+            const sharpMod = await import('sharp');
+            const sharpFn = sharpMod.default;
+            const metadata = await sharpFn(result.buffer).metadata();
+            const w = metadata.width || 0;
+            const h = metadata.height || 0;
+            if (w > MAX_DIM || h > MAX_DIM) {
+              finalBuffer = await sharpFn(result.buffer)
+                .resize(MAX_DIM, MAX_DIM, { fit: 'inside', withoutEnlargement: true })
+                .png()
+                .toBuffer();
+            }
+          } catch {
+            // sharp 处理失败或不可用时用原始 buffer
+          }
+          const base64 = finalBuffer.toString('base64');
+          return {
+            success: true,
+            output: `Screenshot with labels captured. ${result.labelCount} elements labeled, ${result.skippedCount} elements skipped (off-screen or not visible).`,
             images: [{
               type: 'image' as const,
               source: {
@@ -375,6 +437,55 @@ USAGE NOTES:
           }
           
           return this.success(output);
+        }
+
+        case 'profile_list': {
+          const { listProfiles } = await import('../browser/profiles.js');
+          const profiles = listProfiles();
+          const profileNames = Object.keys(profiles);
+          
+          if (profileNames.length === 0) {
+            return this.success('No profiles found. Use profile_create to create one.');
+          }
+
+          let output = 'Browser Profiles:\n';
+          for (const name of profileNames) {
+            const profile = profiles[name];
+            output += `\n[${name}]\n`;
+            output += `  CDP Port: ${profile.cdpPort}\n`;
+            output += `  Color: ${profile.color}\n`;
+            output += `  User Data: ${profile.userDataDir}\n`;
+            output += `  Created: ${profile.createdAt}\n`;
+          }
+          
+          return this.success(output);
+        }
+
+        case 'profile_create': {
+          if (!input.profileName) {
+            return this.error('profileName is required for profile_create action');
+          }
+
+          const { createProfile } = await import('../browser/profiles.js');
+          const profile = createProfile(input.profileName);
+          
+          return this.success(
+            `Profile "${input.profileName}" created successfully.\n` +
+            `CDP Port: ${profile.cdpPort}\n` +
+            `Color: ${profile.color}\n` +
+            `User Data: ${profile.userDataDir}`
+          );
+        }
+
+        case 'profile_delete': {
+          if (!input.profileName) {
+            return this.error('profileName is required for profile_delete action');
+          }
+
+          const { deleteProfile } = await import('../browser/profiles.js');
+          deleteProfile(input.profileName);
+          
+          return this.success(`Profile "${input.profileName}" deleted successfully.`);
         }
 
         default:

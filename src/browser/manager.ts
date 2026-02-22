@@ -25,6 +25,9 @@ import * as path from 'node:path';
 import type { Browser, Page } from 'playwright-core';
 import type { BrowserStartOptions } from './types.js';
 import { detectBrowserExecutable, type BrowserExecutable } from './detect.js';
+import { getProfile, ensureCleanExit, decorateProfile } from './profiles.js';
+import { ensureExtensionRelayServer, stopExtensionRelayServer } from './extension-relay.js';
+import { resolveRelayAuthToken } from './extension-relay-auth.js';
 
 const CONFIG_DIR = path.join(os.homedir(), '.claude');
 const CDP_PORT_RANGE_START = 9222;
@@ -176,6 +179,7 @@ async function launchChrome(
   cdpPort: number,
   userDataDir: string,
   options?: BrowserStartOptions,
+  extensionPath?: string,
 ): Promise<RunningChrome> {
   fs.mkdirSync(userDataDir, { recursive: true });
 
@@ -193,6 +197,12 @@ async function launchChrome(
     '--password-store=basic',
     '--disable-blink-features=AutomationControlled',
   ];
+
+  // Load extension if provided
+  if (extensionPath) {
+    args.push(`--load-extension=${extensionPath}`);
+    args.push('--disable-extensions-except=' + extensionPath);
+  }
 
   if (options?.headless) {
     args.push('--headless=new', '--disable-gpu');
@@ -284,6 +294,8 @@ export class BrowserManager {
   private _mode: 'launched' | 'connected' = 'launched';
   private _profileName: string = '';
   private _userDataDir: string = '';
+  private _relayServer: any = null;
+  private _useExtensionRelay: boolean = false;
 
   private constructor() {}
 
@@ -325,15 +337,55 @@ export class BrowserManager {
       );
     }
 
-    const cdpPort = await findAvailableCdpPort(options?.cdpPort);
-    const userDataDir = resolveUserDataDir('default');
+    const profileName = options?.profileName || 'default';
+    this._useExtensionRelay = options?.useExtensionRelay || false;
+    
+    // Check if profile exists, if not use default settings
+    const profile = getProfile(profileName);
+    let cdpPort: number;
+    let userDataDir: string;
+    let profileColor: string | undefined;
 
-    const chrome = await launchChrome(exe, cdpPort, userDataDir, options);
+    if (profile) {
+      cdpPort = profile.cdpPort;
+      userDataDir = profile.userDataDir;
+      profileColor = profile.color;
+    } else {
+      cdpPort = await findAvailableCdpPort(options?.cdpPort);
+      userDataDir = resolveUserDataDir(profileName);
+    }
+
+    // Ensure clean exit before starting
+    ensureCleanExit(userDataDir);
+
+    // Extension relay mode
+    let extensionPath: string | undefined;
+    if (this._useExtensionRelay) {
+      // Start relay server
+      const relayPort = cdpPort + 1; // Use next port for relay
+      this._relayServer = ensureExtensionRelayServer({ port: relayPort });
+      
+      // Set extension path
+      const srcDir = path.dirname(new URL(import.meta.url).pathname);
+      extensionPath = path.join(srcDir, 'extension');
+      // Windows path fix: remove leading slash from /C:/...
+      if (process.platform === 'win32' && extensionPath.startsWith('/')) {
+        extensionPath = extensionPath.substring(1);
+      }
+      
+      console.log('[BrowserManager] Extension relay mode enabled, relay port:', relayPort);
+      console.log('[BrowserManager] Extension path:', extensionPath);
+    }
+
+    const chrome = await launchChrome(exe, cdpPort, userDataDir, options, extensionPath);
     this.running = chrome;
-    this._cdpUrl = chrome.cdpUrl;
-    this._mode = 'launched';
-    this._profileName = 'default';
+    this._profileName = profileName;
     this._userDataDir = userDataDir;
+
+    // Decorate profile if we have color info
+    if (profileColor) {
+      decorateProfile(userDataDir, profileName, profileColor);
+    }
 
     chrome.proc.on('exit', () => {
       if (this.running?.pid === chrome.pid) {
@@ -342,9 +394,24 @@ export class BrowserManager {
       }
     });
 
-    // Connect Playwright via CDP
-    const conn = await connectBrowser(chrome.cdpUrl);
-    this.setupFromConnection(conn);
+    // Connect via relay or direct CDP
+    if (this._useExtensionRelay && this._relayServer) {
+      const relayCdpUrl = `http://127.0.0.1:${this._relayServer.port}`;
+      this._cdpUrl = relayCdpUrl;
+      this._mode = 'launched';
+      
+      // Wait for extension to connect to relay
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      const conn = await connectBrowser(relayCdpUrl);
+      this.setupFromConnection(conn);
+    } else {
+      this._cdpUrl = chrome.cdpUrl;
+      this._mode = 'launched';
+      
+      const conn = await connectBrowser(chrome.cdpUrl);
+      this.setupFromConnection(conn);
+    }
   }
 
   private setupFromConnection(conn: CachedConnection): void {
@@ -362,6 +429,12 @@ export class BrowserManager {
     if (this.running) {
       await stopChrome(this.running);
       this.running = null;
+    }
+
+    // Stop relay server if running
+    if (this._relayServer) {
+      await this._relayServer.stop();
+      this._relayServer = null;
     }
 
     this.cleanup();
@@ -428,5 +501,14 @@ export class BrowserManager {
 
   getProfileDir(): string {
     return this._userDataDir;
+  }
+
+  isExtensionRelayMode(): boolean {
+    return this._useExtensionRelay;
+  }
+
+  isExtensionConnected(): boolean {
+    if (!this._relayServer) return false;
+    return this._relayServer.extensionSocket !== null;
   }
 }

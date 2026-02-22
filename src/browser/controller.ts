@@ -11,6 +11,8 @@ import type { Locator, Page } from 'playwright-core';
 import type { BrowserManager } from './manager.js';
 import type { SnapshotResult, TabInfo, CookieOptions, RefEntry } from './types.js';
 import { isNavigationAllowed } from './navigation-guard.js';
+import { toAIFriendlyError, normalizeTimeoutMs } from './errors.js';
+import WebSocket from 'ws';
 
 const INTERACTIVE_ROLES = new Set([
   'button', 'link', 'textbox', 'checkbox', 'radio', 'combobox',
@@ -70,9 +72,99 @@ export class BrowserController {
     this.listenersAttached = true;
   }
 
+  // --- Page Health Check ---
+
+  /**
+   * Check if page is responsive
+   */
+  private async isPageResponsive(timeoutMs: number = 3000): Promise<boolean> {
+    try {
+      const page = await this.manager.getPage();
+      
+      // Race a simple evaluation against timeout
+      const result = await Promise.race([
+        page.evaluate(() => 1 + 1).then(() => true),
+        new Promise<boolean>(resolve => setTimeout(() => resolve(false), timeoutMs)),
+      ]);
+      
+      return result;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Terminate stuck script execution via CDP
+   */
+  private async terminateExecution(): Promise<void> {
+    const cdpUrl = this.manager.getCdpUrl();
+    if (!cdpUrl) {
+      throw new Error('CDP URL not available');
+    }
+
+    // Get WebSocket URL from CDP endpoint
+    const versionUrl = `${cdpUrl}/json/version`;
+    const versionResp = await fetch(versionUrl).catch(() => null);
+    if (!versionResp || !versionResp.ok) {
+      throw new Error('Failed to fetch CDP version endpoint');
+    }
+
+    const versionData = await versionResp.json();
+    const wsUrl = versionData.webSocketDebuggerUrl;
+    if (!wsUrl) {
+      throw new Error('No WebSocket debugger URL available');
+    }
+
+    // Connect to CDP and send Runtime.terminateExecution
+    return new Promise<void>((resolve, reject) => {
+      const ws = new WebSocket(wsUrl);
+      const timeout = setTimeout(() => {
+        ws.close();
+        reject(new Error('Timeout waiting for CDP connection'));
+      }, 5000);
+
+      ws.on('open', () => {
+        ws.send(JSON.stringify({
+          id: 1,
+          method: 'Runtime.terminateExecution',
+        }));
+      });
+
+      ws.on('message', (data) => {
+        try {
+          const response = JSON.parse(data.toString());
+          if (response.id === 1) {
+            clearTimeout(timeout);
+            ws.close();
+            resolve();
+          }
+        } catch {
+          // Ignore parse errors
+        }
+      });
+
+      ws.on('error', (err) => {
+        clearTimeout(timeout);
+        reject(err);
+      });
+    });
+  }
+
   // --- Snapshot ---
 
   async snapshot(options?: { interactive?: boolean }): Promise<SnapshotResult> {
+    // Health check: recover from hung page
+    const isResponsive = await this.isPageResponsive();
+    if (!isResponsive) {
+      try {
+        await this.terminateExecution();
+        // Wait a bit for recovery
+        await new Promise(resolve => setTimeout(resolve, 500));
+      } catch (error) {
+        throw new Error('Page is unresponsive and recovery failed. Please reload the page.');
+      }
+    }
+
     const page = await this.manager.getPage();
     
     // 绑定页面事件监听器（如果还没有绑定）
@@ -157,6 +249,17 @@ export class BrowserController {
   // --- Navigation ---
 
   async goto(url: string): Promise<SnapshotResult> {
+    // Health check: recover from hung page before navigation
+    const isResponsive = await this.isPageResponsive();
+    if (!isResponsive) {
+      try {
+        await this.terminateExecution();
+        await new Promise(resolve => setTimeout(resolve, 500));
+      } catch (error) {
+        // Continue with navigation even if recovery fails
+      }
+    }
+
     // 导航守卫检查（SSRF 防护）
     const guardResult = isNavigationAllowed(url);
     if (!guardResult.allowed) {
@@ -214,13 +317,21 @@ export class BrowserController {
   // --- Interactions ---
 
   async click(ref: string): Promise<void> {
-    const locator = await this.resolveLocator(ref);
-    await locator.click({ timeout: 5000 });
+    try {
+      const locator = await this.resolveLocator(ref);
+      await locator.click({ timeout: 5000 });
+    } catch (error) {
+      throw toAIFriendlyError(error);
+    }
   }
 
   async fill(ref: string, value: string): Promise<void> {
-    const locator = await this.resolveLocator(ref);
-    await locator.fill(value, { timeout: 5000 });
+    try {
+      const locator = await this.resolveLocator(ref);
+      await locator.fill(value, { timeout: 5000 });
+    } catch (error) {
+      throw toAIFriendlyError(error);
+    }
   }
 
   async type(text: string): Promise<void> {
@@ -234,13 +345,21 @@ export class BrowserController {
   }
 
   async hover(ref: string): Promise<void> {
-    const locator = await this.resolveLocator(ref);
-    await locator.hover({ timeout: 5000 });
+    try {
+      const locator = await this.resolveLocator(ref);
+      await locator.hover({ timeout: 5000 });
+    } catch (error) {
+      throw toAIFriendlyError(error);
+    }
   }
 
   async select(ref: string, values: string[]): Promise<void> {
-    const locator = await this.resolveLocator(ref);
-    await locator.selectOption(values, { timeout: 5000 });
+    try {
+      const locator = await this.resolveLocator(ref);
+      await locator.selectOption(values, { timeout: 5000 });
+    } catch (error) {
+      throw toAIFriendlyError(error);
+    }
   }
 
   // --- Screenshot ---
@@ -248,6 +367,117 @@ export class BrowserController {
   async screenshot(options?: { fullPage?: boolean }): Promise<Buffer> {
     const page = await this.manager.getPage();
     return await page.screenshot({ fullPage: options?.fullPage ?? false });
+  }
+
+  /**
+   * Take screenshot with labeled overlays for each ref (Set-of-Mark style)
+   */
+  async screenshotWithLabels(options?: { fullPage?: boolean }): Promise<{ 
+    buffer: Buffer; 
+    labelCount: number; 
+    skippedCount: number;
+  }> {
+    const page = await this.manager.getPage();
+    const refs = Array.from(this.refsMap.entries());
+    
+    if (refs.length === 0) {
+      const buffer = await page.screenshot({ fullPage: options?.fullPage ?? false });
+      return { buffer, labelCount: 0, skippedCount: 0 };
+    }
+
+    let labelCount = 0;
+    let skippedCount = 0;
+
+    // Inject DOM overlays for each ref
+    const labelData: Array<{ ref: string; box: { x: number; y: number; width: number; height: number } }> = [];
+
+    for (const [refId, entry] of refs) {
+      try {
+        const locator = await this.resolveLocator(refId);
+        const box = await locator.boundingBox({ timeout: 1000 });
+        
+        if (!box) {
+          skippedCount++;
+          continue;
+        }
+
+        // Check if element is in viewport
+        const viewport = page.viewportSize();
+        if (viewport) {
+          if (box.x + box.width < 0 || box.y + box.height < 0 || 
+              box.x > viewport.width || box.y > viewport.height) {
+            skippedCount++;
+            continue;
+          }
+        }
+
+        labelData.push({ ref: refId, box });
+      } catch {
+        skippedCount++;
+      }
+    }
+
+    // Inject visual overlays
+    // @ts-ignore - This code runs in browser context
+    await page.evaluate((labels: any) => {
+      // @ts-ignore
+      const container = document.createElement('div');
+      container.setAttribute('data-claude-labels', 'true');
+      container.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2147483647;';
+      
+      labels.forEach(({ ref, box }: any) => {
+        // Border
+        // @ts-ignore
+        const border = document.createElement('div');
+        border.style.cssText = `
+          position: absolute;
+          left: ${box.x}px;
+          top: ${box.y}px;
+          width: ${box.width}px;
+          height: ${box.height}px;
+          border: 2px solid #ffb020;
+          box-sizing: border-box;
+        `;
+        container.appendChild(border);
+
+        // Label
+        // @ts-ignore
+        const label = document.createElement('div');
+        label.style.cssText = `
+          position: absolute;
+          left: ${box.x}px;
+          top: ${box.y - 20}px;
+          background: #ffb020;
+          color: #1a1a1a;
+          font: 12px monospace;
+          padding: 2px 6px;
+          border-radius: 3px;
+          white-space: nowrap;
+        `;
+        label.textContent = ref;
+        container.appendChild(label);
+      });
+
+      // @ts-ignore
+      document.body.appendChild(container);
+    }, labelData);
+
+    labelCount = labelData.length;
+
+    // Take screenshot
+    const buffer = await page.screenshot({ fullPage: options?.fullPage ?? false });
+
+    // Remove overlays
+    // @ts-ignore - This code runs in browser context
+    await page.evaluate(() => {
+      // @ts-ignore
+      const overlay = document.querySelector('[data-claude-labels]');
+      if (overlay) {
+        overlay.remove();
+      }
+    });
+
+    return { buffer, labelCount, skippedCount };
   }
 
   // --- Tab management ---
@@ -351,9 +581,50 @@ export class BrowserController {
 
   // --- Evaluate ---
 
-  async evaluate(expression: string): Promise<any> {
+  async evaluate(expression: string, timeoutMs?: number): Promise<any> {
     const page = await this.manager.getPage();
-    return await page.evaluate(expression);
+    const timeout = normalizeTimeoutMs(timeoutMs);
+    
+    try {
+      // Execute with browser-side timeout using Promise.race
+      // This wraps the user expression in a timeout mechanism that runs in the browser context
+      const result = await page.evaluate(({ expr, timeout }) => {
+        return new Promise((resolve, reject) => {
+          const timeoutId = setTimeout(() => {
+            reject(new Error('Evaluation timed out after ' + timeout + 'ms'));
+          }, timeout);
+
+          try {
+            // Evaluate the expression
+            const result = eval(expr);
+            
+            // If result is a promise, race it against the timeout
+            if (result && typeof result.then === 'function') {
+              result
+                .then((value: any) => {
+                  clearTimeout(timeoutId);
+                  resolve(value);
+                })
+                .catch((err: any) => {
+                  clearTimeout(timeoutId);
+                  reject(err);
+                });
+            } else {
+              // Synchronous result
+              clearTimeout(timeoutId);
+              resolve(result);
+            }
+          } catch (err) {
+            clearTimeout(timeoutId);
+            reject(err);
+          }
+        });
+      }, { expr: expression, timeout });
+
+      return result;
+    } catch (error) {
+      throw toAIFriendlyError(error);
+    }
   }
 
   // --- Console Log ---

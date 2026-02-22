@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "Claude Code Browser Bridge",
+  "version": "1.0.0",
+  "description": "CDP relay bridge for Claude Code CLI",
+  "permissions": [
+    "debugger",
+    "tabs"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  }
+}

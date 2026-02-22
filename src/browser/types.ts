@@ -11,6 +11,10 @@ export interface BrowserStartOptions {
   cdpPort?: number;
   /** Don't use sandbox (needed in some Linux environments) */
   noSandbox?: boolean;
+  /** Profile name to use (default: 'default') */
+  profileName?: string;
+  /** Use extension relay for anti-detection (default: false) */
+  useExtensionRelay?: boolean;
 }
 
 export interface RefEntry {
@@ -48,6 +52,7 @@ export type BrowserAction =
   | 'goto'
   | 'snapshot'
   | 'screenshot'
+  | 'screenshot_labeled'
   | 'click'
   | 'fill'
   | 'type'
@@ -65,7 +70,10 @@ export type BrowserAction =
   | 'cookies'
   | 'cookie_set'
   | 'cookie_clear'
-  | 'console_log';
+  | 'console_log'
+  | 'profile_list'
+  | 'profile_create'
+  | 'profile_delete';
 
 export interface BrowserToolInput {
   action: BrowserAction;
@@ -80,4 +88,6 @@ export interface BrowserToolInput {
   domain?: string;
   name?: string;
   interactive?: boolean;
+  profileName?: string;
+  useRelay?: boolean;
 }
