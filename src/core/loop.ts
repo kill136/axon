@@ -9,6 +9,7 @@ import { toolRegistry } from '../tools/index.js';
 import { runWithCwd, runGeneratorWithCwd } from './cwd-context.js';
 import { isToolSearchEnabled } from '../tools/mcp.js';
 import { isDeferredTool, getDiscoveredToolsFromMessages } from '../mcp/tools.js';
+import { t } from '../i18n/index.js';
 import type { Message, ContentBlock, ToolDefinition, PermissionMode, AnyContentBlock, ToolResult } from '../types/index.js';
 
 // ============================================================================
@@ -2956,7 +2957,7 @@ Guidelines:
               if (handlerResult.cancelled) {
                 result = {
                   success: false,
-                  error: 'User cancelled the question dialog',
+                  error: t('loop.userCancelled'),
                 };
               } else {
                 // 使用官方格式返回结果
@@ -2971,7 +2972,7 @@ Guidelines:
             } catch (err) {
               result = {
                 success: false,
-                error: `AskUserQuestion handler error: ${err instanceof Error ? err.message : String(err)}`,
+                error: t('loop.handlerError', { error: err instanceof Error ? err.message : String(err) }),
               };
             }
           } else {

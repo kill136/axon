@@ -3,6 +3,25 @@
  * 前后端通用的类型
  */
 
+// ============ 日志相关类型 ============
+
+/**
+ * 日志级别
+ */
+export type LogLevel = 'error' | 'warn' | 'info' | 'debug';
+
+/**
+ * 日志条目
+ */
+export interface LogEntry {
+  ts: string;
+  level: LogLevel;
+  module: string;
+  msg: string;
+  stack?: string;
+  data?: unknown;
+}
+
 // ============ WebSocket 消息类型 ============
 
 /**
@@ -172,6 +191,10 @@ export type ClientMessage =
   | { type: 'terminal:input'; payload: { terminalId: string; data: string } }
   | { type: 'terminal:resize'; payload: { terminalId: string; cols: number; rows: number } }
   | { type: 'terminal:destroy'; payload: { terminalId: string } }
+  // 日志消息
+  | { type: 'logs:read'; payload?: { count?: number; level?: string } }
+  | { type: 'logs:subscribe' }
+  | { type: 'logs:unsubscribe' }
   // Rewind 消息
   | { type: 'rewind_preview'; payload: { messageId: string; option: 'code' | 'conversation' | 'both' } }
   | { type: 'rewind_execute'; payload: { messageId: string; option: 'code' | 'conversation' | 'both' } }
@@ -203,7 +226,7 @@ export type ClientMessage =
 export type ServerMessage =
   | { type: 'connected'; payload: { sessionId: string; model: string } }
   | { type: 'pong' }
-  | { type: 'history'; payload: { messages: ChatMessage[] } }
+  | { type: 'history'; payload: { messages: ChatMessage[]; sessionId?: string } }
   | { type: 'message_start'; payload: { messageId: string; sessionId?: string } }
   | { type: 'text_delta'; payload: { messageId: string; text: string; sessionId?: string } }
   | { type: 'tool_use_start'; payload: ToolUseStartPayload }
@@ -347,6 +370,9 @@ export type ServerMessage =
   | { type: 'terminal:created'; payload: { terminalId: string } }
   | { type: 'terminal:output'; payload: { terminalId: string; data: string } }
   | { type: 'terminal:exit'; payload: { terminalId: string; exitCode: number } }
+  // 日志消息
+  | { type: 'logs:data'; payload: { entries: LogEntry[] } }
+  | { type: 'logs:tail'; payload: { entries: LogEntry[] } }
   // Rewind 消息
   | { type: 'rewind_preview'; payload: { success: boolean; preview?: any } }
   | { type: 'rewind_success'; payload: { success: boolean; result?: any; messages?: any[] } };

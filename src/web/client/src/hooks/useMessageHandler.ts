@@ -117,16 +117,20 @@ export function useMessageHandler({
     const unsubscribe = addMessageHandler((msg: WSMessage) => {
       const payload = msg.payload as Record<string, unknown>;
 
-      // 会话隔离
+      // 会话隔离：通用检查
+      // 只要消息携带了 sessionId 且与当前会话不匹配，一律丢弃
+      // 不再使用白名单方式，避免新增消息类型时遗漏导致消息串线
       const msgSessionId = payload.sessionId as string | undefined;
       const currentSessionId = sessionIdRef.current;
-      const isStreamingMessage = [
-        'message_start', 'text_delta', 'thinking_start', 'thinking_delta',
-        'thinking_complete', 'tool_use_start', 'tool_use_delta', 'tool_result',
-        'message_complete', 'permission_request', 'user_question', 'context_update', 'context_compact',
+      // 不需要隔离的消息类型（全局消息 + 会话切换/创建消息）
+      // 会话切换/创建消息的 sessionId 是目标会话 ID，不能与当前会话比较过滤
+      const isGlobalMessage = [
+        'connected', 'pong', 'skills_list', 'session_list',
+        'session_created', 'session_deleted', 'permission_config_update',
+        'session_switched', 'session_new_ready',
       ].includes(msg.type);
 
-      if (isStreamingMessage && msgSessionId && currentSessionId && msgSessionId !== currentSessionId) {
+      if (!isGlobalMessage && msgSessionId && currentSessionId && msgSessionId !== currentSessionId) {
         // 跨会话的弹框消息：不直接显示，但弹出通知提醒用户切回去
         if (msg.type === 'permission_request') {
           setCrossSessionNotification({
@@ -143,10 +147,6 @@ export function useMessageHandler({
             timestamp: Date.now(),
           });
         }
-        return;
-      }
-
-      if (msg.type === 'status' && msgSessionId && currentSessionId && msgSessionId !== currentSessionId) {
         return;
       }
 
@@ -429,6 +429,8 @@ export function useMessageHandler({
           setMessages([]);
           setPermissionRequest(null);
           setUserQuestion(null);
+          setCompactState({ phase: 'idle' });
+          setContextUsage(null);
           refreshSessionsRef.current();
           break;
 
@@ -460,6 +462,8 @@ export function useMessageHandler({
             // 不在此处调用 refreshSessions()：
             // 让 useSessionManager 的乐观插入先展示，避免刷新时数据不一致。
             // 列表刷新由 message_complete 事件负责。
+            setCompactState({ phase: 'idle' });
+            setContextUsage(null);
           }
           break;
 
@@ -475,6 +479,8 @@ export function useMessageHandler({
           setStatus('idle');
           setPermissionRequest(null);
           setUserQuestion(null);
+          setCompactState({ phase: 'idle' });
+          setContextUsage(null);
           break;
 
         case 'task_status': {

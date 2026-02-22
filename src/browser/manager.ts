@@ -247,7 +247,7 @@ function killProc(proc: ChildProcessWithoutNullStreams): void {
     // Windows: use taskkill for reliable termination
     try {
       if (proc.pid) {
-        execSync(`taskkill /pid ${proc.pid} /T /F`, { stdio: 'ignore' });
+        execSync(`taskkill /pid ${proc.pid} /T /F`, { stdio: 'ignore', windowsHide: true });
       }
     } catch {
       proc.kill();

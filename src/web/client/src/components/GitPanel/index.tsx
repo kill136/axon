@@ -101,7 +101,7 @@ export function GitPanel({ isOpen, onClose, send, addMessageHandler, projectPath
             setGitStatus(msg.payload.data);
             setError(null);
           } else {
-            setError(msg.payload?.error || 'Failed to get git status');
+            setError(msg.payload?.error || t('error.gitStatusFailed'));
           }
           break;
 
@@ -111,7 +111,7 @@ export function GitPanel({ isOpen, onClose, send, addMessageHandler, projectPath
             setCommits(msg.payload.data || []);
             setError(null);
           } else {
-            setError(msg.payload?.error || 'Failed to get git log');
+            setError(msg.payload?.error || t('error.gitLogFailed'));
           }
           break;
 

@@ -17,6 +17,8 @@ import { setupApiRoutes } from './routes/api.js';
 import { setupConfigApiRoutes } from './routes/config-api.js';
 import { initI18n } from '../../i18n/index.js';
 import { configManager } from '../../config/index.js';
+import { logger } from '../../utils/logger.js';
+import { errorWatcher } from '../../utils/error-watcher.js';
 import {
   requestEvolveRestart,
   isEvolveEnabled,
@@ -45,6 +47,17 @@ export interface WebServerResult {
 }
 
 export async function startWebServer(options: WebServerOptions = {}): Promise<WebServerResult> {
+  // 初始化运行时日志系统 — 拦截所有 console 输出并持久化到 ~/.claude/runtime.log
+  logger.init({
+    interceptConsole: true,
+    minLevel: 'info',
+  });
+
+  // 启用 ErrorWatcher — 实时感知 error 日志并聚合分析
+  // 错误感知是基础能力，所有模式都启用；仅自动修复（Phase 2）需要 evolve 模式
+  errorWatcher.enable();
+  logger.setErrorWatcher((entry) => errorWatcher.onError(entry));
+
   // 设置 CLAUDE_CODE_ENTRYPOINT 环境变量（如果未设置）
   // 官方 Claude Code 使用此变量标识启动入口点
   // WebUI 模式使用 'claude-vscode' 以匹配官方的 VSCode 扩展入口
@@ -213,6 +226,78 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
     setBroadcastMessage(wsBroadcast);
   } catch {
     // 忽略
+  }
+
+  // 注入修复会话创建器到 ErrorWatcher（Phase 2: 自动修复）
+  // 当 ErrorWatcher 检测到源码错误达到阈值时，自动创建新的对话会话进行修复
+  // 该会话在前端可见，用户可以观看修复过程
+  {
+    const { broadcastMessage } = await import('./websocket.js');
+    const sessionMgr = conversationManager.getSessionManager();
+
+    errorWatcher.setRepairSessionCreator(async (pattern, sourceContext) => {
+      const { randomUUID } = await import('crypto');
+
+      // 1. 创建持久化会话
+      const title = `🔧 自动修复: ${pattern.description.slice(0, 40)}`;
+      const newSession = sessionMgr.createSession({
+        name: title,
+        model: model,
+        tags: ['webui', 'auto-repair'],
+        projectPath: cwd,
+      });
+      const sessionId = newSession.metadata.id;
+
+      // 2. 广播 session_created 给所有前端客户端，让侧边栏立即显示这个新会话
+      broadcastMessage({
+        type: 'session_created',
+        payload: {
+          sessionId,
+          name: title,
+          model: model,
+          createdAt: newSession.metadata.createdAt,
+          tags: ['auto-repair'],
+        },
+      });
+
+      // 3. 构造修复指令
+      const repairPrompt = buildRepairPrompt(pattern, sourceContext);
+
+      // 4. 构建流式回调 — 将修复过程的所有消息广播到前端
+      const messageId = randomUUID();
+      const callbacks = buildRepairCallbacks(broadcastMessage, sessionId, messageId, conversationManager);
+
+      // 5. 发送 message_start + status
+      broadcastMessage({
+        type: 'message_start',
+        payload: { messageId, sessionId },
+      });
+      broadcastMessage({
+        type: 'status',
+        payload: { status: 'thinking', sessionId },
+      });
+
+      // 6. 启动修复对话（异步，不阻塞 ErrorWatcher）
+      // 使用 bypassPermissions 模式，让 AI 自动执行 Read/Edit 不需要用户确认
+      conversationManager.chat(
+        sessionId,
+        repairPrompt,
+        undefined,       // mediaAttachments
+        model,
+        callbacks,
+        cwd,             // projectPath
+        undefined,       // ws (无绑定的 ws，通过 broadcast 广播)
+        'bypassPermissions',
+      ).catch(err => {
+        console.error(`[ErrorWatcher] Repair session ${sessionId} failed:`, err);
+        broadcastMessage({
+          type: 'error',
+          payload: { error: `修复会话失败: ${err.message}`, sessionId },
+        });
+      });
+
+      return sessionId;
+    });
   }
 
   // 延迟恢复未完成的蓝图执行（仅在 WebUI 服务器模式下）
@@ -425,4 +510,163 @@ const isMainModule = process.argv[1]?.includes('server') ||
 
 if (isMainModule) {
   startWebServer().catch(console.error);
+}
+
+// ============================================================================
+// ErrorWatcher 自动修复辅助函数
+// ============================================================================
+
+import type { ErrorPattern } from '../../utils/error-watcher.js';
+import type { StreamCallbacks } from './conversation.js';
+
+/**
+ * 构建修复提示词
+ * 向 AI 描述错误上下文，指导它分析和修复
+ */
+function buildRepairPrompt(pattern: ErrorPattern, sourceContext: string): string {
+  return [
+    '# 自动错误修复任务',
+    '',
+    '系统检测到以下源码错误反复发生，请分析并修复。',
+    '',
+    '## 错误信息',
+    `- **模块**: ${pattern.sample.module}`,
+    `- **错误**: ${pattern.sample.msg}`,
+    `- **位置**: ${pattern.sourceLocation || '未知'}`,
+    `- **重复次数**: ${pattern.count} 次（5分钟窗口内）`,
+    `- **分类**: ${pattern.category}`,
+    pattern.sample.stack ? `- **堆栈**:\n\`\`\`\n${pattern.sample.stack.slice(0, 800)}\n\`\`\`` : '',
+    '',
+    '## 源码上下文',
+    '```typescript',
+    sourceContext,
+    '```',
+    '',
+    '## 要求',
+    '1. 先用 Read 工具仔细读取相关文件，理解上下文',
+    '2. 分析错误根因',
+    '3. 用 Edit 工具修复代码',
+    '4. 修复后简要说明修改内容和原因',
+    '',
+    '注意：',
+    '- 只修复这个错误，不做额外的"优化"或"改进"',
+    '- 如果错误是外部原因（网络、API），说明不需要修复即可',
+    '- 修复后不需要运行 SelfEvolve，由系统决定是否重启',
+  ].filter(Boolean).join('\n');
+}
+
+/**
+ * 构建修复会话的流式回调
+ * 将 AI 的所有输出通过 broadcastMessage 广播到前端
+ */
+function buildRepairCallbacks(
+  broadcast: (msg: any) => void,
+  sessionId: string,
+  messageId: string,
+  conversationManager: ConversationManager,
+): StreamCallbacks {
+  return {
+    onThinkingStart: () => {
+      broadcast({
+        type: 'thinking_start',
+        payload: { messageId, sessionId },
+      });
+    },
+    onThinkingDelta: (text: string) => {
+      broadcast({
+        type: 'thinking_delta',
+        payload: { messageId, text, sessionId },
+      });
+    },
+    onThinkingComplete: () => {
+      broadcast({
+        type: 'thinking_complete',
+        payload: { messageId, sessionId },
+      });
+    },
+    onTextDelta: (text: string) => {
+      broadcast({
+        type: 'text_delta',
+        payload: { messageId, text, sessionId },
+      });
+    },
+    onToolUseStart: (toolUseId: string, toolName: string, input: unknown) => {
+      broadcast({
+        type: 'tool_use_start',
+        payload: { messageId, toolUseId, toolName, input, sessionId },
+      });
+      broadcast({
+        type: 'status',
+        payload: { status: 'tool_executing', message: `执行 ${toolName}...`, sessionId },
+      });
+    },
+    onToolUseDelta: (toolUseId: string, partialJson: string) => {
+      broadcast({
+        type: 'tool_use_delta',
+        payload: { toolUseId, partialJson, sessionId },
+      });
+    },
+    onToolResult: (toolUseId: string, success: boolean, output?: string, error?: string, data?: unknown) => {
+      broadcast({
+        type: 'tool_result',
+        payload: {
+          toolUseId,
+          success,
+          output,
+          error,
+          data: data as any,
+          defaultCollapsed: true,
+          sessionId,
+        },
+      });
+    },
+    onPermissionRequest: (request: any) => {
+      // 修复会话使用 bypassPermissions，理论上不会触发权限请求
+      // 但为了安全，仍然广播到前端
+      broadcast({
+        type: 'permission_request',
+        payload: { ...request, sessionId },
+      });
+    },
+    onComplete: async (stopReason: string | null, usage?: { inputTokens: number; outputTokens: number }) => {
+      await conversationManager.persistSession(sessionId);
+      broadcast({
+        type: 'message_complete',
+        payload: {
+          messageId,
+          stopReason: (stopReason || 'end_turn') as 'end_turn' | 'max_tokens' | 'stop_sequence' | 'tool_use',
+          usage,
+          sessionId,
+        },
+      });
+      broadcast({
+        type: 'status',
+        payload: { status: 'idle', sessionId },
+      });
+      console.log(`[ErrorWatcher] Repair session ${sessionId} completed: ${stopReason}`);
+    },
+    onError: (error: Error) => {
+      broadcast({
+        type: 'error',
+        payload: { error: error.message, sessionId },
+      });
+      broadcast({
+        type: 'status',
+        payload: { status: 'idle', sessionId },
+      });
+      console.error(`[ErrorWatcher] Repair session ${sessionId} error:`, error.message);
+    },
+    onContextCompact: (phase: 'start' | 'end' | 'error', info?: Record<string, any>) => {
+      broadcast({
+        type: 'context_compact',
+        payload: { phase, info, sessionId },
+      });
+    },
+    onContextUpdate: (usage: { usedTokens: number; maxTokens: number; percentage: number; model: string }) => {
+      broadcast({
+        type: 'context_update',
+        payload: { ...usage, sessionId },
+      });
+    },
+  };
 }

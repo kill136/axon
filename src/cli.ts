@@ -36,6 +36,10 @@ import {
   FAST_MODE_DISPLAY_NAME,
   forcePrefetchPenguinMode,
 } from './fast-mode/index.js';
+import { logger } from './utils/logger.js';
+
+// 初始化运行时日志系统（CLI 模式）
+logger.init({ interceptConsole: true, minLevel: 'info' });
 
 // 工作目录列表
 const additionalDirectories: string[] = [];

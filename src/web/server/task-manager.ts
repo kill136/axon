@@ -587,10 +587,12 @@ export class TaskManager {
       await runSubagentStopHooks(task.id, task.agentType);
 
     } catch (error) {
-      // 任务失败
+      // 任务失败 — 保留完整堆栈用于诊断
       task.status = 'failed';
       task.endTime = new Date();
-      task.error = error instanceof Error ? error.message : String(error);
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      task.error = errorMsg;
       const totalDuration = task.endTime.getTime() - task.startTime.getTime();
 
       // v12.0: 构建结构化错误
@@ -609,8 +611,8 @@ export class TaskManager {
             : 'escalate',
       };
 
-      // 日志：子 agent 失败
-      console.log(`[SubAgent:${task.agentType}] ❌ 任务失败 (耗时: ${totalDuration}ms): ${task.error}`);
+      // 日志：子 agent 失败（含完整堆栈）
+      console.error(`[SubAgent:${task.agentType}] 任务失败 (耗时: ${totalDuration}ms): ${errorMsg}${errorStack ? '\n' + errorStack : ''}`);
 
       // 发送状态更新
       this.sendTaskStatus(task);

@@ -524,11 +524,11 @@ body {
 }
 
 .model-selector-compact {
-  padding: 4px 8px;
-  height: 32px;
+  padding: 2px 6px;
+  height: 26px;
   background: var(--bg-secondary);
   border: 1px solid transparent;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   color: var(--text-secondary);
   cursor: pointer;
   font-size: 12px;
@@ -556,11 +556,11 @@ body {
    Permission Mode Selector
    ========================================= */
 .permission-mode-selector {
-  padding: 4px 8px;
-  height: 32px;
+  padding: 2px 6px;
+  height: 26px;
   background: var(--bg-secondary);
   border: 1px solid transparent;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   color: var(--text-secondary);
   cursor: pointer;
   font-size: 12px;
@@ -610,13 +610,16 @@ body {
   border: 1px solid var(--border-color);
   color: var(--text-muted);
   cursor: pointer;
-  padding: 4px 6px;
+  width: 26px;
+  height: 26px;
+  padding: 0;
   border-radius: 4px;
-  font-size: 14px;
+  font-size: 13px;
   transition: all 0.2s;
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
 
 .terminal-toggle-btn:hover {
@@ -764,14 +767,15 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   border: 1px solid var(--border-color, #333);
-  border-radius: 6px;
+  border-radius: 4px;
   background: transparent;
   color: var(--text-muted, #64748b);
   cursor: pointer;
   transition: all 0.15s ease;
+  flex-shrink: 0;
 }
 
 .transcript-toggle-btn:hover {
@@ -1167,10 +1171,19 @@ body {
 .input-toolbar-left {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
   min-width: 0;
   flex: 1;
   overflow: hidden;
+}
+
+/* 工具栏分隔线 */
+.toolbar-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--border-color, rgba(255, 255, 255, 0.08));
+  margin: 0 3px;
+  flex-shrink: 0;
 }
 
 .input-toolbar-right {
@@ -1181,9 +1194,9 @@ body {
 }
 
 .attach-btn {
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-md);
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-sm);
   background: transparent;
   border: 1px solid transparent;
   color: var(--text-secondary);
@@ -1192,7 +1205,8 @@ body {
   justify-content: center;
   cursor: pointer;
   transition: 0.2s;
-  font-size: 14px;
+  font-size: 13px;
+  flex-shrink: 0;
 }
 
 .attach-btn:hover {
@@ -1202,9 +1216,9 @@ body {
 
 /* Voice Button */
 .voice-btn {
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-md);
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-sm);
   background: transparent;
   border: 1px solid transparent;
   color: var(--text-secondary);
@@ -1213,7 +1227,7 @@ body {
   justify-content: center;
   cursor: pointer;
   transition: color 0.2s, background 0.2s, box-shadow 0.2s;
-  font-size: 14px;
+  font-size: 13px;
   position: relative;
   flex-shrink: 0;
 }
@@ -1288,9 +1302,9 @@ body {
 
 /* Pin Toggle Button */
 .pin-toggle-btn {
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-md);
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-sm);
   background: transparent;
   border: 1px solid transparent;
   color: var(--text-secondary);
@@ -1299,7 +1313,8 @@ body {
   justify-content: center;
   cursor: pointer;
   transition: all 0.2s;
-  font-size: 14px;
+  font-size: 13px;
+  flex-shrink: 0;
 }
 
 .pin-toggle-btn:hover {
@@ -1314,8 +1329,8 @@ body {
 }
 
 .send-btn {
-  width: 34px;
-  height: 34px;
+  width: 30px;
+  height: 30px;
   padding: 0;
   background: var(--accent-primary);
   color: white;
@@ -1345,8 +1360,8 @@ body {
 }
 
 .stop-btn {
-  height: 32px;
-  padding: 0 16px;
+  height: 28px;
+  padding: 0 12px;
   background: #e53935;
   color: white;
   border: none;
@@ -2776,4 +2791,92 @@ body {
     transform: scale(1);
     opacity: 1;
   }
+}
+
+/* =========================================
+   Logs Side Panel
+   独立日志面板（右侧固定）
+   ========================================= */
+
+.logs-side-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 500px;
+  height: 100vh;
+  background: var(--bg-primary);
+  border-left: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  z-index: 1000;
+  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
+}
+
+.logs-side-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+  background: var(--bg-secondary);
+}
+
+.logs-side-panel-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.logs-side-panel-close {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 16px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.logs-side-panel-close:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.logs-side-panel .logs-view {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Debug / Git / Logs trigger buttons in InputArea toolbar */
+.debug-trigger-btn,
+.git-trigger-btn,
+.logs-trigger-btn {
+  background: transparent;
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+  color: var(--text-muted, #64748b);
+  cursor: pointer;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 4px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.debug-trigger-btn:hover,
+.git-trigger-btn:hover,
+.logs-trigger-btn:hover {
+  background: var(--bg-tertiary, #334155);
+  color: var(--accent-light, #818cf8);
+  border-color: var(--accent-primary, #6366f1);
 }

@@ -864,6 +864,68 @@ const zh: Record<LocaleKeys, string> = {
   'structuredOutput.schemaError': '输出不匹配所需的模式：{{errors}}',
   'structuredOutput.success': '结构化输出提供成功',
 
+  // ============ File Tool ============
+  'file.mustReadBeforeEdit': '编辑文件前必须先用 Read 工具读取。文件: {{path}}',
+  'file.modifiedSinceRead': '文件自上次读取后已被修改（可能是用户或 linter 修改）。请重新读取后再尝试写入。',
+  'file.confirmationRequired': '应用更改前需要确认',
+  'file.stringNotFound': '文件中未找到要替换的字符串。\n字符串: {{str}}',
+  'file.multipleMatches': '找到 {{count}} 个匹配项，但 replace_all 为 false。要替换所有匹配项请设置 replace_all 为 true。要只替换一个，请提供更多上下文以唯一标识。\n字符串: {{str}}',
+  'file.blockedByHook': '被 Hook 阻止',
+
+  // ============ Agent Tool ============
+  'agent.executionFailed': '代理执行失败: {{error}}',
+  'agent.executionInterrupted': '代理执行被中断',
+  'agent.taskNotFound': '任务 {{id}} 未找到',
+
+  // ============ Ask Tool ============
+  'ask.noQuestions': '未提供问题',
+  'ask.maxQuestions': '最多允许 4 个问题',
+  'ask.headerTooLong': '问题标题 "{{header}}" 超过最大长度 {{max}} 个字符',
+  'ask.invalidOptionCount': '问题 "{{header}}" 必须有 2-4 个选项（当前有 {{count}} 个）',
+  'ask.optionMissingLabel': '问题 "{{header}}" 中第 {{index}} 个选项必须有标签',
+  'ask.optionMissingDescription': '问题 "{{header}}" 中第 {{index}} 个选项必须有描述',
+
+  // ============ LSP Tool ============
+  'lsp.notInitialized': 'LSP 服务器管理器未初始化。这可能表示启动时出了问题。',
+  'lsp.noServerAvailable': '没有可用于文件类型 {{ext}} 的 LSP 服务器',
+  'lsp.noCallHierarchy': 'LSP 服务器未返回调用层次结果',
+
+  // ============ MCP Tool ============
+  'mcp.toolCallFailed': 'MCP 工具调用失败: {{tool}}。服务器未响应或返回了错误。',
+  'mcp.resourceNotFound': '资源未找到或为空: {{uri}}',
+  'mcp.serverAndUriRequired': 'action="read" 时 "server" 和 "uri" 都是必需的',
+  'mcp.unknownAction': '未知操作: {{action}}。请使用 "list" 或 "read"。',
+
+  // ============ PlanMode Tool ============
+  'planmode.alreadyInPlanMode': '已在计划模式中。请先使用 ExitPlanMode 退出。',
+  'planmode.notInPlanMode': '不在计划模式中。请先使用 EnterPlanMode。',
+
+  // ============ Sandbox Tool ============
+  'sandbox.noSandboxAvailable': '没有可用的沙箱且备用方案已禁用',
+  'sandbox.executionFailed': '沙箱执行失败: {{error}}',
+
+  // ============ Notebook Tool ============
+  'notebook.cellNotFoundById': '未找到 ID 为 {{id}} 的单元格。可用单元格数: {{count}}',
+  'notebook.cellNotFound': '笔记本中未找到 ID 为 "{{id}}" 的单元格。',
+  'notebook.cellOutOfRange': '单元格索引越界: {{index}}（共 {{count}} 个单元格）',
+  'notebook.cellIdRequired': '删除模式需要 cell_id',
+
+  // ============ Skill Tool ============
+  'skill.notFound': 'Skill "{{name}}" 未找到。可用 Skills: {{available}}',
+  'skill.modelInvocationDisabled': 'Skill "{{name}}" 已禁用模型调用',
+
+  // ============ Bash Tool ============
+  'bash.commandBlocked': '命令因安全原因被阻止: {{reason}}',
+  'bash.blockedByHook': '被 Hook 阻止: {{message}}',
+  'bash.shellNotFound': '未找到 ID 为 {{id}} 的 shell',
+
+  // ============ Loop Core ============
+  'loop.userCancelled': '用户取消了问题对话',
+  'loop.handlerError': 'AskUserQuestion 处理器错误: {{error}}',
+
+  // ============ Web Redirect ============
+  'web.redirectDetected': '检测到重定向：URL 重定向到了不同的主机。',
+
   // ============ Auth ============
   'auth.envVar': '已通过环境变量认证',
   'auth.apiKey': '已通过 API Key 认证',

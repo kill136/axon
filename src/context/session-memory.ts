@@ -461,7 +461,12 @@ export const DEFAULT_UPDATE_CONFIG: SessionMemoryUpdateConfig = {
 // ============================================================================
 
 /**
- * Session Memory 状态
+ * Session Memory 状态（按 sessionId 隔离）
+ *
+ * 官方 CLI 是单会话进程，所以用全局单例没问题。
+ * 我们的 Web 模式允许多会话并发，必须按 sessionId 隔离状态，
+ * 否则会话 A 的 isWriting 会阻塞会话 B 的 waitForWrite，
+ * token 计数会跨会话累加导致错误触发更新。
  */
 interface SessionMemoryState {
   /** 上次压缩的 UUID */
@@ -478,52 +483,73 @@ interface SessionMemoryState {
   isInitialized: boolean;
 }
 
-const state: SessionMemoryState = {
-  lastCompactedUuid: undefined,
-  isWriting: false,
-  totalInputTokens: 0,
-  totalMessageTokens: 0,
-  lastUpdateTokens: 0,
-  isInitialized: false,
-};
+/** 默认 key（CLI 单会话模式） */
+const DEFAULT_SESSION_KEY = '__default__';
+
+/** 按 sessionId 隔离的状态存储 */
+const stateMap = new Map<string, SessionMemoryState>();
+
+/** 创建初始状态 */
+function createInitialState(): SessionMemoryState {
+  return {
+    lastCompactedUuid: undefined,
+    isWriting: false,
+    totalInputTokens: 0,
+    totalMessageTokens: 0,
+    lastUpdateTokens: 0,
+    isInitialized: false,
+  };
+}
+
+/** 获取指定会话的状态，不存在则创建 */
+function getState(sessionId?: string): SessionMemoryState {
+  const key = sessionId || DEFAULT_SESSION_KEY;
+  let state = stateMap.get(key);
+  if (!state) {
+    state = createInitialState();
+    stateMap.set(key, state);
+  }
+  return state;
+}
 
 /**
  * 获取上次压缩的 UUID
  * 官方: Xs2()
  */
-export function getLastCompactedUuid(): string | undefined {
-  return state.lastCompactedUuid;
+export function getLastCompactedUuid(sessionId?: string): string | undefined {
+  return getState(sessionId).lastCompactedUuid;
 }
 
 /**
  * 设置上次压缩的 UUID
  * 官方: oEA()
  */
-export function setLastCompactedUuid(uuid: string | undefined): void {
-  state.lastCompactedUuid = uuid;
+export function setLastCompactedUuid(uuid: string | undefined, sessionId?: string): void {
+  getState(sessionId).lastCompactedUuid = uuid;
 }
 
 /**
  * 标记开始写入
  * 官方: Is2()
  */
-export function markWriteStart(): void {
-  state.isWriting = true;
+export function markWriteStart(sessionId?: string): void {
+  getState(sessionId).isWriting = true;
 }
 
 /**
  * 标记写入结束
  * 官方: Ds2()
  */
-export function markWriteEnd(): void {
-  state.isWriting = false;
+export function markWriteEnd(sessionId?: string): void {
+  getState(sessionId).isWriting = false;
 }
 
 /**
  * 等待写入完成
  * 官方: Ws2()
  */
-export async function waitForWrite(timeout: number = 15000): Promise<void> {
+export async function waitForWrite(timeout: number = 15000, sessionId?: string): Promise<void> {
+  const state = getState(sessionId);
   const startTime = Date.now();
   const maxWait = 60000;
 
@@ -538,23 +564,24 @@ export async function waitForWrite(timeout: number = 15000): Promise<void> {
  * 增加输入 token 数
  * 官方: Hs2()
  */
-export function addInputTokens(tokens: number): void {
-  state.totalInputTokens += tokens;
+export function addInputTokens(tokens: number, sessionId?: string): void {
+  getState(sessionId).totalInputTokens += tokens;
 }
 
 /**
  * 增加消息 token 数
  * 官方: Es2()
  */
-export function addMessageTokens(tokens: number): void {
-  state.totalMessageTokens += tokens;
+export function addMessageTokens(tokens: number, sessionId?: string): void {
+  getState(sessionId).totalMessageTokens += tokens;
 }
 
 /**
  * 记录上次更新的 token 数
  * 官方: zs2()
  */
-export function recordUpdateTokens(): void {
+export function recordUpdateTokens(sessionId?: string): void {
+  const state = getState(sessionId);
   state.lastUpdateTokens = state.totalInputTokens;
 }
 
@@ -562,44 +589,48 @@ export function recordUpdateTokens(): void {
  * 检查是否已初始化
  * 官方: $s2()
  */
-export function isInitialized(): boolean {
-  return state.isInitialized;
+export function isInitialized(sessionId?: string): boolean {
+  return getState(sessionId).isInitialized;
 }
 
 /**
  * 标记已初始化
  * 官方: Cs2()
  */
-export function markInitialized(): void {
-  state.isInitialized = true;
+export function markInitialized(sessionId?: string): void {
+  getState(sessionId).isInitialized = true;
 }
 
 /**
  * 检查是否应该初始化
  * 官方: Us2()
  */
-export function shouldInit(config: SessionMemoryUpdateConfig = DEFAULT_UPDATE_CONFIG): boolean {
-  return state.totalMessageTokens >= config.minimumMessageTokensToInit;
+export function shouldInit(config: SessionMemoryUpdateConfig = DEFAULT_UPDATE_CONFIG, sessionId?: string): boolean {
+  return getState(sessionId).totalMessageTokens >= config.minimumMessageTokensToInit;
 }
 
 /**
  * 检查是否应该更新
  * 官方: qs2()
  */
-export function shouldUpdate(config: SessionMemoryUpdateConfig = DEFAULT_UPDATE_CONFIG): boolean {
+export function shouldUpdate(config: SessionMemoryUpdateConfig = DEFAULT_UPDATE_CONFIG, sessionId?: string): boolean {
+  const state = getState(sessionId);
   return state.totalInputTokens - state.lastUpdateTokens >= config.minimumTokensBetweenUpdate;
 }
 
 /**
- * 重置状态
+ * 重置指定会话的状态
  */
-export function resetState(): void {
-  state.lastCompactedUuid = undefined;
-  state.isWriting = false;
-  state.totalInputTokens = 0;
-  state.totalMessageTokens = 0;
-  state.lastUpdateTokens = 0;
-  state.isInitialized = false;
+export function resetState(sessionId?: string): void {
+  const key = sessionId || DEFAULT_SESSION_KEY;
+  stateMap.delete(key);
+}
+
+/**
+ * 清除所有会话状态（用于测试）
+ */
+export function resetAllStates(): void {
+  stateMap.clear();
 }
 
 // ============================================================================

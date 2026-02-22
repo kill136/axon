@@ -31,6 +31,7 @@ import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { getNotebookManager } from '../memory/notebook.js';
 import { estimateTokens } from '../utils/token-estimate.js';
+import { logger } from '../utils/logger.js';
 
 /**
  * 默认选项
@@ -279,7 +280,12 @@ ${process.env.CLAUDE_EVOLVE_ENABLED === '1' ? `- Status: ENABLED (running with -
 - Flow: Edit .ts files → SelfEvolve({ reason: "..." }) → tsc check → auto-restart → session restored
 - Evolve log: ${claudeConfigDir}/evolve-log.jsonl
 - IMPORTANT: Always use dryRun first to verify compilation before actual restart` : `- Status: DISABLED (not running with --evolve flag)
-- To enable: start the server with claude-web --evolve instead of claude-web`}`);
+- To enable: start the server with claude-web --evolve instead of claude-web`}
+
+### Runtime Logs (运行日志)
+- Log file: ${claudeConfigDir}/runtime.log (JSONL, auto-rotated, Read this file to inspect runtime errors)
+- Use /analyze-logs skill for comprehensive log analysis
+${getLogStatsSummary()}`);
 
     // 13. 语言设置
     if (context.language) {
@@ -446,6 +452,38 @@ Always respond in ${context.language}. Use ${context.language} for all explanati
     this.cache.clear();
   }
 
+}
+
+/**
+ * 获取运行日志统计 + 最近错误摘要（用于系统提示词）
+ * 统计行 + 最近 5 分钟内的 error 详情（最多 5 条）
+ * 这样 AI 每轮对话都能感知到新出现的错误
+ */
+function getLogStatsSummary(): string {
+  try {
+    const stats = logger.getStats(1); // 最近 1 小时
+    const lines: string[] = [];
+
+    if (stats.errors > 0 || stats.warns > 0) {
+      lines.push(`- Last 1h: ${stats.errors} errors, ${stats.warns} warns`);
+    } else {
+      lines.push('- Last 1h: no errors');
+    }
+
+    // 注入最近 5 分钟内的 error 摘要，让 AI 实时感知
+    const recentErrors = logger.getRecentErrors(5 * 60 * 1000, 5);
+    if (recentErrors.length > 0) {
+      lines.push('- **Recent errors (last 5min):**');
+      for (const err of recentErrors) {
+        const ago = Math.round((Date.now() - new Date(err.ts).getTime()) / 1000);
+        lines.push(`  ${ago}s ago [${err.module}] ${err.msg.slice(0, 120)}`);
+      }
+    }
+
+    return lines.join('\n');
+  } catch {
+    return '- Stats: unavailable';
+  }
 }
 
 /**

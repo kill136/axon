@@ -14,7 +14,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { execSync } from 'child_process';
+
 
 // ============================================================================
 // 路径常量
@@ -169,19 +169,9 @@ function ensureDir(dir: string): void {
  */
 function isProcessAlive(pid: number): boolean {
   try {
-    if (process.platform === 'win32') {
-      const output = execSync(`tasklist /FI "PID eq ${pid}" /NH`, {
-        encoding: 'utf-8',
-        timeout: 3000,
-        stdio: ['pipe', 'pipe', 'pipe'],
-      });
-      // tasklist 输出包含 PID 数字则进程存在
-      return output.includes(String(pid));
-    } else {
-      // Unix: kill -0 不发送信号，只检查进程是否存在
-      process.kill(pid, 0);
-      return true;
-    }
+    // kill(pid, 0) 不发送信号，仅检查进程是否存在，跨平台通用
+    process.kill(pid, 0);
+    return true;
   } catch {
     return false;
   }

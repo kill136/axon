@@ -49,6 +49,7 @@ import { isDaemonRunning } from '../../daemon/index.js';
 import { parseTimeExpression } from '../../daemon/time-parser.js';
 import { appendRunLog } from '../../daemon/run-log.js';
 import { promptSnippetsManager } from './prompt-snippets.js';
+import { isEvolveRestartRequested, triggerGracefulShutdown } from './evolve-state.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -288,6 +289,8 @@ interface SessionState {
   lastCompactedUuid?: string;
   /** 标记：处理中 WebSocket 被刷新替换，完成后需要重发 history */
   needsHistoryResend?: boolean;
+  /** 上次持久化时的消息数量（用于判断是否需要持久化，避免磁盘读取） */
+  lastPersistedMessageCount: number;
   /** 用于取消正在执行的工具（如 Bash 命令）的 AbortController */
   currentAbortController?: AbortController;
   /** 正在流式生成的助手消息内容（用于浏览器刷新后恢复中间状态） */
@@ -760,6 +763,7 @@ export class ConversationManager {
       },
       isProcessing: false,
       lastActualInputTokens: 0,
+      lastPersistedMessageCount: 0,
     };
 
     this.sessions.set(sessionId, state);
@@ -832,8 +836,47 @@ export class ConversationManager {
       return state.chatHistory;
     }
 
-    // 会话处理中：从 messages 实时构建，确保包含所有中间工具调用 turn
-    return this.convertMessagesToChatHistory(state.messages);
+    // 会话处理中：需要包含 chatHistory 中尚未同步的实时消息（工具调用中间 turn）
+    // 关键修复：如果 chatHistory 中有 compact_boundary 标记，说明经历过 AutoCompact 压缩，
+    // 此时 state.messages 只包含压缩后的摘要+最近消息，不能完全重建，
+    // 必须以 chatHistory 为基础，仅追加增量。
+    const hasCompactBoundary = state.chatHistory.some(m => m.isCompactBoundary);
+    if (!hasCompactBoundary) {
+      // 未压缩：messages 是完整的，可以安全重建
+      return this.convertMessagesToChatHistory(state.messages);
+    }
+
+    // 已压缩：以 chatHistory 为基础，找出 messages 中还没同步的增量部分
+    // chatHistory 中最后一条记录的 _messagesLen 表示已经同步到 messages 的哪个位置
+    const lastSyncedIndex = this.getLastSyncedMessageIndex(state.chatHistory);
+    if (lastSyncedIndex >= state.messages.length) {
+      // 没有新增消息，直接返回
+      return state.chatHistory;
+    }
+
+    // 从未同步的位置开始，转换增量消息
+    const incrementalMessages = state.messages.slice(lastSyncedIndex);
+    if (incrementalMessages.length === 0) {
+      return state.chatHistory;
+    }
+
+    const incrementalHistory = this.convertMessagesToChatHistory(incrementalMessages);
+    return [...state.chatHistory, ...incrementalHistory];
+  }
+
+  /**
+   * 获取 chatHistory 中最后一条已同步的 messages 索引
+   */
+  private getLastSyncedMessageIndex(chatHistory: ChatMessage[]): number {
+    // 从后往前找有 _messagesLen 的条目
+    for (let i = chatHistory.length - 1; i >= 0; i--) {
+      if (chatHistory[i]._messagesLen !== undefined) {
+        return chatHistory[i]._messagesLen!;
+      }
+    }
+    // 没有 _messagesLen 标记，无法确定同步位置
+    // 返回 Infinity 表示不追加增量（保守策略：宁可少显示正在处理的消息，也不丢历史）
+    return Infinity;
   }
 
   /**
@@ -1126,6 +1169,8 @@ export class ConversationManager {
     let networkRetryCount = 0;
     /** 是否刚执行过因 "prompt too long" 而触发的强制压缩（防止无限循环） */
     let justForceCompacted = false;
+    /** 是否刚执行过自动压缩（防止连续压缩：压缩后 API 实际 inputTokens 仍含系统提示词+工具定义，可能仍超阈值） */
+    let justAutoCompacted = false;
 
     // 创建 AbortController，用于在取消时中断正在执行的工具
     state.currentAbortController = new AbortController();
@@ -1159,8 +1204,13 @@ export class ConversationManager {
       // 双重检查：1) 估算值检查  2) 上一次 API 实际 inputTokens 检查
       const resolvedModel = modelConfig.resolveAlias(state.model);
       const threshold = calculateAutoCompactThreshold(resolvedModel);
-      const needsCompact = shouldAutoCompact(cleanedMessages, resolvedModel) ||
-        (state.lastActualInputTokens > 0 && state.lastActualInputTokens >= threshold);
+      // 防止连续压缩：刚压缩完的下一轮跳过（系统提示词+工具定义的 token 开销不可压缩，
+      // lastActualInputTokens 包含了这些不可压缩的部分，可能仍超阈值导致死循环）
+      const needsCompact = !justAutoCompacted && (
+        shouldAutoCompact(cleanedMessages, resolvedModel) ||
+        (state.lastActualInputTokens > 0 && state.lastActualInputTokens >= threshold)
+      );
+      justAutoCompacted = false; // 重置标志（仅跳过紧接的一轮）
 
       if (needsCompact) {
         try {
@@ -1252,6 +1302,7 @@ export class ConversationManager {
             cleanedMessages = [...compactResult.messages, ...messagesToKeep];
             state.messages = [...compactResult.messages, ...messagesToKeep];
             state.lastActualInputTokens = 0; // 压缩后重置
+            justAutoCompacted = true; // 标记刚压缩完，防止下一轮再次触发
             // 对齐官方：保存边界 UUID 用于增量压缩
             if (compactResult.boundaryUuid) {
               state.lastCompactedUuid = compactResult.boundaryUuid;
@@ -1562,8 +1613,15 @@ export class ConversationManager {
             }
           }
 
-          // 继续循环
-          continueLoop = true;
+          // SelfEvolve 检查：如果进化重启已请求，不再发起下一轮 API 调用
+          // 这样可以确保工具结果已保存，然后在循环结束后的持久化逻辑中触发关闭
+          if (isEvolveRestartRequested()) {
+            console.log('[ConversationManager] Evolve restart requested, stopping conversation loop after tool persistence.');
+            continueLoop = false;
+          } else {
+            // 继续循环
+            continueLoop = true;
+          }
         } else {
           // 对话结束
           continueLoop = false;
@@ -1651,6 +1709,7 @@ export class ConversationManager {
             if (compactResult.wasCompacted) {
               state.messages = [...compactResult.messages, ...forceKeepMsgs];
               state.lastActualInputTokens = 0;
+              justAutoCompacted = true; // 防止连续压缩
               // 对齐官方：保存边界 UUID 用于增量压缩
               if (compactResult.boundaryUuid) {
                 state.lastCompactedUuid = compactResult.boundaryUuid;
@@ -1774,6 +1833,15 @@ export class ConversationManager {
         // fallback：sessionData 不存在时走老路径
         await this.persistSession(sessionId);
       }
+    }
+
+    // SelfEvolve：会话已完整持久化，现在安全触发 gracefulShutdown
+    // 延迟 200ms 让 WebSocket 有机会推送最后的工具结果给前端
+    if (isEvolveRestartRequested()) {
+      console.log('[ConversationManager] Session persisted, triggering graceful shutdown for evolve restart...');
+      setTimeout(() => {
+        triggerGracefulShutdown();
+      }, 200);
     }
 
   }
@@ -3326,6 +3394,18 @@ Guidelines:
   }
 
   /**
+   * 从内存中获取会话的工作目录和项目路径
+   * 用于避免重复从磁盘加载会话数据
+   */
+  getSessionProjectPath(sessionId: string): string | null {
+    const state = this.sessions.get(sessionId);
+    if (!state) {
+      return null;
+    }
+    return state.session.cwd;
+  }
+
+  /**
    * 持久化会话
    */
   async persistSession(sessionId: string): Promise<boolean> {
@@ -3339,8 +3419,13 @@ Guidelines:
       return true;
     }
 
+    // 优化：通过 lastPersistedMessageCount 判断是否有变化，避免从磁盘加载会话
+    if (state.messages.length === state.lastPersistedMessageCount) {
+      return true; // 没有新消息，跳过持久化
+    }
+
     try {
-      // 先检查会话是否存在于 sessionManager
+      // 从内存缓存获取会话数据（loadSessionById 有内存缓存，不会重复读磁盘）
       const sessionData = this.sessionManager.loadSessionById(sessionId);
 
       if (!sessionData) {
@@ -3348,16 +3433,6 @@ Guidelines:
         // 不要创建新会话，直接返回 false
         console.warn(`[ConversationManager] 会话不存在于 sessionManager，跳过持久化: ${sessionId}`);
         return false;
-      }
-
-      // 检查是否有实际变化（避免不必要的磁盘写入）
-      const hasChanges =
-        sessionData.messages.length !== state.messages.length ||
-        sessionData.chatHistory?.length !== state.chatHistory.length ||
-        sessionData.currentModel !== state.model;
-
-      if (!hasChanges) {
-        return true; // 没有变化，直接返回
       }
 
       // 更新会话数据
@@ -3374,6 +3449,8 @@ Guidelines:
       // 保存到磁盘
       const success = this.sessionManager.saveSession(sessionId);
       if (success) {
+        // 更新 lastPersistedMessageCount，标记已持久化
+        state.lastPersistedMessageCount = state.messages.length;
         console.log(`[ConversationManager] 会话已持久化: ${sessionId}`);
       }
       return success;
@@ -3435,7 +3512,8 @@ Guidelines:
 
       // 从持久化数据恢复会话状态
       const session = new Session(sessionData.metadata.workingDirectory || this.cwd);
-      await session.initializeGitInfo();
+      // 在后台异步获取 Git 信息，不阻塞会话切换（Git 信息主要用于 system prompt，在用户发送消息时才需要）
+      session.initializeGitInfo().catch(() => {});
 
       const clientConfig = this.buildClientConfig(sessionData.currentModel || this.defaultModel);
       const client = new ClaudeClient({
@@ -3468,9 +3546,19 @@ Guidelines:
         },
         isProcessing: false,
         lastActualInputTokens: 0,
+        lastPersistedMessageCount: sessionData.messages.length, // 从磁盘加载时，初始化为当前消息数
       };
 
       this.sessions.set(sessionId, state);
+
+      // 初始化 NotebookManager（SelfEvolve 重启后 resumeSession 不经过 getOrCreateSession，需要在这里初始化）
+      const workingDir = sessionData.metadata.workingDirectory || this.cwd;
+      try {
+        initNotebookManager(workingDir);
+      } catch (error) {
+        console.warn('[ConversationManager] resumeSession: 初始化 NotebookManager 失败:', error);
+      }
+
       console.log(`[ConversationManager] 会话已恢复: ${sessionId}, 消息数: ${sessionData.messages.length}, chatHistory: ${chatHistory.length}, permissionMode: ${permissionMode || 'default'}`);
       return true;
     } catch (error) {

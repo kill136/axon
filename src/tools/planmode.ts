@@ -153,7 +153,7 @@ This tool REQUIRES user approval to enter plan mode.`;
       if (appState.toolPermissionContext.mode === 'plan') {
         return {
           success: false,
-          error: 'Already in plan mode. Use ExitPlanMode to exit first.',
+          error: t('planmode.alreadyInPlanMode'),
         };
       }
 
@@ -329,7 +329,7 @@ Before using this tool, ensure your plan is clear and unambiguous. If there are 
       if (appState.toolPermissionContext.mode !== 'plan') {
         return {
           success: false,
-          error: 'Not in plan mode. Use EnterPlanMode first.',
+          error: t('planmode.notInPlanMode'),
         };
       }
 

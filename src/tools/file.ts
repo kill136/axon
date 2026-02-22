@@ -1047,7 +1047,7 @@ Usage:
     try {
       const hookResult = await runPreToolUseHooks('Write', input);
       if (!hookResult.allowed) {
-        return { success: false, error: hookResult.message || 'Blocked by hook' };
+        return { success: false, error: hookResult.message || t('file.blockedByHook') };
       }
 
       // 注意：蓝图边界检查已移除
@@ -1350,14 +1350,14 @@ Usage:
 
       const hookResult = await runPreToolUseHooks('Edit', input);
       if (!hookResult.allowed) {
-        return { success: false, error: hookResult.message || 'Blocked by hook' };
+        return { success: false, error: hookResult.message || t('file.blockedByHook') };
       }
 
       // 2. 验证文件是否已被读取（如果启用了此检查）
       if (this.requireFileRead && !fileReadTracker.hasBeenRead(file_path)) {
         return {
           success: false,
-          error: `You must read the file with the Read tool before editing it. File: ${file_path}`,
+          error: t('file.mustReadBeforeEdit', { path: file_path }),
           errorCode: EditErrorCode.NOT_READ,
         };
       }
@@ -1398,7 +1398,7 @@ Usage:
           // 部分读取的文件不能进行完整内容比对，直接报错
           return {
             success: false,
-            error: 'File has been modified since read, either by the user or by a linter. Read it again before attempting to write it.',
+            error: t('file.modifiedSinceRead'),
             errorCode: EditErrorCode.EXTERNALLY_MODIFIED,
           };
         }
@@ -1408,7 +1408,7 @@ Usage:
         if (originalContent !== readRecord.content) {
           return {
             success: false,
-            error: 'File has been modified since it was read, either by the user or by a linter. Read it again before attempting to write it.',
+            error: t('file.modifiedSinceRead'),
             errorCode: EditErrorCode.EXTERNALLY_MODIFIED,
           };
         }
@@ -1445,7 +1445,7 @@ Usage:
           // 字符串未找到
           return {
             success: false,
-            error: `String to replace not found in file.\nString: ${edit.old_string}`,
+            error: t('file.stringNotFound', { str: edit.old_string }),
             errorCode: EditErrorCode.STRING_NOT_FOUND,
           };
         }
@@ -1457,7 +1457,7 @@ Usage:
         if (matchCount > 1 && !edit.replace_all) {
           return {
             success: false,
-            error: `Found ${matchCount} matches of the string to replace, but replace_all is false. To replace all occurrences, set replace_all to true. To replace only one occurrence, please provide more context to uniquely identify the instance.\nString: ${edit.old_string}`,
+            error: t('file.multipleMatches', { count: String(matchCount), str: edit.old_string }),
             errorCode: EditErrorCode.MULTIPLE_MATCHES,
           };
         }
@@ -1502,7 +1502,7 @@ Usage:
       if (require_confirmation) {
         return {
           success: false,
-          error: 'Confirmation required before applying changes',
+          error: t('file.confirmationRequired'),
           output: diffPreview ? this.formatDiffOutput(diffPreview) : undefined,
         };
       }

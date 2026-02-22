@@ -705,6 +705,20 @@ const en: Translations = {
   'slashCommand.category.auth': 'Auth',
   'slashCommand.category.development': 'Development',
   'slashCommand.category.skill': 'Skills',
+
+  // Error messages
+  'error.gitStatusFailed': 'Failed to get git status',
+  'error.gitLogFailed': 'Failed to get git log',
+  'error.loadConfigFailed': 'Failed to load configs',
+  'error.saveConfigFailed': 'Failed to save configs',
+  'error.saveLoggingFailed': 'Failed to save logging config',
+  'error.saveProxyFailed': 'Failed to save proxy config',
+  'error.saveCacheFailed': 'Failed to save cache config',
+  'error.saveSecurityFailed': 'Failed to save security config',
+  'error.checkAuthFailed': 'Failed to check auth status',
+  'error.logoutFailed': 'Failed to logout',
+  'error.noOutput': 'No output',
+  'error.mermaidLoadFailed': 'Failed to load mermaid',
 };
 
 const zh: Translations = {
@@ -1299,6 +1313,20 @@ const zh: Translations = {
   'slashCommand.category.auth': '认证',
   'slashCommand.category.development': '开发',
   'slashCommand.category.skill': 'Skills',
+
+  // Error messages
+  'error.gitStatusFailed': '获取 git 状态失败',
+  'error.gitLogFailed': '获取 git 日志失败',
+  'error.loadConfigFailed': '加载配置失败',
+  'error.saveConfigFailed': '保存配置失败',
+  'error.saveLoggingFailed': '保存日志配置失败',
+  'error.saveProxyFailed': '保存代理配置失败',
+  'error.saveCacheFailed': '保存缓存配置失败',
+  'error.saveSecurityFailed': '保存安全配置失败',
+  'error.checkAuthFailed': '检查认证状态失败',
+  'error.logoutFailed': '退出登录失败',
+  'error.noOutput': '无输出',
+  'error.mermaidLoadFailed': '加载 mermaid 失败',
 };
 
 export const locales: Record<Locale, Translations> = { en, zh };

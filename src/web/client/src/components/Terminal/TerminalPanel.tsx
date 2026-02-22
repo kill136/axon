@@ -8,6 +8,7 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import './TerminalPanel.css';
+import { LogsView } from './LogsView';
 
 // xterm 主题配置
 const XTERM_THEME = {
@@ -196,6 +197,7 @@ export function TerminalPanel({
 }: TerminalPanelProps) {
   const [tabs, setTabs] = useState<TerminalTab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
+  const [panelMode, setPanelMode] = useState<'terminal' | 'logs'>('terminal');
   const isDraggingRef = useRef(false);
   const startYRef = useRef(0);
   const startHeightRef = useRef(0);
@@ -576,43 +578,64 @@ export function TerminalPanel({
       {/* 标题栏 + Tab 栏 */}
       <div className="terminal-header">
         <div className="terminal-header-left">
-          {/* Tab 列表 */}
-          <div className="terminal-tabs">
-            {tabs.map(tab => (
-              <div
-                key={tab.id}
-                className={`terminal-tab ${tab.id === activeTabId ? 'active' : ''}`}
-                onClick={() => setActiveTabId(tab.id)}
-              >
-                <span className="terminal-tab-name">
-                  {tab.isReady && <span className="terminal-tab-dot" />}
-                  {tab.name}
-                </span>
-                <button
-                  className="terminal-tab-close"
-                  onClick={(e) => { e.stopPropagation(); closeTerminal(tab.id); }}
-                  title="Close"
-                >
-                  <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
-                    <path d="M8 8.707l3.646 3.647.708-.707L8.707 8l3.647-3.646-.707-.708L8 7.293 4.354 3.646l-.707.708L7.293 8l-3.646 3.646.707.708L8 8.707z"/>
-                  </svg>
-                </button>
-              </div>
-            ))}
-            {/* 新建终端按钮 */}
-            <button className="terminal-add-btn" onClick={addNewTerminal} title="New Terminal">
-              <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-                <path d="M8 1v6H2v2h6v6h2V9h6V7H10V1H8z"/>
-              </svg>
+          {/* 面板模式切换按钮 */}
+          <div className="panel-mode-tabs">
+            <button
+              className={`panel-mode-btn ${panelMode === 'terminal' ? 'active' : ''}`}
+              onClick={() => setPanelMode('terminal')}
+            >
+              Terminal
+            </button>
+            <button
+              className={`panel-mode-btn ${panelMode === 'logs' ? 'active' : ''}`}
+              onClick={() => setPanelMode('logs')}
+            >
+              Logs
             </button>
           </div>
+          
+          {/* Terminal 模式：显示 Tab 列表 */}
+          {panelMode === 'terminal' && (
+            <div className="terminal-tabs">
+              {tabs.map(tab => (
+                <div
+                  key={tab.id}
+                  className={`terminal-tab ${tab.id === activeTabId ? 'active' : ''}`}
+                  onClick={() => setActiveTabId(tab.id)}
+                >
+                  <span className="terminal-tab-name">
+                    {tab.isReady && <span className="terminal-tab-dot" />}
+                    {tab.name}
+                  </span>
+                  <button
+                    className="terminal-tab-close"
+                    onClick={(e) => { e.stopPropagation(); closeTerminal(tab.id); }}
+                    title="Close"
+                  >
+                    <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
+                      <path d="M8 8.707l3.646 3.647.708-.707L8.707 8l3.647-3.646-.707-.708L8 7.293 4.354 3.646l-.707.708L7.293 8l-3.646 3.646.707.708L8 8.707z"/>
+                    </svg>
+                  </button>
+                </div>
+              ))}
+              {/* 新建终端按钮 */}
+              <button className="terminal-add-btn" onClick={addNewTerminal} title="New Terminal">
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+                  <path d="M8 1v6H2v2h6v6h2V9h6V7H10V1H8z"/>
+                </svg>
+              </button>
+            </div>
+          )}
         </div>
         <div className="terminal-header-right">
-          <button className="terminal-action-btn" onClick={restartTerminal} title="Restart Terminal">
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M12.75 8a4.5 4.5 0 0 1-8.61 1.834l-1.391.565A6.001 6.001 0 0 0 14.25 8 6 6 0 0 0 3.5 4.334V2.5H2v4h4V5H3.934a4.5 4.5 0 0 1 8.816 3z"/>
-            </svg>
-          </button>
+          {/* Terminal 模式：显示重启和关闭按钮 */}
+          {panelMode === 'terminal' && (
+            <button className="terminal-action-btn" onClick={restartTerminal} title="Restart Terminal">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                <path d="M12.75 8a4.5 4.5 0 0 1-8.61 1.834l-1.391.565A6.001 6.001 0 0 0 14.25 8 6 6 0 0 0 3.5 4.334V2.5H2v4h4V5H3.934a4.5 4.5 0 0 1 8.816 3z"/>
+              </svg>
+            </button>
+          )}
           <button className="terminal-action-btn" onClick={onClose} title="Close Panel">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
               <path d="M8 8.707l3.646 3.647.708-.707L8.707 8l3.647-3.646-.707-.708L8 7.293 4.354 3.646l-.707.708L7.293 8l-3.646 3.646.707.708L8 8.707z"/>
@@ -623,16 +646,26 @@ export function TerminalPanel({
 
       {/* 终端实例容器 - 所有 Tab 都渲染，通过 display 切换 */}
       <div className="terminal-instances" ref={instancesContainerRef}>
+        {/* Terminal 模式：渲染终端实例 */}
         {tabs.map(tab => (
           <TerminalInstance
             key={tab.id}
             tabId={tab.id}
-            active={tab.id === activeTabId}
+            active={panelMode === 'terminal' && tab.id === activeTabId}
             terminalId={tab.terminalId}
             send={send}
             panelVisible={visible}
           />
         ))}
+        
+        {/* Logs 模式：渲染日志查看器 */}
+        <LogsView
+          active={panelMode === 'logs'}
+          panelVisible={visible}
+          connected={connected}
+          send={send}
+          addMessageHandler={addMessageHandler}
+        />
       </div>
     </div>
   );

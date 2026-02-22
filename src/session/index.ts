@@ -323,6 +323,11 @@ export interface MergeOptions {
 }
 
 /**
+ * 上次清理过期会话的时间戳（用于节流）
+ */
+let lastCleanupTime = 0;
+
+/**
  * 确保会话目录存在
  */
 function ensureSessionDir(): void {
@@ -531,7 +536,7 @@ export function saveSession(session: SessionData, options?: { useResumedPath?: b
   session.metadata.messageCount = session.messages.length;
 
   // 原子写入：先写临时文件再 rename，防止进程中途被杀导致文件半写损坏
-  const content = JSON.stringify(session, null, 2);
+  const content = JSON.stringify(session);
   const tmpFile = `${sessionPath}.tmp.${process.pid}.${Date.now()}`;
   try {
     fs.writeFileSync(tmpFile, content, { mode: 0o600, flush: true });
@@ -545,8 +550,12 @@ export function saveSession(session: SessionData, options?: { useResumedPath?: b
   // 使该会话的缓存失效（因为文件已更新）
   invalidateSessionCache(sessionId);
 
-  // 清理过期会话
-  cleanupOldSessions();
+  // 清理过期会话（节流：只在距上次清理超过 10 分钟时才执行）
+  const now = Date.now();
+  if (now - lastCleanupTime > 10 * 60 * 1000) {
+    lastCleanupTime = now;
+    cleanupOldSessions();
+  }
 }
 
 /**
@@ -921,42 +930,74 @@ export function updateSessionSummary(session: SessionData, summary: string): voi
 function cleanupOldSessions(): void {
   ensureSessionDir();
 
-  const files = fs.readdirSync(getSessionDir()).filter((f) => f.endsWith('.json'));
-  const sessions: { file: string; updatedAt: number }[] = [];
+  const sessionDir = getSessionDir();
+  const allFiles = fs.readdirSync(sessionDir);
+  const jsonFiles = allFiles.filter((f) => f.endsWith('.json'));
+  const sessions: { file: string; mtime: number }[] = [];
 
   const expiryTime = Date.now() - getSessionExpiryDays() * 24 * 60 * 60 * 1000;
 
-  for (const file of files) {
+  for (const file of jsonFiles) {
     try {
-      const content = fs.readFileSync(path.join(getSessionDir(), file), 'utf-8');
-      const session = JSON.parse(content) as SessionData;
+      const filePath = path.join(sessionDir, file);
+      // 优化：使用 fs.statSync 获取文件修改时间，而不是读取完整 JSON
+      const stats = fs.statSync(filePath);
+      const mtime = stats.mtimeMs;
 
-      // 删除过期会话
-      if (session.metadata.updatedAt < expiryTime) {
-        fs.unlinkSync(path.join(getSessionDir(), file));
+      // 删除过期会话（基于文件修改时间）
+      if (mtime < expiryTime) {
+        deleteSessionFiles(sessionDir, file);
         continue;
       }
 
-      sessions.push({ file, updatedAt: session.metadata.updatedAt });
+      sessions.push({ file, mtime });
     } catch {
-      // 删除无法解析的文件
-      try {
-        fs.unlinkSync(path.join(getSessionDir(), file));
-      } catch {}
+      // 删除无法访问的文件
+      deleteSessionFiles(sessionDir, file);
     }
   }
 
   // 如果超过最大数量，删除最旧的
   if (sessions.length > getMaxSessions()) {
-    sessions.sort((a, b) => a.updatedAt - b.updatedAt);
+    sessions.sort((a, b) => a.mtime - b.mtime);
     const toDelete = sessions.slice(0, sessions.length - getMaxSessions());
 
     for (const { file } of toDelete) {
-      try {
-        fs.unlinkSync(path.join(getSessionDir(), file));
-      } catch {}
+      deleteSessionFiles(sessionDir, file);
     }
   }
+
+  // 清理孤立 WAL 文件（有 .wal.jsonl 但没有对应的 .json）
+  const jsonSet = new Set(jsonFiles.map(f => f.replace('.json', '')));
+  const walFiles = allFiles.filter(f => f.endsWith('.wal.jsonl'));
+  for (const walFile of walFiles) {
+    const sessionId = walFile.replace('.wal.jsonl', '');
+    if (!jsonSet.has(sessionId)) {
+      try {
+        fs.unlinkSync(path.join(sessionDir, walFile));
+      } catch { /* ignore */ }
+    }
+  }
+}
+
+/**
+ * 删除会话的所有关联文件（.json + .wal.jsonl）
+ */
+function deleteSessionFiles(sessionDir: string, jsonFile: string): void {
+  const sessionId = jsonFile.replace('.json', '');
+  // 删除主 JSON 文件
+  try {
+    fs.unlinkSync(path.join(sessionDir, jsonFile));
+  } catch { /* ignore */ }
+  // 删除对应的 WAL 文件
+  try {
+    const walPath = path.join(sessionDir, `${sessionId}.wal.jsonl`);
+    if (fs.existsSync(walPath)) {
+      fs.unlinkSync(walPath);
+    }
+  } catch { /* ignore */ }
+  // 清除内存缓存
+  sessionMetadataCache.delete(sessionId);
 }
 
 /**

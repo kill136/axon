@@ -909,7 +909,7 @@ Note: LSP servers must be configured for the file type. If no server is availabl
     if (!manager) {
       return {
         success: false,
-        error: 'LSP server manager not initialized. This may indicate a startup issue.',
+        error: t('lsp.notInitialized'),
         operation: input.operation,
         filePath: input.filePath,
       };
@@ -934,7 +934,7 @@ Note: LSP servers must be configured for the file type. If no server is availabl
       if (result === undefined) {
         return {
           success: false,
-          error: `No LSP server available for file type: ${path.extname(filePath)}`,
+          error: t('lsp.noServerAvailable', { ext: path.extname(filePath) }),
           operation: input.operation,
           filePath: input.filePath,
         };
@@ -967,7 +967,7 @@ Note: LSP servers must be configured for the file type. If no server is availabl
         if (result === undefined) {
           return {
             success: false,
-            error: 'LSP server did not return call hierarchy results',
+            error: t('lsp.noCallHierarchy'),
             operation: input.operation,
             filePath: input.filePath,
           };

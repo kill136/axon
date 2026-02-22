@@ -165,11 +165,11 @@ Usage notes:
     }
 
     if (!questions || questions.length === 0) {
-      return { success: false, error: 'No questions provided' };
+      return { success: false, error: t('ask.noQuestions') };
     }
 
     if (questions.length > 4) {
-      return { success: false, error: 'Maximum 4 questions allowed' };
+      return { success: false, error: t('ask.maxQuestions') };
     }
 
     // 验证所有问题
@@ -178,7 +178,7 @@ Usage notes:
       if (q.header && q.header.length > MAX_HEADER_LENGTH) {
         return {
           success: false,
-          error: `Question header "${q.header}" exceeds maximum length of ${MAX_HEADER_LENGTH} characters`
+          error: t('ask.headerTooLong', { header: q.header, max: String(MAX_HEADER_LENGTH) })
         };
       }
 
@@ -186,7 +186,7 @@ Usage notes:
       if (!q.options || q.options.length < 2 || q.options.length > 4) {
         return {
           success: false,
-          error: `Question "${q.header}" must have 2-4 options (has ${q.options?.length ?? 0})`
+          error: t('ask.invalidOptionCount', { header: q.header, count: String(q.options?.length ?? 0) })
         };
       }
 
@@ -196,13 +196,13 @@ Usage notes:
         if (!opt.label || typeof opt.label !== 'string') {
           return {
             success: false,
-            error: `Option ${i + 1} in question "${q.header}" must have a label`
+            error: t('ask.optionMissingLabel', { index: String(i + 1), header: q.header })
           };
         }
         if (!opt.description || typeof opt.description !== 'string') {
           return {
             success: false,
-            error: `Option ${i + 1} in question "${q.header}" must have a description`
+            error: t('ask.optionMissingDescription', { index: String(i + 1), header: q.header })
           };
         }
       }

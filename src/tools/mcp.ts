@@ -743,7 +743,7 @@ export async function callMcpTool(
     if (!result) {
       return {
         success: false,
-        error: `MCP tool call failed: ${toolName}. Server did not respond or returned an error.`
+        error: t('mcp.toolCallFailed', { tool: toolName })
       };
     }
 
@@ -1642,7 +1642,7 @@ Parameters:
       if (!resourceResult.contents || resourceResult.contents.length === 0) {
         return {
           success: false,
-          error: `Resource not found or empty: ${uri}`,
+          error: t('mcp.resourceNotFound', { uri }),
         };
       }
 
@@ -1736,7 +1736,7 @@ Parameters:
       if (!input.server || !input.uri) {
         return {
           success: false,
-          error: 'Both "server" and "uri" are required for action="read"',
+          error: t('mcp.serverAndUriRequired'),
         };
       }
       return this.readTool.execute({
@@ -1747,7 +1747,7 @@ Parameters:
 
     return {
       success: false,
-      error: `Unknown action: ${input.action}. Use "list" or "read".`,
+      error: t('mcp.unknownAction', { action: input.action }),
     };
   }
 }

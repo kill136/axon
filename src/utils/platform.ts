@@ -280,7 +280,7 @@ export function getDefaultShell(): ShellInfo {
 
     // 检查 PowerShell 是否可用
     try {
-      execSync('powershell -Command "echo test"', { stdio: 'ignore' });
+      execSync('powershell -Command "echo test"', { stdio: 'ignore', windowsHide: true });
       return {
         shell: powershell,
         args: ['-NoProfile', '-Command'],
@@ -458,7 +458,7 @@ export function killProcessTree(pid: number): boolean {
   try {
     if (isWindows()) {
       // Windows: 使用 taskkill 终止整个进程树
-      execSync(`taskkill /PID ${pid} /T /F`, { stdio: 'ignore' });
+      execSync(`taskkill /PID ${pid} /T /F`, { stdio: 'ignore', windowsHide: true });
     } else {
       // Unix: 使用 SIGTERM 发送到进程组
       process.kill(-pid, 'SIGTERM');
@@ -774,7 +774,7 @@ export function getSandboxCapabilities(): SandboxCapabilities {
   if (isWindows()) {
     // 检查 Windows Sandbox
     try {
-      execSync('powershell -Command "Get-WindowsOptionalFeature -Online -FeatureName Containers-DisposableClientVM"', { stdio: 'ignore' });
+      execSync('powershell -Command "Get-WindowsOptionalFeature -Online -FeatureName Containers-DisposableClientVM"', { stdio: 'ignore', windowsHide: true });
       caps.windowsSandbox = true;
     } catch {
       // Not available

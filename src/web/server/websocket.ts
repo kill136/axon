@@ -27,6 +27,8 @@ import { getSwarmLogDB, type WorkerLog, type WorkerStream } from './database/swa
 import { registerE2EAgent, unregisterE2EAgent, getE2EAgent } from '../../blueprint/e2e-agent-registry.js';
 // 终端管理器
 import { TerminalManager } from './terminal-manager.js';
+// 日志系统
+import { logger } from '../../utils/logger.js';
 // Git 管理器
 import { GitManager } from './git-manager.js';
 // Git WebSocket 处理函数
@@ -208,6 +210,9 @@ const terminalManager = new TerminalManager();
 // 客户端终端映射：clientId -> Set of terminalIds
 const clientTerminals = new Map<string, Set<string>>();
 
+// 日志订阅管理：clientId -> { interval, lastFileSize }
+const logSubscriptions = new Map<string, { interval: NodeJS.Timeout; lastFileSize: number }>();
+
 // 全局 WebSocket 客户端连接池（用于跨模块广播消息）
 const wsClients = new Map<string, ClientConnection>();
 
@@ -256,6 +261,12 @@ export function setupWebSocket(
         swarmSubscriptions.delete(blueprintId);
       }
     });
+    // 清理日志订阅
+    const logSub = logSubscriptions.get(clientId);
+    if (logSub) {
+      clearInterval(logSub.interval);
+      logSubscriptions.delete(clientId);
+    }
   };
 
   // v5.0: thinking/text 流式内容聚合缓冲区（避免碎片化存储到 SQLite）
@@ -1781,14 +1792,22 @@ export function setupWebSocket(
 
 /**
  * 发送消息到客户端
+ *
+ * 当 WebSocket 已关闭时（readyState !== OPEN），消息被静默丢弃。
+ * 仅在首次检测到某个 ws 连接关闭时记录一条 warn 日志，
+ * 避免高频流式事件（thinking_delta 等）产生日志洪水。
  */
+const closedWsLogged = new WeakSet<WebSocket>();
 function sendMessage(ws: WebSocket, message: ServerMessage): void {
   if (ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(message));
   } else {
-    // 记录丢弃的消息类型，便于排查消息丢失问题
-    const sessionId = ('payload' in message ? (message.payload as any)?.sessionId : '') || '';
-    console.warn(`[WebSocket] 消息被丢弃 (ws.readyState=${ws.readyState}): type=${message.type}, session=${sessionId}`);
+    // 每个已关闭的 ws 只 warn 一次
+    if (!closedWsLogged.has(ws)) {
+      closedWsLogged.add(ws);
+      const sessionId = ('payload' in message ? (message.payload as any)?.sessionId : '') || '';
+      console.warn(`[WebSocket] 连接已关闭 (readyState=${ws.readyState}), 后续消息将静默丢弃. session=${sessionId}, first_dropped=${message.type}`);
+    }
   }
 }
 
@@ -1830,7 +1849,7 @@ async function handleClientMessage(
       const history = conversationManager.getHistory(client.sessionId);
       sendMessage(ws, {
         type: 'history',
-        payload: { messages: history },
+        payload: { messages: history, sessionId: client.sessionId },
       });
       break;
 
@@ -1838,7 +1857,7 @@ async function handleClientMessage(
       conversationManager.clearHistory(client.sessionId);
       sendMessage(ws, {
         type: 'history',
-        payload: { messages: [] },
+        payload: { messages: [], sessionId: client.sessionId },
       });
       break;
 
@@ -2405,6 +2424,87 @@ async function handleClientMessage(
       break;
     }
 
+    // ========== 日志消息 ==========
+    case 'logs:read': {
+      const logsPayload = (message as any).payload || {};
+      const count = logsPayload.count || 200;
+      const levelFilter = logsPayload.level as string | undefined;
+      
+      let entries = logger.readRecent(count);
+      
+      // 按级别过滤
+      if (levelFilter && levelFilter !== 'ALL') {
+        entries = entries.filter(e => e.level === levelFilter.toLowerCase());
+      }
+      
+      sendMessage(client.ws, {
+        type: 'logs:data',
+        payload: { entries },
+      });
+      break;
+    }
+
+    case 'logs:subscribe': {
+      // 如果已经订阅了，先取消
+      const existing = logSubscriptions.get(client.id);
+      if (existing) {
+        clearInterval(existing.interval);
+      }
+
+      // 获取当前日志文件大小
+      const fs = await import('fs');
+      const logFile = logger.getLogFile();
+      let lastFileSize = 0;
+      try {
+        const stat = fs.statSync(logFile);
+        lastFileSize = stat.size;
+      } catch {
+        // 文件不存在或无法读取
+      }
+
+      // 每 2 秒检查新日志
+      const interval = setInterval(() => {
+        try {
+          const stat = fs.statSync(logFile);
+          const currentSize = stat.size;
+          
+          // 如果文件变大了，说明有新日志
+          if (currentSize > lastFileSize) {
+            // 读取最近 50 条日志（包含新的）
+            const entries = logger.readRecent(50);
+            
+            if (entries.length > 0) {
+              sendMessage(client.ws, {
+                type: 'logs:tail',
+                payload: { entries },
+              });
+            }
+            
+            lastFileSize = currentSize;
+            // 更新存储的文件大小
+            const sub = logSubscriptions.get(client.id);
+            if (sub) {
+              sub.lastFileSize = currentSize;
+            }
+          }
+        } catch {
+          // 读取失败，忽略
+        }
+      }, 2000);
+
+      logSubscriptions.set(client.id, { interval, lastFileSize });
+      break;
+    }
+
+    case 'logs:unsubscribe': {
+      const sub = logSubscriptions.get(client.id);
+      if (sub) {
+        clearInterval(sub.interval);
+        logSubscriptions.delete(client.id);
+      }
+      break;
+    }
+
     default:
       console.warn('[WebSocket] 未知消息类型:', (message as any).type);
   }
@@ -2661,7 +2761,7 @@ async function handleChatMessage(
           const updatedHistory = conversationManager.getHistory(chatSessionId);
           sendMessage(getActiveWs(), {
             type: 'history',
-            payload: { messages: updatedHistory },
+            payload: { messages: updatedHistory, sessionId: chatSessionId },
           });
         } else {
           sendMessage(getActiveWs(), {
@@ -2686,7 +2786,7 @@ async function handleChatMessage(
           const updatedHistory = conversationManager.getHistory(chatSessionId);
           sendMessage(getActiveWs(), {
             type: 'history',
-            payload: { messages: updatedHistory },
+            payload: { messages: updatedHistory, sessionId: chatSessionId },
           });
         }
         sendMessage(getActiveWs(), {
@@ -2815,7 +2915,7 @@ async function handleSlashCommand(
     if (result.action === 'clear') {
       sendMessage(ws, {
         type: 'history',
-        payload: { messages: [] },
+        payload: { messages: [], sessionId: client.sessionId },
       });
     }
   } catch (error) {
@@ -3022,11 +3122,10 @@ async function handleSessionSwitch(
       // 恢复后再次更新 ws（resumeSession 可能从磁盘新建了 SessionState）
       conversationManager.setWebSocket(sessionId, ws);
 
-      // 更新客户端项目路径（从会话元数据中获取）
-      const sessionManager = conversationManager.getSessionManager();
-      const sessionData = sessionManager.loadSessionById(sessionId);
-      if (sessionData?.metadata?.projectPath) {
-        client.projectPath = sessionData.metadata.projectPath;
+      // 更新客户端项目路径（优化：从内存中的 SessionState 获取，避免重复读磁盘）
+      const projectPath = conversationManager.getSessionProjectPath(sessionId);
+      if (projectPath) {
+        client.projectPath = projectPath;
       }
 
       // 获取会话历史（使用 getLiveHistory：处理中时从 messages 实时构建，确保工具调用中间 turn 不丢失）
@@ -3040,7 +3139,7 @@ async function handleSessionSwitch(
 
       sendMessage(ws, {
         type: 'history',
-        payload: { messages: history },
+        payload: { messages: history, sessionId },
       });
 
       // 同步权限配置到客户端（刷新后客户端 permissionMode 会重置为 'default'，需要从服务端恢复）
@@ -3415,7 +3514,7 @@ async function handleSessionResume(
 
       sendMessage(ws, {
         type: 'history',
-        payload: { messages: history },
+        payload: { messages: history, sessionId },
       });
     } else {
       sendMessage(ws, {

@@ -97,6 +97,8 @@ export interface UserProfileResponse {
 const AUTH_DIR = path.join(os.homedir(), '.claude');
 const AUTH_FILE = path.join(AUTH_DIR, 'auth.json');
 const CREDENTIALS_FILE = path.join(AUTH_DIR, 'credentials.json');
+// 用户配置文件（Web UI 保存的 apiKey 等配置）
+const SETTINGS_FILE = path.join(AUTH_DIR, 'settings.json');
 // 官方 Claude Code 的配置文件（存储 primaryApiKey）
 const CONFIG_FILE = path.join(AUTH_DIR, 'config.json');
 // 官方 Claude Code 的 OAuth 凭据文件（存储 claudeAiOauth）
@@ -267,6 +269,24 @@ export function initAuth(): AuthConfig | null {
       accessToken: envAuthToken,
     };
     return currentAuth;
+  }
+
+  // 1c. 检查 settings.json 的 apiKey（Web UI 配置）
+  // 用户在 Web UI 设置页面保存的 API Key，优先级高于 OAuth token 和内置代理
+  if (fs.existsSync(SETTINGS_FILE)) {
+    try {
+      const settings = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf-8'));
+      if (settings.apiKey) {
+        currentAuth = {
+          type: 'api_key',
+          accountType: 'api',
+          apiKey: settings.apiKey,
+        };
+        return currentAuth;
+      }
+    } catch (err) {
+      // 忽略解析错误
+    }
   }
 
   // 2. 检查官方 Claude Code 的 .credentials.json（OAuth token）

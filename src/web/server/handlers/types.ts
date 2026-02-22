@@ -85,12 +85,17 @@ export interface ContinuousDevOrchestrator {
 
 /**
  * 发送消息到客户端
+ * 已关闭的 ws 只 warn 一次，避免高频流式事件产生日志洪水
  */
+const closedWsLogged = new WeakSet<WebSocket>();
 export function sendMessage(ws: WebSocket, message: ServerMessage): void {
   if (ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(message));
   } else {
-    const sessionId = ('payload' in message ? (message.payload as any)?.sessionId : '') || '';
-    console.warn(`[WebSocket] 消息被丢弃 (ws.readyState=${ws.readyState}): type=${message.type}, session=${sessionId}`);
+    if (!closedWsLogged.has(ws)) {
+      closedWsLogged.add(ws);
+      const sessionId = ('payload' in message ? (message.payload as any)?.sessionId : '') || '';
+      console.warn(`[WebSocket] 连接已关闭 (readyState=${ws.readyState}), 后续消息将静默丢弃. session=${sessionId}, first_dropped=${message.type}`);
+    }
   }
 }

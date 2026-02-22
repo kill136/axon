@@ -352,8 +352,44 @@ function formatSystemPrompt(
  *
  * 注意：thinking 和 redacted_thinking 类型的 block 不添加缓存控制
  */
+
+/**
+ * 清理字符串中的孤立 UTF-16 代理字符（lone surrogates）
+ *
+ * JSON 规范要求 surrogate pairs 必须成对出现（高代理 \uD800-\uDBFF 后跟低代理 \uDC00-\uDFFF）。
+ * 如果字符串中包含孤立的代理字符，JSON.stringify 会保留它们，但 API 端解析时会报错：
+ * "not valid JSON: no low surrogate in string"
+ *
+ * 常见来源：Bash 输出包含二进制数据、损坏的文件内容、截断的 UTF-16 字符串。
+ */
+function sanitizeSurrogates(str: string): string {
+  // 匹配孤立的高代理（后面没有低代理）或孤立的低代理（前面没有高代理）
+  // eslint-disable-next-line no-control-regex
+  return str.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '\uFFFD');
+}
+
+/**
+ * 递归清理消息内容中的孤立代理字符
+ */
+function sanitizeContent(content: any): any {
+  if (typeof content === 'string') {
+    return sanitizeSurrogates(content);
+  }
+  if (Array.isArray(content)) {
+    return content.map(sanitizeContent);
+  }
+  if (content && typeof content === 'object') {
+    const result: any = {};
+    for (const key of Object.keys(content)) {
+      result[key] = sanitizeContent(content[key]);
+    }
+    return result;
+  }
+  return content;
+}
+
 function formatMessages(messages: Array<{ role: string; content: any }>, enableThinking?: boolean): Array<{ role: string; content: any }> {
-  return messages.map((m, msgIndex) => {
+  const formatted = messages.map((m, msgIndex) => {
     const isLastMessage = msgIndex === messages.length - 1;
 
     // 如果 content 是字符串，转换为数组格式并添加缓存控制
@@ -401,6 +437,7 @@ function formatMessages(messages: Array<{ role: string; content: any }>, enableT
 
     return { role: m.role, content: m.content };
   });
+  return sanitizeContent(formatted);
 }
 
 // 会话相关的全局状态

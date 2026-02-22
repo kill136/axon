@@ -14,6 +14,7 @@ import { BaseTool } from './base.js';
 import type { ToolResult, ToolDefinition } from '../types/index.js';
 import { getCurrentCwd } from '../core/cwd-context.js';
 import { registerHook, type HookEvent, type HookConfig } from '../hooks/index.js';
+import { t } from '../i18n/index.js';
 
 /**
  * v2.1.32: 额外目录列表（由 --add-dir 设置）
@@ -1238,7 +1239,7 @@ Important:
       const available = Array.from(skillRegistry.keys()).join(', ');
       return {
         success: false,
-        error: `Skill "${skillInput}" not found. Available skills: ${available || 'none'}`,
+        error: t('skill.notFound', { name: skillInput, available: available || 'none' }),
       };
     }
 
@@ -1246,7 +1247,7 @@ Important:
     if (skill.disableModelInvocation) {
       return {
         success: false,
-        error: `Skill "${skill.skillName}" has model invocation disabled`,
+        error: t('skill.modelInvocationDisabled', { name: skill.skillName }),
       };
     }
 

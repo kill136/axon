@@ -425,7 +425,7 @@ export class McpConfigManager {
   private checkCommandExists(command: string): boolean {
     try {
       if (process.platform === 'win32') {
-        execSync(`where "${command}"`, { stdio: 'ignore' });
+        execSync(`where "${command}"`, { stdio: 'ignore', windowsHide: true });
       } else {
         execSync(`command -v "${command}"`, { stdio: 'ignore' });
       }

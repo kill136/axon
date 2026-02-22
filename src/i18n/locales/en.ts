@@ -862,6 +862,68 @@ const en = {
   'structuredOutput.schemaError': 'Output does not match required schema: {{errors}}',
   'structuredOutput.success': 'Structured output provided successfully',
 
+  // ============ File Tool ============
+  'file.mustReadBeforeEdit': 'You must read the file with the Read tool before editing it. File: {{path}}',
+  'file.modifiedSinceRead': 'File has been modified since read, either by the user or by a linter. Read it again before attempting to write it.',
+  'file.confirmationRequired': 'Confirmation required before applying changes',
+  'file.stringNotFound': 'String to replace not found in file.\nString: {{str}}',
+  'file.multipleMatches': 'Found {{count}} matches of the string to replace, but replace_all is false. To replace all occurrences, set replace_all to true. To replace only one occurrence, please provide more context to uniquely identify the instance.\nString: {{str}}',
+  'file.blockedByHook': 'Blocked by hook',
+
+  // ============ Agent Tool ============
+  'agent.executionFailed': 'Agent execution failed: {{error}}',
+  'agent.executionInterrupted': 'Agent execution was interrupted',
+  'agent.taskNotFound': 'Task {{id}} not found',
+
+  // ============ Ask Tool ============
+  'ask.noQuestions': 'No questions provided',
+  'ask.maxQuestions': 'Maximum 4 questions allowed',
+  'ask.headerTooLong': 'Question header "{{header}}" exceeds maximum length of {{max}} characters',
+  'ask.invalidOptionCount': 'Question "{{header}}" must have 2-4 options (has {{count}})',
+  'ask.optionMissingLabel': 'Option {{index}} in question "{{header}}" must have a label',
+  'ask.optionMissingDescription': 'Option {{index}} in question "{{header}}" must have a description',
+
+  // ============ LSP Tool ============
+  'lsp.notInitialized': 'LSP server manager not initialized. This may indicate a startup issue.',
+  'lsp.noServerAvailable': 'No LSP server available for file type: {{ext}}',
+  'lsp.noCallHierarchy': 'LSP server did not return call hierarchy results',
+
+  // ============ MCP Tool ============
+  'mcp.toolCallFailed': 'MCP tool call failed: {{tool}}. Server did not respond or returned an error.',
+  'mcp.resourceNotFound': 'Resource not found or empty: {{uri}}',
+  'mcp.serverAndUriRequired': 'Both "server" and "uri" are required for action="read"',
+  'mcp.unknownAction': 'Unknown action: {{action}}. Use "list" or "read".',
+
+  // ============ PlanMode Tool ============
+  'planmode.alreadyInPlanMode': 'Already in plan mode. Use ExitPlanMode to exit first.',
+  'planmode.notInPlanMode': 'Not in plan mode. Use EnterPlanMode first.',
+
+  // ============ Sandbox Tool ============
+  'sandbox.noSandboxAvailable': 'No sandbox available and fallback is disabled',
+  'sandbox.executionFailed': 'Sandbox execution failed: {{error}}',
+
+  // ============ Notebook Tool ============
+  'notebook.cellNotFoundById': 'Cell not found with ID: {{id}}. Available cells: {{count}}',
+  'notebook.cellNotFound': 'Cell with ID "{{id}}" not found in notebook.',
+  'notebook.cellOutOfRange': 'Cell index out of range: {{index}} (total cells: {{count}})',
+  'notebook.cellIdRequired': 'cell_id is required for delete mode',
+
+  // ============ Skill Tool ============
+  'skill.notFound': 'Skill "{{name}}" not found. Available skills: {{available}}',
+  'skill.modelInvocationDisabled': 'Skill "{{name}}" has model invocation disabled',
+
+  // ============ Bash Tool ============
+  'bash.commandBlocked': 'Command blocked for security reasons: {{reason}}',
+  'bash.blockedByHook': 'Blocked by hook: {{message}}',
+  'bash.shellNotFound': 'No shell found with ID: {{id}}',
+
+  // ============ Loop Core ============
+  'loop.userCancelled': 'User cancelled the question dialog',
+  'loop.handlerError': 'AskUserQuestion handler error: {{error}}',
+
+  // ============ Web Redirect ============
+  'web.redirectDetected': 'REDIRECT DETECTED: The URL redirects to a different host.',
+
   // ============ Auth ============
   'auth.envVar': 'Authenticated via environment variable',
   'auth.apiKey': 'Authenticated with API key',

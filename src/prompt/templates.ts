@@ -626,7 +626,7 @@ export function getEnvironmentInfo(context: {
   // Windows: 列出所有可用磁盘驱动器，让 Agent 知道完整的文件系统布局
   if (context.platform === 'win32') {
     try {
-      const wmicOutput = execSync('wmic logicaldisk get name', { encoding: 'utf-8', timeout: 5000 });
+      const wmicOutput = execSync('wmic logicaldisk get name', { encoding: 'utf-8', timeout: 5000, windowsHide: true });
       const drives = wmicOutput.split('\n')
         .map((l: string) => l.trim())
         .filter((l: string) => /^[A-Z]:$/.test(l));

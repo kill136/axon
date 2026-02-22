@@ -146,13 +146,13 @@ export class NotebookEditTool extends BaseTool<NotebookEditInput, ToolResult> {
           if (edit_mode !== 'insert') {
             return {
               success: false,
-              error: `Cell not found with ID: ${cell_id}. Available cells: ${notebook.cells.length}`,
+              error: t('notebook.cellNotFoundById', { id: cell_id, count: String(notebook.cells.length) }),
             };
           }
           // insert 模式下找不到 cell_id，也应该报错（与官方行为一致）
           return {
             success: false,
-            error: `Cell with ID "${cell_id}" not found in notebook.`,
+            error: t('notebook.cellNotFound', { id: cell_id }),
           };
         }
 
@@ -166,7 +166,7 @@ export class NotebookEditTool extends BaseTool<NotebookEditInput, ToolResult> {
       if (edit_mode === 'delete' && !cell_id) {
         return {
           success: false,
-          error: 'cell_id is required for delete mode',
+          error: t('notebook.cellIdRequired'),
         };
       }
 
@@ -189,7 +189,7 @@ export class NotebookEditTool extends BaseTool<NotebookEditInput, ToolResult> {
           if (cellIndex < 0 || cellIndex >= notebook.cells.length) {
             return {
               success: false,
-              error: `Cell index out of range: ${cellIndex} (total cells: ${notebook.cells.length})`,
+              error: t('notebook.cellOutOfRange', { index: String(cellIndex), count: String(notebook.cells.length) }),
             };
           }
 
@@ -250,7 +250,7 @@ export class NotebookEditTool extends BaseTool<NotebookEditInput, ToolResult> {
           if (cellIndex < 0 || cellIndex >= notebook.cells.length) {
             return {
               success: false,
-              error: `Cell index out of range: ${cellIndex} (total cells: ${notebook.cells.length})`,
+              error: t('notebook.cellOutOfRange', { index: String(cellIndex), count: String(notebook.cells.length) }),
             };
           }
 

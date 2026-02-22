@@ -114,7 +114,7 @@ export function SystemConfigPanel({ onSave, onClose }: ConfigPanelProps) {
     });
     const data = await response.json();
     if (!data.success) {
-      throw new Error(data.error || 'Failed to save logging config');
+      throw new Error(data.error || t('error.saveLoggingFailed'));
     }
   };
 
@@ -126,7 +126,7 @@ export function SystemConfigPanel({ onSave, onClose }: ConfigPanelProps) {
     });
     const data = await response.json();
     if (!data.success) {
-      throw new Error(data.error || 'Failed to save proxy config');
+      throw new Error(data.error || t('error.saveProxyFailed'));
     }
   };
 
@@ -138,7 +138,7 @@ export function SystemConfigPanel({ onSave, onClose }: ConfigPanelProps) {
     });
     const data = await response.json();
     if (!data.success) {
-      throw new Error(data.error || 'Failed to save cache config');
+      throw new Error(data.error || t('error.saveCacheFailed'));
     }
   };
 
@@ -150,7 +150,7 @@ export function SystemConfigPanel({ onSave, onClose }: ConfigPanelProps) {
     });
     const data = await response.json();
     if (!data.success) {
-      throw new Error(data.error || 'Failed to save security config');
+      throw new Error(data.error || t('error.saveSecurityFailed'));
     }
   };
 

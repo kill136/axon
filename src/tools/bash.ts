@@ -967,7 +967,7 @@ Important:
 
       return {
         success: false,
-        error: `Command blocked for security reasons: ${safetyCheck.reason}`,
+        error: t('bash.commandBlocked', { reason: safetyCheck.reason }),
       };
     }
 
@@ -1042,7 +1042,7 @@ Important:
     if (!hookResult.allowed) {
       return {
         success: false,
-        error: `Blocked by hook: ${hookResult.message || 'Operation not allowed'}`,
+        error: t('bash.blockedByHook', { message: hookResult.message || 'Operation not allowed' }),
       };
     }
 
@@ -1757,7 +1757,7 @@ export class KillShellTool extends BaseTool<{ shell_id: string }, BashResult> {
   async execute(input: { shell_id: string }): Promise<BashResult> {
     const task = backgroundTasks.get(input.shell_id);
     if (!task) {
-      return { success: false, error: `No shell found with ID: ${input.shell_id}` };
+      return { success: false, error: t('bash.shellNotFound', { id: input.shell_id }) };
     }
 
     try {

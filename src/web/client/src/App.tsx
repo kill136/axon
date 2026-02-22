@@ -21,6 +21,7 @@ import { ArtifactsPanel } from './components/ArtifactsPanel/ArtifactsPanel';
 import { GitPanel } from './components/GitPanel';
 import { useProject } from './contexts/ProjectContext';
 import { TerminalPanel } from './components/Terminal/TerminalPanel';
+import { LogsView } from './components/Terminal/LogsView';
 import CodeView from './components/CodeView';
 import type { SessionActions } from './types';
 
@@ -60,6 +61,7 @@ function AppContent({
   const currentProjectPath = projectState.currentProject?.path;
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [showTerminal, setShowTerminal] = useState(false);
+  const [showLogsPanel, setShowLogsPanel] = useState(false);
   const [terminalHeight, setTerminalHeight] = useState(280);
   const [isInputVisible, setIsInputVisible] = useState(true);
   // Git 面板状态：优先使用 Root 传入的 prop，否则使用内部 state
@@ -478,14 +480,22 @@ function AppContent({
               onToggleTerminal={() => setShowTerminal(!showTerminal)}
               onOpenDebugPanel={() => setShowDebugPanel(true)}
               onOpenGitPanel={() => {
-                setShowGitPanel(prev => {
-                  const newValue = !prev;
-                  // 如果打开 Git 面板，则关闭 Artifacts 面板（互斥显示）
-                  if (newValue) {
-                    artifactsState.setIsPanelOpen(false);
+                const willOpen = !showGitPanel;
+                if (willOpen) {
+                  artifactsState.setIsPanelOpen(false);
+                  setShowLogsPanel(false);
+                }
+                setShowGitPanel(() => willOpen);
+              }}
+              onOpenLogsPanel={() => {
+                const willOpenLogs = !showLogsPanel;
+                if (willOpenLogs) {
+                  artifactsState.setIsPanelOpen(false);
+                  if (showGitPanel) {
+                    setShowGitPanel(() => false);
                   }
-                  return newValue;
-                });
+                }
+                setShowLogsPanel(willOpenLogs);
               }}
               isPinned={chatInput.isPinned}
               onTogglePin={chatInput.togglePin}
@@ -534,6 +544,25 @@ function AppContent({
               addMessageHandler={addMessageHandler}
               projectPath={currentProjectPath}
             />
+          )}
+
+          {/* 右侧：日志面板 */}
+          {showLogsPanel && (
+            <div className="logs-side-panel">
+              <div className="logs-side-panel-header">
+                <span className="logs-side-panel-title">Logs</span>
+                <button className="logs-side-panel-close" onClick={() => setShowLogsPanel(false)} title="Close">
+                  &#215;
+                </button>
+              </div>
+              <LogsView
+                active={true}
+                panelVisible={true}
+                connected={connected}
+                send={send}
+                addMessageHandler={addMessageHandler}
+              />
+            </div>
           )}
         </div>
       )}

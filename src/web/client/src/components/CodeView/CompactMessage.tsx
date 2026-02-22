@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { MarkdownContent } from '../MarkdownContent';
 import type { ChatMessage, ChatContent, ToolUse } from '../../types';
+import { useLanguage } from '../../i18n';
 import styles from './CompactMessage.module.css';
 
 interface CompactMessageProps {
@@ -182,6 +183,7 @@ function TextContent({ text, onOpenFile }: { text: string; onOpenFile?: (path: s
 // 工具调用内容组件
 function ToolUseContent({ toolUse }: { toolUse: ToolUse }) {
   const [expanded, setExpanded] = useState(false);
+  const { t } = useLanguage();
 
   // 提取文件路径（如果存在）
   let pathInfo = '';
@@ -222,7 +224,7 @@ function ToolUseContent({ toolUse }: { toolUse: ToolUse }) {
             <div className={styles.toolSection}>
               <div className={styles.toolSectionTitle}>Output:</div>
               <pre className={styles.toolJson}>
-                {toolUse.result.output || toolUse.result.error || 'No output'}
+                {toolUse.result.output || toolUse.result.error || t('error.noOutput')}
               </pre>
             </div>
           )}

@@ -26,7 +26,7 @@ import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { requestEvolveRestart, isEvolveEnabled, triggerGracefulShutdown } from '../web/server/evolve-state.js';
+import { requestEvolveRestart, isEvolveEnabled } from '../web/server/evolve-state.js';
 
 export interface SelfEvolveInput {
   /** 重启原因（记录到日志） */
@@ -154,16 +154,10 @@ export class SelfEvolveTool extends BaseTool<SelfEvolveInput, ToolResult> {
     this.appendLog(logEntry);
 
     // 6. 请求进化重启（设置退出码 42 标志）
+    // 注意：不再在这里 setTimeout 触发 gracefulShutdown，
+    // 而是让对话循环检测到此标志后，完成持久化再触发关闭。
+    // 这样可以确保 SelfEvolve 工具的返回结果和最后一条 assistant 回复不丢失。
     requestEvolveRestart();
-
-    // 7. 触发 gracefulShutdown
-    // 直接调用 gracefulShutdown 闭包，而非 SIGTERM
-    // 原因：Windows 上 process.kill(pid, 'SIGTERM') 会直接终止进程，
-    //       不触发 process.on('SIGTERM') 监听器，导致退出码不是 42
-    setTimeout(() => {
-      console.log('[SelfEvolve] Triggering graceful shutdown...');
-      triggerGracefulShutdown();
-    }, 100);
 
     return this.success(
       `Self-evolve restart initiated.\n` +

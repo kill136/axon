@@ -940,7 +940,7 @@ export async function executeInSandbox(
           stderr: '',
           exitCode: null,
           killed: false,
-          error: 'No sandbox available and fallback is disabled',
+          error: t('sandbox.noSandboxAvailable'),
           sandboxed: false,
           sandboxType: 'none',
         };
