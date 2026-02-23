@@ -5,6 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import { McpServerConfig } from '../../shared/types';
+import { useLanguage } from '../i18n';
 import './McpPanel.css';
 
 // 图标常量
@@ -90,6 +91,7 @@ function AddServerForm({
   onAdd: (server: Partial<McpServerConfig>) => void;
   onBack: () => void;
 }) {
+  const { t } = useLanguage();
   const [name, setName] = useState('');
   const [type, setType] = useState<'stdio' | 'sse' | 'http'>('stdio');
   const [command, setCommand] = useState('');
@@ -134,13 +136,13 @@ function AddServerForm({
   return (
     <div className="mcp-add-form">
       <div className="mcp-form-header">
-        <h3>Add MCP Server</h3>
+        <h3>{t('mcp.addServer')}</h3>
       </div>
 
       {error && <div className="mcp-form-error">{error}</div>}
 
       <div className="mcp-form-group">
-        <label>Server Name</label>
+        <label>{t('mcp.serverName')}</label>
         <input
           type="text"
           value={name}
@@ -154,14 +156,14 @@ function AddServerForm({
       </div>
 
       <div className="mcp-form-group">
-        <label>Transport Type</label>
+        <label>{t('mcp.transportType')}</label>
         <select
           value={type}
           onChange={(e) => setType(e.target.value as 'stdio' | 'sse' | 'http')}
           className="mcp-form-select"
         >
-          <option value="stdio">stdio (Command)</option>
-          <option value="sse">SSE (Server-Sent Events)</option>
+          <option value="stdio">{t('mcp.stdioCommand')}</option>
+          <option value="sse">{t('mcp.sseEvents')}</option>
           <option value="http">HTTP</option>
         </select>
       </div>
@@ -169,7 +171,7 @@ function AddServerForm({
       {type === 'stdio' ? (
         <>
           <div className="mcp-form-group">
-            <label>Command</label>
+            <label>{t('mcp.command')}</label>
             <input
               type="text"
               value={command}
@@ -182,7 +184,7 @@ function AddServerForm({
             />
           </div>
           <div className="mcp-form-group">
-            <label>Arguments (space-separated)</label>
+            <label>{t('mcp.arguments')}</label>
             <input
               type="text"
               value={args}
@@ -194,7 +196,7 @@ function AddServerForm({
         </>
       ) : (
         <div className="mcp-form-group">
-          <label>Server URL</label>
+          <label>{t('mcp.serverUrl')}</label>
           <input
             type="text"
             value={url}
@@ -210,10 +212,10 @@ function AddServerForm({
 
       <div className="mcp-form-actions">
         <button className="mcp-btn mcp-btn-secondary" onClick={onBack}>
-          Cancel
+          {t('mcp.cancel')}
         </button>
         <button className="mcp-btn mcp-btn-primary" onClick={handleSubmit}>
-          Add Server
+          {t('mcp.addServerBtn')}
         </button>
       </div>
     </div>
@@ -232,6 +234,7 @@ function McpToolDetail({
   server: McpServerEntry;
   onBack: () => void;
 }) {
+  const { t } = useLanguage();
   const displayName = formatToolName(tool.name, server.name);
   const prefix = `mcp__${server.name}__`;
   const shortName = tool.name.startsWith(prefix)
@@ -244,23 +247,23 @@ function McpToolDetail({
         <div className="mcp-detail-header">
           <span className="mcp-detail-title">{displayName}</span>
           <span className="mcp-detail-subtitle">({server.name})</span>
-          {tool.isReadOnly && <span className="mcp-tag mcp-tag-success">read-only</span>}
-          {tool.isDestructive && <span className="mcp-tag mcp-tag-error">destructive</span>}
-          {tool.isOpenWorld && <span className="mcp-tag mcp-tag-muted">open-world</span>}
+          {tool.isReadOnly && <span className="mcp-tag mcp-tag-success">{t('mcp.tagReadOnly')}</span>}
+          {tool.isDestructive && <span className="mcp-tag mcp-tag-error">{t('mcp.tagDestructive')}</span>}
+          {tool.isOpenWorld && <span className="mcp-tag mcp-tag-muted">{t('mcp.tagOpenWorld')}</span>}
         </div>
 
         <div className="mcp-detail-info">
           <div className="mcp-info-row">
-            <span className="mcp-info-label">Tool name:</span>
+            <span className="mcp-info-label">{t('mcp.toolName')}:</span>
             <span className="mcp-info-value">{shortName}</span>
           </div>
           <div className="mcp-info-row">
-            <span className="mcp-info-label">Full name:</span>
+            <span className="mcp-info-label">{t('mcp.fullName')}:</span>
             <span className="mcp-info-value">{tool.name}</span>
           </div>
           {tool.description && (
             <div className="mcp-info-row mcp-info-desc">
-              <span className="mcp-info-label">Description:</span>
+              <span className="mcp-info-label">{t('mcp.description')}:</span>
               <span className="mcp-info-value">{tool.description}</span>
             </div>
           )}
@@ -269,7 +272,7 @@ function McpToolDetail({
 
       <div className="mcp-panel-hint">
         <button className="mcp-btn mcp-btn-secondary" onClick={onBack}>
-          ← Back
+          {t('mcp.back')}
         </button>
       </div>
     </div>
@@ -288,6 +291,7 @@ function McpToolsList({
   onSelectTool: (tool: McpTool) => void;
   onBack: () => void;
 }) {
+  const { t } = useLanguage();
   const [selectedIndex, setSelectedIndex] = useState(0);
   const tools = server.tools || [];
 
@@ -295,20 +299,20 @@ function McpToolsList({
     <div className="mcp-tools-list">
       <div className="mcp-detail-card">
         <div className="mcp-detail-header">
-          <span className="mcp-detail-title">Tools for {server.name}</span>
-          <span className="mcp-detail-subtitle">({tools.length} tools)</span>
+          <span className="mcp-detail-title">{t('mcp.toolsFor', { name: server.name })}</span>
+          <span className="mcp-detail-subtitle">({t('mcp.toolCount', { count: tools.length })})</span>
         </div>
 
         {tools.length === 0 ? (
-          <div className="mcp-empty">No tools available</div>
+          <div className="mcp-empty">{t('mcp.noTools')}</div>
         ) : (
           <div className="mcp-list">
             {tools.map((tool, index) => {
               const displayName = formatToolName(tool.name, server.name);
               const tags: string[] = [];
-              if (tool.isReadOnly) tags.push('read-only');
-              if (tool.isDestructive) tags.push('destructive');
-              if (tool.isOpenWorld) tags.push('open-world');
+              if (tool.isReadOnly) tags.push(t('mcp.tagReadOnly'));
+              if (tool.isDestructive) tags.push(t('mcp.tagDestructive'));
+              if (tool.isOpenWorld) tags.push(t('mcp.tagOpenWorld'));
 
               return (
                 <div
@@ -334,7 +338,7 @@ function McpToolsList({
 
       <div className="mcp-panel-hint">
         <button className="mcp-btn mcp-btn-secondary" onClick={onBack}>
-          ← Back
+          {t('mcp.back')}
         </button>
       </div>
     </div>
@@ -361,20 +365,21 @@ function McpServerDetail({
   onRemove: () => void;
   isReconnecting?: boolean;
 }) {
+  const { t } = useLanguage();
   const displayName = server.name.charAt(0).toUpperCase() + server.name.slice(1);
 
   const getStatusDisplay = () => {
     switch (server.status) {
       case 'connected':
-        return <span className="mcp-status mcp-status-connected">{ICONS.tick} connected</span>;
+        return <span className="mcp-status mcp-status-connected">{ICONS.tick} {t('mcp.statusConnected')}</span>;
       case 'disabled':
-        return <span className="mcp-status mcp-status-disabled">{ICONS.radioOff} disabled</span>;
+        return <span className="mcp-status mcp-status-disabled">{ICONS.radioOff} {t('mcp.statusDisabled')}</span>;
       case 'pending':
-        return <span className="mcp-status mcp-status-pending">{ICONS.radioOff} connecting…</span>;
+        return <span className="mcp-status mcp-status-pending">{ICONS.radioOff} {t('mcp.statusConnecting')}</span>;
       case 'failed':
-        return <span className="mcp-status mcp-status-failed">{ICONS.cross} failed</span>;
+        return <span className="mcp-status mcp-status-failed">{ICONS.cross} {t('mcp.statusFailed')}</span>;
       default:
-        return <span className="mcp-status mcp-status-disconnected">{ICONS.radioOff} disconnected</span>;
+        return <span className="mcp-status mcp-status-disconnected">{ICONS.radioOff} {t('mcp.statusDisconnected')}</span>;
     }
   };
 
@@ -382,13 +387,13 @@ function McpServerDetail({
     return (
       <div className="mcp-reconnecting">
         <div className="mcp-reconnecting-title">
-          Reconnecting to <strong>{server.name}</strong>
+          {t('mcp.reconnecting')} <strong>{server.name}</strong>
         </div>
         <div className="mcp-reconnecting-status">
           <span className="mcp-spinner">◐</span>
-          <span>Restarting MCP server process</span>
+          <span>{t('mcp.restartingProcess')}</span>
         </div>
-        <div className="mcp-reconnecting-hint">This may take a few moments.</div>
+        <div className="mcp-reconnecting-hint">{t('mcp.reconnectHint')}</div>
       </div>
     );
   }
@@ -397,38 +402,38 @@ function McpServerDetail({
     <div className="mcp-server-detail">
       <div className="mcp-detail-card">
         <div className="mcp-detail-header">
-          <span className="mcp-detail-title">{displayName} MCP Server</span>
+          <span className="mcp-detail-title">{t('mcp.server', { name: displayName })}</span>
         </div>
 
         <div className="mcp-detail-info">
           <div className="mcp-info-row">
-            <span className="mcp-info-label">Status:</span>
+            <span className="mcp-info-label">{t('mcp.status')}:</span>
             {getStatusDisplay()}
           </div>
 
           {server.command && (
             <div className="mcp-info-row">
-              <span className="mcp-info-label">Command:</span>
+              <span className="mcp-info-label">{t('mcp.commandLabel')}:</span>
               <span className="mcp-info-value mcp-info-code">{server.command}</span>
             </div>
           )}
 
           {server.args && server.args.length > 0 && (
             <div className="mcp-info-row">
-              <span className="mcp-info-label">Args:</span>
+              <span className="mcp-info-label">{t('mcp.args')}:</span>
               <span className="mcp-info-value mcp-info-code">{server.args.join(' ')}</span>
             </div>
           )}
 
           {server.url && (
             <div className="mcp-info-row">
-              <span className="mcp-info-label">URL:</span>
+              <span className="mcp-info-label">{t('mcp.urlLabel')}:</span>
               <span className="mcp-info-value mcp-info-code">{server.url}</span>
             </div>
           )}
 
           <div className="mcp-info-row">
-            <span className="mcp-info-label">Config location:</span>
+            <span className="mcp-info-label">{t('mcp.configLocation')}:</span>
             <span className="mcp-info-value">{getScopeDescription(server.scope)}</span>
           </div>
 
@@ -460,26 +465,26 @@ function McpServerDetail({
         <div className="mcp-detail-actions">
           {server.status !== 'disabled' && server.toolsCount > 0 && (
             <button className="mcp-action-btn" onClick={onViewTools}>
-              View tools
+              {t('mcp.viewTools')}
             </button>
           )}
           {server.status !== 'disabled' && (
             <button className="mcp-action-btn" onClick={onReconnect}>
-              {ICONS.refresh} Reconnect
+              {ICONS.refresh} {t('mcp.reconnect')}
             </button>
           )}
           <button className="mcp-action-btn" onClick={onToggleEnabled}>
-            {server.status !== 'disabled' ? 'Disable' : 'Enable'}
+            {server.status !== 'disabled' ? t('mcp.disable') : t('mcp.enable')}
           </button>
           <button className="mcp-action-btn mcp-action-danger" onClick={onRemove}>
-            {ICONS.trash} Remove
+            {ICONS.trash} {t('mcp.remove')}
           </button>
         </div>
       </div>
 
       <div className="mcp-panel-hint">
         <button className="mcp-btn mcp-btn-secondary" onClick={onBack}>
-          ← Back
+          {t('mcp.back')}
         </button>
       </div>
     </div>
@@ -490,6 +495,7 @@ function McpServerDetail({
  * MCP 管理主面板
  */
 export function McpPanel({ onClose, onSendMessage, addMessageHandler }: McpPanelProps) {
+  const { t } = useLanguage();
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [selectedServer, setSelectedServer] = useState<McpServerEntry | null>(null);
@@ -655,8 +661,8 @@ export function McpPanel({ onClose, onSendMessage, addMessageHandler }: McpPanel
     return (
       <div className="mcp-panel">
         <div className="mcp-panel-header">
-          <h3>Manage MCP servers</h3>
-          <span className="mcp-panel-subtitle">Loading...</span>
+          <h3>{t('mcp.manageServers')}</h3>
+          <span className="mcp-panel-subtitle">{t('mcp.loading')}</span>
         </div>
       </div>
     );
@@ -714,9 +720,9 @@ export function McpPanel({ onClose, onSendMessage, addMessageHandler }: McpPanel
   return (
     <div className="mcp-panel">
       <div className="mcp-panel-header">
-        <h3>Manage MCP servers</h3>
+        <h3>{t('mcp.manageServers')}</h3>
         <span className="mcp-panel-subtitle">
-          {servers.length} server{servers.length === 1 ? '' : 's'}
+          {t('mcp.serverCount', { count: servers.length })}
         </span>
       </div>
 
@@ -729,7 +735,7 @@ export function McpPanel({ onClose, onSendMessage, addMessageHandler }: McpPanel
           onClick={() => setViewMode('add')}
         >
           <span className="mcp-list-icon">{ICONS.plus}</span>
-          <span className="mcp-list-name">Add MCP Server</span>
+          <span className="mcp-list-name">{t('mcp.addServer')}</span>
         </div>
 
         {servers.length === 0 ? (

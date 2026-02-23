@@ -21,13 +21,13 @@ const testConnectionBtn = document.getElementById('test-connection');
 
 async function loadSettings() {
   try {
-    // Try to load from _config.json first (injected by CLI install command)
+    // Try to load from relay-config.json first (injected by CLI install command)
     let fileConfig = null;
     try {
-      const resp = await fetch(chrome.runtime.getURL('_config.json'));
+      const resp = await fetch(chrome.runtime.getURL('relay-config.json'));
       if (resp.ok) fileConfig = await resp.json();
     } catch {
-      // _config.json doesn't exist
+      // relay-config.json doesn't exist
     }
 
     const settings = await chrome.storage.local.get(['relayPort', 'gatewayToken']);

@@ -560,10 +560,10 @@ export class BrowserManager {
         }
       }
       
-      // Note: In pipe mode, extension reads config from chrome.storage.local (not INJECTED_CONFIG)
-      // We don't inject config anymore. Extension will use default port 18792 or user-configured port.
-      // For pipe mode to work, we need to pre-configure the extension or pass config via CDP.
-      // For simplicity, we'll use the relay port directly without injection (extension must be configured via options page).
+      // Inject relay-config.json so extension can auto-connect to our relay
+      const authToken = resolveRelayAuthToken(relayPort);
+      const configPath = path.join(extensionPath, 'relay-config.json');
+      fs.writeFileSync(configPath, JSON.stringify({ relayPort, gatewayToken: authToken }, null, 2));
       
       console.log('[BrowserManager] Extension relay mode enabled, relay port:', relayPort);
       console.log('[BrowserManager] Extension path:', extensionPath);
@@ -755,7 +755,7 @@ export class BrowserManager {
     fs.mkdirSync(installDir, { recursive: true });
     const files = fs.readdirSync(sourcePath);
     for (const file of files) {
-      if (file === '_config.json') continue; // Don't copy old config
+      if (file === 'relay-config.json') continue; // Don't copy old config
       const src = path.join(sourcePath, file);
       const dst = path.join(installDir, file);
       if (fs.statSync(src).isFile()) {
@@ -763,10 +763,10 @@ export class BrowserManager {
       }
     }
 
-    // Generate _config.json with auth token
+    // Generate relay-config.json with auth token
     const authToken = resolveRelayAuthToken(relayPort);
     const config = { relayPort, gatewayToken: authToken };
-    fs.writeFileSync(path.join(installDir, '_config.json'), JSON.stringify(config, null, 2));
+    fs.writeFileSync(path.join(installDir, 'relay-config.json'), JSON.stringify(config, null, 2));
 
     return installDir;
   }
