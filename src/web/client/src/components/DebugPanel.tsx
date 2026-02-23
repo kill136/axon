@@ -258,7 +258,7 @@ export function DebugPanel({ isOpen, onClose, send, addMessageHandler, blueprint
         {/* Agent 选择器（仅蜂群模式） */}
         {isSwarmMode && (
           <div className="debug-agent-selector">
-            <span className="debug-agent-selector-label">Agent:</span>
+            <span className="debug-agent-selector-label">{t('debug.agent')}</span>
             <select
               className="debug-agent-select"
               value={selectedAgent}
@@ -285,7 +285,7 @@ export function DebugPanel({ isOpen, onClose, send, addMessageHandler, blueprint
             className={`debug-tab ${activeTab === 'system_prompt' ? 'active' : ''}`}
             onClick={() => setActiveTab('system_prompt')}
           >
-            System Prompt
+            {t('debug.systemPrompt')}
             {debugData && (
               <span className="debug-tab-badge">~{estimateTokens(debugData.systemPrompt).toLocaleString()} tokens</span>
             )}
@@ -294,7 +294,7 @@ export function DebugPanel({ isOpen, onClose, send, addMessageHandler, blueprint
             className={`debug-tab ${activeTab === 'messages' ? 'active' : ''}`}
             onClick={() => setActiveTab('messages')}
           >
-            Messages
+            {t('debug.messages')}
             {debugData && (
               <span className="debug-tab-badge">{debugData.messageCount}</span>
             )}
@@ -303,7 +303,7 @@ export function DebugPanel({ isOpen, onClose, send, addMessageHandler, blueprint
             className={`debug-tab ${activeTab === 'tools' ? 'active' : ''}`}
             onClick={() => setActiveTab('tools')}
           >
-            Tools
+            {t('debug.tools')}
             {debugData && (
               <span className="debug-tab-badge">{debugData.tools.length}</span>
             )}
@@ -312,21 +312,21 @@ export function DebugPanel({ isOpen, onClose, send, addMessageHandler, blueprint
 
         <div className="debug-panel-content">
           {loading && !debugData ? (
-            <div className="debug-loading">Loading...</div>
+            <div className="debug-loading">{t('common.loading')}</div>
           ) : !debugData ? (
-            <div className="debug-empty">No data available</div>
+            <div className="debug-empty">{t('debug.noData')}</div>
           ) : (
             <>
               {/* System Prompt Tab */}
               {activeTab === 'system_prompt' && (
                 <div className="debug-section">
                   <div className="debug-section-header">
-                    <span>System Prompt ({estimateTokens(debugData.systemPrompt).toLocaleString()} est. tokens, {debugData.systemPrompt.length.toLocaleString()} chars)</span>
+                    <span>{t('debug.systemPromptInfo', { tokens: estimateTokens(debugData.systemPrompt).toLocaleString(), chars: debugData.systemPrompt.length.toLocaleString() })}</span>
                     <button
                       className="debug-copy-btn"
                       onClick={() => handleCopy(debugData.systemPrompt)}
                     >
-                      Copy
+                      {t('debug.copy')}
                     </button>
                   </div>
                   <pre className="debug-code-block">{debugData.systemPrompt}</pre>
@@ -337,23 +337,23 @@ export function DebugPanel({ isOpen, onClose, send, addMessageHandler, blueprint
               {activeTab === 'messages' && (
                 <div className="debug-section">
                   <div className="debug-section-header">
-                    <span>{filteredMessages.length} messages</span>
+                    <span>{t('debug.messageCount', { count: filteredMessages.length })}</span>
                     <div className="debug-section-actions">
                       <input
                         className="debug-search-input"
                         type="text"
-                        placeholder="Search messages..."
+                        placeholder={t('debug.searchMessages')}
                         value={searchText}
                         onChange={(e) => setSearchText(e.target.value)}
                       />
                       <button className="debug-toggle-all-btn" onClick={toggleAll}>
-                        {expandedMessages.size === debugData.messages.length ? 'Collapse All' : 'Expand All'}
+                        {expandedMessages.size === debugData.messages.length ? t('debug.collapseAll') : t('debug.expandAll')}
                       </button>
                       <button
                         className="debug-copy-btn"
                         onClick={() => handleCopy(formatJson(debugData.messages))}
                       >
-                        Copy All
+                        {t('debug.copyAll')}
                       </button>
                     </div>
                   </div>
@@ -377,7 +377,7 @@ export function DebugPanel({ isOpen, onClose, send, addMessageHandler, blueprint
                             <span className="debug-message-summary">
                               {getMessageSummary(msg)}
                             </span>
-                            <span className="debug-block-count">{blockCount} blocks</span>
+                            <span className="debug-block-count">{t('debug.blocks', { count: blockCount })}</span>
                           </div>
                           {isExpanded && (
                             <div className="debug-message-body">
@@ -388,7 +388,7 @@ export function DebugPanel({ isOpen, onClose, send, addMessageHandler, blueprint
                                   handleCopy(formatJson(msg));
                                 }}
                               >
-                                Copy
+                                {t('debug.copy')}
                               </button>
                               <pre className="debug-code-block">{formatJson(msg)}</pre>
                             </div>
@@ -404,12 +404,12 @@ export function DebugPanel({ isOpen, onClose, send, addMessageHandler, blueprint
               {activeTab === 'tools' && (
                 <div className="debug-section">
                   <div className="debug-section-header">
-                    <span>{debugData.tools.length} tools</span>
+                    <span>{t('debug.toolCount', { count: debugData.tools.length })}</span>
                     <button
                       className="debug-copy-btn"
                       onClick={() => handleCopy(formatJson(debugData.tools))}
                     >
-                      Copy All
+                      {t('debug.copyAll')}
                     </button>
                   </div>
                   <div className="debug-tools-list">
@@ -418,7 +418,7 @@ export function DebugPanel({ isOpen, onClose, send, addMessageHandler, blueprint
                         <div className="debug-tool-name">{tool.name || `Tool #${index}`}</div>
                         <div className="debug-tool-desc">{tool.description?.slice(0, 100) || ''}</div>
                         <details className="debug-tool-details">
-                          <summary>View full definition</summary>
+                          <summary>{t('debug.viewDefinition')}</summary>
                           <pre className="debug-code-block">{formatJson(tool)}</pre>
                         </details>
                       </div>
