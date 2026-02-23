@@ -77,6 +77,7 @@ import { accountUsageManager } from '../ratelimit/index.js';
 import { initNotebookManager, getNotebookManager } from '../memory/notebook.js';
 import { initMemorySearchManager, getMemorySearchManager } from '../memory/memory-search.js';
 import { estimateTokens } from '../utils/token-estimate.js';
+import { loadActiveGoals } from '../goals/index.js';
 import {
   isSessionMemoryEnabled as checkSessionMemoryEnabled,
   SESSION_MEMORY_TEMPLATE,
@@ -1996,6 +1997,9 @@ export class ConversationLoop {
       console.warn('[MemorySearch] 初始化失败:', err);
     });
 
+    // 加载活跃目标
+    const activeGoals = loadActiveGoals(effectiveWorkingDir);
+
     this.promptContext = {
       workingDir: effectiveWorkingDir,
       model: resolvedModel,
@@ -2011,6 +2015,8 @@ export class ConversationLoop {
       language: configManager.get('language'),
       // Agent 笔记本内容
       notebookSummary: notebookSummary || undefined,
+      // 活跃目标
+      activeGoals: activeGoals.length > 0 ? activeGoals : undefined,
     };
 
     // 获取并过滤工具

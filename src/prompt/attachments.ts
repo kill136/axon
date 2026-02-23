@@ -154,6 +154,15 @@ export class AttachmentManager {
       );
     }
 
+    // Active Goals
+    if (context.activeGoals && context.activeGoals.length > 0) {
+      attachmentPromises.push(
+        this.computeAttachment('goals', () =>
+          Promise.resolve(this.generateGoalAttachment(context.activeGoals!))
+        )
+      );
+    }
+
     // Plan Mode
     if (context.planMode) {
       attachmentPromises.push(
@@ -334,6 +343,47 @@ export class AttachmentManager {
         content: `<agent-notebooks>\n${notebookSummary}\n</agent-notebooks>`,
         label: 'Agent Notebooks',
         priority: 28, // 在 memory(30) 之前
+      },
+    ];
+  }
+
+  /**
+   * 生成目标附件
+   */
+  private generateGoalAttachment(goals: any[]): Attachment[] {
+    if (!goals || goals.length === 0) {
+      return [];
+    }
+
+    // 格式化目标列表为 markdown
+    let content = 'You have the following active goals for this project. Review them and continue working on the highest priority items.\n\n';
+    
+    // 按优先级排序：high > medium > low
+    const priorityOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
+    const sorted = [...goals].sort((a, b) => (priorityOrder[a.priority] || 1) - (priorityOrder[b.priority] || 1));
+    
+    for (const goal of sorted) {
+      content += `## ${goal.id}: ${goal.title} [${goal.priority.toUpperCase()}] (${goal.status})\n`;
+      content += `${goal.description}\n`;
+      if (goal.tasks && goal.tasks.length > 0) {
+        content += 'Tasks:\n';
+        for (const task of goal.tasks) {
+          const check = task.status === 'completed' ? 'x' : ' ';
+          content += `- [${check}] ${task.id}: ${task.name}\n`;
+        }
+      }
+      if (goal.notes) {
+        content += `Notes: ${goal.notes}\n`;
+      }
+      content += '\n';
+    }
+    
+    return [
+      {
+        type: 'goals' as AttachmentType,
+        content: `<active-goals>\n${content}</active-goals>`,
+        label: 'Active Goals',
+        priority: 26, // 在 notebook(28) 之前
       },
     ];
   }

@@ -3,6 +3,7 @@
  */
 
 import type { PermissionMode } from '../types/index.js';
+import type { Goal } from '../goals/index.js';
 
 /**
  * 附件类型枚举
@@ -21,6 +22,7 @@ export type AttachmentType =
   | 'git_status'
   | 'todo_list'
   | 'skill_listing'
+  | 'goals'
   | 'custom';
 
 /**
@@ -90,6 +92,8 @@ export interface PromptContext {
   hasSkills?: boolean;
   /** 项目目录路径（用于 Past Sessions） */
   projectsDir?: string;
+  /** 当前项目的活跃目标 */
+  activeGoals?: Goal[];
 }
 
 /**

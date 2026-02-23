@@ -31,6 +31,7 @@ export * from './schedule.js';
 export * from './self-evolve.js';
 export * from './browser.js';
 export * from './create-tool.js';
+export * from './goal.js';
 
 // 蓝图工具不通过此处 re-export
 // 蓝图模块直接 import 各自需要的工具文件 (如 ../tools/dispatch-worker.js)
@@ -64,6 +65,7 @@ import { MemoryDiagnosticsTool } from './memory-diagnostics.js';
 import { CreateToolTool } from './create-tool.js';
 import { DatabaseTool } from './database.js';
 import { DebuggerTool } from './debugger.js';
+import { GoalWriteTool } from './goal.js';
 
 // ============ 蓝图工具 imports (lazy) ============
 import { BlueprintTool } from './blueprint.js';
@@ -105,8 +107,9 @@ export function registerCoreTools(): void {
   // WebSearch: 使用 Anthropic API Server Tool (web_search_20250305)
   // 在 client.ts 的 buildApiTools 中自动添加，无需注册客户端工具
 
-  // 5. 任务管理 (3个)
+  // 5. 任务管理 (4个)
   toolRegistry.register(new TodoWriteTool());
+  toolRegistry.register(new GoalWriteTool());
   toolRegistry.register(new TaskTool());
   toolRegistry.register(new TaskOutputTool());
 
