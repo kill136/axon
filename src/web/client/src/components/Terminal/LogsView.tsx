@@ -5,6 +5,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import './LogsView.css';
+import { useLanguage } from '../../i18n/LanguageContext';
 
 // 日志级别类型
 type LogLevel = 'error' | 'warn' | 'info' | 'debug';
@@ -59,6 +60,7 @@ function formatTime(ts: string): string {
  * LogsView 组件
  */
 export function LogsView({ active, panelVisible, connected, send, addMessageHandler }: LogsViewProps) {
+  const { t } = useLanguage();
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [levelFilter, setLevelFilter] = useState<LevelFilter>('ALL');
   const [autoScroll, setAutoScroll] = useState(true);
@@ -165,7 +167,7 @@ export function LogsView({ active, panelVisible, connected, send, addMessageHand
               key={level}
               className={`logs-filter-btn ${levelFilter === level ? 'active' : ''}`}
               onClick={() => setLevelFilter(level)}
-              title={`Filter by ${level}`}
+              title={t('logs.filterBy', { level })}
             >
               {level}
             </button>
@@ -179,13 +181,13 @@ export function LogsView({ active, panelVisible, connected, send, addMessageHand
               checked={autoScroll}
               onChange={(e) => setAutoScroll(e.target.checked)}
             />
-            <span>Auto Scroll</span>
+            <span>{t('logs.autoScroll')}</span>
           </label>
           {/* 清屏按钮 */}
           <button
             className="logs-clear-btn"
             onClick={handleClear}
-            title="Clear logs"
+            title={t('logs.clearLogs')}
           >
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
               <path d="M8 8.707l3.646 3.647.708-.707L8.707 8l3.647-3.646-.707-.708L8 7.293 4.354 3.646l-.707.708L7.293 8l-3.646 3.646.707.708L8 8.707z"/>
@@ -201,7 +203,7 @@ export function LogsView({ active, panelVisible, connected, send, addMessageHand
         onScroll={handleScroll}
       >
         {filteredEntries.length === 0 ? (
-          <div className="logs-empty">No logs to display</div>
+          <div className="logs-empty">{t('logs.noLogs')}</div>
         ) : (
           filteredEntries.map((entry, index) => {
             const isExpanded = expandedIds.has(index);

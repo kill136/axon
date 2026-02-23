@@ -9,6 +9,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import './TerminalPanel.css';
 import { LogsView } from './LogsView';
+import { useLanguage } from '../../i18n/LanguageContext';
 
 // xterm 主题配置
 const XTERM_THEME = {
@@ -195,6 +196,7 @@ export function TerminalPanel({
   onHeightChange,
   projectPath,
 }: TerminalPanelProps) {
+  const { t } = useLanguage();
   const [tabs, setTabs] = useState<TerminalTab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [panelMode, setPanelMode] = useState<'terminal' | 'logs'>('terminal');
@@ -610,7 +612,7 @@ export function TerminalPanel({
                   <button
                     className="terminal-tab-close"
                     onClick={(e) => { e.stopPropagation(); closeTerminal(tab.id); }}
-                    title="Close"
+                    title={t('terminal.close')}
                   >
                     <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
                       <path d="M8 8.707l3.646 3.647.708-.707L8.707 8l3.647-3.646-.707-.708L8 7.293 4.354 3.646l-.707.708L7.293 8l-3.646 3.646.707.708L8 8.707z"/>
@@ -619,7 +621,7 @@ export function TerminalPanel({
                 </div>
               ))}
               {/* 新建终端按钮 */}
-              <button className="terminal-add-btn" onClick={addNewTerminal} title="New Terminal">
+              <button className="terminal-add-btn" onClick={addNewTerminal} title={t('terminal.newTerminal')}>
                 <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
                   <path d="M8 1v6H2v2h6v6h2V9h6V7H10V1H8z"/>
                 </svg>
@@ -630,13 +632,13 @@ export function TerminalPanel({
         <div className="terminal-header-right">
           {/* Terminal 模式：显示重启和关闭按钮 */}
           {panelMode === 'terminal' && (
-            <button className="terminal-action-btn" onClick={restartTerminal} title="Restart Terminal">
+            <button className="terminal-action-btn" onClick={restartTerminal} title={t('terminal.restartTerminal')}>
               <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                 <path d="M12.75 8a4.5 4.5 0 0 1-8.61 1.834l-1.391.565A6.001 6.001 0 0 0 14.25 8 6 6 0 0 0 3.5 4.334V2.5H2v4h4V5H3.934a4.5 4.5 0 0 1 8.816 3z"/>
               </svg>
             </button>
           )}
-          <button className="terminal-action-btn" onClick={onClose} title="Close Panel">
+          <button className="terminal-action-btn" onClick={onClose} title={t('terminal.closePanel')}>
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
               <path d="M8 8.707l3.646 3.647.708-.707L8.707 8l3.647-3.646-.707-.708L8 7.293 4.354 3.646l-.707.708L7.293 8l-3.646 3.646.707.708L8 8.707z"/>
             </svg>
