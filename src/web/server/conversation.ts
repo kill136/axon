@@ -1172,6 +1172,8 @@ export class ConversationManager {
     let justForceCompacted = false;
     /** 是否刚执行过自动压缩（防止连续压缩：压缩后 API 实际 inputTokens 仍含系统提示词+工具定义，可能仍超阈值） */
     let justAutoCompacted = false;
+    /** 是否已尝试过消息一致性自愈（防止无限循环） */
+    let messageConsistencyHealed = false;
 
     // 创建 AbortController，用于在取消时中断正在执行的工具
     state.currentAbortController = new AbortController();
@@ -1304,6 +1306,11 @@ export class ConversationManager {
             state.messages = [...compactResult.messages, ...messagesToKeep];
             state.lastActualInputTokens = 0; // 压缩后重置
             justAutoCompacted = true; // 标记刚压缩完，防止下一轮再次触发
+            // compact 后旧的 _messagesLen 已失效（messages 被压缩替换），清除它们
+            // 防止回滚时用过时的 _messagesLen 截断到错误位置
+            for (const entry of state.chatHistory) {
+              entry._messagesLen = undefined;
+            }
             // 对齐官方：保存边界 UUID 用于增量压缩
             if (compactResult.boundaryUuid) {
               state.lastCompactedUuid = compactResult.boundaryUuid;
@@ -1711,6 +1718,10 @@ export class ConversationManager {
               state.messages = [...compactResult.messages, ...forceKeepMsgs];
               state.lastActualInputTokens = 0;
               justAutoCompacted = true; // 防止连续压缩
+              // compact 后旧的 _messagesLen 已失效，清除
+              for (const entry of state.chatHistory) {
+                entry._messagesLen = undefined;
+              }
               // 对齐官方：保存边界 UUID 用于增量压缩
               if (compactResult.boundaryUuid) {
                 state.lastCompactedUuid = compactResult.boundaryUuid;
@@ -1751,6 +1762,20 @@ export class ConversationManager {
           // 压缩失败，报告原始错误
           callbacks.onError?.(error instanceof Error ? error : new Error(errMsg));
           continueLoop = false;
+          continue;
+        }
+
+        // 检查是否为消息一致性错误（重复 tool_result 等），尝试自愈
+        // API 400: "each tool_use must have a single result. Found multiple tool_result blocks with id: ..."
+        if (
+          !messageConsistencyHealed &&
+          (errMsg.includes('tool_use must have a single result') ||
+           errMsg.includes('multiple `tool_result` blocks') ||
+           (errMsg.includes('invalid_request_error') && errMsg.includes('tool_result')))
+        ) {
+          console.warn(`[ConversationManager] 检测到消息一致性错误，尝试自愈: ${errMsg.substring(0, 100)}`);
+          state.messages = validateToolResults(state.messages);
+          messageConsistencyHealed = true; // 只尝试一次，防止无限循环
           continue;
         }
 
@@ -2313,6 +2338,24 @@ export class ConversationManager {
           const task = state.taskManager.getTask(taskId);
 
           if (!task) {
+            // Web TaskManager 只管理 Agent 类型后台任务，
+            // Bash 超时转后台的任务注册在 bash.ts 的 backgroundTasks Map 和磁盘 meta 中。
+            // 不在 Web TaskManager 里时，交给 TaskOutputTool.execute() 处理，
+            // 它有完整的 Bash 后台任务查找（内存 + 磁盘 fallback）逻辑。
+            const taskOutputTool = toolRegistry.get('TaskOutput');
+            if (taskOutputTool) {
+              const fallbackResult = await taskOutputTool.execute(input);
+              const fallbackOutput = typeof fallbackResult === 'string'
+                ? fallbackResult
+                : (fallbackResult as any)?.output || (fallbackResult as any)?.error || '';
+              const fallbackSuccess = typeof fallbackResult === 'string'
+                ? true
+                : (fallbackResult as any)?.success ?? false;
+
+              callbacks.onToolResult?.(toolUse.id, fallbackSuccess, fallbackOutput, fallbackSuccess ? undefined : fallbackOutput);
+              return { success: fallbackSuccess, output: fallbackOutput, error: fallbackSuccess ? undefined : fallbackOutput };
+            }
+
             const error = `Task ${taskId} not found`;
             callbacks.onToolResult?.(toolUse.id, false, undefined, error);
             return { success: false, error };
@@ -4514,12 +4557,21 @@ Guidelines:
 
       // 同步截断 messages（核心修复：之前只截断了 chatHistory 没有截断 messages）
       // 使用 _messagesLen 字段找到 messages 中对应的截断位置
+      // 注意：compact 后旧的 _messagesLen 已被清除（invalidateMessagesLenBeforeCompact），
+      // 所以需要从后往前找最近一个有效（非 undefined）的 _messagesLen
       if (state.chatHistory.length > 0) {
-        const lastKeptChat = state.chatHistory[state.chatHistory.length - 1];
-        if (lastKeptChat._messagesLen != null) {
-          state.messages = state.messages.slice(0, lastKeptChat._messagesLen);
+        let validMessagesLen: number | null = null;
+        for (let i = state.chatHistory.length - 1; i >= 0; i--) {
+          if (state.chatHistory[i]._messagesLen != null) {
+            validMessagesLen = state.chatHistory[i]._messagesLen!;
+            break;
+          }
+        }
+
+        if (validMessagesLen != null) {
+          state.messages = state.messages.slice(0, validMessagesLen);
         } else {
-          // 旧会话没有 _messagesLen，fallback：根据 chatHistory 中的用户消息数量定位
+          // 所有 _messagesLen 都无效或不存在，fallback：根据 chatHistory 中的用户消息数量定位
           // 统计截断后 chatHistory 中真实用户消息数（排除 compact boundary/summary）
           const userMsgCount = state.chatHistory.filter(
             m => m.role === 'user' && !m.isCompactBoundary && !m.isCompactSummary
@@ -4645,4 +4697,5 @@ Guidelines:
 
     state.rewindManager.recordFileChange(filePath);
   }
+
 }

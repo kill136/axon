@@ -573,23 +573,49 @@ export function validateToolResults(messages: Message[]): Message[] {
     return messages;
   }
 
-  // 2. 收集所有 tool_result IDs（从 user 消息中）
+  // 2. 收集所有 tool_result IDs（从 user 消息中），同时去重
+  // API 要求每个 tool_use_id 只能有一个 tool_result，重复会导致 400 错误：
+  // "each tool_use must have a single result. Found multiple tool_result blocks with id: ..."
   const toolResultIds = new Set<string>();
+  let duplicateCount = 0;
 
-  for (const msg of messages) {
-    if (msg.role === 'user' && Array.isArray(msg.content)) {
-      for (const block of msg.content) {
-        if (
-          typeof block === 'object' &&
-          'type' in block &&
-          block.type === 'tool_result' &&
-          'tool_use_id' in block &&
-          typeof block.tool_use_id === 'string'
-        ) {
-          toolResultIds.add(block.tool_use_id);
-        }
-      }
+  const result = messages.map(msg => {
+    if (msg.role !== 'user' || !Array.isArray(msg.content)) {
+      return msg;
     }
+
+    let hasDuplicate = false;
+    const deduped = msg.content.filter((block) => {
+      if (
+        typeof block === 'object' &&
+        'type' in block &&
+        block.type === 'tool_result' &&
+        'tool_use_id' in block &&
+        typeof block.tool_use_id === 'string'
+      ) {
+        if (toolResultIds.has(block.tool_use_id)) {
+          // 重复的 tool_result，移除
+          hasDuplicate = true;
+          duplicateCount++;
+          return false;
+        }
+        toolResultIds.add(block.tool_use_id);
+      }
+      return true;
+    });
+
+    if (hasDuplicate) {
+      // 如果去重后消息内容为空，返回 null 标记稍后移除
+      if (deduped.length === 0) {
+        return null;
+      }
+      return { ...msg, content: deduped };
+    }
+    return msg;
+  }).filter((msg): msg is Message => msg !== null);
+
+  if (duplicateCount > 0) {
+    console.log(chalk.yellow(`[validateToolResults] Removed ${duplicateCount} duplicate tool_result(s)`));
   }
 
   // 3. 找出孤立的 tool_use（有 tool_use 但没有对应的 tool_result）
@@ -602,7 +628,7 @@ export function validateToolResults(messages: Message[]): Message[] {
 
   // 如果没有孤立的 tool_use，直接返回
   if (orphanedToolUseIds.length === 0) {
-    return messages;
+    return result;
   }
 
   // 4. 创建 error tool_result 块
@@ -619,7 +645,6 @@ export function validateToolResults(messages: Message[]): Message[] {
 
   // 5. 将 error tool_result 追加到消息列表
   // 策略：找到最后一条 assistant 消息之后的 user 消息，如果没有则创建一个新的
-  const result = [...messages];
 
   // 从后往前找最后一个 assistant 消息的索引
   let lastAssistantIndex = -1;
@@ -632,7 +657,7 @@ export function validateToolResults(messages: Message[]): Message[] {
 
   if (lastAssistantIndex === -1) {
     // 没有 assistant 消息，这不应该发生，但为了安全起见
-    return messages;
+    return result;
   }
 
   // 检查最后一个 assistant 消息之后是否有 user 消息包含 tool_result
@@ -1741,6 +1766,11 @@ export class ConversationLoop {
   // ESC 中断支持
   private abortController: AbortController | null = null;
 
+  // 工具循环检测 — 对标官方 maxTurns，增加重复调用模式检测
+  private toolCallHistory: Array<{ name: string; inputHash: string }> = [];
+  private static readonly TOOL_LOOP_WARNING_THRESHOLD = 10;   // 同参数重复调用 N 次触发警告
+  private static readonly TOOL_LOOP_CIRCUIT_BREAKER = 20;     // 全局熔断阈值
+
   /**
    * 获取当前权限模式 - 官方 v2.1.2 响应式实现
    *
@@ -1759,6 +1789,73 @@ export class ConversationLoop {
     }
     // 回退到静态配置（仅用于 sub-agent 或测试场景）
     return this.options.permissionMode || 'default';
+  }
+
+  /**
+   * 记录工具调用并检测循环模式
+   * @returns 'ok' | 'warning' | 'circuit_break'
+   */
+  private recordToolCall(toolName: string, toolInput: unknown): 'ok' | 'warning' | 'circuit_break' {
+    // 简单 hash：工具名 + JSON 排序后的输入前 200 字符
+    const inputStr = JSON.stringify(toolInput || {});
+    const inputHash = inputStr.length > 200 ? inputStr.substring(0, 200) : inputStr;
+    this.toolCallHistory.push({ name: toolName, inputHash });
+
+    // 全局熔断：历史调用次数超过阈值
+    if (this.toolCallHistory.length >= ConversationLoop.TOOL_LOOP_CIRCUIT_BREAKER) {
+      return 'circuit_break';
+    }
+
+    // 同参数重复调用检测：连续 N 次相同工具+相同参数
+    const key = `${toolName}:${inputHash}`;
+    let consecutiveCount = 0;
+    for (let i = this.toolCallHistory.length - 1; i >= 0; i--) {
+      const entry = this.toolCallHistory[i];
+      if (`${entry.name}:${entry.inputHash}` === key) {
+        consecutiveCount++;
+      } else {
+        break;
+      }
+    }
+
+    if (consecutiveCount >= ConversationLoop.TOOL_LOOP_WARNING_THRESHOLD) {
+      return 'warning';
+    }
+
+    // Ping-pong 检测：交替调用两个工具（A-B-A-B 模式）
+    const len = this.toolCallHistory.length;
+    if (len >= 4) {
+      const last4 = this.toolCallHistory.slice(-4);
+      const a = `${last4[0].name}:${last4[0].inputHash}`;
+      const b = `${last4[1].name}:${last4[1].inputHash}`;
+      if (a !== b
+        && `${last4[2].name}:${last4[2].inputHash}` === a
+        && `${last4[3].name}:${last4[3].inputHash}` === b) {
+        // 还需要检查更长的模式
+        let pingPongCount = 2; // 已经有 2 轮
+        for (let i = len - 5; i >= 0; i -= 2) {
+          if (i - 1 >= 0
+            && `${this.toolCallHistory[i].name}:${this.toolCallHistory[i].inputHash}` === b
+            && `${this.toolCallHistory[i - 1].name}:${this.toolCallHistory[i - 1].inputHash}` === a) {
+            pingPongCount++;
+          } else {
+            break;
+          }
+        }
+        if (pingPongCount >= 5) {
+          return 'warning';
+        }
+      }
+    }
+
+    return 'ok';
+  }
+
+  /**
+   * 重置工具调用历史（用户新消息时调用）
+   */
+  private resetToolCallHistory(): void {
+    this.toolCallHistory = [];
   }
 
   /**
@@ -2458,6 +2555,9 @@ export class ConversationLoop {
     // 确保认证已完成（处理 OAuth API Key 创建）
     await this.ensureAuthenticated();
 
+    // 用户新消息 → 重置工具循环检测历史
+    this.resetToolCallHistory();
+
     // 自动链接理解：提取用户消息中的 URL 并获取内容
     const processedInput = await this.preprocessUserInput(userInput);
 
@@ -2668,6 +2768,20 @@ export class ConversationLoop {
           if (result.newMessages && result.newMessages.length > 0) {
             allNewMessages.push(...result.newMessages);
           }
+
+          // 工具循环检测：记录调用
+          const loopStatus = this.recordToolCall(toolName, toolInput);
+          if (loopStatus === 'circuit_break') {
+            console.error(`[ToolLoop] Circuit breaker triggered after ${ConversationLoop.TOOL_LOOP_CIRCUIT_BREAKER} tool calls in one turn`);
+            toolResults.push({
+              type: 'tool_result',
+              tool_use_id: toolId,
+              content: `[CIRCUIT BREAKER] Too many tool calls (${ConversationLoop.TOOL_LOOP_CIRCUIT_BREAKER}) in a single user message. Stop calling tools and summarize what you have done so far.`,
+            });
+            break;
+          } else if (loopStatus === 'warning') {
+            console.error(`[ToolLoop] Repetitive tool call pattern detected for ${toolName}`);
+          }
         }
       }
 
@@ -2806,6 +2920,9 @@ Guidelines:
     // 确保认证已完成（处理 OAuth API Key 创建）
     await this.ensureAuthenticated();
 
+    // 用户新消息 → 重置工具循环检测历史
+    this.resetToolCallHistory();
+
     // 创建新的 AbortController 用于此次请求
     this.abortController = new AbortController();
 
@@ -2824,6 +2941,7 @@ Guidelines:
     const maxTurns = this.options.maxTurns || 50;
     let streamRetryCount = 0;        // v9.1: 流式错误连续重试计数
     const maxStreamRetries = 3;      // v9.1: 最大流式错误重试次数
+    let messageConsistencyHealed = false; // 消息一致性自愈标记（防止无限循环）
 
     // 解析模型别名（在循环外部，避免重复解析）
     const resolvedModel = modelConfig.resolveAlias(this.options.model || 'sonnet');
@@ -2985,6 +3103,21 @@ Guidelines:
         // v9.1: 判断是否为可重试的网络错误（暂时性故障）
         const errMsg = streamError.message || '';
         const errCode = streamError.code || streamError.type || '';
+
+        // 消息一致性错误自愈：重复 tool_result 导致 API 400
+        if (
+          !messageConsistencyHealed &&
+          (errMsg.includes('tool_use must have a single result') ||
+           errMsg.includes('multiple `tool_result` blocks') ||
+           (errMsg.includes('invalid_request_error') && errMsg.includes('tool_result')))
+        ) {
+          console.warn(chalk.yellow(`[Loop] 检测到消息一致性错误，尝试自愈: ${errMsg.substring(0, 100)}`));
+          const healedMessages = validateToolResults(this.session.getMessages());
+          this.session.setMessages(healedMessages);
+          messageConsistencyHealed = true; // 只尝试一次
+          continue;
+        }
+
         const isRetryableStreamError = [
           'ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'ECONNREFUSED',
           'network error', 'fetch failed', 'Connection error', 'connection error',
@@ -3168,6 +3301,20 @@ Guidelines:
           // 收集 newMessages（对齐官网实现）
           if (result.newMessages && result.newMessages.length > 0) {
             allNewMessages.push(...result.newMessages);
+          }
+
+          // 工具循环检测：记录调用
+          const loopStatus = this.recordToolCall(tool.name, input);
+          if (loopStatus === 'circuit_break') {
+            console.error(`[ToolLoop] Circuit breaker triggered after ${ConversationLoop.TOOL_LOOP_CIRCUIT_BREAKER} tool calls in one turn`);
+            toolResults.push({
+              type: 'tool_result',
+              tool_use_id: id,
+              content: `[CIRCUIT BREAKER] Too many tool calls (${ConversationLoop.TOOL_LOOP_CIRCUIT_BREAKER}) in a single user message. Stop calling tools and summarize what you have done so far.`,
+            });
+            break;
+          } else if (loopStatus === 'warning') {
+            console.error(`[ToolLoop] Repetitive tool call pattern detected for ${tool.name}`);
           }
         } catch (err) {
           yield {

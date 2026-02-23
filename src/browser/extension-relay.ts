@@ -135,6 +135,10 @@ async function createRelayServer(
   // Maps original targetId (e.g. Chrome tab ID) → corrected targetId (mainFrameId)
   // Used by Target.detachedFromTarget and Target.targetInfoChanged to find the right entry
   const targetIdRemapping = new Map<string, string>();
+  // Guards against concurrent async handling of duplicate Target.attachedToTarget
+  // events for the same sessionId.  The first event claims the sessionId; any
+  // subsequent event arriving before the first finishes is dropped immediately.
+  const pendingTargetAttach = new Set<string>();
   let extensionSocket: WebSocket | null = null;
   const cdpClients = new Set<WebSocket>();
   
@@ -461,6 +465,40 @@ async function createRelayServer(
       if (eventMethod === 'Target.attachedToTarget') {
         const { sessionId: sid, targetInfo } = eventParams || {};
         if (sid && targetInfo && targetInfo.type === 'page') {
+          // --- Race-condition guard ---
+          // The async block below awaits Page.getFrameTree.  If the extension
+          // fires two attachedToTarget events for the same sessionId before the
+          // first one completes, both would pass the connectedTargets.has()
+          // check and both would broadcast, causing Playwright to assert on
+          // "Duplicate target".  We use pendingTargetAttach as a synchronous
+          // lock keyed by sessionId to ensure only the first event proceeds.
+          if (pendingTargetAttach.has(sid)) {
+            console.log(`[Relay] Dropping duplicate Target.attachedToTarget for session ${sid} (async handling in progress)`);
+            return;
+          }
+
+          // Also check if we already have this target by sessionId
+          // (the targetId isn't resolved yet, but sessionId is unique per tab)
+          const alreadyKnownBySession = Array.from(connectedTargets.values()).some(t => t.sessionId === sid);
+          if (alreadyKnownBySession) {
+            console.log(`[Relay] Target.attachedToTarget for already-known session ${sid}, updating metadata only`);
+            // Update targetInfo in-place for the existing entry
+            for (const [key, t] of connectedTargets.entries()) {
+              if (t.sessionId === sid) {
+                t.targetInfo.url = targetInfo.url || t.targetInfo.url;
+                t.targetInfo.title = targetInfo.title || t.targetInfo.title;
+                broadcastToCDPClients({
+                  method: 'Target.targetInfoChanged',
+                  params: { targetInfo: t.targetInfo },
+                });
+                break;
+              }
+            }
+            return;
+          }
+
+          pendingTargetAttach.add(sid);
+
           // Playwright requires browserContextId — inject a default one
           if (!targetInfo.browserContextId) {
             targetInfo.browserContextId = DEFAULT_BROWSER_CONTEXT_ID;
@@ -495,6 +533,14 @@ async function createRelayServer(
               console.warn('[Relay] Failed to get mainFrameId, keeping original targetId:', e?.message);
             }
 
+            // Final dedup check by targetId — belt-and-suspenders guard in case
+            // two different sessionIds somehow resolve to the same mainFrameId.
+            if (connectedTargets.has(targetInfo.targetId)) {
+              console.log('[Relay] Target already known by targetId after frameTree resolve:', targetInfo.targetId);
+              pendingTargetAttach.delete(sid);
+              return;
+            }
+
             // Store with (possibly updated) targetId
             connectedTargets.set(targetInfo.targetId, {
               targetId: targetInfo.targetId,
@@ -509,6 +555,8 @@ async function createRelayServer(
               params: eventParams,
               sessionId,
             });
+
+            pendingTargetAttach.delete(sid);
           })();
           return; // Don't broadcast synchronously; the async block above will do it
         }
@@ -521,6 +569,11 @@ async function createRelayServer(
             targetId = remapped;
             eventParams.targetId = remapped;
             targetIdRemapping.delete(targetId);
+          }
+          // Clean up pending lock (in case detach races with attach)
+          const detachedTarget = connectedTargets.get(targetId);
+          if (detachedTarget) {
+            pendingTargetAttach.delete(detachedTarget.sessionId);
           }
           connectedTargets.delete(targetId);
           console.log('[Relay] Target detached:', targetId);

@@ -752,6 +752,13 @@ ${taskSummary}
                 toolResult: event.toolResult,
                 toolError: event.toolError,
               });
+              // Bug fix: Loop 把不可重试的错误作为 tool_end(toolError) yield 出来再 break，
+              // 此时 for-await 正常结束不会进 catch，loopDiedFromError 不会被设置。
+              // 必须在这里捕获，否则 401 等致命错误会被静默吞掉。
+              if (event.toolError && !event.toolName) {
+                loopDiedFromError = true;
+                lastErrorMsg = typeof event.toolError === 'string' ? event.toolError : String(event.toolError);
+              }
               break;
 
             case 'done':
@@ -880,7 +887,7 @@ ${taskSummary}
     });
 
     return {
-      success: !fatalError && failedTasks.length === 0,
+      success: !fatalError && failedTasks.length === 0 && pendingOrRunning.length === 0,
       completedTasks,
       failedTasks,
       estimatedTokens: this.loop ? this.loop.getSession().getStats().totalTokens : 0,

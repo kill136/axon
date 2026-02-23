@@ -113,6 +113,105 @@ const RETRYABLE_ERRORS = [
   'timed out',
 ];
 
+// ============================================================================
+// 对标官方 CLI Ww6: 重试常量（与官方 V39/T39/N39 等一致）
+// ============================================================================
+const DEFAULT_MAX_RETRIES = 10;              // 官方 V39 = 10
+const DEFAULT_RETRY_BASE_DELAY = 500;        // 官方 T39 = 500ms
+const MAX_RETRY_DELAY = 32000;               // 官方 min(..., 32000)
+const JITTER_FACTOR = 0.25;                  // 官方 random() * 0.25 * baseDelay
+const OVERLOADED_FALLBACK_THRESHOLD = 3;     // 官方 N39 = 3, 连续 529 次数触发 fallback
+const FAST_RETRY_AFTER_THRESHOLD = 20000;    // 官方 y39 = 20000ms, 429 retry-after < 此值直接等
+const MIN_OUTPUT_TOKENS = 3000;              // 官方 wO8 = 3000, context overflow 时最小输出
+
+/**
+ * 对标官方 $p 函数: 计算带 jitter 的指数退避延迟
+ */
+function calculateRetryDelay(attempt: number, retryAfterHeader?: string | null): number {
+  // 优先使用服务端 retry-after header
+  if (retryAfterHeader) {
+    const seconds = parseInt(retryAfterHeader, 10);
+    if (!isNaN(seconds)) {
+      return seconds * 1000;
+    }
+  }
+  // 指数退避 + 25% jitter
+  const baseDelay = Math.min(DEFAULT_RETRY_BASE_DELAY * Math.pow(2, attempt - 1), MAX_RETRY_DELAY);
+  const jitter = Math.random() * JITTER_FACTOR * baseDelay;
+  return baseDelay + jitter;
+}
+
+/**
+ * 对标官方 fE7 函数: 从 400 错误中解析 context overflow 信息
+ * 错误格式: "input length and `max_tokens` exceed context limit: {input} + {maxTokens} > {contextLimit}"
+ */
+function parseContextOverflowError(error: any): { inputTokens: number; maxTokens: number; contextLimit: number } | null {
+  if (error.status !== 400 || !error.message) return null;
+  if (!error.message.includes('input length and `max_tokens` exceed context limit')) return null;
+  const match = error.message.match(/input length and `max_tokens` exceed context limit: (\d+) \+ (\d+) > (\d+)/);
+  if (!match || match.length !== 4) return null;
+  const inputTokens = parseInt(match[1], 10);
+  const maxTokens = parseInt(match[2], 10);
+  const contextLimit = parseInt(match[3], 10);
+  if (isNaN(inputTokens) || isNaN(maxTokens) || isNaN(contextLimit)) return null;
+  return { inputTokens, maxTokens, contextLimit };
+}
+
+/**
+ * 对标官方 GE7 函数: 检测 529 overloaded 错误
+ */
+function isOverloadedError(error: any): boolean {
+  if (error.status === 529) return true;
+  return error.message?.includes('"type":"overloaded_error"') ?? false;
+}
+
+/**
+ * 获取 retry-after header（兼容不同的 header 格式）
+ */
+function getRetryAfterHeader(error: any): string | null {
+  return error.headers?.get?.('retry-after') ?? error.headers?.['retry-after'] ?? null;
+}
+
+/**
+ * 获取 overage rejection header（fast mode 降级检查）
+ */
+function getOverageDisabledReason(error: any): string | null {
+  return error.headers?.get?.('anthropic-ratelimit-unified-overage-disabled-reason')
+    ?? error.headers?.['anthropic-ratelimit-unified-overage-disabled-reason']
+    ?? null;
+}
+
+/**
+ * 检查 HTTP 状态码是否可重试（对标官方 k39）
+ */
+function isRetryableStatus(error: any): boolean {
+  const status = error.status || error.statusCode;
+  // 429 rate limit, 500+ server errors, overloaded
+  if (status === 429 || status === 529) return true;
+  if (status >= 500) return true;
+  // 检查 x-should-retry header
+  const shouldRetry = error.headers?.get?.('x-should-retry') ?? error.headers?.['x-should-retry'];
+  if (shouldRetry === 'true') return true;
+  if (shouldRetry === 'false') return false;
+  // overloaded in message
+  if (error.message?.includes('"type":"overloaded_error"')) return true;
+  // context overflow 可重试（会自动调整 max_tokens）
+  if (parseContextOverflowError(error)) return true;
+  return false;
+}
+
+/** FallbackTriggeredError: 对标官方 Pw6 */
+class FallbackTriggeredError extends Error {
+  originalModel: string;
+  fallbackModel: string;
+  constructor(originalModel: string, fallbackModel: string) {
+    super(`Model fallback triggered: ${originalModel} -> ${fallbackModel}`);
+    this.name = 'FallbackTriggeredError';
+    this.originalModel = originalModel;
+    this.fallbackModel = fallbackModel;
+  }
+}
+
 // 官方 Claude Code 的 beta 头 (v2.1.29 对齐)
 // 重要发现：claude-code-20250219 beta 需要与特定的 system prompt 配合使用
 // system prompt 的第一个 block 必须以下列字符串之一开头：
@@ -718,8 +817,10 @@ export class ClaudeClient {
     // 使用21000作为安全默认值（留有余量）
     this.maxTokens = config.maxTokens || Math.min(21000, capabilities.maxOutputTokens);
 
-    this.maxRetries = config.maxRetries ?? 2;
-    this.retryDelay = config.retryDelay ?? 1000;
+    // 对标官方 V39: 默认 10 次重试，可通过 CLAUDE_CODE_MAX_RETRIES 覆盖
+    const envRetries = parseInt(process.env.CLAUDE_CODE_MAX_RETRIES || '', 10);
+    this.maxRetries = config.maxRetries ?? (!isNaN(envRetries) ? envRetries : DEFAULT_MAX_RETRIES);
+    this.retryDelay = config.retryDelay ?? DEFAULT_RETRY_BASE_DELAY;
 
     // 配置回退模型
     if (config.fallbackModel) {
@@ -759,20 +860,27 @@ export class ClaudeClient {
   }
 
   /**
-   * 执行带重试的请求
+   * 执行带重试的请求 — 对标官方 Ww6 函数
+   *
+   * 重试策略:
+   * - 指数退避 + 25% Jitter (500ms base, 32s max)
+   * - 429 + retry-after < 20s → 直接等待，不计入重试次数
+   * - 529 overloaded 连续 3 次 → FallbackTriggeredError
+   * - 400 context overflow → 自动调整 max_tokens，不计入重试次数
+   * - 401 → OAuth token 刷新
+   * - x-should-retry header 遵循服务端指示
    */
   private async withRetry<T>(
     operation: () => Promise<T>,
-    retryCount = 0
+    retryCount = 0,
+    overloadedCount = 0
   ): Promise<T> {
     try {
+      // 重置 overloaded 计数（成功时）
       return await operation();
     } catch (error: any) {
+      const errorStatus = error.status || error.statusCode || 0;
       const errorType = error.type || error.code || error.message || '';
-      const errorStatus = error.status || error.statusCode || '';
-      const isRetryable = RETRYABLE_ERRORS.some(
-        (e) => errorType.includes(e) || error.message?.includes(e)
-      );
 
       // 详细的错误日志
       if (this.debug) {
@@ -785,19 +893,7 @@ export class ClaudeClient {
         }
       }
 
-      if (isRetryable && retryCount < this.maxRetries) {
-        const delay = this.retryDelay * Math.pow(2, retryCount); // 指数退避
-        // v2.1.33: 改进错误消息，显示具体的连接失败原因
-        const causeInfo = this.extractErrorCause(error);
-        const errorDesc = causeInfo ? `${errorType} (${causeInfo})` : errorType;
-        console.error(
-          `[ClaudeClient] API error (${errorDesc}), retrying in ${delay}ms... (attempt ${retryCount + 1}/${this.maxRetries})`
-        );
-        await this.sleep(delay);
-        return this.withRetry(operation, retryCount + 1);
-      }
-
-      // 401 错误：尝试刷新 OAuth token
+      // === 401: OAuth token 刷新 ===
       if (errorStatus === 401 && retryCount === 0) {
         const auth = getAuth();
         if (auth?.type === 'oauth' && auth.refreshToken) {
@@ -806,19 +902,14 @@ export class ClaudeClient {
             const refreshedAuth = await refreshTokenAsync(auth);
             if (refreshedAuth?.accessToken) {
               console.log('[ClaudeClient] OAuth token refreshed, retrying request...');
-              // 重置默认客户端，以便下次获取新的 token
               resetDefaultClient();
-              // 更新当前客户端的 authToken
               if (this.client) {
-                // 创建新的客户端实例
-                const newAuthToken = refreshedAuth.accessToken;
                 const clientOptions: any = {
-                  apiKey: null, // OAuth 模式不需要 apiKey
-                  authToken: newAuthToken,
+                  apiKey: null,
+                  authToken: refreshedAuth.accessToken,
                   baseURL: this.client.baseURL,
                   maxRetries: 0,
                 };
-                // 保持代理配置（如果有）
                 const existingOptions = (this.client as any)._options;
                 if (existingOptions?.httpAgent) {
                   clientOptions.httpAgent = existingOptions.httpAgent;
@@ -829,22 +920,105 @@ export class ClaudeClient {
                 this.client = new Anthropic(clientOptions);
                 this.isOAuth = true;
               }
-              // 重试请求
-              return this.withRetry(operation, retryCount + 1);
+              return this.withRetry(operation, retryCount + 1, overloadedCount);
             }
           } catch (refreshError) {
             console.error('[ClaudeClient] OAuth token refresh failed:', refreshError);
           }
         }
         console.error('[ClaudeClient] Authentication failed - check your API key or login again');
-      } else if (errorStatus === 401) {
+        throw error;
+      }
+
+      // === 400: Context overflow 自适应 ===
+      const overflowInfo = parseContextOverflowError(error);
+      if (overflowInfo) {
+        const adjustedMaxTokens = Math.max(
+          MIN_OUTPUT_TOKENS,
+          overflowInfo.contextLimit - overflowInfo.inputTokens - 1000
+        );
+        console.error(
+          `[ClaudeClient] Context overflow: input=${overflowInfo.inputTokens}, max_tokens=${overflowInfo.maxTokens}, limit=${overflowInfo.contextLimit}. Adjusting max_tokens to ${adjustedMaxTokens}`
+        );
+        // 更新 maxTokens 并重试（不计入重试次数）
+        this.maxTokens = adjustedMaxTokens;
+        return this.withRetry(operation, retryCount, overloadedCount);
+      }
+
+      // === 529: Overloaded 计数，连续 3 次触发 fallback ===
+      if (isOverloadedError(error)) {
+        const newOverloadedCount = overloadedCount + 1;
+        if (newOverloadedCount >= OVERLOADED_FALLBACK_THRESHOLD) {
+          console.error(
+            `[ClaudeClient] Overloaded ${newOverloadedCount} times, triggering model fallback`
+          );
+          throw new FallbackTriggeredError(this.model, this.fallbackModel || 'unknown');
+        }
+        if (retryCount < this.maxRetries) {
+          const delay = calculateRetryDelay(retryCount + 1);
+          console.error(
+            `[ClaudeClient] Server overloaded (529), retrying in ${Math.round(delay)}ms... (attempt ${retryCount + 1}/${this.maxRetries}, overloaded ${newOverloadedCount}/${OVERLOADED_FALLBACK_THRESHOLD})`
+          );
+          await this.sleep(delay);
+          return this.withRetry(operation, retryCount + 1, newOverloadedCount);
+        }
+      }
+
+      // === 429: Rate limit，解析 retry-after ===
+      if (errorStatus === 429) {
+        const retryAfter = getRetryAfterHeader(error);
+        const retryAfterMs = retryAfter ? parseInt(retryAfter, 10) * 1000 : 0;
+
+        // 检查 fast mode overage 降级
+        const overageReason = getOverageDisabledReason(error);
+        if (overageReason) {
+          console.error(`[ClaudeClient] Fast mode disabled: ${overageReason}`);
+        }
+
+        // retry-after < 20s: 直接等待，不计入重试次数
+        if (retryAfterMs > 0 && retryAfterMs < FAST_RETRY_AFTER_THRESHOLD) {
+          console.error(
+            `[ClaudeClient] Rate limited (429), waiting ${retryAfterMs}ms (retry-after header, not counting as retry)`
+          );
+          await this.sleep(retryAfterMs);
+          return this.withRetry(operation, retryCount, overloadedCount);
+        }
+
+        // retry-after >= 20s 或无 header: 正常计入重试
+        if (retryCount < this.maxRetries) {
+          const delay = retryAfterMs > 0 ? retryAfterMs : calculateRetryDelay(retryCount + 1);
+          console.error(
+            `[ClaudeClient] Rate limited (429), retrying in ${Math.round(delay)}ms... (attempt ${retryCount + 1}/${this.maxRetries})`
+          );
+          await this.sleep(delay);
+          return this.withRetry(operation, retryCount + 1, overloadedCount);
+        }
+      }
+
+      // === 通用可重试错误 ===
+      const retryable = isRetryableStatus(error) || RETRYABLE_ERRORS.some(
+        (e) => errorType.includes(e) || error.message?.includes(e)
+      );
+
+      if (retryable && retryCount < this.maxRetries) {
+        const delay = calculateRetryDelay(retryCount + 1, getRetryAfterHeader(error));
+        const causeInfo = this.extractErrorCause(error);
+        const errorDesc = causeInfo ? `${errorType} (${causeInfo})` : errorType;
+        console.error(
+          `[ClaudeClient] API error (${errorDesc}), retrying in ${Math.round(delay)}ms... (attempt ${retryCount + 1}/${this.maxRetries})`
+        );
+        await this.sleep(delay);
+        return this.withRetry(operation, retryCount + 1, overloadedCount);
+      }
+
+      // === 不可重试，输出诊断信息 ===
+      if (errorStatus === 401) {
         console.error('[ClaudeClient] Authentication failed after token refresh - please login again');
       } else if (errorStatus === 403) {
         console.error('[ClaudeClient] Access denied - check API key permissions');
       } else if (errorStatus === 400) {
         console.error('[ClaudeClient] Bad request - check your request parameters');
       } else {
-        // v2.1.33: 改进错误消息，显示具体原因（如 ECONNREFUSED、SSL 错误等）
         const causeInfo = this.extractErrorCause(error);
         if (causeInfo) {
           console.error(`[ClaudeClient] API request failed: ${error.message} (cause: ${causeInfo})`);
@@ -1213,7 +1387,8 @@ export class ClaudeClient {
       return stream;
     };
 
-    // 带重试的流创建
+    // 带重试的流创建 — 对标 withRetry 策略
+    let overloadedCount = 0;
     while (retryCount <= maxStreamRetries) {
       try {
         stream = await attemptCreateStream();
@@ -1222,23 +1397,116 @@ export class ClaudeClient {
         const errorType = error.type || error.code || error.message || '';
         const errorStatus = error.status || error.statusCode || 0;
 
-        // v2.1.33: 404 错误不再触发重试或 non-streaming fallback
-        // 这修复了 API proxy 兼容性问题，404 表示端点不存在
+        // 404: 端点不存在，不重试
         if (errorStatus === 404) {
           console.error('[ClaudeClient] Streaming endpoint returned 404 - endpoint not found');
           yield { type: 'error', error: `API endpoint returned 404: ${error.message}` };
           return;
         }
 
-        const isRetryable = RETRYABLE_ERRORS.some(
+        // 401: OAuth token 刷新（仅首次）
+        if (errorStatus === 401 && retryCount === 0) {
+          const auth = getAuth();
+          if (auth?.type === 'oauth' && auth.refreshToken) {
+            try {
+              const refreshedAuth = await refreshTokenAsync(auth);
+              if (refreshedAuth?.accessToken) {
+                console.log('[ClaudeClient] OAuth token refreshed for stream, retrying...');
+                resetDefaultClient();
+                if (this.client) {
+                  const clientOptions: any = {
+                    apiKey: null,
+                    authToken: refreshedAuth.accessToken,
+                    baseURL: this.client.baseURL,
+                    maxRetries: 0,
+                  };
+                  const existingOptions = (this.client as any)._options;
+                  if (existingOptions?.httpAgent) clientOptions.httpAgent = existingOptions.httpAgent;
+                  if (existingOptions?.defaultHeaders) clientOptions.defaultHeaders = existingOptions.defaultHeaders;
+                  this.client = new Anthropic(clientOptions);
+                  this.isOAuth = true;
+                }
+                retryCount++;
+                continue;
+              }
+            } catch (refreshError) {
+              console.error('[ClaudeClient] OAuth token refresh failed for stream:', refreshError);
+            }
+          }
+          yield { type: 'error', error: `Authentication failed: ${error.message}` };
+          return;
+        }
+
+        // 400: Context overflow 自适应
+        const overflowInfo = parseContextOverflowError(error);
+        if (overflowInfo) {
+          const adjustedMaxTokens = Math.max(
+            MIN_OUTPUT_TOKENS,
+            overflowInfo.contextLimit - overflowInfo.inputTokens - 1000
+          );
+          console.error(
+            `[ClaudeClient] Stream context overflow: input=${overflowInfo.inputTokens}, limit=${overflowInfo.contextLimit}. Adjusting max_tokens to ${adjustedMaxTokens}`
+          );
+          this.maxTokens = adjustedMaxTokens;
+          // 不计入重试次数
+          continue;
+        }
+
+        // 529: Overloaded 计数
+        if (isOverloadedError(error)) {
+          overloadedCount++;
+          if (overloadedCount >= OVERLOADED_FALLBACK_THRESHOLD) {
+            console.error(`[ClaudeClient] Stream overloaded ${overloadedCount} times, triggering fallback`);
+            yield { type: 'error', error: `Server overloaded ${overloadedCount} times` };
+            return;
+          }
+          if (retryCount < maxStreamRetries) {
+            retryCount++;
+            const delay = calculateRetryDelay(retryCount);
+            console.error(
+              `[ClaudeClient] Stream overloaded (529), retrying in ${Math.round(delay)}ms... (attempt ${retryCount}/${maxStreamRetries}, overloaded ${overloadedCount}/${OVERLOADED_FALLBACK_THRESHOLD})`
+            );
+            await this.sleep(delay);
+            continue;
+          }
+        }
+
+        // 429: Rate limit
+        if (errorStatus === 429) {
+          const retryAfter = getRetryAfterHeader(error);
+          const retryAfterMs = retryAfter ? parseInt(retryAfter, 10) * 1000 : 0;
+
+          const overageReason = getOverageDisabledReason(error);
+          if (overageReason) {
+            console.error(`[ClaudeClient] Stream fast mode disabled: ${overageReason}`);
+          }
+
+          // retry-after < 20s: 直接等待，不计入重试次数
+          if (retryAfterMs > 0 && retryAfterMs < FAST_RETRY_AFTER_THRESHOLD) {
+            console.error(`[ClaudeClient] Stream rate limited, waiting ${retryAfterMs}ms (not counting as retry)`);
+            await this.sleep(retryAfterMs);
+            continue;
+          }
+
+          if (retryCount < maxStreamRetries) {
+            retryCount++;
+            const delay = retryAfterMs > 0 ? retryAfterMs : calculateRetryDelay(retryCount);
+            console.error(`[ClaudeClient] Stream rate limited (429), retrying in ${Math.round(delay)}ms... (attempt ${retryCount}/${maxStreamRetries})`);
+            await this.sleep(delay);
+            continue;
+          }
+        }
+
+        // 通用可重试
+        const retryable = isRetryableStatus(error) || RETRYABLE_ERRORS.some(
           (e) => errorType.includes(e) || error.message?.includes(e)
         );
 
-        if (isRetryable && retryCount < maxStreamRetries) {
+        if (retryable && retryCount < maxStreamRetries) {
           retryCount++;
-          const delay = this.retryDelay * Math.pow(2, retryCount - 1);
+          const delay = calculateRetryDelay(retryCount, getRetryAfterHeader(error));
           console.error(
-            `[ClaudeClient] Stream creation failed (${errorType}), retrying in ${delay}ms... (attempt ${retryCount}/${maxStreamRetries})`
+            `[ClaudeClient] Stream creation failed (${errorType}), retrying in ${Math.round(delay)}ms... (attempt ${retryCount}/${maxStreamRetries})`
           );
           await this.sleep(delay);
           continue;

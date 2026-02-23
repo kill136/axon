@@ -744,7 +744,10 @@ const saveAgentState = (agent: BackgroundAgent): void => {
         timestamp: h.timestamp.toISOString(),
       })),
     };
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
+    // 原子写入：先写临时文件再 rename，防止进程中断导致 JSON 截断
+    const tmpPath = filePath + '.tmp';
+    fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf-8');
+    fs.renameSync(tmpPath, filePath);
   } catch (error) {
     console.error(`Failed to save agent state ${agent.id}:`, error);
   }
@@ -769,7 +772,14 @@ const loadAgentState = (agentId: string): BackgroundAgent | null => {
     };
     return agent;
   } catch (error) {
-    console.error(`Failed to load agent state ${agentId}:`, error);
+    // 损坏的 agent state 文件（如 JSON 被截断），记录后自动清理
+    console.warn(`Corrupted agent state ${agentId}, removing.`);
+    try {
+      const filePath = getAgentFilePath(agentId);
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    } catch { /* ignore cleanup errors */ }
     return null;
   }
 };
