@@ -239,11 +239,11 @@ function DiscoverTab({
                 <span className="plugins-item-name">{plugin.name}</span>
                 <span className="plugins-item-marketplace">· {plugin.marketplaceName}</span>
                 {plugin.tags?.includes('community-managed') && (
-                  <span className="plugins-tag">[Community Managed]</span>
+                  <span className="plugins-tag">{t('plugins.communityManaged')}</span>
                 )}
-                {isInstalled && <span className="plugins-tag plugins-tag-installed">[Installed]</span>}
+                {isInstalled && <span className="plugins-tag plugins-tag-installed">{t('plugins.installed')}</span>}
                 {plugin.installCount && plugin.installCount > 0 && (
-                  <span className="plugins-item-installs">· {formatInstalls(plugin.installCount)} installs</span>
+                  <span className="plugins-item-installs">· {t('plugins.installs', { count: formatInstalls(plugin.installCount) })}</span>
                 )}
               </div>
               {plugin.description && !isLoading && (
@@ -274,7 +274,7 @@ function DiscoverTab({
 
       {/* 更多指示器 */}
       {filteredPlugins.length > 15 && (
-        <div className="plugins-more">{ICONS.arrowDown} more below</div>
+        <div className="plugins-more">{ICONS.arrowDown} {t('plugins.moreBelow')}</div>
       )}
 
       {/* 底部提示 */}
@@ -284,7 +284,7 @@ function DiscoverTab({
             {t('plugins.discover.install')} ({selectedPlugins.size})
           </button>
         )}
-        <span>Type to search · Space: (de)select · Enter: details</span>
+        <span>{t('plugins.searchHint')}</span>
       </div>
     </div>
   );
@@ -548,31 +548,29 @@ function PluginDetails({
     <div className="plugins-details">
       <div className="plugins-details-card">
         <div className="plugins-details-header">
-          <h4>Plugin details</h4>
+          <h4>{t('plugins.details')}</h4>
         </div>
 
         <div className="plugins-details-info">
           <div className="plugins-details-name">{name}</div>
-          {marketplaceName && <div className="plugins-details-from">from {marketplaceName}</div>}
-          {version && <div className="plugins-details-version">Version: {version}</div>}
+          {marketplaceName && <div className="plugins-details-from">{t('plugins.from', { name: marketplaceName })}</div>}
+          {version && <div className="plugins-details-version">{t('plugins.version', { version })}</div>}
           {description && <div className="plugins-details-desc">{description}</div>}
-          {author && <div className="plugins-details-author">By: {author}</div>}
-          {pluginPath && <div className="plugins-details-path">Path: <code>{pluginPath}</code></div>}
+          {author && <div className="plugins-details-author">{t('plugins.by', { author })}</div>}
+          {pluginPath && <div className="plugins-details-path">{t('plugins.path')}: <code>{pluginPath}</code></div>}
         </div>
 
         <div className="plugins-warning-box">
           <span className="plugins-warning-icon">{ICONS.warning}</span>
           <span className="plugins-warning-text">
-            Make sure you trust a plugin before installing, updating, or using it.
-            Anthropic does not control what MCP servers, files, or other software
-            are included in plugins.
+            {t('plugins.trustWarning')}
           </span>
         </div>
 
         <div className="plugins-details-actions">
           {isInstalled ? (
             <button className="plugins-btn plugins-btn-danger" onClick={onUninstall}>
-              Uninstall
+              {t('plugins.uninstallBtn')}
             </button>
           ) : (
             <button
@@ -580,7 +578,7 @@ function PluginDetails({
               onClick={onInstall}
               disabled={isInstalling}
             >
-              {isInstalling ? 'Installing…' : 'Install'}
+              {isInstalling ? t('plugins.installing') : t('plugins.installBtn')}
             </button>
           )}
         </div>
@@ -617,12 +615,13 @@ function AddMarketplace({
   onAdd: (source: string) => void;
   onBack: () => void;
 }) {
+  const { t } = useLanguage();
   const [source, setSource] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = () => {
     if (!source.trim()) {
-      setError('Please enter a marketplace source');
+      setError(t('plugins.sourceError'));
       return;
     }
     onAdd(source.trim());
@@ -631,12 +630,12 @@ function AddMarketplace({
   return (
     <div className="plugins-add-marketplace">
       <div className="plugins-add-card">
-        <h4>Add Marketplace</h4>
+        <h4>{t('plugins.addMarketplace')}</h4>
 
         {error && <div className="plugins-form-error">{error}</div>}
 
         <div className="plugins-form-group">
-          <label>Enter marketplace source:</label>
+          <label>{t('plugins.enterSource')}</label>
           <input
             type="text"
             value={source}
@@ -650,7 +649,7 @@ function AddMarketplace({
         </div>
 
         <div className="plugins-examples">
-          <div className="plugins-examples-title">Examples:</div>
+          <div className="plugins-examples-title">{t('plugins.examples')}</div>
           <div className="plugins-example">• anthropics/claude-code</div>
           <div className="plugins-example">• git@github.com:owner/repo.git</div>
           <div className="plugins-example">• https://example.com/marketplace</div>

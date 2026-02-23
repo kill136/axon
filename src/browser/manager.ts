@@ -651,6 +651,15 @@ export class BrowserManager {
       this._relayServer = null;
     }
 
+    // Clean up injected relay-config.json from extension source dir (pipe mode)
+    try {
+      const extSourceDir = this.getExtensionSourcePath();
+      const injectedConfig = path.join(extSourceDir, 'relay-config.json');
+      if (fs.existsSync(injectedConfig)) {
+        fs.unlinkSync(injectedConfig);
+      }
+    } catch { /* ignore */ }
+
     this.cleanup();
   }
 
