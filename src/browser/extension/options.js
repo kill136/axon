@@ -21,24 +21,10 @@ const testConnectionBtn = document.getElementById('test-connection');
 
 async function loadSettings() {
   try {
-    // Try to load from relay-config.json first (injected by CLI install command)
-    let fileConfig = null;
-    try {
-      const resp = await fetch(chrome.runtime.getURL('relay-config.json'));
-      if (resp.ok) fileConfig = await resp.json();
-    } catch {
-      // relay-config.json doesn't exist
-    }
-
     const settings = await chrome.storage.local.get(['relayPort', 'gatewayToken']);
 
-    // Priority: storage > _config.json > defaults
-    relayPortInput.value = settings.relayPort || fileConfig?.relayPort || DEFAULT_RELAY_PORT;
-    gatewayTokenInput.value = settings.gatewayToken || fileConfig?.gatewayToken || '';
-
-    if (fileConfig && !settings.gatewayToken) {
-      showStatus('Config auto-loaded from CLI install. Click Save to confirm.', 'info');
-    }
+    relayPortInput.value = settings.relayPort || DEFAULT_RELAY_PORT;
+    gatewayTokenInput.value = settings.gatewayToken || '';
 
     // Check connection status
     checkConnectionStatus();

@@ -485,6 +485,21 @@ export class BrowserManager {
 
       console.log(`[BrowserManager] Extension connected after ${waited / 1000}s`);
 
+      // Wait for at least one target (user must click extension button on a tab)
+      console.log('[BrowserManager] Waiting for extension to attach a tab (click the extension button on a tab)...');
+      const targetMaxWait = 30000;
+      let targetWaited = 0;
+      while (targetWaited < targetMaxWait) {
+        if (this._relayServer.targetCount() > 0) break;
+        await new Promise(resolve => setTimeout(resolve, 500));
+        targetWaited += 500;
+      }
+      if (this._relayServer.targetCount() === 0) {
+        console.warn('[BrowserManager] No targets after 30s, proceeding anyway (Playwright may fail)');
+      } else {
+        console.log(`[BrowserManager] Got ${this._relayServer.targetCount()} target(s) after ${targetWaited / 1000}s`);
+      }
+
       // Connect Playwright to relay's CDP WebSocket
       const conn = await connectBrowser(this._relayServer.cdpWsUrl);
       this.setupFromConnection(conn);
@@ -560,10 +575,18 @@ export class BrowserManager {
         }
       }
       
-      // Inject relay-config.json so extension can auto-connect to our relay
+      // Inject config into background.js so extension can auto-connect to our relay
       const authToken = resolveRelayAuthToken(relayPort);
-      const configPath = path.join(extensionPath, 'relay-config.json');
-      fs.writeFileSync(configPath, JSON.stringify({ relayPort, gatewayToken: authToken }, null, 2));
+      const bgPath = path.join(extensionPath, 'background.js');
+      let bgContent = fs.readFileSync(bgPath, 'utf-8');
+      bgContent = bgContent.replace(
+        /\/\/ __RELAY_CONFIG_START__[\s\S]*?\/\/ __RELAY_CONFIG_END__/,
+        `// __RELAY_CONFIG_START__ (do not edit - replaced by installExtension)\n` +
+        `const INJECTED_RELAY_PORT = ${relayPort};\n` +
+        `const INJECTED_GATEWAY_TOKEN = ${JSON.stringify(authToken)};\n` +
+        `// __RELAY_CONFIG_END__`
+      );
+      fs.writeFileSync(bgPath, bgContent);
       
       console.log('[BrowserManager] Extension relay mode enabled, relay port:', relayPort);
       console.log('[BrowserManager] Extension path:', extensionPath);
@@ -651,12 +674,20 @@ export class BrowserManager {
       this._relayServer = null;
     }
 
-    // Clean up injected relay-config.json from extension source dir (pipe mode)
+    // Restore default config in background.js (pipe mode injects real values into dist/)
     try {
       const extSourceDir = this.getExtensionSourcePath();
-      const injectedConfig = path.join(extSourceDir, 'relay-config.json');
-      if (fs.existsSync(injectedConfig)) {
-        fs.unlinkSync(injectedConfig);
+      const bgPath = path.join(extSourceDir, 'background.js');
+      if (fs.existsSync(bgPath)) {
+        let bgContent = fs.readFileSync(bgPath, 'utf-8');
+        bgContent = bgContent.replace(
+          /\/\/ __RELAY_CONFIG_START__[\s\S]*?\/\/ __RELAY_CONFIG_END__/,
+          `// __RELAY_CONFIG_START__ (do not edit - replaced by installExtension)\n` +
+          `const INJECTED_RELAY_PORT = 0;\n` +
+          `const INJECTED_GATEWAY_TOKEN = '';\n` +
+          `// __RELAY_CONFIG_END__`
+        );
+        fs.writeFileSync(bgPath, bgContent);
       }
     } catch { /* ignore */ }
 
@@ -764,7 +795,6 @@ export class BrowserManager {
     fs.mkdirSync(installDir, { recursive: true });
     const files = fs.readdirSync(sourcePath);
     for (const file of files) {
-      if (file === 'relay-config.json') continue; // Don't copy old config
       const src = path.join(sourcePath, file);
       const dst = path.join(installDir, file);
       if (fs.statSync(src).isFile()) {
@@ -772,10 +802,18 @@ export class BrowserManager {
       }
     }
 
-    // Generate relay-config.json with auth token
+    // Inject config into background.js by replacing the magic marker block
     const authToken = resolveRelayAuthToken(relayPort);
-    const config = { relayPort, gatewayToken: authToken };
-    fs.writeFileSync(path.join(installDir, 'relay-config.json'), JSON.stringify(config, null, 2));
+    const bgPath = path.join(installDir, 'background.js');
+    let bgContent = fs.readFileSync(bgPath, 'utf-8');
+    bgContent = bgContent.replace(
+      /\/\/ __RELAY_CONFIG_START__[\s\S]*?\/\/ __RELAY_CONFIG_END__/,
+      `// __RELAY_CONFIG_START__ (do not edit - replaced by installExtension)\n` +
+      `const INJECTED_RELAY_PORT = ${relayPort};\n` +
+      `const INJECTED_GATEWAY_TOKEN = ${JSON.stringify(authToken)};\n` +
+      `// __RELAY_CONFIG_END__`
+    );
+    fs.writeFileSync(bgPath, bgContent);
 
     return installDir;
   }

@@ -44,6 +44,10 @@ export function isRetryableReconnectError(err) {
     /EHOSTUNREACH/i,
     /socket hang up/i,
     /network error/i,
+    /Failed to fetch/i,
+    /ERR_CONNECTION_REFUSED/i,
+    /ERR_CONNECTION_RESET/i,
+    /AbortError/i,
   ];
   return retryablePatterns.some(pattern => pattern.test(errMsg));
 }

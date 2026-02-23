@@ -27,12 +27,33 @@ const WEBSOCKET_TIMEOUT_MS = 10000;
 const PING_INTERVAL_MS = 5000;
 const KEEPALIVE_INTERVAL_MS = 30000;
 
+// __RELAY_CONFIG_START__ (do not edit - replaced by installExtension)
+const INJECTED_RELAY_PORT = 0;
+const INJECTED_GATEWAY_TOKEN = '';
+// __RELAY_CONFIG_END__
+
 // Tab states: 'attaching' | 'attached' | 'detaching' | 'detached'
-const tabs = new Map(); // tabId -> { state, sessionId, targetId, attachOrder }
+const tabs = new Map(); // tabId -> { state, sessionId, targetId (mainFrameId), attachOrder }
 const tabBySession = new Map(); // sessionId -> tabId
 const childSessionToTab = new Map(); // child sessionId -> tabId
 const tabOperationLocks = new Map(); // tabId -> Promise
 let nextSessionId = 1000;
+
+/**
+ * Find tabId by targetId (mainFrameId).
+ * Since targetId is now the CDP main frame ID (not the numeric tab ID),
+ * we need to search through tabs map to find the matching entry.
+ */
+function findTabIdByTargetId(targetId) {
+  // First try parsing as numeric tab ID (backwards compat)
+  const numericId = parseInt(targetId, 10);
+  if (!isNaN(numericId) && tabs.has(numericId)) return numericId;
+  // Then search by targetId (mainFrameId)
+  for (const [tabId, state] of tabs.entries()) {
+    if (state.targetId === targetId) return tabId;
+  }
+  return null;
+}
 let nextAttachOrder = 1;
 
 let ws = null;
@@ -55,19 +76,13 @@ let readyResolvers = [];
  */
 async function initialize() {
   try {
-    // 1. Try to load config from relay-config.json (injected by CLI install command)
+    // 1. Use inline injected config (replaced by installExtension CLI command)
     let configFromFile = false;
-    try {
-      const resp = await fetch(chrome.runtime.getURL('relay-config.json'));
-      if (resp.ok) {
-        const fileConfig = await resp.json();
-        if (fileConfig.relayPort) relayPort = fileConfig.relayPort;
-        if (fileConfig.gatewayToken) gatewayToken = fileConfig.gatewayToken;
-        configFromFile = true;
-        console.log('[Bridge] Config loaded from relay-config.json');
-      }
-    } catch {
-      // relay-config.json doesn't exist, fall through to storage
+    if (INJECTED_RELAY_PORT && INJECTED_GATEWAY_TOKEN) {
+      relayPort = INJECTED_RELAY_PORT;
+      gatewayToken = INJECTED_GATEWAY_TOKEN;
+      configFromFile = true;
+      console.log('[Bridge] Config loaded from injected values, port:', relayPort);
     }
 
     // 2. Fallback: load from chrome.storage.local (options page)
@@ -195,6 +210,28 @@ async function connectToRelay() {
       reconnectAttempt = 0;
       setBadgeText('ON');
       startPing();
+
+      // Flush any messages queued while ws was connecting
+      flushPendingMessages();
+
+      // Re-announce any already-attached tabs so relay knows about them
+      for (const [tabId, tabState] of tabs.entries()) {
+        if (tabState.state === 'attached' && tabState.sessionId) {
+          forwardCDPEvent('Target.attachedToTarget', {
+            sessionId: tabState.sessionId,
+            targetInfo: {
+              targetId: tabState.targetId || String(tabId),
+              type: 'page',
+              title: tabState.targetInfo?.title || '',
+              url: tabState.targetInfo?.url || '',
+              attached: true,
+              canAccessOpener: false
+            },
+            waitingForDebugger: false
+          });
+          console.log('[Bridge] Re-announced tab', tabId, 'sessionId:', tabState.sessionId);
+        }
+      }
     };
 
     ws.onmessage = (event) => {
@@ -263,11 +300,32 @@ function stopPing() {
 }
 
 /**
- * Send message to relay server
+ * Queued messages waiting for ws to open
+ */
+const pendingMessages = [];
+
+/**
+ * Send message to relay server (queues if not connected)
  */
 function sendToRelay(message) {
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(message));
+  } else {
+    // Queue important messages (not ping) for delivery when ws opens
+    if (message.method !== 'ping' && message.method !== 'pong') {
+      pendingMessages.push(message);
+    }
+  }
+}
+
+/**
+ * Flush queued messages
+ */
+function flushPendingMessages() {
+  while (pendingMessages.length > 0 && ws && ws.readyState === WebSocket.OPEN) {
+    const msg = pendingMessages.shift();
+    ws.send(JSON.stringify(msg));
+    console.log('[Bridge] Flushed queued message:', msg.method || 'response');
   }
 }
 
@@ -309,16 +367,15 @@ async function handleForwardCdpCommand(message) {
   const { method, params: cmdParams, sessionId } = params;
 
   try {
-    // Special handling for certain CDP commands
+    // Runtime.enable: must disable first so Chrome re-sends executionContextCreated events.
+    // Without this, Playwright never gets execution contexts and page.evaluate() hangs forever.
     if (method === 'Runtime.enable') {
-      // Runtime.enable can fail if already enabled, so disable first
       const tabId = sessionId ? tabBySession.get(sessionId) : null;
       if (tabId) {
-        try {
-          await chrome.debugger.sendCommand({ tabId }, 'Runtime.disable', {});
-        } catch {
-          // Ignore error
-        }
+        try { await chrome.debugger.sendCommand({ tabId }, 'Runtime.disable', {}); } catch {}
+        const result = await chrome.debugger.sendCommand({ tabId }, 'Runtime.enable', cmdParams || {});
+        sendToRelay({ id, result: result || {} });
+        return;
       }
     }
 
@@ -327,16 +384,18 @@ async function handleForwardCdpCommand(message) {
       const url = cmdParams?.url || 'about:blank';
       const tab = await chrome.tabs.create({ url, active: false });
       await attachTab(tab.id);
-      sendToRelay({ id, result: { targetId: String(tab.id) } });
+      // Return mainFrameId as targetId (set during attachTab)
+      const tabState = tabs.get(tab.id);
+      sendToRelay({ id, result: { targetId: tabState?.targetId || String(tab.id) } });
       return;
     }
 
     if (method === 'Target.closeTarget') {
-      // Close tab
+      // Close tab - targetId may be mainFrameId or numeric tabId
       const targetId = cmdParams?.targetId;
       if (targetId) {
-        const tabId = parseInt(targetId, 10);
-        if (!isNaN(tabId)) {
+        const tabId = findTabIdByTargetId(targetId);
+        if (tabId !== null) {
           await chrome.tabs.remove(tabId);
           sendToRelay({ id, result: { success: true } });
           return;
@@ -347,11 +406,11 @@ async function handleForwardCdpCommand(message) {
     }
 
     if (method === 'Target.activateTarget') {
-      // Activate tab
+      // Activate tab - targetId may be mainFrameId or numeric tabId
       const targetId = cmdParams?.targetId;
       if (targetId) {
-        const tabId = parseInt(targetId, 10);
-        if (!isNaN(tabId)) {
+        const tabId = findTabIdByTargetId(targetId);
+        if (tabId !== null) {
           const tab = await chrome.tabs.get(tabId);
           await chrome.tabs.update(tabId, { active: true });
           await chrome.windows.update(tab.windowId, { focused: true });
@@ -417,21 +476,36 @@ async function attachTab(tabId) {
 
   const lockPromise = (async () => {
     try {
+      console.log('[Bridge] attachTab: starting attach for tab', tabId);
       tabs.set(tabId, { state: 'attaching', sessionId: null, targetId: String(tabId), attachOrder: nextAttachOrder++ });
       await persistTabState();
 
       // Attach debugger
+      console.log('[Bridge] attachTab: calling chrome.debugger.attach...');
       await chrome.debugger.attach({ tabId }, '1.3');
+      console.log('[Bridge] attachTab: debugger attached successfully');
 
       // Get target info
       const targetInfo = await chrome.debugger.sendCommand({ tabId }, 'Target.getTargetInfo', {});
       
+      // Get main frame ID from Page.getFrameTree - Playwright requires targetId === mainFrameId
+      let mainFrameId = String(tabId);
+      try {
+        const frameTree = await chrome.debugger.sendCommand({ tabId }, 'Page.getFrameTree', {});
+        if (frameTree?.frameTree?.frame?.id) {
+          mainFrameId = frameTree.frameTree.frame.id;
+          console.log('[Bridge] Got mainFrameId:', mainFrameId, 'for tab:', tabId);
+        }
+      } catch (e) {
+        console.warn('[Bridge] Failed to get frame tree, using tabId as targetId:', e);
+      }
+
       // Assign sessionId
       const sessionId = `session_${nextSessionId++}`;
       tabs.set(tabId, {
         state: 'attached',
         sessionId,
-        targetId: String(tabId),
+        targetId: mainFrameId,
         attachOrder: tabs.get(tabId).attachOrder,
         targetInfo: targetInfo.targetInfo || {}
       });
@@ -439,10 +513,13 @@ async function attachTab(tabId) {
       await persistTabState();
 
       // Send Target.attachedToTarget event
+      // Use mainFrameId as targetId - Playwright's CRPage uses targetId to index sessions,
+      // and _sessionForFrame looks up frame._id in that map. If targetId !== mainFrameId,
+      // _sessionForFrame fails with "Frame has been detached."
       forwardCDPEvent('Target.attachedToTarget', {
         sessionId,
         targetInfo: {
-          targetId: String(tabId),
+          targetId: mainFrameId,
           type: 'page',
           title: targetInfo.targetInfo?.title || '',
           url: targetInfo.targetInfo?.url || '',
@@ -496,7 +573,7 @@ async function detachTab(tabId) {
       if (sessionId) {
         forwardCDPEvent('Target.detachedFromTarget', {
           sessionId,
-          targetId: String(tabId)
+          targetId: tabState.targetId || String(tabId)
         });
         tabBySession.delete(sessionId);
       }
@@ -592,7 +669,7 @@ chrome.debugger.onDetach.addListener(async (source, reason) => {
         // Tab no longer exists, clean up
         const sessionId = tabState.sessionId;
         if (sessionId) {
-          forwardCDPEvent('Target.detachedFromTarget', { sessionId, targetId: String(tabId) });
+          forwardCDPEvent('Target.detachedFromTarget', { sessionId, targetId: tabState.targetId || String(tabId) });
           tabBySession.delete(sessionId);
         }
         tabs.delete(tabId);
@@ -603,7 +680,7 @@ chrome.debugger.onDetach.addListener(async (source, reason) => {
     // Other reasons: clean up immediately
     const sessionId = tabState.sessionId;
     if (sessionId) {
-      forwardCDPEvent('Target.detachedFromTarget', { sessionId, targetId: String(tabId) });
+      forwardCDPEvent('Target.detachedFromTarget', { sessionId, targetId: tabState.targetId || String(tabId) });
       tabBySession.delete(sessionId);
     }
     tabs.delete(tabId);
@@ -612,8 +689,25 @@ chrome.debugger.onDetach.addListener(async (source, reason) => {
 });
 
 // Action button clicked
-chrome.action.onClicked.addListener(async () => {
-  await connectOrToggleForActiveTab();
+chrome.action.onClicked.addListener(async (tab) => {
+  console.log('[Bridge] === ACTION CLICKED === tab:', tab?.id, tab?.url);
+  try {
+    // Ensure relay connection before tab operations
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      console.log('[Bridge] WS not connected, attempting to connect...');
+      await connectToRelay();
+      // Wait for WebSocket to actually open (up to 5s)
+      for (let i = 0; i < 50; i++) {
+        if (ws && ws.readyState === WebSocket.OPEN) break;
+        await new Promise(r => setTimeout(r, 100));
+      }
+      console.log('[Bridge] WS state after connect attempt:', ws?.readyState);
+    }
+    await connectOrToggleForActiveTab();
+    console.log('[Bridge] === ACTION DONE === tabs attached:', tabs.size);
+  } catch (error) {
+    console.error('[Bridge] === ACTION ERROR ===', error);
+  }
 });
 
 // Tab removed
@@ -623,7 +717,7 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
 
   const sessionId = tabState.sessionId;
   if (sessionId) {
-    forwardCDPEvent('Target.detachedFromTarget', { sessionId, targetId: String(tabId) });
+    forwardCDPEvent('Target.detachedFromTarget', { sessionId, targetId: tabState.targetId || String(tabId) });
     tabBySession.delete(sessionId);
   }
   tabs.delete(tabId);
@@ -636,7 +730,10 @@ chrome.tabs.onReplaced.addListener(async (addedTabId, removedTabId) => {
   if (!tabState) return;
 
   // Migrate state to new tab
-  tabs.set(addedTabId, { ...tabState, targetId: String(addedTabId) });
+  // TODO: onReplaced means the tab was replaced (e.g. prerender), the old debugger session
+  // may be invalid. Ideally we should detach old + reattach new to get correct mainFrameId.
+  // For now, relay layer's targetIdRemapping provides a safety net.
+  tabs.set(addedTabId, { ...tabState, targetId: tabState.targetId || String(addedTabId) });
   tabs.delete(removedTabId);
   if (tabState.sessionId) {
     tabBySession.set(tabState.sessionId, addedTabId);
@@ -644,11 +741,13 @@ chrome.tabs.onReplaced.addListener(async (addedTabId, removedTabId) => {
   await persistTabState();
 });
 
-// Keepalive alarm
+// Keepalive alarm - also ensures relay connection stays alive
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === 'keepalive') {
-    // Keep service worker alive
-    console.log('[Bridge] Keepalive ping');
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      console.log('[Bridge] Keepalive: relay disconnected, reconnecting...');
+      connectToRelay();
+    }
   }
 });
 

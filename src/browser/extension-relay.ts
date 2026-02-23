@@ -56,8 +56,19 @@ export interface ChromeExtensionRelayServer {
   baseUrl: string;
   cdpWsUrl: string;
   extensionConnected: () => boolean;
+  targetCount: () => number;
   stop: () => Promise<void>;
 }
+
+// ========================================================================
+// Constants
+// ========================================================================
+
+// Default browser context ID for extension-attached targets.
+// Chrome CDP provides a real browserContextId per context; we use a fixed UUID
+// because extension-based targets don't have a native context ID.
+// Playwright requires this field (asserts it in crBrowser._onAttachedToTarget).
+const DEFAULT_BROWSER_CONTEXT_ID = 'EBC0C30E2D0B1FA4BAB30B1F84AD42E6';
 
 // ========================================================================
 // Server Registry
@@ -121,6 +132,9 @@ async function createRelayServer(
   // State
   const connectedTargets = new Map<string, ConnectedTarget>();
   const clientSubscriptions = new Map<WebSocket, ClientTargetSubscription>();
+  // Maps original targetId (e.g. Chrome tab ID) → corrected targetId (mainFrameId)
+  // Used by Target.detachedFromTarget and Target.targetInfoChanged to find the right entry
+  const targetIdRemapping = new Map<string, string>();
   let extensionSocket: WebSocket | null = null;
   const cdpClients = new Set<WebSocket>();
   
@@ -132,11 +146,73 @@ async function createRelayServer(
   let pingInterval: NodeJS.Timeout | null = null;
 
   // ======================================================================
+  // Session Event Ordering
+  // ======================================================================
+  //
+  // Playwright's FrameSession._initialize() sends Page.getFrameTree and
+  // Runtime.enable in parallel. The frame tree response registers event
+  // listeners for Runtime.executionContextCreated. If the Runtime.enable
+  // response (and subsequent events) arrives before Page.getFrameTree,
+  // the execution context events are silently discarded because the frame
+  // hasn't been created yet.
+  //
+  // In direct Chrome CDP this doesn't happen because responses travel
+  // over a single WebSocket in order. In our relay, commands are forwarded
+  // to the extension in parallel, so responses can arrive out of order.
+  //
+  // Fix: buffer Runtime.executionContext* events while Page.getFrameTree
+  // is pending for a session. Flush after the frame tree response is sent.
+  // ======================================================================
+
+  /** Sessions with a pending Page.getFrameTree command. */
+  const sessionsPendingFrameTree = new Set<string>();
+  /** Buffered events per session while frame tree is pending. */
+  const sessionEventBuffer = new Map<string, any[]>();
+
+  /** Events to buffer while frame tree is being processed. */
+  const BUFFERED_EVENTS = new Set([
+    'Runtime.executionContextCreated',
+    'Runtime.executionContextDestroyed',
+    'Runtime.executionContextsCleared',
+  ]);
+
+  function bufferEventForSession(sessionId: string, message: any): boolean {
+    if (!sessionId || !sessionsPendingFrameTree.has(sessionId)) return false;
+    const eventMethod = message.method;
+    if (!BUFFERED_EVENTS.has(eventMethod)) return false;
+
+    let buf = sessionEventBuffer.get(sessionId);
+    if (!buf) {
+      buf = [];
+      sessionEventBuffer.set(sessionId, buf);
+    }
+    buf.push(message);
+    console.log(`[Relay] Buffered ${eventMethod} for session ${sessionId} (${buf.length} buffered)`);
+    return true;
+  }
+
+  function flushSessionEvents(sessionId: string): void {
+    sessionsPendingFrameTree.delete(sessionId);
+    const buf = sessionEventBuffer.get(sessionId);
+    if (!buf || buf.length === 0) {
+      sessionEventBuffer.delete(sessionId);
+      return;
+    }
+    sessionEventBuffer.delete(sessionId);
+    console.log(`[Relay] Flushing ${buf.length} buffered events for session ${sessionId}`);
+    for (const msg of buf) {
+      broadcastToCDPClients(msg);
+    }
+  }
+
+  // ======================================================================
   // HTTP Server
   // ======================================================================
 
   const httpServer = http.createServer((req, res) => {
     const url = new URL(req.url || '/', `http://${req.headers.host}`);
+    // Normalize trailing slashes (Playwright requests /json/version/)
+    const pathname = url.pathname.replace(/\/+$/, '') || '/';
 
     // CORS headers for localhost
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -154,7 +230,7 @@ async function createRelayServer(
     // Security is ensured by loopback binding + /extension and /cdp WS auth.
 
     // GET /json/version
-    if (url.pathname === '/json/version') {
+    if (pathname === '/json/version') {
       // Only return wsUrl if extension is connected
       if (!extensionSocket) {
         res.writeHead(503, { 'Content-Type': 'application/json' });
@@ -175,7 +251,7 @@ async function createRelayServer(
     }
 
     // GET /json, /json/list
-    if (url.pathname === '/json' || url.pathname === '/json/list') {
+    if (pathname === '/json' || pathname === '/json/list') {
       const targets = Array.from(connectedTargets.values()).map((target) => ({
         id: target.targetId,
         type: target.targetInfo.type,
@@ -190,8 +266,8 @@ async function createRelayServer(
     }
 
     // GET /json/activate/:targetId
-    if (url.pathname.startsWith('/json/activate/')) {
-      const targetId = url.pathname.replace('/json/activate/', '');
+    if (pathname.startsWith('/json/activate/')) {
+      const targetId = pathname.replace('/json/activate/', '');
       sendToExtension({
         method: 'forwardCDPCommand',
         params: {
@@ -206,8 +282,8 @@ async function createRelayServer(
     }
 
     // GET /json/close/:targetId
-    if (url.pathname.startsWith('/json/close/')) {
-      const targetId = url.pathname.replace('/json/close/', '');
+    if (pathname.startsWith('/json/close/')) {
+      const targetId = pathname.replace('/json/close/', '');
       sendToExtension({
         method: 'forwardCDPCommand',
         params: {
@@ -222,7 +298,7 @@ async function createRelayServer(
     }
 
     // GET /extension/status
-    if (url.pathname === '/extension/status') {
+    if (pathname === '/extension/status') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ connected: extensionSocket !== null }));
       return;
@@ -305,6 +381,7 @@ async function createRelayServer(
   // HTTP Upgrade Handler
   httpServer.on('upgrade', (request, socket, head) => {
     const url = new URL(request.url || '/', `http://${request.headers.host}`);
+    const wsPathname = url.pathname.replace(/\/+$/, '') || '/';
 
     // Verify loopback connection
     const remoteAddress = (socket as any).remoteAddress;
@@ -319,7 +396,7 @@ async function createRelayServer(
     }
 
     // Route to appropriate WebSocket server
-    if (url.pathname === '/extension') {
+    if (wsPathname === '/extension') {
       // Verify auth token
       const token = url.searchParams.get('token') || '';
       if (token !== authToken) {
@@ -339,7 +416,7 @@ async function createRelayServer(
       extensionWss.handleUpgrade(request, socket, head, (ws) => {
         extensionWss.emit('connection', ws, request);
       });
-    } else if (url.pathname === '/cdp') {
+    } else if (wsPathname === '/cdp') {
       // Verify auth token (query param or header)
       const queryToken = url.searchParams.get('token') || '';
       const headerToken = request.headers['x-claude-relay-token'] as string;
@@ -374,6 +451,8 @@ async function createRelayServer(
       return;
     }
 
+    console.log(`[Relay] EXT <<< ${method || 'response'}`, id !== undefined ? `id=${id}` : '', params ? JSON.stringify(params).substring(0, 200) : '');
+
     // Handle forwardCDPEvent
     if (method === 'forwardCDPEvent') {
       const { method: eventMethod, params: eventParams, sessionId } = params || {};
@@ -382,22 +461,79 @@ async function createRelayServer(
       if (eventMethod === 'Target.attachedToTarget') {
         const { sessionId: sid, targetInfo } = eventParams || {};
         if (sid && targetInfo && targetInfo.type === 'page') {
-          connectedTargets.set(targetInfo.targetId, {
-            targetId: targetInfo.targetId,
-            sessionId: sid,
-            targetInfo,
-          });
-          console.log('[Relay] Target attached:', targetInfo.targetId, 'sessionId:', sid);
+          // Playwright requires browserContextId — inject a default one
+          if (!targetInfo.browserContextId) {
+            targetInfo.browserContextId = DEFAULT_BROWSER_CONTEXT_ID;
+          }
+
+          // CRITICAL FIX: Playwright's CRPage._sessions uses targetId as key,
+          // and _sessionForFrame looks up frame._id in that map.
+          // The extension uses Chrome tab ID as targetId, but Playwright expects
+          // targetId === mainFrameId (the CDP frame ID of the main frame).
+          // We must query Page.getFrameTree to get the real mainFrameId and
+          // replace targetId before storing/broadcasting.
+          const originalTargetId = targetInfo.targetId;
+          (async () => {
+            try {
+              const frameTreeResult = await sendToExtension({
+                method: 'forwardCDPCommand',
+                params: {
+                  method: 'Page.getFrameTree',
+                  params: {},
+                  sessionId: sid,
+                },
+              });
+              const mainFrameId = frameTreeResult?.frameTree?.frame?.id;
+              if (mainFrameId && mainFrameId !== originalTargetId) {
+                console.log(`[Relay] Replacing targetId: ${originalTargetId} → ${mainFrameId}`);
+                targetInfo.targetId = mainFrameId;
+                eventParams.targetInfo = targetInfo;
+                // Record remapping so Target.detachedFromTarget can find the right entry
+                targetIdRemapping.set(originalTargetId, mainFrameId);
+              }
+            } catch (e: any) {
+              console.warn('[Relay] Failed to get mainFrameId, keeping original targetId:', e?.message);
+            }
+
+            // Store with (possibly updated) targetId
+            connectedTargets.set(targetInfo.targetId, {
+              targetId: targetInfo.targetId,
+              sessionId: sid,
+              targetInfo,
+            });
+            console.log('[Relay] Target attached:', targetInfo.targetId, 'sessionId:', sid);
+
+            // Broadcast the event (with corrected targetId) to any already-connected CDP clients
+            broadcastToCDPClients({
+              method: eventMethod,
+              params: eventParams,
+              sessionId,
+            });
+          })();
+          return; // Don't broadcast synchronously; the async block above will do it
         }
       } else if (eventMethod === 'Target.detachedFromTarget') {
-        const { targetId } = eventParams || {};
+        let { targetId } = eventParams || {};
         if (targetId) {
+          // Resolve remapped targetId (extension may send original tab ID)
+          const remapped = targetIdRemapping.get(targetId);
+          if (remapped) {
+            targetId = remapped;
+            eventParams.targetId = remapped;
+            targetIdRemapping.delete(targetId);
+          }
           connectedTargets.delete(targetId);
           console.log('[Relay] Target detached:', targetId);
         }
       } else if (eventMethod === 'Target.targetInfoChanged') {
         const { targetInfo } = eventParams || {};
         if (targetInfo && targetInfo.targetId) {
+          // Resolve remapped targetId
+          const remapped = targetIdRemapping.get(targetInfo.targetId);
+          if (remapped) {
+            targetInfo.targetId = remapped;
+            eventParams.targetInfo = targetInfo;
+          }
           const existing = connectedTargets.get(targetInfo.targetId);
           if (existing) {
             existing.targetInfo = targetInfo;
@@ -405,12 +541,19 @@ async function createRelayServer(
         }
       }
 
-      // Broadcast event to all CDP clients
-      broadcastToCDPClients({
+      // Buffer Runtime.executionContext* events while Page.getFrameTree is pending.
+      // This prevents Playwright from losing execution contexts during initialization.
+      const eventMessage = {
         method: eventMethod,
         params: eventParams || {},
         sessionId,
-      });
+      };
+      if (sessionId && bufferEventForSession(sessionId, eventMessage)) {
+        return; // Event buffered, will be flushed after Page.getFrameTree response
+      }
+
+      // Broadcast event to all CDP clients
+      broadcastToCDPClients(eventMessage);
       return;
     }
 
@@ -438,6 +581,14 @@ async function createRelayServer(
    */
   async function handleCDPMessage(client: WebSocket, message: any) {
     const { id, method, params, sessionId } = message;
+    console.log(`[Relay] CDP <<< ${method}`, params ? JSON.stringify(params).substring(0, 200) : '', 'targets:', connectedTargets.size);
+
+    // Track Page.getFrameTree commands to buffer Runtime events during init.
+    const isFrameTree = method === 'Page.getFrameTree' && sessionId;
+    if (isFrameTree) {
+      sessionsPendingFrameTree.add(sessionId);
+      console.log(`[Relay] Page.getFrameTree pending for session ${sessionId}`);
+    }
 
     try {
       // Route CDP command
@@ -446,7 +597,16 @@ async function createRelayServer(
       // Send response
       const response: any = { id, result };
       if (sessionId) response.sessionId = sessionId;
+      const resultStr = JSON.stringify(result || {});
+      console.log(`[Relay] CDP >>> id=${id} ${method} ${sessionId ? 'sid=' + sessionId : ''}`, resultStr.substring(0, method === 'Page.getFrameTree' ? 5000 : 200));
       sendToCDPClient(client, response);
+
+      // After sending Page.getFrameTree response, flush buffered events.
+      // Playwright's .then() callback will process the frame tree (creating frames)
+      // before the flushed events are processed (microtask ordering).
+      if (isFrameTree) {
+        flushSessionEvents(sessionId);
+      }
     } catch (error: any) {
       // Send error response
       const response: any = {
@@ -458,6 +618,11 @@ async function createRelayServer(
       };
       if (sessionId) response.sessionId = sessionId;
       sendToCDPClient(client, response);
+
+      // Also flush on error to avoid leaking buffered events
+      if (isFrameTree) {
+        flushSessionEvents(sessionId);
+      }
     }
   }
 
@@ -484,6 +649,17 @@ async function createRelayServer(
     // Browser.setDownloadBehavior
     if (method === 'Browser.setDownloadBehavior') {
       return {};
+    }
+
+    // Browser.getWindowForTarget - Playwright calls this during page init.
+    // chrome.debugger can't execute browser-level commands, so simulate it.
+    if (method === 'Browser.getWindowForTarget') {
+      return { windowId: 1, bounds: { left: 0, top: 0, width: 1920, height: 1080, windowState: 'normal' } };
+    }
+
+    // Browser.getWindowBounds
+    if (method === 'Browser.getWindowBounds') {
+      return { bounds: { left: 0, top: 0, width: 1920, height: 1080, windowState: 'normal' } };
     }
 
     // Target.setAutoAttach
@@ -513,7 +689,20 @@ async function createRelayServer(
 
     // Target.getTargetInfo
     if (method === 'Target.getTargetInfo') {
-      const { targetId } = params;
+      const { targetId } = params || {};
+      if (!targetId) {
+        // No targetId = requesting browser target info (Playwright does this after setAutoAttach)
+        return {
+          targetInfo: {
+            targetId: 'browser',
+            type: 'browser',
+            title: '',
+            url: '',
+            attached: true,
+            canAccessOpener: false,
+          },
+        };
+      }
       const target = connectedTargets.get(targetId);
       if (!target) {
         throw new Error(`Target not found: ${targetId}`);
@@ -624,10 +813,16 @@ async function createRelayServer(
   }
 
   /**
-   * Broadcast message to all CDP clients
+   * Broadcast message to all subscribed CDP clients.
+   * Only forward events to clients that have registered via Target.setAutoAttach or Target.setDiscoverTargets.
+   * This prevents Playwright from receiving events before it's ready to handle them.
    */
   function broadcastToCDPClients(message: any) {
     cdpClients.forEach((client) => {
+      const subscription = clientSubscriptions.get(client);
+      if (!subscription || (!subscription.autoAttach && !subscription.discover)) {
+        return; // Client hasn't subscribed yet, don't send events
+      }
       sendToCDPClient(client, message);
     });
   }
@@ -674,6 +869,7 @@ async function createRelayServer(
     baseUrl: `http://${host}:${port}`,
     cdpWsUrl: `ws://${host}:${port}/cdp`,
     extensionConnected: () => extensionSocket !== null,
+    targetCount: () => connectedTargets.size,
     stop: async () => {
       console.log('[Relay] Stopping server...');
 
