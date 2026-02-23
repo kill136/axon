@@ -885,4 +885,64 @@ router.post('/reveal', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * GET /api/files/preview
+ * 以原始内容返回 HTML 文件，用于 iframe 预览
+ * 
+ * Query 参数:
+ * - path: 文件绝对路径或相对路径
+ * - root: 项目根目录（可选）
+ */
+router.get('/preview', async (req: Request, res: Response) => {
+  try {
+    const queryPath = req.query.path as string;
+    
+    if (!queryPath) {
+      res.status(400).send('缺少 path 参数');
+      return;
+    }
+
+    // 只允许 .html / .htm 文件
+    const ext = path.extname(queryPath).toLowerCase();
+    if (ext !== '.html' && ext !== '.htm') {
+      res.status(400).send('仅支持预览 .html / .htm 文件');
+      return;
+    }
+
+    // 解析文件路径：支持绝对路径和相对路径
+    let resolvedPath: string;
+    if (path.isAbsolute(queryPath)) {
+      resolvedPath = path.normalize(queryPath);
+    } else {
+      const projectRoot = getProjectRoot(req);
+      const validation = validatePath(queryPath, projectRoot);
+      if (!validation.valid) {
+        res.status(400).send(validation.error || '路径无效');
+        return;
+      }
+      resolvedPath = validation.resolvedPath;
+    }
+
+    // 检查文件是否存在
+    try {
+      const stats = await fs.stat(resolvedPath);
+      if (!stats.isFile()) {
+        res.status(400).send('路径不是文件');
+        return;
+      }
+    } catch {
+      res.status(404).send('文件不存在');
+      return;
+    }
+
+    // 读取并返回原始 HTML 内容
+    const content = await fs.readFile(resolvedPath, 'utf-8');
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(content);
+  } catch (error) {
+    console.error('[File API] 预览文件失败:', error);
+    res.status(500).send('预览文件失败');
+  }
+});
+
 export default router;

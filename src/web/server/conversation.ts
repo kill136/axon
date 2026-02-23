@@ -6,6 +6,7 @@
 import { ClaudeClient } from '../../core/client.js';
 import { Session } from '../../core/session.js';
 import { runWithCwd } from '../../core/cwd-context.js';
+import { runWithSessionId } from '../../core/session-context.js';
 import { shouldAutoCompact, calculateAutoCompactThreshold, getContextWindowSize, generateSummaryPrompt, formatCompactSummaryContent, validateToolResults } from '../../core/loop.js';
 import { toolRegistry, registerBlueprintTools } from '../../tools/index.js';
 import { systemPromptBuilder, type PromptContext } from '../../prompt/index.js';
@@ -320,6 +321,8 @@ export class ConversationManager {
   private mcpTools: Array<{ name: string; description: string; inputSchema: any; isMcp?: boolean }> = [];
   /** 插件市场管理器 */
   private marketplaceManager?: MarketplaceManager;
+  /** Web Server 内嵌调度器（由 index.ts 注入） */
+  private webScheduler?: import('./web-scheduler.js').WebScheduler;
 
   constructor(cwd: string, defaultModel: string = 'opus', options?: { verbose?: boolean }) {
     this.cwd = cwd;
@@ -1153,6 +1156,10 @@ export class ConversationManager {
       callbacks.onError?.(error instanceof Error ? error : new Error(String(error)));
     } finally {
       state.isProcessing = false;
+      // 通知 WebScheduler 对话空闲，可能有待投递的闹钟
+      if (sessionId) {
+        this.webScheduler?.onSessionIdle(sessionId);
+      }
     }
   }
 
@@ -1952,6 +1959,7 @@ export class ConversationManager {
       model: input.model,
       timeoutMs: input.timeoutMs,
       enabled: true,
+      sessionId: state.session.sessionId,
     });
 
     // 标记为运行中，防止 daemon 抢执行
@@ -2143,9 +2151,15 @@ export class ConversationManager {
       return { success: false, error: 'Operation cancelled by user' };
     }
 
+    // 注入 sessionId 上下文，让工具（如 Browser）能区分不同会话
+    const sessionId = state.session.sessionId || 'web-default';
+    const executeInContext = () => runWithSessionId(sessionId, () => {
+      return this.executeTool(toolUse, state, callbacks);
+    });
+
     // 如果没有 AbortController（不应该发生），直接执行
     if (!signal) {
-      return this.executeTool(toolUse, state, callbacks);
+      return executeInContext();
     }
 
     // Promise.race: 工具执行 vs 取消信号
@@ -2160,7 +2174,7 @@ export class ConversationManager {
     });
 
     return Promise.race([
-      this.executeTool(toolUse, state, callbacks),
+      executeInContext(),
       abortPromise,
     ]);
   }
@@ -2317,7 +2331,34 @@ export class ConversationManager {
             // parseTimeExpression 失败，走正常工具执行
           }
         }
-        // 非 inline 情况（list/cancel/watch/远期 once/interval），走正常工具执行路径
+
+        // 非 inline create：走正常工具执行，但事后注入 sessionId 并通知 WebScheduler
+        if (input.action === 'create') {
+          // 执行前记录已有任务 ID，执行后取差集找到新建的任务
+          let existingIds: Set<string> | null = null;
+          try {
+            const preStore = new TaskStore();
+            existingIds = new Set(preStore.listTasks().map((t: any) => t.id));
+          } catch { /* ignore */ }
+
+          const result = await this.executeTool(toolUse, state, callbacks);
+
+          // 用差集精确找到新创建的任务
+          if (result.success && existingIds) {
+            try {
+              const postStore = new TaskStore();
+              const newTask = postStore.listTasks().find((t: any) => !existingIds!.has(t.id));
+              if (newTask) {
+                postStore.updateTask(newTask.id, { sessionId: state.session.sessionId });
+              }
+              // 通知 WebScheduler 有新任务
+              this.webScheduler?.onTaskCreated();
+            } catch { /* 不影响主流程 */ }
+          }
+
+          return result;
+        }
+        // list/cancel/watch 走正常工具执行路径
       }
 
       // 拦截 TaskOutput 工具 - 从 TaskManager 获取任务输出
@@ -3438,6 +3479,20 @@ Guidelines:
   }
 
   /**
+   * 注入 WebScheduler 实例（由 index.ts 调用）
+   */
+  setWebScheduler(scheduler: import('./web-scheduler.js').WebScheduler): void {
+    this.webScheduler = scheduler;
+  }
+
+  /**
+   * 检查指定会话是否存在于内存中（活跃的）
+   */
+  hasSession(sessionId: string): boolean {
+    return this.sessions.has(sessionId);
+  }
+
+  /**
    * 从内存中获取会话的工作目录和项目路径
    * 用于避免重复从磁盘加载会话数据
    */
@@ -3660,6 +3715,10 @@ Guidelines:
       callbacks.onError?.(error instanceof Error ? error : new Error(String(error)));
     } finally {
       state.isProcessing = false;
+      // 通知 WebScheduler 对话空闲
+      if (sessionId) {
+        this.webScheduler?.onSessionIdle(sessionId);
+      }
     }
   }
 

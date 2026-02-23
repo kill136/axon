@@ -79,11 +79,32 @@ export class BrowserController {
   }
 
   /**
+   * 获取当前专属 tab 的 Page 引用（只读，不触发创建）
+   */
+  getDedicatedPage(): Page | null {
+    return this.dedicatedPage;
+  }
+
+  /**
    * 释放专属 tab 引用（不关闭 tab，用户可能想继续查看）
    */
   releaseDedicatedTab(): void {
     this.dedicatedPage = null;
     this.listenersAttached = false;
+  }
+
+  /**
+   * 关闭专属 tab 并释放引用
+   */
+  async closeDedicatedTab(): Promise<void> {
+    if (this.dedicatedPage && !this.dedicatedPage.isClosed()) {
+      await this.dedicatedPage.close();
+    }
+    this.dedicatedPage = null;
+    this.listenersAttached = false;
+    this.refsMap.clear();
+    this.consoleMessages = [];
+    this.pageErrors = [];
   }
 
   /**
@@ -411,6 +432,17 @@ export class BrowserController {
     try {
       const locator = await this.resolveLocator(ref);
       await locator.selectOption(values, { timeout: 5000 });
+    } catch (error) {
+      throw toAIFriendlyError(error);
+    }
+  }
+
+  // --- File Upload ---
+
+  async uploadFile(ref: string, filePath: string): Promise<void> {
+    try {
+      const locator = await this.resolveLocator(ref);
+      await locator.setInputFiles(filePath, { timeout: 10000 });
     } catch (error) {
       throw toAIFriendlyError(error);
     }

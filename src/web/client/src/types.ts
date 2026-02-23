@@ -337,8 +337,9 @@ export type WSMessageType =
   | 'task_status'
   | 'subagent_tool_start'
   | 'subagent_tool_end'
-  // 定时任务倒计时
+  // 定时任务倒计时/闹钟
   | 'schedule_countdown'
+  | 'schedule_alarm'
   // 持续开发相关消息类型
   | 'continuous_dev:ack'
   | 'continuous_dev:status_update'

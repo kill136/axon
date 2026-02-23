@@ -33,7 +33,7 @@ This is an educational reverse-engineering project that recreates Claude Code CL
 - 下次对话开局就能看到，不会重蹈覆辙。
 - 不写 = 下次必忘 = 必然重犯。
 
-### 铁律6：三思而后行
+### 铁律6：三思而后行 ****这是最重要的纪律
 - 每个方案出来后，重新思考缺点，至少自我反驳一次。
 - 禁止写 todo 占位，直接实现功能。
 - 每次回复结束前，必须自我反思自己给出方案是否有别的问题。

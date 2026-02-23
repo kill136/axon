@@ -7,6 +7,7 @@ import { ClaudeClient, type ClientConfig } from './client.js';
 import { Session, setCurrentSessionId } from './session.js';
 import { toolRegistry } from '../tools/index.js';
 import { runWithCwd, runGeneratorWithCwd } from './cwd-context.js';
+import { runWithSessionId } from './session-context.js';
 import { isToolSearchEnabled } from '../tools/mcp.js';
 import { isDeferredTool, getDiscoveredToolsFromMessages } from '../mcp/tools.js';
 import { t } from '../i18n/index.js';
@@ -2541,10 +2542,13 @@ export class ConversationLoop {
   }
 
   async processMessage(userInput: string): Promise<string> {
-    // 使用工作目录上下文包裹整个消息处理过程
-    // 确保所有工具执行都在正确的工作目录上下文中
-    return runWithCwd(this.promptContext.workingDir, async () => {
-      return this.processMessageInternal(userInput);
+    // 使用工作目录 + 会话 ID 上下文包裹整个消息处理过程
+    // 确保所有工具执行都在正确的上下文中
+    const sessionId = this.session.sessionId || 'cli-default';
+    return runWithSessionId(sessionId, () => {
+      return runWithCwd(this.promptContext.workingDir, async () => {
+        return this.processMessageInternal(userInput);
+      });
     });
   }
 

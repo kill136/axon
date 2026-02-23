@@ -722,6 +722,42 @@ export function useMessageHandler({
           break;
         }
 
+        // 定时任务闹钟提醒
+        case 'schedule_alarm': {
+          const alarmTaskName = payload.taskName as string || '';
+          const alarmSessionId = payload.sessionId as string || '';
+          const alarmPrompt = payload.prompt as string || '';
+          const alarmIsNewSession = !!(payload as any).isNewSession;
+
+          // 只在当前查看的会话中插入提醒消息
+          const currentSid = sessionIdRef.current;
+          if (alarmSessionId && currentSid === alarmSessionId) {
+            const alarmMessage: ChatMessage = {
+              id: `alarm-${Date.now()}`,
+              role: 'assistant',
+              timestamp: Date.now(),
+              content: [{
+                type: 'text',
+                text: `⏰ **定时提醒** — 任务 "${alarmTaskName}" 到时间了！\n\n正在执行: ${alarmPrompt}`,
+              }],
+              sessionId: alarmSessionId,
+            };
+            setMessages(prev => [...prev, alarmMessage]);
+          }
+
+          // 无论是否是当前会话，都发浏览器通知（用户可能在别的 tab）
+          if ('Notification' in window && Notification.permission === 'granted') {
+            const body = alarmIsNewSession
+              ? `${alarmPrompt.slice(0, 80)}\n(在新会话中执行，请切换查看)`
+              : alarmPrompt.slice(0, 100);
+            new Notification(`⏰ ${alarmTaskName}`, {
+              body,
+              icon: '/favicon.ico',
+            });
+          }
+          break;
+        }
+
         // 持续开发消息处理
         case 'continuous_dev:flow_started': {
           const newMessage: ChatMessage = {

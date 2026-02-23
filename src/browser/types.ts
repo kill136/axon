@@ -5,18 +5,12 @@
 export interface BrowserStartOptions {
   headless?: boolean;
   executablePath?: string;
-  /** Connect to existing Chrome CDP endpoint instead of launching */
-  cdpUrl?: string;
   /** CDP debugging port (default: auto-find available port starting from 9222) */
   cdpPort?: number;
   /** Don't use sandbox (needed in some Linux environments) */
   noSandbox?: boolean;
   /** Profile name to use (default: 'default') */
   profileName?: string;
-  /** Use extension relay for anti-detection (default: false) */
-  useExtensionRelay?: boolean;
-  /** Extension relay mode: 'pipe' = auto-load extension via CDP pipe, 'extension' = user-installed extension (default: 'pipe') */
-  relayMode?: 'pipe' | 'extension';
 }
 
 export interface RefEntry {
@@ -76,8 +70,7 @@ export type BrowserAction =
   | 'profile_list'
   | 'profile_create'
   | 'profile_delete'
-  | 'extension_install'
-  | 'extension_path';
+  | 'upload_file';
 
 export interface BrowserToolInput {
   action: BrowserAction;
@@ -93,6 +86,5 @@ export interface BrowserToolInput {
   name?: string;
   interactive?: boolean;
   profileName?: string;
-  useRelay?: boolean;
-  relayMode?: 'pipe' | 'extension';
+  filePath?: string;
 }

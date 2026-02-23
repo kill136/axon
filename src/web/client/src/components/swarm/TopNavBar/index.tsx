@@ -21,8 +21,8 @@ interface ProjectItem {
 }
 
 export interface TopNavBarProps {
-  currentPage: 'chat' | 'swarm' | 'blueprint';
-  onPageChange: (page: 'chat' | 'swarm' | 'blueprint') => void;
+  currentPage: 'chat' | 'swarm' | 'blueprint' | 'schedule';
+  onPageChange: (page: 'chat' | 'swarm' | 'blueprint' | 'schedule') => void;
   onSettingsClick?: () => void;
   /** 代码视图是否激活 */
   codeViewActive?: boolean;
@@ -78,6 +78,13 @@ const SwarmIcon = () => (
     <circle cx="4" cy="10" r="1.5" />
     <circle cx="12" cy="10" r="1.5" />
     <path d="M7 5.5L5 9M9 5.5L11 9" />
+  </svg>
+);
+
+const ScheduleIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="8" cy="8" r="6" />
+    <path d="M8 4v4l3 2" />
   </svg>
 );
 
@@ -324,6 +331,15 @@ export default function TopNavBar({
               <SwarmIcon />
             </span>
             <span>{t('nav.swarm')}</span>
+          </button>
+          <button
+            className={`${styles.navTab} ${currentPage === 'schedule' ? styles.active : ''}`}
+            onClick={() => onPageChange('schedule')}
+          >
+            <span className={styles.icon}>
+              <ScheduleIcon />
+            </span>
+            <span>{t('nav.schedule')}</span>
           </button>
         </div>
 

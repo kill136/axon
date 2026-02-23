@@ -2,6 +2,7 @@ import React, { useState, useCallback, useRef } from 'react';
 import App from './App';
 import SwarmConsole from './pages/SwarmConsole/index.tsx';
 import BlueprintPage from './pages/BlueprintPage';
+import SchedulePage from './pages/SchedulePage';
 import TopNavBar from './components/swarm/TopNavBar';
 import { AuthDialog } from './components/AuthDialog';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -9,7 +10,7 @@ import { ProjectProvider, useProject } from './contexts/ProjectContext';
 import { LanguageProvider } from './i18n';
 import type { Session, SessionActions } from './types';
 
-type Page = 'chat' | 'swarm' | 'blueprint';
+type Page = 'chat' | 'swarm' | 'blueprint' | 'schedule';
 
 /**
  * RootContent - 在 ProjectProvider 内部使用 ProjectContext
@@ -170,6 +171,11 @@ function RootContent() {
               initialBlueprintId={selectedBlueprintId}
               onNavigateToSwarm={navigateToSwarmPage}
             />
+          </ErrorBoundary>
+        </div>
+        <div style={pageStyle('schedule')}>
+          <ErrorBoundary name="Schedule">
+            <SchedulePage />
           </ErrorBoundary>
         </div>
       </div>

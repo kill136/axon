@@ -171,6 +171,10 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
   const autocompleteRouter = await import('./routes/autocomplete-api.js');
   app.use('/api/ai-editor', autocompleteRouter.default);
 
+  // 定时任务管理 API 路由
+  const scheduleRouter = await import('./routes/schedule-api.js');
+  app.use('/api/schedule', scheduleRouter.default);
+
   // 前端静态文件路径
   // 在生产环境下，代码在 dist/web/server，需要找到 src/web/client/dist
   // 在开发环境下，代码在 src/web/server，需要找到 src/web/client
@@ -226,6 +230,22 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
     setBroadcastMessage(wsBroadcast);
   } catch {
     // 忽略
+  }
+
+  // 启动 Web Server 内嵌定时调度器
+  // 替代独立 daemon 进程，直接在 Web Server 中调度定时任务并投递到对话
+  let webScheduler: import('./web-scheduler.js').WebScheduler | null = null;
+  {
+    const { WebScheduler } = await import('./web-scheduler.js');
+    const { broadcastMessage } = await import('./websocket.js');
+    webScheduler = new WebScheduler({
+      conversationManager,
+      broadcastMessage,
+      defaultModel: model,
+      cwd,
+    });
+    conversationManager.setWebScheduler(webScheduler);
+    webScheduler.start();
   }
 
   // 注入修复会话创建器到 ErrorWatcher（Phase 2: 自动修复）
@@ -395,6 +415,9 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
     if (isShuttingDown) return;
     isShuttingDown = true;
     console.log(`\n[${signal}] 正在关闭服务器...`);
+
+    // 停止定时调度器
+    webScheduler?.stop();
 
     // 先持久化所有活跃会话，防止热更新丢数据
     try {

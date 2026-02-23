@@ -264,28 +264,77 @@ function EditToolContent({ input, result }: { input: any; result?: any }) {
  */
 function WriteToolContent({ input }: { input: any }) {
   const [expanded, setExpanded] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
   const { t } = useLanguage();
   const content = input?.content || '';
   const allLines = content.split('\n');
   const totalLines = allLines.length;
   const maxLines = DEFAULT_MAX_LINES;
+  const filePath = input?.file_path || '';
+  const ext = filePath.split('.').pop()?.toLowerCase() || '';
+  const isHtml = ext === 'html' || ext === 'htm';
 
   const displayLines = expanded ? allLines : allLines.slice(0, maxLines);
 
+  // 构建预览 URL：优先使用绝对路径直接传，否则用相对路径
+  const previewUrl = isHtml
+    ? `/api/files/preview?path=${encodeURIComponent(filePath)}`
+    : '';
+
   return (
     <div className="cli-write-content">
-      <div className="cli-write-info">{t('cli.linesCount', { count: totalLines })}</div>
-      <ExpandableContent
-        totalLines={totalLines}
-        maxLines={maxLines}
-        expanded={expanded}
-        onToggle={() => setExpanded(!expanded)}
-        t={t}
-      >
-        <pre className="cli-write-preview">
-          {displayLines.join('\n')}
-        </pre>
-      </ExpandableContent>
+      <div className="cli-write-info">
+        <span>{t('cli.linesCount', { count: totalLines })}</span>
+        {isHtml && (
+          <button
+            className="cli-preview-btn"
+            onClick={(e) => { e.stopPropagation(); setPreviewing(!previewing); }}
+          >
+            {previewing ? '▼ Close Preview' : '▶ Preview'}
+          </button>
+        )}
+      </div>
+      {previewing && previewUrl && (
+        <div className="cli-preview-container">
+          <div className="cli-preview-toolbar">
+            <span className="cli-preview-label">Live Preview</span>
+            <a
+              className="cli-preview-open-btn"
+              href={previewUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+            >
+              ↗ Open in new tab
+            </a>
+            <button
+              className="cli-preview-close-btn"
+              onClick={(e) => { e.stopPropagation(); setPreviewing(false); }}
+            >
+              ✕
+            </button>
+          </div>
+          <iframe
+            className="cli-preview-iframe"
+            src={previewUrl}
+            sandbox="allow-scripts allow-same-origin"
+            title="HTML Preview"
+          />
+        </div>
+      )}
+      {!previewing && (
+        <ExpandableContent
+          totalLines={totalLines}
+          maxLines={maxLines}
+          expanded={expanded}
+          onToggle={() => setExpanded(!expanded)}
+          t={t}
+        >
+          <pre className="cli-write-preview">
+            {displayLines.join('\n')}
+          </pre>
+        </ExpandableContent>
+      )}
     </div>
   );
 }

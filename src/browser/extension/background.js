@@ -232,6 +232,13 @@ async function connectToRelay() {
           console.log('[Bridge] Re-announced tab', tabId, 'sessionId:', tabState.sessionId);
         }
       }
+
+      // Pipe mode auto-attach: when config is injected (not manual install),
+      // automatically attach all existing tabs on first relay connection.
+      // This ensures the extension works without user clicking the toolbar button.
+      if (INJECTED_RELAY_PORT && INJECTED_GATEWAY_TOKEN && tabs.size === 0) {
+        autoAttachExistingTabs();
+      }
     };
 
     ws.onmessage = (event) => {
@@ -624,6 +631,33 @@ async function connectOrToggleForActiveTab() {
 }
 
 /**
+ * Auto-attach all existing tabs (pipe mode).
+ * Called once when extension first connects to relay with injected config.
+ */
+async function autoAttachExistingTabs() {
+  try {
+    const allTabs = await chrome.tabs.query({});
+    // Filter to http/https/about tabs (skip chrome://, chrome-extension://, etc.)
+    const attachableTabs = allTabs.filter(tab => {
+      if (!tab.id) return false;
+      const url = tab.url || '';
+      return url.startsWith('http://') || url.startsWith('https://') || url.startsWith('about:');
+    });
+
+    console.log('[Bridge] Auto-attaching', attachableTabs.length, 'existing tabs (pipe mode)');
+    for (const tab of attachableTabs) {
+      try {
+        await attachTab(tab.id);
+      } catch (e) {
+        console.warn('[Bridge] Failed to auto-attach tab', tab.id, ':', e.message);
+      }
+    }
+  } catch (error) {
+    console.error('[Bridge] autoAttachExistingTabs error:', error);
+  }
+}
+
+/**
  * Set badge text to indicate status
  */
 function setBadgeText(text) {
@@ -708,6 +742,27 @@ chrome.action.onClicked.addListener(async (tab) => {
   } catch (error) {
     console.error('[Bridge] === ACTION ERROR ===', error);
   }
+});
+
+// Auto-attach new tabs in pipe mode
+chrome.tabs.onCreated.addListener(async (tab) => {
+  // Only auto-attach in pipe mode (injected config)
+  if (!INJECTED_RELAY_PORT || !INJECTED_GATEWAY_TOKEN) return;
+  if (!tab.id) return;
+  // Wait a bit for the tab to settle (URL may not be set yet)
+  setTimeout(async () => {
+    try {
+      const current = await chrome.tabs.get(tab.id);
+      const url = current.url || '';
+      if (url.startsWith('chrome://') || url.startsWith('chrome-extension://')) return;
+      if (tabs.has(tab.id)) return; // Already attached
+      await attachTab(tab.id);
+      console.log('[Bridge] Auto-attached new tab', tab.id);
+    } catch (e) {
+      // Tab may have been closed already
+      console.warn('[Bridge] Failed to auto-attach new tab', tab.id, ':', e.message);
+    }
+  }, 500);
 });
 
 // Tab removed

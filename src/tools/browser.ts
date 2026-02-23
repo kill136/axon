@@ -11,6 +11,7 @@ import { BaseTool } from './base.js';
 import type { ToolResult, ToolDefinition } from '../types/index.js';
 import type { BrowserToolInput } from '../browser/types.js';
 import { t } from '../i18n/index.js';
+import { getSessionId } from '../core/session-context.js';
 
 export class BrowserTool extends BaseTool<BrowserToolInput, ToolResult> {
   name = 'Browser';
@@ -70,6 +71,7 @@ USAGE NOTES:
             'profile_delete',
             'extension_install',
             'extension_path',
+            'upload_file',
           ],
           description: 'The browser action to perform',
         },
@@ -130,21 +132,41 @@ USAGE NOTES:
           enum: ['pipe', 'extension'],
           description: 'Extension relay mode: "pipe" = auto-load extension via CDP pipe (simple), "extension" = user-installed extension (full anti-detection). Only applies when useRelay is true.',
         },
+        filePath: {
+          type: 'string',
+          description: 'Absolute file path for upload_file action (sets file on an <input type="file"> element)',
+        },
       },
       required: ['action'],
     };
   }
 
-  private controller: any = null;
+  // 按 sessionId 隔离的 controller 实例
+  // 每个会话有自己的专属 tab 和 refs/console 状态
+  private controllers: Map<string, any> = new Map();
 
   private async getController(): Promise<any> {
-    if (!this.controller) {
+    const sessionId = getSessionId();
+    let controller = this.controllers.get(sessionId);
+    if (!controller) {
       const { BrowserManager } = await import('../browser/manager.js');
       const { BrowserController } = await import('../browser/controller.js');
       const manager = BrowserManager.getInstance();
-      this.controller = new BrowserController(manager);
+      controller = new BrowserController(manager);
+      this.controllers.set(sessionId, controller);
     }
-    return this.controller;
+    return controller;
+  }
+
+  /**
+   * 清理指定会话的 controller（关闭专属 tab）
+   */
+  private async removeController(sessionId: string): Promise<void> {
+    const controller = this.controllers.get(sessionId);
+    if (controller) {
+      await controller.closeDedicatedTab();
+      this.controllers.delete(sessionId);
+    }
   }
 
   private async getManager(): Promise<any> {
@@ -182,9 +204,11 @@ USAGE NOTES:
         }
 
         case 'stop': {
-          await manager.stop();
-          this.controller = null;
-          return this.success(t('browser.stopped'));
+          // 只关闭当前会话的专属 tab，不关闭整个浏览器
+          // 浏览器是共享资源，其他会话和用户可能仍在使用
+          const stopSessionId = getSessionId();
+          await this.removeController(stopSessionId);
+          return this.success('Session browser tab closed. Browser process remains running for other sessions.');
         }
 
         case 'status': {
@@ -192,22 +216,28 @@ USAGE NOTES:
             return this.success(t('browser.notRunning'));
           }
 
-          const page = await manager.getPage();
           const pages = manager.getAllPages();
           const relayMode = manager.isExtensionRelayMode();
           const extensionConnected = manager.isExtensionConnected();
-          const status = {
-            running: true,
-            url: page.url(),
-            title: await page.title(),
-            tabCount: pages.length,
-            mode: manager.getMode(),
-            cdpUrl: manager.getCdpUrl(),
-            relayMode,
-            extensionConnected,
-          };
 
-          let statusStr = `Browser Status:\n- Running: ${status.running}\n- Mode: ${status.mode}\n- CDP: ${status.cdpUrl}\n- URL: ${status.url}\n- Title: ${status.title}\n- Tabs: ${status.tabCount}`;
+          // 获取当前会话的专属 tab 状态（不触发创建新 controller/tab）
+          const statusSessionId = getSessionId();
+          const sessionController = this.controllers.get(statusSessionId);
+          let sessionTabInfo = '(no dedicated tab)';
+          if (sessionController) {
+            try {
+              const dedicatedPage = sessionController.getDedicatedPage?.();
+              if (dedicatedPage && !dedicatedPage.isClosed()) {
+                sessionTabInfo = `${dedicatedPage.url()} - ${await dedicatedPage.title()}`;
+              } else {
+                sessionTabInfo = '(tab closed)';
+              }
+            } catch {
+              sessionTabInfo = '(tab unavailable)';
+            }
+          }
+
+          let statusStr = `Browser Status:\n- Running: true\n- Mode: ${manager.getMode()}\n- CDP: ${manager.getCdpUrl()}\n- Total Tabs: ${pages.length}\n- Session Tab: ${sessionTabInfo}\n- Session ID: ${statusSessionId}\n- Active Sessions: ${this.controllers.size}`;
           if (relayMode) {
             statusStr += `\n- Extension Relay: ENABLED\n- Extension Connected: ${extensionConnected ? 'YES' : 'NO'}`;
           }
@@ -351,6 +381,14 @@ USAGE NOTES:
           const values = input.value.split(',').map((v) => v.trim());
           await controller.select(input.ref, values);
           return this.success(`Selected option(s) in ${input.ref}: ${values.join(', ')}`);
+        }
+
+        case 'upload_file': {
+          if (!input.ref || !input.filePath) {
+            return this.error('upload_file requires both ref (file input element) and filePath (absolute path to file)');
+          }
+          await controller.uploadFile(input.ref, input.filePath);
+          return this.success(`Uploaded file to ${input.ref}: ${input.filePath}`);
         }
 
         case 'go_back': {

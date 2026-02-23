@@ -1,29 +1,18 @@
 /**
- * Browser lifecycle manager (openclaw architecture)
+ * Browser lifecycle manager
  *
- * Key design: Chrome process management and Playwright CDP connection are SEPARATED.
+ * Architecture: Launch Chrome with CDP pipe → auto-load extension → relay server → Playwright
  *
- * Chrome process: spawned with --remote-debugging-port, managed by RunningChrome.
- * CDP connection: lazy, cached, auto-reconnects on disconnect.
+ * CDP chain: Playwright → Relay Server → Extension (chrome.debugger API) → Chrome
  *
- * Connection strategy:
- * 1. cdpUrl explicitly provided → connect directly (user's existing Chrome)
- * 2. Launch new Chrome with dedicated user-data-dir + CDP port
- * 3. Connect to it via chromium.connectOverCDP()
- *
- * Extension relay mode (anti-detection):
- * - Chrome 137+ removed --load-extension for branded builds
- * - Uses --remote-debugging-pipe + --enable-unsafe-extension-debugging
- * - Loads extension via CDP pipe command Extensions.loadUnpacked
- * - Extension connects to relay server via WebSocket
- * - Playwright connects to relay server, which forwards CDP commands
- *   through extension's chrome.debugger API (bypasses automation detection)
- *
- * This gives us:
- * - Login state sharing (when connecting to user's Chrome)
- * - Stable CDP reconnection (if Playwright disconnects, reconnect transparently)
- * - Clean process lifecycle (we own the Chrome process we launch)
- * - Anti-detection via extension relay (navigator.webdriver stays false)
+ * This architecture provides:
+ * - Full anti-detection: Playwright never directly connects to Chrome's CDP port.
+ *   All commands go through the extension's chrome.debugger API, so navigator.webdriver
+ *   stays false and automation cannot be detected by websites.
+ * - Zero user interaction: Extension is loaded automatically via CDP pipe command
+ *   (Extensions.loadUnpacked), no manual install or toolbar click needed.
+ * - Clean process lifecycle: We own the Chrome process and relay server.
+ * - Stable reconnection: If Playwright disconnects from relay, it reconnects transparently.
  */
 
 import { type ChildProcessWithoutNullStreams, spawn, execSync } from 'node:child_process';
@@ -415,7 +404,19 @@ export class BrowserManager {
   private _relayServer: any = null;
   private _useExtensionRelay: boolean = false;
 
-  private constructor() {}
+  private constructor() {
+    // 注册进程退出清理：确保 Chrome 子进程不会成为孤儿进程
+    const cleanup = () => {
+      if (this.running) {
+        try {
+          killProc(this.running.proc);
+        } catch { /* best effort */ }
+      }
+    };
+    process.on('exit', cleanup);
+    process.on('SIGINT', cleanup);
+    process.on('SIGTERM', cleanup);
+  }
 
   static getInstance(): BrowserManager {
     if (!BrowserManager.instance) {

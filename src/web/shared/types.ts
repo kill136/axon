@@ -258,6 +258,7 @@ export type ServerMessage =
   | { type: 'task_status'; payload: TaskStatusPayload }
   | { type: 'task_cancelled'; payload: { taskId: string; success: boolean } }
   | { type: 'schedule_countdown'; payload: ScheduleCountdownPayload }
+  | { type: 'schedule_alarm'; payload: ScheduleAlarmPayload }
   | { type: 'task_output_response'; payload: TaskOutputPayload }
   | { type: 'mcp_list_response'; payload: McpListPayload }
   | { type: 'mcp_server_added'; payload: { success: boolean; name: string; server?: McpServerConfig } }
@@ -973,6 +974,19 @@ export interface ScheduleCountdownPayload {
   triggerAt: number;
   remainingMs: number;
   phase: 'countdown' | 'executing' | 'done';
+}
+
+/**
+ * 定时任务闹钟提醒负载
+ */
+export interface ScheduleAlarmPayload {
+  taskId: string;
+  taskName: string;
+  sessionId: string;
+  prompt: string;
+  triggeredAt: number;
+  /** 是否在新会话中执行（原会话已关闭） */
+  isNewSession?: boolean;
 }
 
 /**
