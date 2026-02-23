@@ -18,7 +18,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node -e \"const{cpSync}=require('fs');cpSync('src/browser/extension','dist/browser/extension',{recursive:true})\"",
     "start": "node dist/cli.js",
     "dev": "tsx src/cli.ts",
     "dev:watch": "tsx watch src/cli.ts --continue",

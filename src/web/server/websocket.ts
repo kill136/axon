@@ -1718,6 +1718,7 @@ export function setupWebSocket(
       model: 'opus',
       isAlive: true,
       swarmSubscriptions: new Set<string>(),
+      permissionMode: 'bypassPermissions',
     };
 
     clients.set(clientId, client);

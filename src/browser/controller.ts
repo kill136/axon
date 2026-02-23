@@ -586,41 +586,27 @@ export class BrowserController {
     const timeout = normalizeTimeoutMs(timeoutMs);
     
     try {
-      // Execute with browser-side timeout using Promise.race
-      // This wraps the user expression in a timeout mechanism that runs in the browser context
-      const result = await page.evaluate(({ expr, timeout }) => {
-        return new Promise((resolve, reject) => {
-          const timeoutId = setTimeout(() => {
-            reject(new Error('Evaluation timed out after ' + timeout + 'ms'));
-          }, timeout);
-
+      // Node-side Promise.race: if evaluate exceeds timeout, we terminate it
+      // via CDP Runtime.terminateExecution and reject with a clear error.
+      // This is the only reliable way to enforce timeouts because:
+      // - Playwright's evaluate { timeout } only controls function installation, not execution
+      // - Browser-side setTimeout can't interrupt synchronous code
+      // - new Function gets serialized by Playwright, losing our wrapper
+      const evalPromise = page.evaluate(expression);
+      
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(async () => {
+          // Attempt to terminate the running JS in the page
           try {
-            // Evaluate the expression
-            const result = eval(expr);
-            
-            // If result is a promise, race it against the timeout
-            if (result && typeof result.then === 'function') {
-              result
-                .then((value: any) => {
-                  clearTimeout(timeoutId);
-                  resolve(value);
-                })
-                .catch((err: any) => {
-                  clearTimeout(timeoutId);
-                  reject(err);
-                });
-            } else {
-              // Synchronous result
-              clearTimeout(timeoutId);
-              resolve(result);
-            }
-          } catch (err) {
-            clearTimeout(timeoutId);
-            reject(err);
+            await this.terminateExecution();
+          } catch {
+            // Best effort - page may recover on its own
           }
-        });
-      }, { expr: expression, timeout });
+          reject(new Error(`evaluate timed out after ${timeout}ms. The expression took too long to complete.`));
+        }, timeout);
+      });
 
+      const result = await Promise.race([evalPromise, timeoutPromise]);
       return result;
     } catch (error) {
       throw toAIFriendlyError(error);

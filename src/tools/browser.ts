@@ -123,6 +123,11 @@ USAGE NOTES:
           type: 'boolean',
           description: 'Use extension relay for anti-detection (start action only)',
         },
+        relayMode: {
+          type: 'string',
+          enum: ['pipe', 'extension'],
+          description: 'Extension relay mode: "pipe" = auto-load extension via CDP pipe (simple), "extension" = user-installed extension (full anti-detection). Only applies when useRelay is true.',
+        },
       },
       required: ['action'],
     };
@@ -156,6 +161,7 @@ USAGE NOTES:
             headless: false,
             profileName: input.profileName,
             useExtensionRelay: input.useRelay,
+            relayMode: input.relayMode,
           });
           const mode = manager.getMode();
           const cdpUrl = manager.getCdpUrl();

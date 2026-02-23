@@ -2,12 +2,28 @@
   "manifest_version": 3,
   "name": "Claude Code Browser Bridge",
   "version": "1.0.0",
-  "description": "CDP relay bridge for Claude Code CLI",
+  "description": "CDP relay bridge for Claude Code CLI - attach your Chrome tabs for AI control",
   "permissions": [
     "debugger",
-    "tabs"
+    "tabs",
+    "activeTab",
+    "storage",
+    "alarms",
+    "webNavigation"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1/*",
+    "http://localhost/*"
   ],
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Claude Code Browser Bridge (click to attach/detach)"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
   }
 }

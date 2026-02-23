@@ -15,6 +15,8 @@ export interface BrowserStartOptions {
   profileName?: string;
   /** Use extension relay for anti-detection (default: false) */
   useExtensionRelay?: boolean;
+  /** Extension relay mode: 'pipe' = auto-load extension via CDP pipe, 'extension' = user-installed extension (default: 'pipe') */
+  relayMode?: 'pipe' | 'extension';
 }
 
 export interface RefEntry {
@@ -90,4 +92,5 @@ export interface BrowserToolInput {
   interactive?: boolean;
   profileName?: string;
   useRelay?: boolean;
+  relayMode?: 'pipe' | 'extension';
 }

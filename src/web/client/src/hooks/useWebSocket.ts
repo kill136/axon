@@ -173,6 +173,8 @@ export function useWebSocket(url: string): UseWebSocketReturn {
 
       console.log('WebSocket disconnected');
       setConnected(false);
+      // 重置会话恢复标记，确保下次重连时能重新发送 session_switch 恢复会话
+      hasRestoredSessionRef.current = false;
 
       // 清除 ping 定时器
       if (pingIntervalRef.current) {
