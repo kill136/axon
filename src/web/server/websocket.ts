@@ -2886,6 +2886,15 @@ async function handleSlashCommand(
     // 获取当前工作目录（优先使用项目路径）
     const cwd = projectPath || process.cwd();
 
+    // /compact 命令需要触发压缩动画
+    const isCompactCommand = /^\/(compact|c)(\s|$)/i.test(command.trim());
+    if (isCompactCommand) {
+      sendMessage(ws, {
+        type: 'context_compact',
+        payload: { phase: 'start', sessionId },
+      });
+    }
+
     // 执行斜杠命令
     const result = await executeSlashCommand(command, {
       conversationManager,
@@ -2896,6 +2905,26 @@ async function handleSlashCommand(
     });
 
     console.log(`[WebSocket] handleSlashCommand result: success=${result.success}, message=${result.message?.substring(0, 60)}`);
+
+    // /compact 命令完成后发送压缩结束消息
+    if (isCompactCommand) {
+      if (result.success) {
+        sendMessage(ws, {
+          type: 'context_compact',
+          payload: {
+            phase: 'end',
+            savedTokens: result.data?.savedTokens,
+            summaryText: result.data?.summaryText,
+            sessionId,
+          },
+        });
+      } else {
+        sendMessage(ws, {
+          type: 'context_compact',
+          payload: { phase: 'error', message: result.message, sessionId },
+        });
+      }
+    }
 
     // 如果内置命令未找到，尝试作为 skill 执行
     if (!result.success && result.message?.startsWith('未知命令:')) {
@@ -2955,6 +2984,16 @@ async function handleSlashCommand(
     }
   } catch (error) {
     console.error('[WebSocket] 斜杠命令执行错误:', error);
+
+    // 如果是 /compact 命令异常，结束压缩动画
+    const isCompactCmd = /^\/(compact|c)(\s|$)/i.test(command.trim());
+    if (isCompactCmd) {
+      sendMessage(ws, {
+        type: 'context_compact',
+        payload: { phase: 'error', message: error instanceof Error ? error.message : '命令执行失败', sessionId },
+      });
+    }
+
     sendMessage(ws, {
       type: 'slash_command_result',
       payload: {

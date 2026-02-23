@@ -435,6 +435,8 @@ export interface ContextCompactPayload {
   estimatedTokens?: number;
   /** 错误消息 */
   message?: string;
+  /** 压缩摘要文本 */
+  summaryText?: string;
   /** 触发原因 */
   reason?: string;
   sessionId?: string;
