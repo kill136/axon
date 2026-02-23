@@ -176,6 +176,7 @@ USAGE NOTES:
           const relayInfo = relayMode ? '\nExtension relay mode: ENABLED (anti-detection active)' : '';
           return this.success(
             `Browser started successfully. ${info}${relayInfo}\n` +
+            `A dedicated tab will be created for this session (won't interfere with user's tabs).\n` +
             `Use "snapshot" action to get page structure.`
           );
         }

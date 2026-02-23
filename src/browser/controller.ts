@@ -31,8 +31,59 @@ export class BrowserController {
   private pageErrors: string[] = [];
   private listenersAttached = false;
 
+  // 会话专属 tab：每个 controller 实例拥有独立的 tab，不与用户冲突
+  private dedicatedPage: Page | null = null;
+
   constructor(manager: BrowserManager) {
     this.manager = manager;
+  }
+
+  /**
+   * 获取会话专属 tab。
+   * 首次调用时自动创建新 tab，后续复用。
+   * 如果专属 tab 已被关闭，自动重新创建。
+   */
+  private async ensureDedicatedTab(): Promise<Page> {
+    // 检查专属 tab 是否仍然可用
+    if (this.dedicatedPage && !this.dedicatedPage.isClosed()) {
+      return this.dedicatedPage;
+    }
+
+    // 创建新 tab 作为会话专属工作区
+    const browser = this.manager.getBrowser();
+    if (!browser) {
+      throw new Error('Browser is not running.');
+    }
+
+    const context = browser.contexts()[0];
+    if (!context) {
+      throw new Error('No browser context available.');
+    }
+
+    const newPage = await context.newPage();
+    this.dedicatedPage = newPage;
+    this.listenersAttached = false; // 新 page 需要重新绑定监听器
+    
+    // 同步 manager 的 currentPage 指向专属 tab（保持兼容性）
+    this.manager.setCurrentPage(newPage);
+    
+    return newPage;
+  }
+
+  /**
+   * 获取当前会话应该操作的 page。
+   * 如果已有专属 tab 则使用它，否则创建一个。
+   */
+  private async getSessionPage(): Promise<Page> {
+    return this.ensureDedicatedTab();
+  }
+
+  /**
+   * 释放专属 tab 引用（不关闭 tab，用户可能想继续查看）
+   */
+  releaseDedicatedTab(): void {
+    this.dedicatedPage = null;
+    this.listenersAttached = false;
   }
 
   /**
@@ -79,11 +130,14 @@ export class BrowserController {
    */
   private async isPageResponsive(timeoutMs: number = 3000): Promise<boolean> {
     try {
-      const page = await this.manager.getPage();
+      // 检查专属 tab 是否响应（如果还没有专属 tab，视为响应正常）
+      if (!this.dedicatedPage || this.dedicatedPage.isClosed()) {
+        return true;
+      }
       
       // Race a simple evaluation against timeout
       const result = await Promise.race([
-        page.evaluate(() => 1 + 1).then(() => true),
+        this.dedicatedPage.evaluate(() => 1 + 1).then(() => true),
         new Promise<boolean>(resolve => setTimeout(() => resolve(false), timeoutMs)),
       ]);
       
@@ -165,7 +219,7 @@ export class BrowserController {
       }
     }
 
-    const page = await this.manager.getPage();
+    const page = await this.getSessionPage();
     
     // 绑定页面事件监听器（如果还没有绑定）
     this.attachPageListeners(page);
@@ -266,7 +320,7 @@ export class BrowserController {
       throw new Error(`Navigation blocked: ${guardResult.reason}`);
     }
     
-    const page = await this.manager.getPage();
+    const page = await this.getSessionPage();
     
     // 绑定页面事件监听器（如果还没有绑定）
     this.attachPageListeners(page);
@@ -277,17 +331,17 @@ export class BrowserController {
   }
 
   async goBack(): Promise<void> {
-    const page = await this.manager.getPage();
+    const page = await this.getSessionPage();
     await page.goBack({ waitUntil: 'domcontentloaded' });
   }
 
   async goForward(): Promise<void> {
-    const page = await this.manager.getPage();
+    const page = await this.getSessionPage();
     await page.goForward({ waitUntil: 'domcontentloaded' });
   }
 
   async reload(): Promise<void> {
-    const page = await this.manager.getPage();
+    const page = await this.getSessionPage();
     await page.reload({ waitUntil: 'domcontentloaded' });
   }
 
@@ -301,7 +355,7 @@ export class BrowserController {
       );
     }
 
-    const page = await this.manager.getPage();
+    const page = await this.getSessionPage();
     let locator = page.getByRole(entry.role as any, {
       name: entry.name,
       exact: true,
@@ -335,12 +389,12 @@ export class BrowserController {
   }
 
   async type(text: string): Promise<void> {
-    const page = await this.manager.getPage();
+    const page = await this.getSessionPage();
     await page.keyboard.type(text);
   }
 
   async press(key: string): Promise<void> {
-    const page = await this.manager.getPage();
+    const page = await this.getSessionPage();
     await page.keyboard.press(key);
   }
 
@@ -365,7 +419,7 @@ export class BrowserController {
   // --- Screenshot ---
 
   async screenshot(options?: { fullPage?: boolean }): Promise<Buffer> {
-    const page = await this.manager.getPage();
+    const page = await this.getSessionPage();
     return await page.screenshot({ fullPage: options?.fullPage ?? false });
   }
 
@@ -377,7 +431,7 @@ export class BrowserController {
     labelCount: number; 
     skippedCount: number;
   }> {
-    const page = await this.manager.getPage();
+    const page = await this.getSessionPage();
     const refs = Array.from(this.refsMap.entries());
     
     if (refs.length === 0) {
@@ -484,14 +538,14 @@ export class BrowserController {
 
   async tabList(): Promise<TabInfo[]> {
     const pages = this.manager.getAllPages();
-    const currentPage = await this.manager.getPage();
+    const sessionPage = this.dedicatedPage;
 
     return Promise.all(
       pages.map(async (page, index) => ({
         index,
         url: page.url(),
         title: await page.title(),
-        active: page === currentPage,
+        active: page === sessionPage,
       }))
     );
   }
@@ -504,6 +558,9 @@ export class BrowserController {
     if (!context) throw new Error('No browser context available.');
 
     const newPage = await context.newPage();
+    // 新建的 tab 成为新的专属 tab
+    this.dedicatedPage = newPage;
+    this.listenersAttached = false;
     this.manager.setCurrentPage(newPage);
 
     if (url) {
@@ -518,16 +575,24 @@ export class BrowserController {
     }
 
     const page = pages[index];
+    // 切换专属 tab 到选中的 tab
+    this.dedicatedPage = page;
+    this.listenersAttached = false;
     this.manager.setCurrentPage(page);
     await page.bringToFront();
   }
 
   async tabClose(index?: number): Promise<void> {
     const pages = this.manager.getAllPages();
+    const sessionPage = this.dedicatedPage;
 
     if (index === undefined) {
-      const currentPage = await this.manager.getPage();
-      await currentPage.close();
+      // 关闭当前专属 tab
+      if (sessionPage && !sessionPage.isClosed()) {
+        await sessionPage.close();
+      }
+      this.dedicatedPage = null;
+      this.listenersAttached = false;
       const remaining = this.manager.getAllPages();
       if (remaining.length > 0) {
         this.manager.setCurrentPage(remaining[0]);
@@ -537,10 +602,12 @@ export class BrowserController {
         throw new Error(`Invalid tab index ${index}. Valid range: 0-${pages.length - 1}`);
       }
       const pageToClose = pages[index];
-      const currentPage = await this.manager.getPage();
       await pageToClose.close();
 
-      if (pageToClose === currentPage) {
+      // 如果关闭的是专属 tab，清理引用
+      if (pageToClose === sessionPage) {
+        this.dedicatedPage = null;
+        this.listenersAttached = false;
         const remaining = this.manager.getAllPages();
         if (remaining.length > 0) {
           this.manager.setCurrentPage(remaining[0]);
@@ -552,7 +619,7 @@ export class BrowserController {
   // --- Cookies ---
 
   async getCookies(domain?: string): Promise<any[]> {
-    const page = await this.manager.getPage();
+    const page = await this.getSessionPage();
     const cookies = await page.context().cookies();
     if (domain) {
       return cookies.filter(c => c.domain.includes(domain));
@@ -561,7 +628,7 @@ export class BrowserController {
   }
 
   async setCookie(name: string, value: string, options?: CookieOptions): Promise<void> {
-    const page = await this.manager.getPage();
+    const page = await this.getSessionPage();
     await page.context().addCookies([{
       name,
       value,
@@ -575,14 +642,14 @@ export class BrowserController {
   }
 
   async clearCookies(): Promise<void> {
-    const page = await this.manager.getPage();
+    const page = await this.getSessionPage();
     await page.context().clearCookies();
   }
 
   // --- Evaluate ---
 
   async evaluate(expression: string, timeoutMs?: number): Promise<any> {
-    const page = await this.manager.getPage();
+    const page = await this.getSessionPage();
     const timeout = normalizeTimeoutMs(timeoutMs);
     
     try {
