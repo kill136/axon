@@ -8,7 +8,7 @@ import * as path from 'path';
 import * as os from 'os';
 import * as crypto from 'crypto';
 import { ConversationLoop } from '../core/loop.js';
-import { initAuth } from '../auth/index.js';
+import { initAuth, getAuth } from '../auth/index.js';
 import { Notifier } from './notifier.js';
 import { TaskStore, type ScheduledTask } from './store.js';
 import { appendRunLog, type RunLogEntry } from './run-log.js';
@@ -32,6 +32,8 @@ export class TaskExecutor {
   private queue: Array<{ execution: TaskExecution; resolve: (v: string) => void; reject: (e: Error) => void }> = [];
   private options: ExecutorOptions;
   private authInitialized = false;
+  /** 正在执行的任务 ID 集合（用于避免自反馈循环） */
+  private executingTasks = new Set<string>();
 
   constructor(options: ExecutorOptions) {
     this.options = options;
@@ -98,14 +100,36 @@ export class TaskExecutor {
     // 获取 task id 用于状态更新（仅 ScheduledTask 类型有 id）
     const taskId = 'id' in task ? task.id : undefined;
 
+    // 标记任务开始执行（用于避免 watch 任务的自反馈循环）
+    if (taskId) {
+      this.executingTasks.add(taskId);
+    }
+
     // 构造增强版 prompt：注入 notebook 和任务上下文（把模型当人看）
     const enrichedPrompt = this.buildEnrichedPrompt(task, prompt, workingDir);
 
     try {
-      // 确保认证初始化
-      if (!this.authInitialized) {
-        initAuth();
-        this.authInitialized = true;
+      // 从任务的 authSnapshot 恢复认证（创建任务时快照的）
+      // 如果没有快照，回退到 initAuth() + getAuth() 从当前进程获取
+      let authSnap = 'authSnapshot' in task ? task.authSnapshot : undefined;
+      if (!authSnap) {
+        if (!this.authInitialized) {
+          initAuth();
+          this.authInitialized = true;
+        }
+        // 主动从当前进程获取认证信息，而不是让 ConversationLoop 自己找
+        // 这样即使环境变量缺失，也能用 initAuth() 从文件/keychain 读到的凭证
+        const currentAuth = getAuth();
+        if (currentAuth) {
+          if (currentAuth.type === 'api_key' && currentAuth.apiKey) {
+            authSnap = { apiKey: currentAuth.apiKey, baseUrl: process.env.ANTHROPIC_BASE_URL };
+          } else if (currentAuth.type === 'oauth') {
+            const token = currentAuth.authToken || currentAuth.accessToken;
+            if (token) {
+              authSnap = { authToken: token, baseUrl: process.env.ANTHROPIC_BASE_URL };
+            }
+          }
+        }
       }
 
       // 创建临时 ConversationLoop
@@ -120,6 +144,10 @@ export class TaskExecutor {
         verbose: false,
         isSubAgent: false,
         disallowedTools: ['ScheduleTask', 'AskUserQuestion'],
+        // 从 authSnapshot 恢复认证，让 daemon 复用创建时的凭证
+        ...(authSnap?.apiKey && { apiKey: authSnap.apiKey }),
+        ...(authSnap?.authToken && { authToken: authSnap.authToken }),
+        ...(authSnap?.baseUrl && { baseUrl: authSnap.baseUrl }),
       });
 
       // 执行增强版 prompt，使用 Promise.race 添加超时保护
@@ -215,6 +243,11 @@ export class TaskExecutor {
       }
 
       throw err;
+    } finally {
+      // 清除执行标记（无论成功还是失败）
+      if (taskId) {
+        this.executingTasks.delete(taskId);
+      }
     }
   }
 

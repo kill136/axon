@@ -49,25 +49,29 @@ export class BrowserController {
       return this.dedicatedPage;
     }
 
-    // 创建新 tab 作为会话专属工作区
+    // 获取已有的 page（relay 模式下 context.newPage() 不可用，
+    // 因为 relay 通过扩展的 chrome.debugger API 工作，不支持 Target.createTarget）
     const browser = this.manager.getBrowser();
     if (!browser) {
       throw new Error('Browser is not running.');
     }
 
-    const context = browser.contexts()[0];
-    if (!context) {
-      throw new Error('No browser context available.');
+    const pages = browser.contexts().flatMap(c => c.pages());
+    
+    // 优先使用空白页或第一个可用 page
+    let page = pages.find(p => !p.isClosed() && (p.url() === 'about:blank' || p.url() === ''));
+    if (!page) {
+      page = pages.find(p => !p.isClosed());
+    }
+    if (!page) {
+      throw new Error('No available page. Please open a tab in Chrome first.');
     }
 
-    const newPage = await context.newPage();
-    this.dedicatedPage = newPage;
-    this.listenersAttached = false; // 新 page 需要重新绑定监听器
+    this.dedicatedPage = page;
+    this.listenersAttached = false;
+    this.manager.setCurrentPage(page);
     
-    // 同步 manager 的 currentPage 指向专属 tab（保持兼容性）
-    this.manager.setCurrentPage(newPage);
-    
-    return newPage;
+    return page;
   }
 
   /**

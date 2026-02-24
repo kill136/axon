@@ -1772,6 +1772,9 @@ export class ConversationLoop {
   private static readonly TOOL_LOOP_WARNING_THRESHOLD = 10;   // 同参数重复调用 N 次触发警告
   private static readonly TOOL_LOOP_CIRCUIT_BREAKER = 20;     // 全局熔断阈值
 
+  /** 是否通过构造函数传入了认证信息（跳过 ensureAuthenticated） */
+  private hasExternalAuth: boolean = false;
+
   /**
    * 获取当前权限模式 - 官方 v2.1.2 响应式实现
    *
@@ -2027,6 +2030,7 @@ export class ConversationLoop {
 
     // 如果外部传入了认证信息（如 WebUI 子 agent 复用主 agent 的认证），直接使用
     if (options.apiKey || options.authToken) {
+      this.hasExternalAuth = true;  // 标记为外部认证，跳过 ensureAuthenticated
       if (options.apiKey) {
         clientConfig.apiKey = options.apiKey;
       }
@@ -2290,6 +2294,12 @@ export class ConversationLoop {
    * 在发送第一条消息前调用
    */
   async ensureAuthenticated(): Promise<boolean> {
+    // 如果通过构造函数传入了认证信息，直接返回 true，跳过 OAuth API Key 创建
+    // 这避免了 TaskExecutor 等无需 API 调用的场景触发网络请求
+    if (this.hasExternalAuth) {
+      return true;
+    }
+
     const auth = getAuth();
 
     if (!auth) {

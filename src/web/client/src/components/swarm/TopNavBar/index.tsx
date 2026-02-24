@@ -50,6 +50,9 @@ export interface TopNavBarProps {
   onNewSession?: () => void;
   onSessionDelete?: (id: string) => void;
   onSessionRename?: (id: string, name: string) => void;
+  // 侧边栏相关
+  sidebarOpen?: boolean;
+  onToggleSidebar?: () => void;
 }
 
 // SVG 图标组件
@@ -116,6 +119,12 @@ const SettingsIcon = () => (
   </svg>
 );
 
+const MenuIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M2 4h12M2 8h12M2 12h12" />
+  </svg>
+);
+
 /**
  * 顶部导航栏组件 - 两行布局
  * 第一行：项目选择器 + 会话选择器 + 连接状态 + 新会话按钮 + 设置按钮
@@ -129,6 +138,7 @@ export default function TopNavBar({
   currentProject, onProjectChange, onOpenFolder, onProjectRemove,
   sessions = [], currentSessionId, onSessionSelect, onNewSession,
   onSessionDelete, onSessionRename,
+  sidebarOpen, onToggleSidebar,
 }: TopNavBarProps) {
   const { t } = useLanguage();
   const [sessionDropdownOpen, setSessionDropdownOpen] = useState(false);
@@ -186,8 +196,17 @@ export default function TopNavBar({
     <nav className={styles.topNavBar}>
       {/* 第一行：全局上下文行 */}
       <div className={styles.contextRow}>
-        {/* 左侧：项目选择器 */}
+        {/* 左侧：侧边栏切换按钮 + 项目选择器 */}
         <div className={styles.contextLeft}>
+          {onToggleSidebar && (
+            <button
+              className={`${styles.sidebarToggle} ${sidebarOpen ? styles.active : ''}`}
+              onClick={onToggleSidebar}
+              title={t('sidebar.toggle')}
+            >
+              <MenuIcon />
+            </button>
+          )}
           <ProjectSelector
             currentProject={currentProject}
             onProjectChange={onProjectChange}

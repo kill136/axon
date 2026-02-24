@@ -28,8 +28,8 @@ const PING_INTERVAL_MS = 5000;
 const KEEPALIVE_INTERVAL_MS = 30000;
 
 // __RELAY_CONFIG_START__ (do not edit - replaced by installExtension)
-const INJECTED_RELAY_PORT = 0;
-const INJECTED_GATEWAY_TOKEN = '';
+const INJECTED_RELAY_PORT = 9223;
+const INJECTED_GATEWAY_TOKEN = "70aae498aa81cdb63c37f5d561a9e1bfa1dd0208206132417bc0a3301c8b6d37";
 // __RELAY_CONFIG_END__
 
 // Tab states: 'attaching' | 'attached' | 'detaching' | 'detached'
@@ -692,26 +692,8 @@ chrome.debugger.onDetach.addListener(async (source, reason) => {
 
   console.log('[Bridge] Debugger detached from tab', tabId, 'reason:', reason);
 
-  // If detached due to navigation (target_closed), try to reattach after delay
-  if (reason === 'target_closed') {
-    setTimeout(async () => {
-      try {
-        // Check if tab still exists
-        await chrome.tabs.get(tabId);
-        await attachTab(tabId);
-      } catch {
-        // Tab no longer exists, clean up
-        const sessionId = tabState.sessionId;
-        if (sessionId) {
-          forwardCDPEvent('Target.detachedFromTarget', { sessionId, targetId: tabState.targetId || String(tabId) });
-          tabBySession.delete(sessionId);
-        }
-        tabs.delete(tabId);
-        await persistTabState();
-      }
-    }, 500);
-  } else {
-    // Other reasons: clean up immediately
+  // User clicked "Cancel" in the debugger banner — respect and clean up
+  if (reason === 'canceled_by_user') {
     const sessionId = tabState.sessionId;
     if (sessionId) {
       forwardCDPEvent('Target.detachedFromTarget', { sessionId, targetId: tabState.targetId || String(tabId) });
@@ -719,7 +701,28 @@ chrome.debugger.onDetach.addListener(async (source, reason) => {
     }
     tabs.delete(tabId);
     await persistTabState();
+    return;
   }
+
+  // For all other reasons (target_closed, replaced_with_devtools, etc.),
+  // try to reattach after a short delay — navigation and site-isolation
+  // process swaps both trigger detach but the tab still exists.
+  setTimeout(async () => {
+    try {
+      await chrome.tabs.get(tabId);
+      console.log('[Bridge] Attempting reattach after detach (reason:', reason, ') tab:', tabId);
+      await attachTab(tabId);
+    } catch {
+      // Tab no longer exists, clean up
+      const sessionId = tabState.sessionId;
+      if (sessionId) {
+        forwardCDPEvent('Target.detachedFromTarget', { sessionId, targetId: tabState.targetId || String(tabId) });
+        tabBySession.delete(sessionId);
+      }
+      tabs.delete(tabId);
+      await persistTabState();
+    }
+  }, 500);
 });
 
 // Action button clicked

@@ -832,6 +832,20 @@ const en: Translations = {
   'nav.codeView': 'Code View',
   'nav.schedule': 'Schedule',
 
+  // SessionSearchModal
+  'sessionSearch.title': 'Sessions',
+  'sessionSearch.placeholder': 'Search sessions...',
+  'sessionSearch.newSession': 'New Session',
+  'sessionSearch.today': 'Today',
+  'sessionSearch.yesterday': 'Yesterday',
+  'sessionSearch.last7days': 'Last 7 Days',
+  'sessionSearch.older': 'Older',
+  'sessionSearch.noResults': 'No matching sessions',
+  'sessionSearch.empty': 'No sessions yet',
+  'sessionSearch.deleteConfirm': 'Delete session "{{name}}"?',
+  'sessionSearch.messages': '{{count}} msgs',
+  'sessionSearch.shortcut': 'Ctrl+K',
+
   // SchedulePage
   'schedule.title': 'Scheduled Tasks',
   'schedule.empty': 'No scheduled tasks',
@@ -995,6 +1009,19 @@ const en: Translations = {
   'time.minutesAgo': '{{count}} minutes ago',
   'time.hoursAgo': '{{count}} hours ago',
   'time.daysAgo': '{{count}} days ago',
+
+  // SessionSidebar
+  'sidebar.title': 'Sessions',
+  'sidebar.search': 'Search sessions...',
+  'sidebar.newSession': 'New Session',
+  'sidebar.today': 'Today',
+  'sidebar.yesterday': 'Yesterday',
+  'sidebar.last7days': 'Last 7 Days',
+  'sidebar.older': 'Older',
+  'sidebar.noResults': 'No matching sessions',
+  'sidebar.deleteConfirm': 'Delete session "{{name}}"?',
+  'sidebar.tokens': '{{count}} tokens',
+  'sidebar.toggle': 'Toggle sidebar',
 };
 
 const zh: Translations = {
@@ -1775,6 +1802,20 @@ const zh: Translations = {
   'nav.codeView': '代码视图',
   'nav.schedule': '定时任务',
 
+  // SessionSearchModal
+  'sessionSearch.title': '会话',
+  'sessionSearch.placeholder': '搜索会话...',
+  'sessionSearch.newSession': '新建会话',
+  'sessionSearch.today': '今天',
+  'sessionSearch.yesterday': '昨天',
+  'sessionSearch.last7days': '最近7天',
+  'sessionSearch.older': '更早',
+  'sessionSearch.noResults': '没有匹配的会话',
+  'sessionSearch.empty': '暂无会话记录',
+  'sessionSearch.deleteConfirm': '确认删除会话 "{{name}}"？',
+  'sessionSearch.messages': '{{count}} 条',
+  'sessionSearch.shortcut': 'Ctrl+K',
+
   // SchedulePage
   'schedule.title': '定时任务',
   'schedule.empty': '暂无定时任务',
@@ -1928,6 +1969,19 @@ const zh: Translations = {
   'time.minutesAgo': '{{count}}分钟前',
   'time.hoursAgo': '{{count}}小时前',
   'time.daysAgo': '{{count}}天前',
+
+  // SessionSidebar
+  'sidebar.title': '会话',
+  'sidebar.search': '搜索会话...',
+  'sidebar.newSession': '新建会话',
+  'sidebar.today': '今天',
+  'sidebar.yesterday': '昨天',
+  'sidebar.last7days': '最近7天',
+  'sidebar.older': '更早',
+  'sidebar.noResults': '没有匹配的会话',
+  'sidebar.deleteConfirm': '确认删除会话 "{{name}}"？',
+  'sidebar.tokens': '{{count}} tokens',
+  'sidebar.toggle': '切换侧边栏',
 };
 
 export const locales = { en, zh };

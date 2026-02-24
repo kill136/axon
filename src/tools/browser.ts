@@ -69,8 +69,6 @@ USAGE NOTES:
             'profile_list',
             'profile_create',
             'profile_delete',
-            'extension_install',
-            'extension_path',
             'upload_file',
           ],
           description: 'The browser action to perform',
@@ -122,15 +120,6 @@ USAGE NOTES:
         profileName: {
           type: 'string',
           description: 'Profile name for start, profile_create, profile_delete actions',
-        },
-        useRelay: {
-          type: 'boolean',
-          description: 'Use extension relay for anti-detection (start action only)',
-        },
-        relayMode: {
-          type: 'string',
-          enum: ['pipe', 'extension'],
-          description: 'Extension relay mode: "pipe" = auto-load extension via CDP pipe (simple), "extension" = user-installed extension (full anti-detection). Only applies when useRelay is true.',
         },
         filePath: {
           type: 'string',
@@ -184,21 +173,15 @@ USAGE NOTES:
           await manager.start({ 
             headless: false,
             profileName: input.profileName,
-            useExtensionRelay: input.useRelay,
-            relayMode: input.relayMode,
           });
-          const mode = manager.getMode();
-          const cdpUrl = manager.getCdpUrl();
           const profileName = manager.getProfileName();
           const profileDir = manager.getProfileDir();
-          const relayMode = manager.isExtensionRelayMode();
-          const info = mode === 'connected'
-            ? `Connected to existing Chrome at ${cdpUrl}`
-            : `Launched Chrome (profile: ${profileName}, dir: ${profileDir})`;
-          const relayInfo = relayMode ? '\nExtension relay mode: ENABLED (anti-detection active)' : '';
+          const extensionOk = manager.isExtensionConnected();
           return this.success(
-            `Browser started successfully. ${info}${relayInfo}\n` +
-            `A dedicated tab will be created for this session (won't interfere with user's tabs).\n` +
+            `Browser started (profile: ${profileName}, dir: ${profileDir}).\n` +
+            `Anti-detection: ACTIVE (Playwright → Relay → Extension → chrome.debugger)\n` +
+            `Extension connected: ${extensionOk ? 'YES' : 'NO'}\n` +
+            `A dedicated tab will be created for this session.\n` +
             `Use "snapshot" action to get page structure.`
           );
         }
@@ -217,7 +200,6 @@ USAGE NOTES:
           }
 
           const pages = manager.getAllPages();
-          const relayMode = manager.isExtensionRelayMode();
           const extensionConnected = manager.isExtensionConnected();
 
           // 获取当前会话的专属 tab 状态（不触发创建新 controller/tab）
@@ -237,10 +219,7 @@ USAGE NOTES:
             }
           }
 
-          let statusStr = `Browser Status:\n- Running: true\n- Mode: ${manager.getMode()}\n- CDP: ${manager.getCdpUrl()}\n- Total Tabs: ${pages.length}\n- Session Tab: ${sessionTabInfo}\n- Session ID: ${statusSessionId}\n- Active Sessions: ${this.controllers.size}`;
-          if (relayMode) {
-            statusStr += `\n- Extension Relay: ENABLED\n- Extension Connected: ${extensionConnected ? 'YES' : 'NO'}`;
-          }
+          let statusStr = `Browser Status:\n- Running: true\n- CDP: ${manager.getCdpUrl()}\n- Anti-detection: ACTIVE\n- Extension Connected: ${extensionConnected ? 'YES' : 'NO'}\n- Total Tabs: ${pages.length}\n- Session Tab: ${sessionTabInfo}\n- Session ID: ${statusSessionId}\n- Active Sessions: ${this.controllers.size}`;
 
           return this.success(statusStr);
         }
@@ -533,24 +512,6 @@ USAGE NOTES:
           deleteProfile(input.profileName);
           
           return this.success(`Profile "${input.profileName}" deleted successfully.`);
-        }
-
-        case 'extension_install': {
-          const installDir = manager.installExtension();
-          return this.success(
-            `Extension installed to: ${installDir}\n\n` +
-            `Next steps:\n` +
-            `1. Open Chrome and go to chrome://extensions\n` +
-            `2. Enable "Developer mode" (top-right toggle)\n` +
-            `3. Click "Load unpacked" and select the directory above\n` +
-            `4. Start browser with: { action: "start", useRelay: true, relayMode: "extension" }\n` +
-            `5. Click the extension icon on the tab you want to control`
-          );
-        }
-
-        case 'extension_path': {
-          const extPath = manager.getExtensionSourcePath();
-          return this.success(`Extension source path: ${extPath}`);
         }
 
         default:

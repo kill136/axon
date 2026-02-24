@@ -301,6 +301,10 @@ program
     // ✅ 启动时自动清理过期数据（异步，不阻塞）
     scheduleCleanup();
 
+    // 启动进程内定时任务调度器
+    const { initInProcessScheduler } = await import('./daemon/in-process-scheduler.js');
+    initInProcessScheduler();
+
     // 🔍 提前验证系统提示选项的互斥性
     if (options.systemPrompt && options.systemPromptFile) {
       process.stderr.write(chalk.red(t('cli.misc.sysPromptBothError') + '\n'));

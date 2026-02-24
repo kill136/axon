@@ -251,6 +251,17 @@ export interface Session {
   name: string;
   updatedAt: number;
   messageCount: number;
+  createdAt?: number;
+  model?: string;
+  cost?: number;
+  tokenUsage?: {
+    input: number;
+    output: number;
+    total: number;
+  };
+  tags?: string[];
+  workingDirectory?: string;
+  projectPath?: string;
 }
 
 /** App 暴露给 Root 的会话操作接口 */

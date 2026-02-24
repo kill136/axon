@@ -291,6 +291,7 @@ function ScheduleDetailOverlay({
   artifact: ScheduleArtifact;
   onClose: () => void;
 }) {
+  const { t } = useLanguage();
   const statusClass = getScheduleStatusClass(artifact);
   const statusText = getScheduleStatusText(artifact);
 

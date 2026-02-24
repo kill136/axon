@@ -93,6 +93,13 @@ export interface ScheduledTask {
 
   /** Web UI 创建任务时的会话 ID，用于到期后定点投递到对应对话 */
   sessionId?: string;
+
+  /** 创建任务时的认证快照，daemon 执行时恢复认证（解决独立进程没有 API Key 的问题） */
+  authSnapshot?: {
+    apiKey?: string;
+    authToken?: string;
+    baseUrl?: string;
+  };
 }
 
 // ============================================================================

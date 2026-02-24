@@ -1,9 +1,10 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import App from './App';
 import SwarmConsole from './pages/SwarmConsole/index.tsx';
 import BlueprintPage from './pages/BlueprintPage';
 import SchedulePage from './pages/SchedulePage';
 import TopNavBar from './components/swarm/TopNavBar';
+import SessionSidebar from './components/SessionSidebar/SessionSidebar';
 import { AuthDialog } from './components/AuthDialog';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ProjectProvider, useProject } from './contexts/ProjectContext';
@@ -24,6 +25,7 @@ function RootContent() {
   const [showGitPanel, setShowGitPanel] = useState(false);
   const [showAuthDialog, setShowAuthDialog] = useState(false);
   const [authRefreshKey, setAuthRefreshKey] = useState(0);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // 来自 App 的会话数据（通过回调上报）
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -58,6 +60,22 @@ function RootContent() {
 
   const toggleGitPanel = useCallback(() => {
     setShowGitPanel(prev => !prev);
+  }, []);
+
+  const toggleSidebar = useCallback(() => {
+    setSidebarOpen(prev => !prev);
+  }, []);
+
+  // Ctrl+B 快捷键切换侧边栏
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
+        e.preventDefault();
+        setSidebarOpen(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   const navigateToBlueprintPage = (blueprintId?: string) => {
@@ -138,8 +156,22 @@ function RootContent() {
         onNewSession={() => sessionActionsRef.current.newSession()}
         onSessionDelete={(id) => sessionActionsRef.current.deleteSession(id)}
         onSessionRename={(id, name) => sessionActionsRef.current.renameSession(id, name)}
+        // 侧边栏
+        sidebarOpen={sidebarOpen}
+        onToggleSidebar={toggleSidebar}
       />
       <div style={{ flex: 1, overflow: 'hidden', minHeight: 0, display: 'flex' }}>
+        {/* 会话侧边栏 */}
+        <SessionSidebar
+          isOpen={sidebarOpen}
+          sessions={sessions}
+          currentSessionId={currentSessionId}
+          onSessionSelect={(id) => sessionActionsRef.current.selectSession(id)}
+          onSessionDelete={(id) => sessionActionsRef.current.deleteSession(id)}
+          onSessionRename={(id, name) => sessionActionsRef.current.renameSession(id, name)}
+          onNewSession={() => sessionActionsRef.current.newSession()}
+          onClose={() => setSidebarOpen(false)}
+        />
         {/* 所有页面始终挂载，通过 display:none 隐藏非活跃页面，避免切换时丢失状态和 WebSocket 连接 */}
         <div style={pageStyle('chat')}>
           <ErrorBoundary name="Chat">

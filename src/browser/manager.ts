@@ -25,7 +25,7 @@ import type { Browser, Page } from 'playwright-core';
 import type { BrowserStartOptions } from './types.js';
 import { detectBrowserExecutable, type BrowserExecutable } from './detect.js';
 import { getProfile, ensureCleanExit, decorateProfile } from './profiles.js';
-import { ensureChromeExtensionRelayServer, stopChromeExtensionRelayServer } from './extension-relay.js';
+import { ensureChromeExtensionRelayServer } from './extension-relay.js';
 import { resolveRelayAuthToken } from './extension-relay-auth.js';
 
 const CONFIG_DIR = path.join(os.homedir(), '.claude');
@@ -200,17 +200,11 @@ async function disconnectBrowser(): Promise<void> {
 
 // --- Launch Chrome process ---
 
-interface LaunchChromeOptions {
-  /** Enable --remote-debugging-pipe for CDP pipe commands (e.g. Extensions.loadUnpacked) */
-  enablePipe?: boolean;
-}
-
 async function launchChrome(
   exe: BrowserExecutable,
   cdpPort: number,
   userDataDir: string,
   options?: BrowserStartOptions,
-  launchOptions?: LaunchChromeOptions,
 ): Promise<RunningChrome> {
   fs.mkdirSync(userDataDir, { recursive: true });
 
@@ -227,14 +221,10 @@ async function launchChrome(
     '--hide-crash-restore-bubble',
     '--password-store=basic',
     '--disable-blink-features=AutomationControlled',
+    // CDP pipe for loading extension via Extensions.loadUnpacked
+    '--remote-debugging-pipe',
+    '--enable-unsafe-extension-debugging',
   ];
-
-  // Relay mode: add pipe + extension debugging flags
-  // Chrome 137+ requires pipe for Extensions.loadUnpacked CDP command
-  if (launchOptions?.enablePipe) {
-    args.push('--remote-debugging-pipe');
-    args.push('--enable-unsafe-extension-debugging');
-  }
 
   if (options?.headless) {
     args.push('--headless=new', '--disable-gpu');
@@ -248,13 +238,9 @@ async function launchChrome(
 
   args.push('about:blank');
 
-  // When using pipe, Chrome uses fd 3 (read) and fd 4 (write)
-  const stdio = launchOptions?.enablePipe
-    ? ['pipe', 'pipe', 'pipe', 'pipe', 'pipe'] as const
-    : 'pipe' as const;
-
+  // Chrome uses fd 3 (read) and fd 4 (write) for CDP pipe
   const proc = spawn(exe.path, args, {
-    stdio: stdio as any,
+    stdio: ['pipe', 'pipe', 'pipe', 'pipe', 'pipe'] as any,
     env: { ...process.env, HOME: os.homedir() },
   });
 
@@ -286,8 +272,8 @@ async function launchChrome(
     proc,
   };
 
-  // Expose pipe streams if available
-  if (launchOptions?.enablePipe && (proc as any).stdio) {
+  // Expose CDP pipe streams (fd 3 = write to Chrome, fd 4 = read from Chrome)
+  if ((proc as any).stdio) {
     result.cdpPipeIn = (proc as any).stdio[3] as Writable;
     result.cdpPipeOut = (proc as any).stdio[4] as Readable;
 
@@ -398,11 +384,11 @@ export class BrowserManager {
   private currentPage: Page | null = null;
   private _isRunning: boolean = false;
   private _cdpUrl: string = '';
-  private _mode: 'launched' | 'connected' = 'launched';
   private _profileName: string = '';
   private _userDataDir: string = '';
   private _relayServer: any = null;
-  private _useExtensionRelay: boolean = false;
+  private _extensionPath: string = '';
+  private _starting: boolean = false;
 
   private constructor() {
     // 注册进程退出清理：确保 Chrome 子进程不会成为孤儿进程
@@ -426,101 +412,36 @@ export class BrowserManager {
   }
 
   /**
-   * Start browser.
-   * Supports three modes:
-   * 1. Direct mode (no relay): Connect to existing Chrome or launch new one, Playwright connects directly to CDP
-   * 2. Pipe mode (relay + pipe): Launch Chrome with pipe, auto-load extension, Playwright connects directly (simple anti-detection)
-   * 3. Extension mode (relay + user extension): User manually installed extension, relay proxies CDP, Playwright connects via relay (full anti-detection)
+   * Start browser with full anti-detection via extension relay.
+   *
+   * Flow:
+   * 1. Start relay server on cdpPort + 1
+   * 2. Inject relay config into extension's background.js
+   * 3. Launch Chrome with --remote-debugging-pipe
+   * 4. Load extension via CDP pipe command (Extensions.loadUnpacked)
+   * 5. Extension auto-connects to relay, auto-attaches all tabs
+   * 6. Playwright connects to relay's CDP WebSocket (not Chrome directly)
+   *
+   * Result: Playwright → Relay → Extension → chrome.debugger API → Chrome
+   * Websites cannot detect automation.
    */
   async start(options?: BrowserStartOptions): Promise<void> {
     if (this._isRunning) return;
+    if (this._starting) throw new Error('Browser is already starting. Please wait.');
+    this._starting = true;
 
-    const relayMode = options?.relayMode || 'pipe';
-    this._useExtensionRelay = options?.useExtensionRelay || false;
-
-    // Extension mode: User has manually installed extension, relay proxies CDP
-    if (this._useExtensionRelay && relayMode === 'extension') {
-      console.log('[BrowserManager] Starting in EXTENSION mode (user-installed extension + relay proxy)');
-
-      // Determine relay port (from cdpUrl if provided, otherwise default)
-      let relayPort = 18792;
-      if (options?.cdpUrl) {
-        try {
-          const url = new URL(options.cdpUrl);
-          relayPort = parseInt(url.port, 10) || relayPort;
-        } catch {
-          // Invalid URL, use default
-        }
-      }
-
-      // Start relay server
-      const cdpUrl = `http://127.0.0.1:${relayPort}`;
-      this._relayServer = await ensureChromeExtensionRelayServer({ cdpUrl });
-      this._cdpUrl = cdpUrl;
-      this._mode = 'connected';
-      this._profileName = 'external-relay';
-      this._userDataDir = '';
-
-      console.log(`[BrowserManager] Relay server started on port ${relayPort}`);
-      console.log('[BrowserManager] Waiting for extension to connect (user must click toolbar button)...');
-
-      // Wait for extension to connect (up to 60s, since user needs to manually click)
-      const maxWait = 60000;
-      const pollInterval = 1000;
-      let waited = 0;
-      while (waited < maxWait) {
-        if (this._relayServer.extensionConnected()) break;
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
-        waited += pollInterval;
-        if (waited % 10000 === 0) {
-          console.log(`[BrowserManager] Still waiting for extension... (${waited / 1000}s elapsed)`);
-        }
-      }
-
-      if (!this._relayServer.extensionConnected()) {
-        throw new Error(
-          `Extension did not connect within ${maxWait / 1000}s. ` +
-          `Please install the extension and click the toolbar button to attach a tab.`
-        );
-      }
-
-      console.log(`[BrowserManager] Extension connected after ${waited / 1000}s`);
-
-      // Wait for at least one target (user must click extension button on a tab)
-      console.log('[BrowserManager] Waiting for extension to attach a tab (click the extension button on a tab)...');
-      const targetMaxWait = 30000;
-      let targetWaited = 0;
-      while (targetWaited < targetMaxWait) {
-        if (this._relayServer.targetCount() > 0) break;
-        await new Promise(resolve => setTimeout(resolve, 500));
-        targetWaited += 500;
-      }
-      if (this._relayServer.targetCount() === 0) {
-        console.warn('[BrowserManager] No targets after 30s, proceeding anyway (Playwright may fail)');
-      } else {
-        console.log(`[BrowserManager] Got ${this._relayServer.targetCount()} target(s) after ${targetWaited / 1000}s`);
-      }
-
-      // Connect Playwright to relay's CDP WebSocket
-      const conn = await connectBrowser(this._relayServer.cdpWsUrl);
-      this.setupFromConnection(conn);
-      return;
+    try {
+    // Clean up any orphaned Chrome from a previous interrupted start
+    if (this.running) {
+      try { killProc(this.running.proc); } catch { /* best effort */ }
+      this.running = null;
+    }
+    if (this._relayServer) {
+      try { await this._relayServer.stop(); } catch { /* best effort */ }
+      this._relayServer = null;
     }
 
-    // Direct mode or Pipe mode: Launch Chrome or connect to existing
-    if (options?.cdpUrl) {
-      // Connect to existing Chrome (direct mode)
-      this._cdpUrl = options.cdpUrl;
-      this._mode = 'connected';
-      this._profileName = 'external';
-      this._userDataDir = '';
-
-      const conn = await connectBrowser(options.cdpUrl);
-      this.setupFromConnection(conn);
-      return;
-    }
-
-    // Launch new Chrome
+    // --- Resolve browser executable ---
     const exe = options?.executablePath
       ? { kind: 'chrome' as const, path: options.executablePath }
       : detectBrowserExecutable();
@@ -531,9 +452,8 @@ export class BrowserManager {
       );
     }
 
+    // --- Resolve profile ---
     const profileName = options?.profileName || 'default';
-    
-    // Check if profile exists, if not use default settings
     const profile = getProfile(profileName);
     let cdpPort: number;
     let userDataDir: string;
@@ -548,59 +468,48 @@ export class BrowserManager {
       userDataDir = resolveUserDataDir(profileName);
     }
 
-    // Ensure clean exit before starting
     ensureCleanExit(userDataDir);
 
-    // Pipe mode: Launch Chrome with pipe + auto-load extension
-    let extensionPath: string | undefined;
-    if (this._useExtensionRelay && relayMode === 'pipe') {
-      console.log('[BrowserManager] Starting in PIPE mode (auto-load extension via CDP pipe)');
+    // --- Start relay server ---
+    const relayPort = cdpPort + 1;
+    const relayUrl = `http://127.0.0.1:${relayPort}`;
+    this._relayServer = await ensureChromeExtensionRelayServer({ cdpUrl: relayUrl });
+    console.log('[BrowserManager] Relay server started on port', relayPort);
 
-      // Start relay server on next port
-      const relayPort = cdpPort + 1;
-      const relayUrl = `http://127.0.0.1:${relayPort}`;
-      this._relayServer = await ensureChromeExtensionRelayServer({ cdpUrl: relayUrl });
-      
-      // Resolve extension directory path (works in both src/ and dist/)
-      let srcDir = path.dirname(new URL(import.meta.url).pathname);
-      if (process.platform === 'win32' && srcDir.startsWith('/')) {
-        srcDir = srcDir.substring(1);
-      }
-      extensionPath = path.join(srcDir, 'extension');
-      
-      // If extension dir doesn't exist (e.g. dev mode), try src path
-      if (!fs.existsSync(extensionPath)) {
-        const altPath = path.resolve(srcDir, '..', '..', 'src', 'browser', 'extension');
-        if (fs.existsSync(altPath)) {
-          extensionPath = altPath;
-        }
-      }
-      
-      // Inject config into background.js so extension can auto-connect to our relay
-      const authToken = resolveRelayAuthToken(relayPort);
-      const bgPath = path.join(extensionPath, 'background.js');
-      let bgContent = fs.readFileSync(bgPath, 'utf-8');
-      bgContent = bgContent.replace(
-        /\/\/ __RELAY_CONFIG_START__[\s\S]*?\/\/ __RELAY_CONFIG_END__/,
-        `// __RELAY_CONFIG_START__ (do not edit - replaced by installExtension)\n` +
-        `const INJECTED_RELAY_PORT = ${relayPort};\n` +
-        `const INJECTED_GATEWAY_TOKEN = ${JSON.stringify(authToken)};\n` +
-        `// __RELAY_CONFIG_END__`
-      );
-      fs.writeFileSync(bgPath, bgContent);
-      
-      console.log('[BrowserManager] Extension relay mode enabled, relay port:', relayPort);
-      console.log('[BrowserManager] Extension path:', extensionPath);
+    // --- Resolve extension path ---
+    let srcDir = path.dirname(new URL(import.meta.url).pathname);
+    if (process.platform === 'win32' && srcDir.startsWith('/')) {
+      srcDir = srcDir.substring(1);
     }
+    let extensionPath = path.join(srcDir, 'extension');
+    if (!fs.existsSync(extensionPath)) {
+      const altPath = path.resolve(srcDir, '..', '..', 'src', 'browser', 'extension');
+      if (fs.existsSync(altPath)) {
+        extensionPath = altPath;
+      }
+    }
+    this._extensionPath = extensionPath;
 
-    const chrome = await launchChrome(exe, cdpPort, userDataDir, options,
-      this._useExtensionRelay && relayMode === 'pipe' ? { enablePipe: true } : undefined,
+    // --- Inject relay config into extension ---
+    const authToken = resolveRelayAuthToken(relayPort);
+    const bgPath = path.join(extensionPath, 'background.js');
+    let bgContent = fs.readFileSync(bgPath, 'utf-8');
+    bgContent = bgContent.replace(
+      /\/\/ __RELAY_CONFIG_START__[\s\S]*?\/\/ __RELAY_CONFIG_END__/,
+      `// __RELAY_CONFIG_START__ (do not edit - replaced by installExtension)\n` +
+      `const INJECTED_RELAY_PORT = ${relayPort};\n` +
+      `const INJECTED_GATEWAY_TOKEN = ${JSON.stringify(authToken)};\n` +
+      `// __RELAY_CONFIG_END__`
     );
+    fs.writeFileSync(bgPath, bgContent);
+    console.log('[BrowserManager] Extension config injected, path:', extensionPath);
+
+    // --- Launch Chrome ---
+    const chrome = await launchChrome(exe, cdpPort, userDataDir, options);
     this.running = chrome;
     this._profileName = profileName;
     this._userDataDir = userDataDir;
 
-    // Decorate profile if we have color info
     if (profileColor) {
       decorateProfile(userDataDir, profileName, profileColor);
     }
@@ -612,43 +521,46 @@ export class BrowserManager {
       }
     });
 
-    // Pipe mode: Load extension and connect
-    if (this._useExtensionRelay && relayMode === 'pipe' && this._relayServer && extensionPath) {
-      // Load extension via CDP pipe (Chrome 137+ doesn't support --load-extension)
-      console.log('[BrowserManager] Loading extension via CDP pipe...');
-      const extId = await loadExtensionViaPipe(chrome, extensionPath);
-      console.log('[BrowserManager] Extension loaded, ID:', extId);
+    // --- Load extension via CDP pipe ---
+    console.log('[BrowserManager] Loading extension via CDP pipe...');
+    const extId = await loadExtensionViaPipe(chrome, extensionPath);
+    console.log('[BrowserManager] Extension loaded, ID:', extId);
 
-      // Wait for extension to connect to relay (poll up to 15s)
-      const relayServer = this._relayServer;
-      const maxWait = 15000;
-      const pollInterval = 500;
-      let waited = 0;
-      while (waited < maxWait) {
-        if (relayServer.extensionConnected()) break;
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
-        waited += pollInterval;
-      }
-      if (!relayServer.extensionConnected()) {
-        throw new Error(`Extension did not connect to relay within ${maxWait / 1000}s. Extension ID: ${extId}`);
-      }
-      console.log(`[BrowserManager] Extension connected after ${waited}ms`);
+    // --- Wait for extension to connect to relay ---
+    const maxWait = 15000;
+    const pollInterval = 500;
+    let waited = 0;
+    while (waited < maxWait) {
+      if (this._relayServer.extensionConnected()) break;
+      await new Promise(resolve => setTimeout(resolve, pollInterval));
+      waited += pollInterval;
+    }
+    if (!this._relayServer.extensionConnected()) {
+      throw new Error(`Extension did not connect to relay within ${maxWait / 1000}s. Extension ID: ${extId}`);
+    }
+    console.log(`[BrowserManager] Extension connected to relay after ${waited}ms`);
 
-      // For pipe mode, Playwright connects directly to Chrome's CDP port (not relay).
-      // The extension relay runs in the background but isn't used for CDP proxying.
-      // This is the simple anti-detection mode.
-      this._cdpUrl = chrome.cdpUrl;
-      this._mode = 'launched';
-      
-      const conn = await connectBrowser(chrome.cdpUrl);
-      this.setupFromConnection(conn);
+    // --- Wait for at least one tab to be attached ---
+    const targetMaxWait = 10000;
+    let targetWaited = 0;
+    while (targetWaited < targetMaxWait) {
+      if (this._relayServer.targetCount() > 0) break;
+      await new Promise(resolve => setTimeout(resolve, 500));
+      targetWaited += 500;
+    }
+    if (this._relayServer.targetCount() > 0) {
+      console.log(`[BrowserManager] ${this._relayServer.targetCount()} tab(s) attached via extension`);
     } else {
-      // Direct mode: No relay, Playwright connects directly
-      this._cdpUrl = chrome.cdpUrl;
-      this._mode = 'launched';
-      
-      const conn = await connectBrowser(chrome.cdpUrl);
-      this.setupFromConnection(conn);
+      console.warn('[BrowserManager] No tabs attached yet, Playwright will wait for first tab');
+    }
+
+    // --- Connect Playwright to relay (NOT directly to Chrome) ---
+    this._cdpUrl = this._relayServer.cdpWsUrl;
+    const conn = await connectBrowser(this._relayServer.cdpWsUrl);
+    this.setupFromConnection(conn);
+    console.log('[BrowserManager] Playwright connected to relay. Anti-detection active.');
+    } finally {
+      this._starting = false;
     }
   }
 
@@ -746,20 +658,12 @@ export class BrowserManager {
     return this._cdpUrl;
   }
 
-  getMode(): 'launched' | 'connected' {
-    return this._mode;
-  }
-
   getProfileName(): string {
     return this._profileName;
   }
 
   getProfileDir(): string {
     return this._userDataDir;
-  }
-
-  isExtensionRelayMode(): boolean {
-    return this._useExtensionRelay;
   }
 
   isExtensionConnected(): boolean {
@@ -784,38 +688,4 @@ export class BrowserManager {
     throw new Error('Extension source directory not found.');
   }
 
-  /**
-   * Install extension to a stable directory with auto-generated config.
-   * Returns the install path for the user to load in chrome://extensions.
-   */
-  installExtension(relayPort: number = 18792): string {
-    const installDir = path.join(CONFIG_DIR, 'browser', 'extension');
-    const sourcePath = this.getExtensionSourcePath();
-
-    // Copy all extension files
-    fs.mkdirSync(installDir, { recursive: true });
-    const files = fs.readdirSync(sourcePath);
-    for (const file of files) {
-      const src = path.join(sourcePath, file);
-      const dst = path.join(installDir, file);
-      if (fs.statSync(src).isFile()) {
-        fs.copyFileSync(src, dst);
-      }
-    }
-
-    // Inject config into background.js by replacing the magic marker block
-    const authToken = resolveRelayAuthToken(relayPort);
-    const bgPath = path.join(installDir, 'background.js');
-    let bgContent = fs.readFileSync(bgPath, 'utf-8');
-    bgContent = bgContent.replace(
-      /\/\/ __RELAY_CONFIG_START__[\s\S]*?\/\/ __RELAY_CONFIG_END__/,
-      `// __RELAY_CONFIG_START__ (do not edit - replaced by installExtension)\n` +
-      `const INJECTED_RELAY_PORT = ${relayPort};\n` +
-      `const INJECTED_GATEWAY_TOKEN = ${JSON.stringify(authToken)};\n` +
-      `// __RELAY_CONFIG_END__`
-    );
-    fs.writeFileSync(bgPath, bgContent);
-
-    return installDir;
-  }
 }

@@ -11,15 +11,14 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { spawn } from 'child_process';
 import { BaseTool } from './base.js';
 import type { ToolDefinition, ToolResult } from '../types/index.js';
 import { t } from '../i18n/index.js';
 import { fromMsysPath } from '../utils/platform.js';
 import { TaskStore, type ScheduledTask } from '../daemon/store.js';
-import { isDaemonRunning } from '../daemon/index.js';
 import { parseTimeExpression } from '../daemon/time-parser.js';
 import { appendRunLog, readRunLogEntries } from '../daemon/run-log.js';
+import { getAuth, initAuth } from '../auth/index.js';
 
 /** once 类型任务自动在会话内执行的最大等待时间（10 分钟） */
 const INLINE_WAIT_THRESHOLD_MS = 10 * 60 * 1000;
@@ -192,6 +191,9 @@ export class ScheduleTaskTool extends BaseTool<ScheduleTaskInput> {
       }
     }
 
+    // 快照当前会话的认证信息，daemon 独立进程执行时用它恢复认证
+    const authSnapshot = this.snapshotAuth();
+
     const task = store.addTask({
       type: input.type,
       name: input.name,
@@ -209,47 +211,19 @@ export class ScheduleTaskTool extends BaseTool<ScheduleTaskInput> {
       timeoutMs: input.timeoutMs,
       context: input.context,
       enabled: true,
+      authSnapshot,
     });
 
     // 通知 daemon 热加载
     store.signalReload();
 
-    // 如果 daemon 未运行，自动拉起
-    let daemonAutoStarted = false;
-    if (!isDaemonRunning()) {
-      try {
-        const claudeDir = path.join(os.homedir(), '.claude');
-        if (!fs.existsSync(claudeDir)) {
-          fs.mkdirSync(claudeDir, { recursive: true });
-        }
-        const logPath = path.join(claudeDir, 'daemon.log');
-        const logFd = fs.openSync(logPath, 'a');
-        // 判断运行模式：编译后 dist/tools/ 下有 cli.js，开发模式 src/tools/ 下需要用 tsx 运行 cli.ts
-        const compiledCliPath = path.join(import.meta.dirname, '..', 'cli.js');
-        const isDev = !fs.existsSync(compiledCliPath);
-        let spawnCmd: string;
-        let spawnArgs: string[];
-        if (isDev) {
-          const tsCliPath = path.join(import.meta.dirname, '..', 'cli.ts');
-          // 用 node --import tsx 运行 .ts 文件，跨平台兼容
-          // 避免 Windows 上 spawn tsx.cmd + detached 导致 PID 指向 cmd.exe 的问题
-          spawnCmd = process.execPath;
-          spawnArgs = ['--import', 'tsx', tsCliPath, 'daemon', 'start'];
-        } else {
-          spawnCmd = process.execPath;
-          spawnArgs = [compiledCliPath, 'daemon', 'start'];
-        }
-        const daemonProcess = spawn(spawnCmd, spawnArgs, {
-          detached: true,
-          stdio: ['ignore', logFd, logFd],
-          cwd: process.cwd(),
-        });
-        daemonProcess.unref();
-        fs.closeSync(logFd);
-        daemonAutoStarted = true;
-      } catch {
-        // 自动启动失败，不影响任务创建
-      }
+    // 注册到进程内 scheduler（如果已初始化）
+    let schedulerRegistered = false;
+    const { getInProcessScheduler } = await import('../daemon/in-process-scheduler.js');
+    const ips = getInProcessScheduler();
+    if (ips) {
+      ips.registerTask(task);
+      schedulerRegistered = true;
     }
 
     let details = `Task created: "${task.name}" (ID: ${task.id})\n`;
@@ -264,8 +238,10 @@ export class ScheduleTaskTool extends BaseTool<ScheduleTaskInput> {
       details += `Watch: ${task.watchPaths.join(', ')}\n`;
     }
     details += `Notify: ${task.notify.join(', ')}`;
-    if (daemonAutoStarted) {
-      details += `\n\nDaemon was not running — auto-started successfully.`;
+    if (schedulerRegistered) {
+      details += `\n\nRegistered with in-process scheduler.`;
+    } else {
+      details += `\n\nWarning: In-process scheduler not initialized. Task saved but won't execute until process restarts.`;
     }
 
     // 会话内等待执行：once 类型 + 触发时间在阈值内 → 阻塞等待并在当前进程执行
@@ -276,7 +252,7 @@ export class ScheduleTaskTool extends BaseTool<ScheduleTaskInput> {
     return { success: true, output: details };
   }
 
-  private handleCancel(store: TaskStore, input: ScheduleTaskInput): ToolResult {
+  private async handleCancel(store: TaskStore, input: ScheduleTaskInput): Promise<ToolResult> {
     if (!input.taskId) {
       return { success: false, output: t('schedule.cancelIdRequired') };
     }
@@ -284,6 +260,12 @@ export class ScheduleTaskTool extends BaseTool<ScheduleTaskInput> {
     const removed = store.removeTask(input.taskId);
     if (removed) {
       store.signalReload();
+      // 通知进程内 scheduler 取消
+      const { getInProcessScheduler } = await import('../daemon/in-process-scheduler.js');
+      const ips = getInProcessScheduler();
+      if (ips) {
+        ips.cancelTask(input.taskId);
+      }
       return { success: true, output: t('schedule.cancelled', { taskId: input.taskId }) };
     } else {
       return { success: false, output: t('schedule.notFound', { taskId: input.taskId }) };
@@ -394,8 +376,12 @@ export class ScheduleTaskTool extends BaseTool<ScheduleTaskInput> {
     const timeoutMs = task.timeoutMs || 300000;
 
     try {
-      const { initAuth } = await import('../auth/index.js');
-      initAuth();
+      // 从 authSnapshot 恢复认证，如果没有快照则走默认 initAuth
+      const authSnap = task.authSnapshot;
+      if (!authSnap) {
+        const { initAuth: _initAuth } = await import('../auth/index.js');
+        _initAuth();
+      }
 
       const { ConversationLoop } = await import('../core/loop.js');
       // 排除不适合在定时任务执行环境中使用的工具：
@@ -409,6 +395,9 @@ export class ScheduleTaskTool extends BaseTool<ScheduleTaskInput> {
         verbose: false,
         isSubAgent: true,
         disallowedTools: ['ScheduleTask', 'AskUserQuestion'],
+        ...(authSnap?.apiKey && { apiKey: authSnap.apiKey }),
+        ...(authSnap?.authToken && { authToken: authSnap.authToken }),
+        ...(authSnap?.baseUrl && { baseUrl: authSnap.baseUrl }),
       });
 
       // 带超时保护执行
@@ -488,5 +477,37 @@ export class ScheduleTaskTool extends BaseTool<ScheduleTaskInput> {
         error: `${createDetails}\n\n--- Inline Execution ---\nTask "${task.name}" ${isTimeout ? 'timed out' : 'failed'}: ${errMsg}`,
       };
     }
+  }
+
+  /**
+   * 快照当前会话的认证信息
+   * 存入任务记录，daemon 执行时恢复
+   */
+  private snapshotAuth(): ScheduledTask['authSnapshot'] {
+    try {
+      initAuth();
+      const auth = getAuth();
+      if (!auth) return undefined;
+
+      if (auth.type === 'api_key' && auth.apiKey) {
+        return {
+          apiKey: auth.apiKey,
+          baseUrl: process.env.ANTHROPIC_BASE_URL,
+        };
+      }
+
+      if (auth.type === 'oauth') {
+        const token = auth.authToken || auth.accessToken;
+        if (token) {
+          return {
+            authToken: token,
+            baseUrl: process.env.ANTHROPIC_BASE_URL,
+          };
+        }
+      }
+    } catch {
+      // 快照失败不影响任务创建
+    }
+    return undefined;
   }
 }
