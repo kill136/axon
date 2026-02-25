@@ -1021,4 +1021,519 @@ export class GitManager {
       };
     }
   }
+
+  /**
+   * ========== Git Enhanced Features - Query & Analysis ==========
+   */
+
+  /**
+   * 搜索 Commits
+   */
+  searchCommits(filter: {
+    query?: string;
+    author?: string;
+    since?: string;
+    until?: string;
+    limit?: number;
+  }): GitResult<GitCommit[]> {
+    try {
+      const { query, author, since, until, limit = 50 } = filter;
+      
+      let cmd = `log -${limit} --format="%H%n%h%n%an%n%ai%n%s%n--END--"`;
+      
+      if (query) {
+        cmd += ` --grep="${query}"`;
+      }
+      if (author) {
+        cmd += ` --author="${author}"`;
+      }
+      if (since) {
+        cmd += ` --since="${since}"`;
+      }
+      if (until) {
+        cmd += ` --until="${until}"`;
+      }
+
+      const output = this.execGit(cmd);
+      
+      if (!output) {
+        return { success: true, data: [] };
+      }
+
+      const commits: GitCommit[] = [];
+      const entries = output.split('--END--\n').filter(e => e.trim());
+
+      for (const entry of entries) {
+        const lines = entry.trim().split('\n');
+        if (lines.length >= 5) {
+          commits.push({
+            hash: lines[0],
+            shortHash: lines[1],
+            author: lines[2],
+            date: lines[3],
+            message: lines[4],
+          });
+        }
+      }
+
+      return { success: true, data: commits };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.message || String(error),
+      };
+    }
+  }
+
+  /**
+   * 获取文件修改历史
+   */
+  getFileHistory(file: string, limit: number = 50): GitResult<Array<GitCommit & { diff?: string }>> {
+    try {
+      if (!file || !file.trim()) {
+        return {
+          success: false,
+          error: '文件名不能为空',
+        };
+      }
+
+      const format = '%H%n%h%n%an%n%ai%n%s%n--END--';
+      const output = this.execGit(`log -${limit} --follow --format="${format}" -- "${file}"`);
+
+      if (!output) {
+        return { success: true, data: [] };
+      }
+
+      const commits: Array<GitCommit & { diff?: string }> = [];
+      const entries = output.split('--END--\n').filter(e => e.trim());
+
+      for (const entry of entries) {
+        const lines = entry.trim().split('\n');
+        if (lines.length >= 5) {
+          const hash = lines[0];
+          
+          // 获取该 commit 中文件的 diff
+          let diff = '';
+          try {
+            diff = this.execGit(`show "${hash}" -- "${file}"`);
+          } catch {
+            diff = '';
+          }
+
+          commits.push({
+            hash,
+            shortHash: lines[1],
+            author: lines[2],
+            date: lines[3],
+            message: lines[4],
+            diff,
+          });
+        }
+      }
+
+      return { success: true, data: commits };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.message || String(error),
+      };
+    }
+  }
+
+  /**
+   * 获取文件 Blame 信息
+   */
+  getBlame(file: string): GitResult<Array<{
+    lineNumber: number;
+    commit: string;
+    author: string;
+    date: string;
+    content: string;
+  }>> {
+    try {
+      if (!file || !file.trim()) {
+        return {
+          success: false,
+          error: '文件名不能为空',
+        };
+      }
+
+      // 使用 --porcelain 格式获取详细信息
+      const output = this.execGit(`blame --porcelain "${file}"`);
+      
+      const lines = output.split('\n');
+      const blameLines: Array<{
+        lineNumber: number;
+        commit: string;
+        author: string;
+        date: string;
+        content: string;
+      }> = [];
+
+      let i = 0;
+      let lineNumber = 1;
+
+      while (i < lines.length) {
+        const line = lines[i];
+        
+        // 解析 blame 行（格式：hash origLine finalLine [numLines]）
+        const match = line.match(/^([0-9a-f]{40}) \d+ (\d+)/);
+        if (!match) {
+          i++;
+          continue;
+        }
+
+        const commit = match[1];
+        lineNumber = parseInt(match[2]);
+
+        // 跳过到 author 行
+        let author = '';
+        let date = '';
+        let content = '';
+
+        i++;
+        while (i < lines.length) {
+          const infoLine = lines[i];
+          
+          if (infoLine.startsWith('author ')) {
+            author = infoLine.substring(7);
+          } else if (infoLine.startsWith('author-time ')) {
+            const timestamp = parseInt(infoLine.substring(12));
+            date = new Date(timestamp * 1000).toISOString();
+          } else if (infoLine.startsWith('\t')) {
+            content = infoLine.substring(1);
+            i++;
+            break;
+          }
+          
+          i++;
+        }
+
+        blameLines.push({
+          lineNumber,
+          commit: commit.substring(0, 8),
+          author,
+          date,
+          content,
+        });
+      }
+
+      return { success: true, data: blameLines };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.message || String(error),
+      };
+    }
+  }
+
+  /**
+   * 比较两个分支
+   */
+  compareBranches(base: string, target: string): GitResult<{
+    ahead: number;
+    behind: number;
+    files: Array<{ file: string; status: string }>;
+  }> {
+    try {
+      if (!base || !target) {
+        return {
+          success: false,
+          error: '分支名不能为空',
+        };
+      }
+
+      // 获取 ahead/behind 数量
+      const revList = this.execGit(`rev-list --left-right --count "${base}...${target}"`);
+      const [behind, ahead] = revList.split('\t').map(Number);
+
+      // 获取不同的文件列表
+      const diffOutput = this.execGit(`diff --name-status "${base}..${target}"`);
+      
+      const files: Array<{ file: string; status: string }> = [];
+      if (diffOutput) {
+        diffOutput.split('\n').forEach(line => {
+          if (!line) return;
+          const parts = line.split('\t');
+          if (parts.length >= 2) {
+            files.push({
+              status: parts[0],
+              file: parts[1],
+            });
+          }
+        });
+      }
+
+      return {
+        success: true,
+        data: {
+          ahead: ahead || 0,
+          behind: behind || 0,
+          files,
+        },
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.message || String(error),
+      };
+    }
+  }
+
+  /**
+   * ========== Git Enhanced Features - Tags & Remotes ==========
+   */
+
+  /**
+   * 获取所有 Tags
+   */
+  getTags(): GitResult<Array<{
+    name: string;
+    commit: string;
+    message?: string;
+    tagger?: string;
+    date?: string;
+    type: 'lightweight' | 'annotated';
+  }>> {
+    try {
+      // 获取所有 tag 列表
+      const tagList = this.execGit('tag -l');
+      
+      if (!tagList) {
+        return { success: true, data: [] };
+      }
+
+      const tags: Array<{
+        name: string;
+        commit: string;
+        message?: string;
+        tagger?: string;
+        date?: string;
+        type: 'lightweight' | 'annotated';
+      }> = [];
+
+      const tagNames = tagList.split('\n').filter(Boolean);
+
+      for (const name of tagNames) {
+        try {
+          // 获取 tag 指向的 commit
+          const commit = this.execGit(`rev-list -n 1 "${name}"`);
+          
+          // 尝试获取 annotated tag 信息
+          try {
+            const tagInfo = this.execGit(`tag -l --format="%(taggername)|%(taggerdate:iso)|%(contents:subject)" "${name}"`);
+            const parts = tagInfo.split('|');
+            
+            if (parts[0]) {
+              // Annotated tag
+              tags.push({
+                name,
+                commit,
+                tagger: parts[0],
+                date: parts[1],
+                message: parts[2],
+                type: 'annotated',
+              });
+            } else {
+              // Lightweight tag
+              tags.push({
+                name,
+                commit,
+                type: 'lightweight',
+              });
+            }
+          } catch {
+            // Lightweight tag (没有 tagger 信息)
+            tags.push({
+              name,
+              commit,
+              type: 'lightweight',
+            });
+          }
+        } catch {
+          // 跳过有问题的 tag
+          continue;
+        }
+      }
+
+      return { success: true, data: tags };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.message || String(error),
+      };
+    }
+  }
+
+  /**
+   * 创建 Tag
+   */
+  createTag(name: string, message?: string, type: 'lightweight' | 'annotated' = 'lightweight'): GitResult {
+    try {
+      if (!name || !name.trim()) {
+        return {
+          success: false,
+          error: 'Tag 名称不能为空',
+        };
+      }
+
+      if (type === 'annotated') {
+        if (!message) {
+          return {
+            success: false,
+            error: 'Annotated tag 必须提供 message',
+          };
+        }
+        this.execGit(`tag -a "${name}" -m "${message.replace(/"/g, '\\"')}"`);
+      } else {
+        this.execGit(`tag "${name}"`);
+      }
+
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message || String(error) };
+    }
+  }
+
+  /**
+   * 删除 Tag
+   */
+  deleteTag(name: string): GitResult {
+    try {
+      if (!name || !name.trim()) {
+        return {
+          success: false,
+          error: 'Tag 名称不能为空',
+        };
+      }
+
+      this.execGit(`tag -d "${name}"`);
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message || String(error) };
+    }
+  }
+
+  /**
+   * 推送所有 Tags
+   */
+  pushTags(): GitResult {
+    try {
+      this.execGit('push --tags');
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message || String(error) };
+    }
+  }
+
+  /**
+   * 获取所有 Remotes
+   */
+  getRemotes(): GitResult<Array<{
+    name: string;
+    fetchUrl: string;
+    pushUrl: string;
+  }>> {
+    try {
+      const output = this.execGit('remote -v');
+      
+      if (!output) {
+        return { success: true, data: [] };
+      }
+
+      const remotes = new Map<string, { name: string; fetchUrl: string; pushUrl: string }>();
+
+      output.split('\n').forEach(line => {
+        if (!line) return;
+        
+        // 格式: origin  https://github.com/user/repo.git (fetch)
+        const match = line.match(/^(\S+)\s+(\S+)\s+\((fetch|push)\)$/);
+        if (!match) return;
+
+        const [, name, url, type] = match;
+
+        if (!remotes.has(name)) {
+          remotes.set(name, {
+            name,
+            fetchUrl: '',
+            pushUrl: '',
+          });
+        }
+
+        const remote = remotes.get(name)!;
+        if (type === 'fetch') {
+          remote.fetchUrl = url;
+        } else if (type === 'push') {
+          remote.pushUrl = url;
+        }
+      });
+
+      return {
+        success: true,
+        data: Array.from(remotes.values()),
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.message || String(error),
+      };
+    }
+  }
+
+  /**
+   * 添加 Remote
+   */
+  addRemote(name: string, url: string): GitResult {
+    try {
+      if (!name || !name.trim()) {
+        return {
+          success: false,
+          error: 'Remote 名称不能为空',
+        };
+      }
+      if (!url || !url.trim()) {
+        return {
+          success: false,
+          error: 'Remote URL 不能为空',
+        };
+      }
+
+      this.execGit(`remote add "${name}" "${url}"`);
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message || String(error) };
+    }
+  }
+
+  /**
+   * 删除 Remote
+   */
+  removeRemote(name: string): GitResult {
+    try {
+      if (!name || !name.trim()) {
+        return {
+          success: false,
+          error: 'Remote 名称不能为空',
+        };
+      }
+
+      this.execGit(`remote remove "${name}"`);
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message || String(error) };
+    }
+  }
+
+  /**
+   * Fetch 远程更新
+   */
+  fetch(remote?: string): GitResult {
+    try {
+      const cmd = remote ? `fetch "${remote}"` : 'fetch --all';
+      this.execGit(cmd);
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message || String(error) };
+    }
+  }
 }
