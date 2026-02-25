@@ -520,3 +520,404 @@ ${commitDetail.data.diff.substring(0, 10000)}
     });
   }
 }
+
+// ============================================================================
+// Git Enhanced Features Handlers
+// ============================================================================
+
+export async function handleGitMerge(
+  client: ClientConnection,
+  branch: string,
+  strategy: 'no-ff' | 'squash' | 'ff-only' | 'default' | undefined,
+  conversationManager: ConversationManager
+): Promise<void> {
+  const git = getGitManager(client);
+  const result = git.merge(branch, strategy);
+  sendMessage(client.ws, {
+    type: 'git:operation_result',
+    payload: { operation: 'merge', ...result },
+  });
+  if (result.success) {
+    const status = git.getStatus();
+    sendMessage(client.ws, { type: 'git:status_response', payload: status });
+  }
+}
+
+export async function handleGitRebase(
+  client: ClientConnection,
+  branch: string,
+  onto: string | undefined,
+  conversationManager: ConversationManager
+): Promise<void> {
+  const git = getGitManager(client);
+  const result = git.rebase(branch, onto);
+  sendMessage(client.ws, {
+    type: 'git:operation_result',
+    payload: { operation: 'rebase', ...result },
+  });
+  if (result.success) {
+    const status = git.getStatus();
+    sendMessage(client.ws, { type: 'git:status_response', payload: status });
+  }
+}
+
+export async function handleGitMergeAbort(
+  client: ClientConnection,
+  conversationManager: ConversationManager
+): Promise<void> {
+  const git = getGitManager(client);
+  const result = git.mergeAbort();
+  sendMessage(client.ws, {
+    type: 'git:operation_result',
+    payload: { operation: 'merge_abort', ...result },
+  });
+  if (result.success) {
+    const status = git.getStatus();
+    sendMessage(client.ws, { type: 'git:status_response', payload: status });
+  }
+}
+
+export async function handleGitRebaseContinue(
+  client: ClientConnection,
+  conversationManager: ConversationManager
+): Promise<void> {
+  const git = getGitManager(client);
+  const result = git.rebaseContinue();
+  sendMessage(client.ws, {
+    type: 'git:operation_result',
+    payload: { operation: 'rebase_continue', ...result },
+  });
+  if (result.success) {
+    const status = git.getStatus();
+    sendMessage(client.ws, { type: 'git:status_response', payload: status });
+  }
+}
+
+export async function handleGitRebaseAbort(
+  client: ClientConnection,
+  conversationManager: ConversationManager
+): Promise<void> {
+  const git = getGitManager(client);
+  const result = git.rebaseAbort();
+  sendMessage(client.ws, {
+    type: 'git:operation_result',
+    payload: { operation: 'rebase_abort', ...result },
+  });
+  if (result.success) {
+    const status = git.getStatus();
+    sendMessage(client.ws, { type: 'git:status_response', payload: status });
+  }
+}
+
+export async function handleGitReset(
+  client: ClientConnection,
+  commit: string,
+  mode: 'soft' | 'mixed' | 'hard',
+  conversationManager: ConversationManager
+): Promise<void> {
+  const git = getGitManager(client);
+  const result = git.reset(commit, mode);
+  sendMessage(client.ws, {
+    type: 'git:operation_result',
+    payload: { operation: 'reset', ...result },
+  });
+  if (result.success) {
+    const status = git.getStatus();
+    sendMessage(client.ws, { type: 'git:status_response', payload: status });
+  }
+}
+
+export async function handleGitDiscardFile(
+  client: ClientConnection,
+  file: string,
+  conversationManager: ConversationManager
+): Promise<void> {
+  const git = getGitManager(client);
+  const result = git.discardFile(file);
+  sendMessage(client.ws, {
+    type: 'git:operation_result',
+    payload: { operation: 'discard_file', ...result },
+  });
+  if (result.success) {
+    const status = git.getStatus();
+    sendMessage(client.ws, { type: 'git:status_response', payload: status });
+  }
+}
+
+export async function handleGitStageAll(
+  client: ClientConnection,
+  conversationManager: ConversationManager
+): Promise<void> {
+  const git = getGitManager(client);
+  const result = git.stageAll();
+  sendMessage(client.ws, {
+    type: 'git:operation_result',
+    payload: { operation: 'stage_all', ...result },
+  });
+  if (result.success) {
+    const status = git.getStatus();
+    sendMessage(client.ws, { type: 'git:status_response', payload: status });
+  }
+}
+
+export async function handleGitUnstageAll(
+  client: ClientConnection,
+  conversationManager: ConversationManager
+): Promise<void> {
+  const git = getGitManager(client);
+  const result = git.unstageAll();
+  sendMessage(client.ws, {
+    type: 'git:operation_result',
+    payload: { operation: 'unstage_all', ...result },
+  });
+  if (result.success) {
+    const status = git.getStatus();
+    sendMessage(client.ws, { type: 'git:status_response', payload: status });
+  }
+}
+
+export async function handleGitDiscardAll(
+  client: ClientConnection,
+  conversationManager: ConversationManager
+): Promise<void> {
+  const git = getGitManager(client);
+  const result = git.discardAll();
+  sendMessage(client.ws, {
+    type: 'git:operation_result',
+    payload: { operation: 'discard_all', ...result },
+  });
+  if (result.success) {
+    const status = git.getStatus();
+    sendMessage(client.ws, { type: 'git:status_response', payload: status });
+  }
+}
+
+export async function handleGitAmendCommit(
+  client: ClientConnection,
+  message: string,
+  conversationManager: ConversationManager
+): Promise<void> {
+  const git = getGitManager(client);
+  const result = git.amendCommit(message);
+  sendMessage(client.ws, {
+    type: 'git:operation_result',
+    payload: { operation: 'amend_commit', ...result },
+  });
+  if (result.success) {
+    const status = git.getStatus();
+    sendMessage(client.ws, { type: 'git:status_response', payload: status });
+  }
+}
+
+export async function handleGitRevertCommit(
+  client: ClientConnection,
+  hash: string,
+  conversationManager: ConversationManager
+): Promise<void> {
+  const git = getGitManager(client);
+  const result = git.revertCommit(hash);
+  sendMessage(client.ws, {
+    type: 'git:operation_result',
+    payload: { operation: 'revert_commit', ...result },
+  });
+  if (result.success) {
+    const status = git.getStatus();
+    sendMessage(client.ws, { type: 'git:status_response', payload: status });
+  }
+}
+
+export async function handleGitCherryPick(
+  client: ClientConnection,
+  hash: string,
+  conversationManager: ConversationManager
+): Promise<void> {
+  const git = getGitManager(client);
+  const result = git.cherryPick(hash);
+  sendMessage(client.ws, {
+    type: 'git:operation_result',
+    payload: { operation: 'cherry_pick', ...result },
+  });
+  if (result.success) {
+    const status = git.getStatus();
+    sendMessage(client.ws, { type: 'git:status_response', payload: status });
+  }
+}
+
+export async function handleGitGetTags(
+  client: ClientConnection,
+  conversationManager: ConversationManager
+): Promise<void> {
+  const git = getGitManager(client);
+  const result = git.getTags();
+  sendMessage(client.ws, { type: 'git:tags_response', payload: result });
+}
+
+export async function handleGitCreateTag(
+  client: ClientConnection,
+  name: string,
+  message: string | undefined,
+  type: 'lightweight' | 'annotated',
+  conversationManager: ConversationManager
+): Promise<void> {
+  const git = getGitManager(client);
+  const result = git.createTag(name, message, type);
+  sendMessage(client.ws, {
+    type: 'git:operation_result',
+    payload: { operation: 'create_tag', ...result },
+  });
+  if (result.success) {
+    const tags = git.getTags();
+    sendMessage(client.ws, { type: 'git:tags_response', payload: tags });
+  }
+}
+
+export async function handleGitDeleteTag(
+  client: ClientConnection,
+  name: string,
+  conversationManager: ConversationManager
+): Promise<void> {
+  const git = getGitManager(client);
+  const result = git.deleteTag(name);
+  sendMessage(client.ws, {
+    type: 'git:operation_result',
+    payload: { operation: 'delete_tag', ...result },
+  });
+  if (result.success) {
+    const tags = git.getTags();
+    sendMessage(client.ws, { type: 'git:tags_response', payload: tags });
+  }
+}
+
+export async function handleGitPushTags(
+  client: ClientConnection,
+  conversationManager: ConversationManager
+): Promise<void> {
+  const git = getGitManager(client);
+  const result = git.pushTags();
+  sendMessage(client.ws, {
+    type: 'git:operation_result',
+    payload: { operation: 'push_tags', ...result },
+  });
+}
+
+export async function handleGitGetRemotes(
+  client: ClientConnection,
+  conversationManager: ConversationManager
+): Promise<void> {
+  const git = getGitManager(client);
+  const result = git.getRemotes();
+  sendMessage(client.ws, { type: 'git:remotes_response', payload: result });
+}
+
+export async function handleGitAddRemote(
+  client: ClientConnection,
+  name: string,
+  url: string,
+  conversationManager: ConversationManager
+): Promise<void> {
+  const git = getGitManager(client);
+  const result = git.addRemote(name, url);
+  sendMessage(client.ws, {
+    type: 'git:operation_result',
+    payload: { operation: 'add_remote', ...result },
+  });
+  if (result.success) {
+    const remotes = git.getRemotes();
+    sendMessage(client.ws, { type: 'git:remotes_response', payload: remotes });
+  }
+}
+
+export async function handleGitRemoveRemote(
+  client: ClientConnection,
+  name: string,
+  conversationManager: ConversationManager
+): Promise<void> {
+  const git = getGitManager(client);
+  const result = git.removeRemote(name);
+  sendMessage(client.ws, {
+    type: 'git:operation_result',
+    payload: { operation: 'remove_remote', ...result },
+  });
+  if (result.success) {
+    const remotes = git.getRemotes();
+    sendMessage(client.ws, { type: 'git:remotes_response', payload: remotes });
+  }
+}
+
+export async function handleGitFetch(
+  client: ClientConnection,
+  remote: string | undefined,
+  conversationManager: ConversationManager
+): Promise<void> {
+  const git = getGitManager(client);
+  const result = git.fetch(remote);
+  sendMessage(client.ws, {
+    type: 'git:operation_result',
+    payload: { operation: 'fetch', ...result },
+  });
+  if (result.success) {
+    const status = git.getStatus();
+    sendMessage(client.ws, { type: 'git:status_response', payload: status });
+  }
+}
+
+export async function handleGitSearchCommits(
+  client: ClientConnection,
+  filter: { query?: string; author?: string; since?: string; until?: string; limit?: number },
+  conversationManager: ConversationManager
+): Promise<void> {
+  const git = getGitManager(client);
+  const result = git.searchCommits(filter);
+  sendMessage(client.ws, { type: 'git:log_response', payload: result });
+}
+
+export async function handleGitGetFileHistory(
+  client: ClientConnection,
+  file: string,
+  limit: number | undefined,
+  conversationManager: ConversationManager
+): Promise<void> {
+  const git = getGitManager(client);
+  const result = git.getFileHistory(file, limit || 50);
+  sendMessage(client.ws, { type: 'git:file_history_response', payload: result });
+}
+
+export async function handleGitGetBlame(
+  client: ClientConnection,
+  file: string,
+  conversationManager: ConversationManager
+): Promise<void> {
+  const git = getGitManager(client);
+  const result = git.getBlame(file);
+  sendMessage(client.ws, { type: 'git:blame_response', payload: result });
+}
+
+export async function handleGitCompareBranches(
+  client: ClientConnection,
+  base: string,
+  target: string,
+  conversationManager: ConversationManager
+): Promise<void> {
+  const git = getGitManager(client);
+  const result = git.compareBranches(base, target);
+  sendMessage(client.ws, { type: 'git:compare_branches_response', payload: result });
+}
+
+export async function handleGitGetMergeStatus(
+  client: ClientConnection,
+  conversationManager: ConversationManager
+): Promise<void> {
+  const git = getGitManager(client);
+  const result = git.getMergeStatus();
+  sendMessage(client.ws, { type: 'git:merge_status_response', payload: result });
+}
+
+export async function handleGitGetConflicts(
+  client: ClientConnection,
+  file: string,
+  conversationManager: ConversationManager
+): Promise<void> {
+  const git = getGitManager(client);
+  const result = git.getConflicts(file);
+  sendMessage(client.ws, { type: 'git:conflicts_response', payload: result });
+}
