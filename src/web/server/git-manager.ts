@@ -683,4 +683,342 @@ export class GitManager {
       };
     }
   }
+
+  /**
+   * ========== Git Enhanced Features - Core Workflow ==========
+   */
+
+  /**
+   * Merge 分支合并
+   */
+  merge(branch: string, strategy?: 'no-ff' | 'squash' | 'ff-only' | 'default'): GitResult {
+    try {
+      if (!branch || !branch.trim()) {
+        return {
+          success: false,
+          error: '分支名不能为空',
+        };
+      }
+
+      let cmd = `merge "${branch}"`;
+      if (strategy === 'no-ff') {
+        cmd = `merge --no-ff "${branch}"`;
+      } else if (strategy === 'squash') {
+        cmd = `merge --squash "${branch}"`;
+      } else if (strategy === 'ff-only') {
+        cmd = `merge --ff-only "${branch}"`;
+      }
+
+      this.execGit(cmd);
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message || String(error) };
+    }
+  }
+
+  /**
+   * Rebase 变基
+   */
+  rebase(branch: string, onto?: string): GitResult {
+    try {
+      if (!branch || !branch.trim()) {
+        return {
+          success: false,
+          error: '分支名不能为空',
+        };
+      }
+
+      let cmd = `rebase "${branch}"`;
+      if (onto) {
+        cmd = `rebase --onto "${onto}" "${branch}"`;
+      }
+
+      this.execGit(cmd);
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message || String(error) };
+    }
+  }
+
+  /**
+   * Merge 中止
+   */
+  mergeAbort(): GitResult {
+    try {
+      this.execGit('merge --abort');
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message || String(error) };
+    }
+  }
+
+  /**
+   * Rebase 继续
+   */
+  rebaseContinue(): GitResult {
+    try {
+      this.execGit('rebase --continue');
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message || String(error) };
+    }
+  }
+
+  /**
+   * Rebase 中止
+   */
+  rebaseAbort(): GitResult {
+    try {
+      this.execGit('rebase --abort');
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message || String(error) };
+    }
+  }
+
+  /**
+   * Reset 操作
+   */
+  reset(commit: string, mode: 'soft' | 'mixed' | 'hard'): GitResult {
+    try {
+      if (!commit || !commit.trim()) {
+        return {
+          success: false,
+          error: 'Commit hash 不能为空',
+        };
+      }
+
+      this.execGit(`reset --${mode} "${commit}"`);
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message || String(error) };
+    }
+  }
+
+  /**
+   * Discard 单个文件的更改
+   */
+  discardFile(file: string): GitResult {
+    try {
+      if (!file || !file.trim()) {
+        return {
+          success: false,
+          error: '文件名不能为空',
+        };
+      }
+
+      // 使用 checkout -- 丢弃工作区更改
+      this.execGit(`checkout -- "${file}"`);
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message || String(error) };
+    }
+  }
+
+  /**
+   * Discard 所有更改
+   */
+  discardAll(): GitResult {
+    try {
+      // 丢弃所有工作区和暂存区的更改
+      this.execGit('reset --hard HEAD');
+      // 清理未跟踪的文件
+      this.execGit('clean -fd');
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message || String(error) };
+    }
+  }
+
+  /**
+   * Unstage 所有文件
+   */
+  unstageAll(): GitResult {
+    try {
+      this.execGit('reset HEAD');
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message || String(error) };
+    }
+  }
+
+  /**
+   * Amend 修改上次提交
+   */
+  amendCommit(message: string): GitResult {
+    try {
+      if (!message || !message.trim()) {
+        return {
+          success: false,
+          error: '提交信息不能为空',
+        };
+      }
+
+      // 通过 stdin 传递 commit message
+      execFileSync('git', ['commit', '--amend', '-F', '-'], {
+        cwd: this.cwd,
+        encoding: 'utf-8',
+        timeout: this.timeout,
+        input: message,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+
+      return { success: true };
+    } catch (error: any) {
+      const stderr = error.stderr || '';
+      return {
+        success: false,
+        error: stderr || error.message || String(error),
+      };
+    }
+  }
+
+  /**
+   * Revert 撤销某个提交
+   */
+  revertCommit(hash: string): GitResult {
+    try {
+      if (!hash || !hash.trim()) {
+        return {
+          success: false,
+          error: 'Commit hash 不能为空',
+        };
+      }
+
+      this.execGit(`revert --no-edit "${hash}"`);
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message || String(error) };
+    }
+  }
+
+  /**
+   * Cherry-pick 挑选提交
+   */
+  cherryPick(hash: string): GitResult {
+    try {
+      if (!hash || !hash.trim()) {
+        return {
+          success: false,
+          error: 'Commit hash 不能为空',
+        };
+      }
+
+      this.execGit(`cherry-pick "${hash}"`);
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message || String(error) };
+    }
+  }
+
+  /**
+   * 获取冲突文件内容
+   */
+  getConflicts(file: string): GitResult<{ file: string; ours: string; theirs: string; base?: string }> {
+    try {
+      if (!file || !file.trim()) {
+        return {
+          success: false,
+          error: '文件名不能为空',
+        };
+      }
+
+      // 获取 ours (当前分支版本)
+      let ours = '';
+      try {
+        ours = this.execGit(`show :2:"${file}"`);
+      } catch {
+        ours = '';
+      }
+
+      // 获取 theirs (合并分支版本)
+      let theirs = '';
+      try {
+        theirs = this.execGit(`show :3:"${file}"`);
+      } catch {
+        theirs = '';
+      }
+
+      // 获取 base (共同祖先版本)
+      let base = '';
+      try {
+        base = this.execGit(`show :1:"${file}"`);
+      } catch {
+        base = '';
+      }
+
+      return {
+        success: true,
+        data: {
+          file,
+          ours,
+          theirs,
+          base,
+        },
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.message || String(error),
+      };
+    }
+  }
+
+  /**
+   * 获取 Merge/Rebase 状态
+   */
+  getMergeStatus(): GitResult<{ inProgress: boolean; type: 'merge' | 'rebase' | 'cherry-pick' | null; conflicts: string[] }> {
+    try {
+      // 检查是否在 merge/rebase 中
+      let inProgress = false;
+      let type: 'merge' | 'rebase' | 'cherry-pick' | null = null;
+
+      // 检查 .git 目录中的标记文件
+      const fs = require('fs');
+      const path = require('path');
+      
+      if (fs.existsSync(path.join(this.cwd, '.git', 'MERGE_HEAD'))) {
+        inProgress = true;
+        type = 'merge';
+      } else if (fs.existsSync(path.join(this.cwd, '.git', 'rebase-merge')) || 
+                 fs.existsSync(path.join(this.cwd, '.git', 'rebase-apply'))) {
+        inProgress = true;
+        type = 'rebase';
+      } else if (fs.existsSync(path.join(this.cwd, '.git', 'CHERRY_PICK_HEAD'))) {
+        inProgress = true;
+        type = 'cherry-pick';
+      }
+
+      // 获取冲突文件列表
+      const conflicts: string[] = [];
+      if (inProgress) {
+        const statusOutput = this.execGit('status --porcelain');
+        statusOutput.split('\n').forEach(line => {
+          if (!line) return;
+          const x = line[0];
+          const y = line[1];
+          const file = line.substring(3);
+          
+          // 冲突标记
+          if (x === 'U' || y === 'U' || (x === 'A' && y === 'A') || (x === 'D' && y === 'D')) {
+            conflicts.push(file);
+          }
+        });
+      }
+
+      return {
+        success: true,
+        data: {
+          inProgress,
+          type,
+          conflicts,
+        },
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.message || String(error),
+      };
+    }
+  }
 }
