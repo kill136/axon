@@ -1725,3 +1725,72 @@ pre.git-ai-result-content {
   opacity: 0.9;
   transform: translateY(-1px);
 }
+
+/* ============================================
+   Diff View 模式切换
+   ============================================ */
+
+.git-diff-mode-switcher {
+  display: flex;
+  gap: 0;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  overflow: hidden;
+  margin: 0 auto;
+}
+
+.git-diff-mode-btn {
+  padding: 6px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.git-diff-mode-btn:hover {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.git-diff-mode-btn.active {
+  background: var(--accent-primary);
+  color: white;
+}
+
+.git-diff-mode-btn + .git-diff-mode-btn {
+  border-left: 1px solid var(--border-color);
+}
+
+/* ============================================
+   Diff View Split Mode
+   ============================================ */
+
+.git-diff-split-container {
+  display: flex;
+  height: 100%;
+  width: 100%;
+}
+
+.git-diff-split-pane {
+  flex: 1;
+  overflow-y: auto;
+  min-width: 0;
+}
+
+.git-diff-split-pane + .git-diff-split-pane {
+  border-left: 2px solid var(--border-color);
+}
+
+.git-diff-line--empty {
+  background: var(--bg-tertiary);
+  opacity: 0.3;
+}
+
+.git-diff-line--empty .git-diff-line-content {
+  visibility: hidden;
+}
