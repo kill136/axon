@@ -1585,3 +1585,143 @@ pre.git-ai-result-content {
     justify-content: flex-end;
   }
 }
+
+/* ============================================
+   Git Dialog (Merge Dialog)
+   ============================================ */
+
+.git-dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1001;
+}
+
+.git-dialog {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  width: 90%;
+  max-width: 550px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.git-dialog-header {
+  padding: 20px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.git-dialog-header h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.git-dialog-body {
+  padding: 20px;
+}
+
+.git-dialog-section {
+  margin-bottom: 16px;
+}
+
+.git-dialog-section label {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 12px;
+}
+
+.git-merge-strategies {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.git-merge-strategy-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-tertiary);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.git-merge-strategy-option:hover {
+  border-color: var(--accent-primary);
+  background: var(--bg-primary);
+}
+
+.git-merge-strategy-option input[type="radio"] {
+  margin-top: 2px;
+  cursor: pointer;
+}
+
+.git-merge-strategy-option div {
+  flex: 1;
+}
+
+.git-merge-strategy-option strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.git-merge-strategy-option p {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.4;
+}
+
+.git-dialog-footer {
+  padding: 16px 20px;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.git-dialog-cancel,
+.git-dialog-confirm {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.git-dialog-cancel {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+}
+
+.git-dialog-cancel:hover {
+  background: var(--bg-primary);
+}
+
+.git-dialog-confirm {
+  background: var(--accent-primary);
+  color: white;
+}
+
+.git-dialog-confirm:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}

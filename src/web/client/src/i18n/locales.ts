@@ -774,6 +774,8 @@ const en: Translations = {
   'git.strategyNoFF': 'No Fast-Forward (always create merge commit)',
   'git.strategySquash': 'Squash (combine all commits)',
   'git.strategyFFOnly': 'Fast-Forward Only (fail if not possible)',
+  'git.confirm': 'Confirm',
+  'git.confirmRebase': 'Are you sure you want to rebase current branch onto {{branch}}?',
 
   // InputArea
   'input.voiceStart': 'Start voice recognition',
@@ -1828,6 +1830,8 @@ const zh: Translations = {
   'git.strategyNoFF': '非快进（总是创建合并提交）',
   'git.strategySquash': '压缩（合并所有提交）',
   'git.strategyFFOnly': '仅快进（不可能则失败）',
+  'git.confirm': '确认',
+  'git.confirmRebase': '确定要将当前分支变基到 {{branch}} 吗？',
   // InputArea
   'input.voiceStart': '开启语音识别',
   'input.voiceListening': '正在监听（点击关闭）',
