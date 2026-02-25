@@ -3,7 +3,9 @@
  * 显示文件变更状态并提供 stage/unstage 操作
  */
 
+import { useState } from 'react';
 import { useLanguage } from '../../i18n';
+import { ContextMenu, type ContextMenuItem } from './ContextMenu';
 import type { GitStatus } from './index';
 
 interface StatusViewProps {
@@ -14,6 +16,15 @@ interface StatusViewProps {
 
 export function StatusView({ gitStatus, send, projectPath }: StatusViewProps) {
   const { t } = useLanguage();
+
+  // 右键菜单状态
+  const [contextMenu, setContextMenu] = useState<{
+    show: boolean;
+    x: number;
+    y: number;
+    file: string;
+    source: 'staged' | 'unstaged' | 'untracked' | 'conflict';
+  } | null>(null);
 
   // 如果没有 git status 数据，显示加载或空状态
   if (!gitStatus) {
@@ -54,6 +65,150 @@ export function StatusView({ gitStatus, send, projectPath }: StatusViewProps) {
       type: 'git:get_diff',
       payload: { projectPath, file },
     });
+  };
+
+  // 处理 Stage All
+  const handleStageAll = () => {
+    if (!projectPath) return;
+    const count = changes.length;
+    if (count === 0) return;
+    
+    const confirmed = window.confirm(t('git.confirmStageAll', { count }));
+    if (!confirmed) return;
+    
+    send({
+      type: 'git:stage_all',
+      payload: { projectPath },
+    });
+  };
+
+  // 处理 Unstage All
+  const handleUnstageAll = () => {
+    if (!projectPath) return;
+    const count = staged.length;
+    if (count === 0) return;
+    
+    const confirmed = window.confirm(t('git.confirmUnstageAll', { count }));
+    if (!confirmed) return;
+    
+    send({
+      type: 'git:unstage_all',
+      payload: { projectPath },
+    });
+  };
+
+  // 处理 Discard All
+  const handleDiscardAll = () => {
+    if (!projectPath) return;
+    const count = changes.length;
+    if (count === 0) return;
+    
+    const confirmed = window.confirm(t('git.confirmDiscard'));
+    if (!confirmed) return;
+    
+    send({
+      type: 'git:discard_all',
+      payload: { projectPath },
+    });
+  };
+
+  // 处理 Discard File
+  const handleDiscardFile = (file: string) => {
+    if (!projectPath) return;
+    
+    const confirmed = window.confirm(t('git.confirmDiscardFile', { file }));
+    if (!confirmed) return;
+    
+    send({
+      type: 'git:discard_file',
+      payload: { projectPath, file },
+    });
+  };
+
+  // 处理文件右键菜单
+  const handleContextMenu = (
+    e: React.MouseEvent,
+    file: string,
+    source: 'staged' | 'unstaged' | 'untracked' | 'conflict'
+  ) => {
+    e.preventDefault();
+    setContextMenu({
+      show: true,
+      x: e.clientX,
+      y: e.clientY,
+      file,
+      source,
+    });
+  };
+
+  // 生成右键菜单项
+  const getContextMenuItems = (): ContextMenuItem[] => {
+    if (!contextMenu) return [];
+
+    const { file, source } = contextMenu;
+    const items: ContextMenuItem[] = [];
+
+    // Stage / Unstage
+    if (source === 'unstaged' || source === 'untracked') {
+      items.push({
+        label: t('git.stage'),
+        icon: '➕',
+        onClick: () => handleStage(file),
+      });
+    } else if (source === 'staged') {
+      items.push({
+        label: t('git.unstage'),
+        icon: '➖',
+        onClick: () => handleUnstage(file),
+      });
+    }
+
+    // View Diff (staged/unstaged 文件可看 diff)
+    if (source === 'staged' || source === 'unstaged') {
+      items.push({
+        label: t('git.viewDiff'),
+        icon: '🔍',
+        onClick: () => handleFileDiff(file),
+      });
+    }
+
+    // Discard (unstaged/untracked 文件可丢弃)
+    if (source === 'unstaged' || source === 'untracked') {
+      items.push({
+        label: t('git.discard'),
+        icon: '🗑️',
+        onClick: () => handleDiscardFile(file),
+        danger: true,
+      });
+    }
+
+    // File History (所有文件)
+    items.push({
+      label: t('git.fileHistory'),
+      icon: '📜',
+      onClick: () => {
+        if (!projectPath) return;
+        send({
+          type: 'git:get_file_history',
+          payload: { projectPath, file },
+        });
+      },
+    });
+
+    // Blame (所有文件)
+    items.push({
+      label: t('git.blame'),
+      icon: '👤',
+      onClick: () => {
+        if (!projectPath) return;
+        send({
+          type: 'git:get_blame',
+          payload: { projectPath, file },
+        });
+      },
+    });
+
+    return items;
   };
 
   // 合并 unstaged + untracked 为 "更改" 组（与 VS Code 一致）
@@ -108,6 +263,36 @@ export function StatusView({ gitStatus, send, projectPath }: StatusViewProps) {
         )}
       </div>
 
+      {/* 批量操作按钮区域 */}
+      {hasChanges && (
+        <div className="git-status-actions">
+          <button
+            className="git-action-button git-action-button--stage-all"
+            onClick={handleStageAll}
+            disabled={changes.length === 0}
+            title={t('git.stageAll')}
+          >
+            {t('git.stageAll')}
+          </button>
+          <button
+            className="git-action-button git-action-button--unstage-all"
+            onClick={handleUnstageAll}
+            disabled={staged.length === 0}
+            title={t('git.unstageAll')}
+          >
+            {t('git.unstageAll')}
+          </button>
+          <button
+            className="git-action-button git-action-button--discard-all"
+            onClick={handleDiscardAll}
+            disabled={changes.length === 0}
+            title={t('git.discardAll')}
+          >
+            {t('git.discardAll')}
+          </button>
+        </div>
+      )}
+
       {/* 如果没有变更 */}
       {!hasChanges && (
         <div className="git-status-empty">
@@ -121,17 +306,24 @@ export function StatusView({ gitStatus, send, projectPath }: StatusViewProps) {
           <div className="git-file-group-title git-file-group-title--conflict">
             {t('git.conflicts')} ({conflicts.length})
           </div>
-          {conflicts.map((file, index) => (
-            <div key={`conflict-${index}`} className="git-file-item git-file-item--conflict">
-              <span className="git-file-status-badge">C</span>
-              <span className="git-file-name" onClick={() => handleFileDiff(cleanFileName(file, 'conflict'))}>
-                {cleanFileName(file, 'conflict')}
-              </span>
-              <div className="git-file-actions">
-                {/* Conflict 文件通常需要手动解决，这里只提供查看 diff */}
+          {conflicts.map((file, index) => {
+            const cleanFile = cleanFileName(file, 'conflict');
+            return (
+              <div
+                key={`conflict-${index}`}
+                className="git-file-item git-file-item--conflict"
+                onContextMenu={(e) => handleContextMenu(e, cleanFile, 'conflict')}
+              >
+                <span className="git-file-status-badge">C</span>
+                <span className="git-file-name" onClick={() => handleFileDiff(cleanFile)}>
+                  {cleanFile}
+                </span>
+                <div className="git-file-actions">
+                  {/* Conflict 文件通常需要手动解决，这里只提供查看 diff */}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -145,7 +337,11 @@ export function StatusView({ gitStatus, send, projectPath }: StatusViewProps) {
             const cleanFile = cleanFileName(file, 'staged');
             const badge = getFileStatusBadge(file, 'staged');
             return (
-              <div key={`staged-${index}`} className="git-file-item git-file-item--staged">
+              <div
+                key={`staged-${index}`}
+                className="git-file-item git-file-item--staged"
+                onContextMenu={(e) => handleContextMenu(e, cleanFile, 'staged')}
+              >
                 <span className="git-file-status-badge">{badge}</span>
                 <span className="git-file-name" onClick={() => handleFileDiff(cleanFile)}>
                   {cleanFile}
@@ -175,7 +371,11 @@ export function StatusView({ gitStatus, send, projectPath }: StatusViewProps) {
             const cleanFile = cleanFileName(file, source);
             const badge = getFileStatusBadge(file, source);
             return (
-              <div key={`change-${index}`} className="git-file-item git-file-item--modified">
+              <div
+                key={`change-${index}`}
+                className="git-file-item git-file-item--modified"
+                onContextMenu={(e) => handleContextMenu(e, cleanFile, source)}
+              >
                 <span className="git-file-status-badge">{badge}</span>
                 <span className="git-file-name" onClick={() => handleFileDiff(cleanFile)}>
                   {cleanFile}
@@ -188,11 +388,28 @@ export function StatusView({ gitStatus, send, projectPath }: StatusViewProps) {
                   >
                     {t('git.stage')}
                   </button>
+                  <button
+                    className="git-file-discard-btn"
+                    onClick={() => handleDiscardFile(cleanFile)}
+                    title={t('git.discard')}
+                  >
+                    {t('git.discard')}
+                  </button>
                 </div>
               </div>
             );
           })}
         </div>
+      )}
+
+      {/* 右键菜单 */}
+      {contextMenu && (
+        <ContextMenu
+          items={getContextMenuItems()}
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={() => setContextMenu(null)}
+        />
       )}
     </div>
   );
