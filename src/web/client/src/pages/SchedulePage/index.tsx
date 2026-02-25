@@ -282,6 +282,7 @@ const SchedulePage: React.FC = () => {
     const isActive = selectedId === task.id;
     const isRunning = typeof task.runningAtMs === 'number';
     const hasError = task.lastRunStatus === 'failed' || task.lastRunStatus === 'timeout';
+    const isStuck = isRunning && (now - task.runningAtMs!) > 10 * 60 * 1000; // 卡住超过 10 分钟
 
     return (
       <div
@@ -301,7 +302,9 @@ const SchedulePage: React.FC = () => {
           <div className={styles.taskStatus}>
             <span
               className={`${styles.statusDot} ${
-                isRunning
+                isStuck
+                  ? styles.stuck
+                  : isRunning
                   ? styles.running
                   : !task.enabled
                   ? styles.disabled
@@ -387,6 +390,30 @@ const SchedulePage: React.FC = () => {
           </div>
         </div>
 
+        {/* 卡住警告 */}
+        {typeof selectedTask.runningAtMs === 'number' && (
+          <div className={`${styles.warningCard} ${
+            now - selectedTask.runningAtMs > 10 * 60 * 1000 ? styles.stuckWarning : ''
+          }`}>
+            <div className={styles.warningIcon}>⚠️</div>
+            <div className={styles.warningContent}>
+              <div className={styles.warningTitle}>
+                {now - selectedTask.runningAtMs > 10 * 60 * 1000
+                  ? '任务可能已卡住'
+                  : '任务正在执行中'}
+              </div>
+              <div className={styles.warningText}>
+                开始于 {formatTime(selectedTask.runningAtMs)}
+                {now - selectedTask.runningAtMs > 10 * 60 * 1000 && (
+                  <span style={{ color: 'var(--accent-error)', marginLeft: '8px' }}>
+                    已运行 {formatDuration(now - selectedTask.runningAtMs)}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className={styles.detailInfo}>
           <div className={styles.infoCard}>
             <div className={styles.infoLabel}>{t('schedule.taskType') || '类型'}</div>
@@ -445,6 +472,11 @@ const SchedulePage: React.FC = () => {
               <div className={styles.infoLabel}>{t('schedule.errors')}</div>
               <div className={styles.infoValue} style={{ color: 'var(--accent-error)' }}>
                 {selectedTask.consecutiveErrors}
+                {selectedTask.nextRunAtMs && selectedTask.enabled && (
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                    下次重试：{formatCountdown(selectedTask.nextRunAtMs, now)} 后（退避中）
+                  </div>
+                )}
               </div>
             </div>
           )}
