@@ -383,3 +383,15 @@ export interface WSMessage {
   type: WSMessageType | string;  // 允许扩展类型
   payload?: unknown;
 }
+
+/**
+ * Git Merge Status
+ * 用于 MergeView 组件显示合并/变基冲突状态
+ */
+export interface GitMergeStatus {
+  inProgress: boolean;
+  type: 'merge' | 'rebase' | 'cherry-pick' | null;
+  conflicts: string[];
+  currentBranch: string;
+  targetBranch?: string;
+}
