@@ -8,7 +8,7 @@
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 [![Node](https://img.shields.io/badge/Node.js-%3E%3D18.0.0-brightgreen?style=flat-square)](https://nodejs.org)
 
-[访问网站](https://www.chatbi.site) | [在线体验](http://voicegpt.site:3456/) | [English README](README.md) | [Discord](https://discord.gg/bNyJKk6PVZ)
+[访问网站](https://www.chatbi.site) | [在线体验](http://voicegpt.site:3456/) | [操作手册](https://www.chatbi.site/zh/user-guide.html) | [English README](README.md) | [Discord](https://discord.gg/bNyJKk6PVZ)
 
 <div align="center">
 
