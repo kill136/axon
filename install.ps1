@@ -740,9 +740,15 @@ function Clone-Repository {
     )
 
     Write-Info "Cloning repository... (this may take a while)"
+    # git writes progress to stderr, which PowerShell treats as NativeCommandError
+    # under $ErrorActionPreference = "Stop". Temporarily relax to avoid false failures.
+    $prevEAP = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
     git clone -b private_web_ui --progress $RepoUrl $InstallDir 2>&1 | Write-Host
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "Git clone failed. Please check your network connection and try again."
+    $cloneExit = $LASTEXITCODE
+    $ErrorActionPreference = $prevEAP
+    if ($cloneExit -ne 0) {
+        Write-Error "Git clone failed (exit code $cloneExit). Please check your network connection and try again."
     }
     if (-not (Test-Path $InstallDir)) {
         Write-Error "Installation directory was not created. Git clone may have failed."
@@ -772,11 +778,16 @@ function Install-Npm {
             Write-Info "Updating existing installation..."
             Push-Location $InstallDir
             # Reset local changes (e.g. package-lock.json modified by npm install)
-            git checkout -- .
-            git clean -fd --exclude=.node
-            git pull origin private_web_ui
-            if ($LASTEXITCODE -ne 0) {
-                Write-Error "Git pull failed. Please check your network connection."
+            # Temporarily relax ErrorActionPreference — git writes to stderr
+            $prevEAP = $ErrorActionPreference
+            $ErrorActionPreference = "Continue"
+            git checkout -- . 2>&1 | Out-Null
+            git clean -fd --exclude=.node 2>&1 | Out-Null
+            git pull origin private_web_ui 2>&1 | Write-Host
+            $pullExit = $LASTEXITCODE
+            $ErrorActionPreference = $prevEAP
+            if ($pullExit -ne 0) {
+                Write-Error "Git pull failed (exit code $pullExit). Please check your network connection."
             }
         } else {
             Write-Warn "Existing directory is not a git repository. Removing and re-installing..."
