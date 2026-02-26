@@ -458,10 +458,12 @@ function Install-Git {
     # Strategy 2: Direct download (try multiple sources)
     $gitInstallerPath = Join-Path $env:TEMP "git-installer.exe"
 
-    # Git for Windows uses different naming: Git-2.47.1.2-64-bit.exe
-    # npmmirror uses: Git-2.47.1.2-64-bit.exe
-    # We try npmmirror first (faster in China), then GitHub
-    $gitVersion = "2.47.1.2"
+    # Git for Windows version naming:
+    #   GitHub release tag: v2.47.1.windows.1, file: Git-2.47.1-64-bit.exe
+    #   npmmirror mirrors GitHub releases with the same structure
+    # IMPORTANT: Use a version that exists on BOTH sources. Patch releases
+    # (e.g. 2.47.1.2) may not be mirrored on npmmirror.
+    $gitVersion = "2.47.1"
     $arch = if ([Environment]::Is64BitOperatingSystem) { "64-bit" } else { "32-bit" }
     $gitFile = "Git-$gitVersion-$arch.exe"
 
