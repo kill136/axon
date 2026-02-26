@@ -803,14 +803,14 @@ function Install-Npm {
     # Auto-detect China network and set npm mirror
     if ($script:RepoUrl -like '*gitee*') {
         Write-Info "Detected China network, setting npm registry to npmmirror..."
-        npm config set registry https://registry.npmmirror.com
+        npm.cmd config set registry https://registry.npmmirror.com
     }
 
     Write-Info "Installing dependencies..."
-    npm install --legacy-peer-deps
+    npm.cmd install --legacy-peer-deps
     if ($LASTEXITCODE -ne 0) {
         Write-Warn "Some native modules failed to compile, trying without optional dependencies..."
-        npm install --no-optional --legacy-peer-deps
+        npm.cmd install --no-optional --legacy-peer-deps
     }
 
     Write-Info "Building frontend..."
@@ -829,32 +829,32 @@ This usually means the git clone was incomplete. Please try:
     }
 
     Push-Location src\web\client
-    npm install
+    npm.cmd install
     if ($LASTEXITCODE -ne 0) {
         Write-Error "Frontend npm install failed."
     }
-    npm run build
+    npm.cmd run build
     if ($LASTEXITCODE -ne 0) {
         Write-Error "Frontend build failed."
     }
     Pop-Location
 
     Write-Info "Building backend..."
-    npm run build
+    npm.cmd run build
 
     # Link globally using npm's default prefix
     # On Windows, Node.js MSI sets default prefix to %APPDATA%\npm and adds it to PATH
     # We use the default prefix to avoid PATH issues; if custom prefix is needed, we handle it
     Write-Info "Linking globally..."
-    npm link
+    npm.cmd link
     if ($LASTEXITCODE -ne 0) {
         Write-Warn "npm link failed, trying with --force..."
-        npm link --force
+        npm.cmd link --force
     }
 
     # Determine where npm placed the global .cmd files
     # On Windows, npm global bin = prefix root (not prefix/bin)
-    $NpmGlobalDir = (npm config get prefix 2>$null)
+    $NpmGlobalDir = (npm.cmd config get prefix 2>$null)
     if ($NpmGlobalDir) {
         $NpmGlobalDir = $NpmGlobalDir.Trim()
         # Ensure this directory is in user PATH
@@ -952,7 +952,7 @@ function Uninstall {
 
     if (Test-Path $InstallDir) {
         Push-Location $InstallDir
-        try { npm unlink 2>$null } catch {}
+        try { npm.cmd unlink 2>$null } catch {}
         Pop-Location
         Remove-Item -Recurse -Force $InstallDir
         Write-Ok "Removed source directory"
