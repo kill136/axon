@@ -249,23 +249,56 @@ function SkillsTab({
             <div
               key={skill.name}
               className={`plugins-list-item ${isExpanded ? 'selected' : ''}`}
-              onClick={() => setExpandedSkill(isExpanded ? null : skill.name)}
             >
-              <div className="plugins-item-main">
-                <span className="plugins-item-icon">
-                  {isExpanded ? ICONS.arrowDown : ICONS.pointer}
-                </span>
+              {/* 卡片头部：名称 + badge + 操作按钮 */}
+              <div className="plugins-skill-item-header">
                 <span className="plugins-item-name">{skill.displayName}</span>
                 <span className={getSourceBadgeClass(skill.source)}>
                   {t(`plugins.skills.source.${skill.source}`)}
                 </span>
-                {!skill.enabled && (
-                  <span className="plugins-tag plugins-tag-disabled">[{t('plugins.skills.detail.disabled')}]</span>
-                )}
                 {skill.version && (
                   <span className="plugins-item-version">v{skill.version}</span>
                 )}
+                {!skill.enabled && (
+                  <span className="plugins-tag plugins-tag-disabled">{t('plugins.skills.detail.disabled')}</span>
+                )}
+                
+                {/* 右侧操作按钮 */}
+                <div className="plugins-skill-actions-inline">
+                  <button
+                    className="plugins-skill-action-icon"
+                    title={t('plugins.skills.actions.view')}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onViewContent(skill.name);
+                    }}
+                  >
+                    {ICONS.eye}
+                  </button>
+                  {skill.source !== 'plugin' && (
+                    <button
+                      className="plugins-skill-action-icon danger"
+                      title={t('plugins.skills.actions.delete')}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (confirm(t('plugins.skills.actions.confirmDelete'))) {
+                          onDelete(skill.name, skill.source);
+                        }
+                      }}
+                    >
+                      {ICONS.cross}
+                    </button>
+                  )}
+                  <span
+                    className="plugins-skill-expand-icon"
+                    onClick={() => setExpandedSkill(isExpanded ? null : skill.name)}
+                  >
+                    {isExpanded ? ICONS.arrowUp : ICONS.arrowDown}
+                  </span>
+                </div>
               </div>
+
+              {/* 描述（2行截断） */}
               {skill.description && (
                 <div className="plugins-item-desc">{skill.description}</div>
               )}
@@ -308,17 +341,8 @@ function SkillsTab({
                     <code>{skill.path}</code>
                   </div>
 
-                  {/* 操作按钮 */}
+                  {/* 展开区域的操作按钮 */}
                   <div className="plugins-item-actions" style={{ marginLeft: 0, marginTop: 12 }}>
-                    <button
-                      className="plugins-action-btn"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onViewContent(skill.name);
-                      }}
-                    >
-                      {ICONS.eye} {t('plugins.skills.actions.view')}
-                    </button>
                     <button
                       className="plugins-action-btn"
                       onClick={(e) => {
@@ -328,19 +352,6 @@ function SkillsTab({
                     >
                       {skill.enabled ? t('plugins.skills.actions.disable') : t('plugins.skills.actions.enable')}
                     </button>
-                    {skill.source !== 'plugin' && (
-                      <button
-                        className="plugins-action-btn plugins-action-danger"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (confirm(t('plugins.skills.actions.confirmDelete'))) {
-                            onDelete(skill.name, skill.source);
-                          }
-                        }}
-                      >
-                        {ICONS.trash} {t('plugins.skills.actions.delete')}
-                      </button>
-                    )}
                   </div>
                 </div>
               )}
