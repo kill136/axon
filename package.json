@@ -1,6 +1,6 @@
 {
   "name": "claude-code-open",
-  "version": "2.1.33",
+  "version": "2.1.35",
   "description": "Open source AI coding platform with 37+ tools, Web IDE, multi-agent system, and MCP protocol support",
   "type": "module",
   "bin": {
