@@ -407,6 +407,8 @@ export interface StreamCallbacks {
   onContextCompact?: (phase: 'start' | 'end' | 'error', info?: Record<string, any>) => void;
   /** 上下文使用量更新 */
   onContextUpdate?: (usage: { usedTokens: number; maxTokens: number; percentage: number; model: string }) => void;
+  /** API 速率限制更新 */
+  onRateLimitUpdate?: (info: { status: string; utilization5h?: number; utilization7d?: number; resetsAt?: number; rateLimitType?: string; }) => void;
 }
 
 /**
@@ -1652,6 +1654,27 @@ export class ConversationManager {
               }
               break;
 
+            case 'response_headers': {
+              if (event.headers) {
+                const headers = event.headers as Headers;
+                const status = (headers.get('anthropic-ratelimit-unified-status') || 'allowed') as string;
+                const resetStr = headers.get('anthropic-ratelimit-unified-reset');
+                const resetsAt = resetStr ? Number(resetStr) : undefined;
+                const representativeClaim = headers.get('anthropic-ratelimit-unified-representative-claim') || undefined;
+                // 解析 5h 和 7d 使用率
+                const util5h = headers.get('anthropic-ratelimit-unified-5h-utilization');
+                const util7d = headers.get('anthropic-ratelimit-unified-7d-utilization');
+                callbacks.onRateLimitUpdate?.({
+                  status,
+                  utilization5h: util5h !== null ? Number(util5h) : undefined,
+                  utilization7d: util7d !== null ? Number(util7d) : undefined,
+                  resetsAt,
+                  rateLimitType: representativeClaim,
+                });
+              }
+              break;
+            }
+
             case 'error':
               throw new Error(event.error || 'Unknown stream error');
           }
@@ -2823,6 +2846,52 @@ export class ConversationManager {
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error);
           console.error(`[Tool] GenerateDesign 执行失败:`, errorMessage);
+          callbacks.onToolResult?.(toolUse.id, false, undefined, errorMessage);
+          return { success: false, error: errorMessage };
+        }
+      }
+
+      // 拦截 McpManage 工具 - AI Agent 管理 MCP 服务器生命周期
+      if (toolUse.name === 'McpManage') {
+        const input = toolUse.input as { action: string; name?: string };
+        try {
+          if (input.action === 'list') {
+            const servers = this.listMcpServers();
+            const lines = servers.map((s: any) =>
+              `- ${s.name}: ${s.enabled ? 'ENABLED' : 'DISABLED'} (type: ${s.type}, tools: ${s.toolsCount})`
+            );
+            const output = servers.length > 0
+              ? `MCP Servers (${servers.length}):\n${lines.join('\n')}`
+              : 'No MCP servers configured.';
+            callbacks.onToolResult?.(toolUse.id, true, output);
+            return { success: true, output };
+          }
+
+          if (input.action === 'enable' || input.action === 'disable') {
+            if (!input.name) {
+              const error = `"name" parameter is required for ${input.action} action.`;
+              callbacks.onToolResult?.(toolUse.id, false, undefined, error);
+              return { success: false, error };
+            }
+            const enabled = input.action === 'enable';
+            const result = await this.toggleMcpServer(input.name, enabled);
+            if (result.success) {
+              const output = `MCP server "${input.name}" has been ${result.enabled ? 'enabled' : 'disabled'}.`;
+              callbacks.onToolResult?.(toolUse.id, true, output);
+              return { success: true, output };
+            } else {
+              const error = `Failed to ${input.action} MCP server "${input.name}".`;
+              callbacks.onToolResult?.(toolUse.id, false, undefined, error);
+              return { success: false, error };
+            }
+          }
+
+          const error = `Unknown McpManage action: ${input.action}. Use "list", "enable", or "disable".`;
+          callbacks.onToolResult?.(toolUse.id, false, undefined, error);
+          return { success: false, error };
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          console.error(`[Tool] McpManage 执行失败:`, errorMessage);
           callbacks.onToolResult?.(toolUse.id, false, undefined, errorMessage);
           return { success: false, error: errorMessage };
         }
@@ -4069,9 +4138,39 @@ Guidelines:
   private convertMessagesToChatHistory(messages: Message[]): ChatMessage[] {
     const chatHistory: ChatMessage[] = [];
 
+    // 预构建 tool_use_id → tool_result 映射，用于将工具结果关联回工具调用
+    const toolResultMap = new Map<string, { output?: string; error?: string; images?: any[] }>();
+    for (const msg of messages) {
+      if (!Array.isArray(msg.content)) continue;
+      for (const block of msg.content) {
+        if ((block as any).type === 'tool_result' && (block as any).tool_use_id) {
+          const tr = block as any;
+          let output = '';
+          let images: any[] | undefined;
+          if (typeof tr.content === 'string') {
+            output = tr.content;
+          } else if (Array.isArray(tr.content)) {
+            const textParts: string[] = [];
+            const imgParts: any[] = [];
+            for (const part of tr.content) {
+              if (part.type === 'text') textParts.push(part.text);
+              else if (part.type === 'image') imgParts.push(part);
+            }
+            output = textParts.join('\n');
+            if (imgParts.length > 0) images = imgParts;
+          }
+          toolResultMap.set(tr.tool_use_id, {
+            output: output || undefined,
+            error: tr.is_error ? output : undefined,
+            images,
+          });
+        }
+      }
+    }
+
     for (let i = 0; i < messages.length; i++) {
       const msg = messages[i];
-      // 跳过 tool_result 消息（它们会被合并到工具调用中）
+      // 跳过 tool_result 消息（它们已被合并到工具调用中）
       if (Array.isArray(msg.content) && msg.content.some((c: any) => c.type === 'tool_result')) {
         continue;
       }
@@ -4110,13 +4209,24 @@ Guidelines:
             });
           } else if (block.type === 'tool_use') {
             const toolBlock = block as ToolUseBlock;
-            chatMsg.content.push({
+            // 从 toolResultMap 中查找对应的工具结果
+            const toolResult = toolResultMap.get(toolBlock.id);
+            const chatToolUse: any = {
               type: 'tool_use',
               id: toolBlock.id,
               name: toolBlock.name,
               input: toolBlock.input,
               status: 'completed',
-            });
+            };
+            if (toolResult) {
+              chatToolUse.result = {
+                success: !toolResult.error,
+                output: toolResult.error ? undefined : toolResult.output,
+                error: toolResult.error,
+                data: toolResult.images ? { images: toolResult.images } : undefined,
+              };
+            }
+            chatMsg.content.push(chatToolUse);
           }
         }
       }

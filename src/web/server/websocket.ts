@@ -2475,6 +2475,13 @@ async function handleChatMessage(
         });
       },
 
+      onRateLimitUpdate: (info: { status: string; utilization5h?: number; utilization7d?: number; resetsAt?: number; rateLimitType?: string; }) => {
+        sendMessage(getActiveWs(), {
+          type: 'rate_limit_update',
+          payload: { ...info, sessionId: chatSessionId },
+        });
+      },
+
       onContextCompact: (phase: 'start' | 'end' | 'error', info?: Record<string, any>) => {
         sendMessage(getActiveWs(), {
           type: 'context_compact',
@@ -3042,6 +3049,12 @@ async function handleSessionSwitch(
             sendMessage(getActiveWs(), {
               type: 'context_update',
               payload: { ...usage, sessionId: chatSessionId },
+            });
+          },
+          onRateLimitUpdate: (info: { status: string; utilization5h?: number; utilization7d?: number; resetsAt?: number; rateLimitType?: string; }) => {
+            sendMessage(getActiveWs(), {
+              type: 'rate_limit_update',
+              payload: { ...info, sessionId: chatSessionId },
             });
           },
           onContextCompact: (phase: 'start' | 'end' | 'error', info?: Record<string, any>) => {

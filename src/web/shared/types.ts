@@ -265,6 +265,7 @@ export type ServerMessage =
   | { type: 'tool_result'; payload: ToolResultPayload }
   | { type: 'message_complete'; payload: MessageCompletePayload }
   | { type: 'context_update'; payload: ContextUpdatePayload }
+  | { type: 'rate_limit_update'; payload: RateLimitUpdatePayload }
   | { type: 'context_compact'; payload: ContextCompactPayload }
   | { type: 'error'; payload: { message: string; code?: string; sessionId?: string; source?: string } }
   | { type: 'thinking_start'; payload: { messageId: string; sessionId?: string } }
@@ -462,6 +463,18 @@ export interface ContextUpdatePayload {
   percentage: number;
   /** 当前模型 */
   model: string;
+  sessionId?: string;
+}
+
+/**
+ * API 速率限制更新负载
+ */
+export interface RateLimitUpdatePayload {
+  status: string;
+  utilization5h?: number;
+  utilization7d?: number;
+  resetsAt?: number;
+  rateLimitType?: string;
   sessionId?: string;
 }
 

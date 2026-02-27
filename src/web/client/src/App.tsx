@@ -94,6 +94,7 @@ function AppContent({
     setStatus,
     contextUsage,
     compactState,
+    rateLimitInfo,
     permissionRequest,
     setPermissionRequest,
     userQuestion,
@@ -494,6 +495,7 @@ function AppContent({
               onCancel={chatInput.handleCancel}
               contextUsage={contextUsage}
               compactState={compactState}
+              rateLimitInfo={rateLimitInfo}
               hasCompactBoundary={hasCompactBoundary}
               isTranscriptMode={isTranscriptMode}
               onToggleTranscriptMode={() => setIsTranscriptMode(!isTranscriptMode)}
