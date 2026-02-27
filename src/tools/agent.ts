@@ -1258,11 +1258,11 @@ ${!isAgentTeamsEnabled() ? `\nNote: The "Agent Teams" feature (TeammateTool, Sen
       .catch((error) => {
         // 执行失败 — 记录完整堆栈到日志
         agent.status = 'failed';
-        const errorMsg = error instanceof Error ? error.message : String(error);
+        const errorMsg = error instanceof Error ? (error.message || error.constructor.name) : String(error);
         const errorStack = error instanceof Error ? error.stack : undefined;
-        agent.error = errorStack || errorMsg;
+        agent.error = errorStack || errorMsg || 'Unknown error';
         agent.endTime = new Date();
-        addAgentHistory(agent, 'failed', `Agent failed: ${errorMsg}${errorStack ? '\n' + errorStack : ''}`);
+        addAgentHistory(agent, 'failed', `Agent failed: ${errorMsg || 'Unknown error'}${errorStack ? '\n' + errorStack : ''}`);
         saveAgentState(agent);
 
         // v2.1.7: 发送代理失败通知
@@ -1298,17 +1298,17 @@ ${!isAgentTeamsEnabled() ? `\nNote: The "Agent Teams" feature (TeammateTool, Sen
       return agent.result;
     } catch (error) {
       agent.status = 'failed';
-      const errorMsg = error instanceof Error ? error.message : String(error);
+      const errorMsg = error instanceof Error ? (error.message || error.constructor.name) : String(error);
       const errorStack = error instanceof Error ? error.stack : undefined;
-      agent.error = errorStack || errorMsg;
+      agent.error = errorStack || errorMsg || 'Unknown error';
       agent.endTime = new Date();
 
-      addAgentHistory(agent, 'failed', `Agent failed: ${errorMsg}${errorStack ? '\n' + errorStack : ''}`);
+      addAgentHistory(agent, 'failed', `Agent failed: ${errorMsg || 'Unknown error'}${errorStack ? '\n' + errorStack : ''}`);
       saveAgentState(agent);
 
       return {
         success: false,
-        error: t('agent.executionFailed', { error: errorMsg + (errorStack ? '\nStack: ' + errorStack : '') }),
+        error: t('agent.executionFailed', { error: (errorMsg || 'Unknown error') + (errorStack ? '\nStack: ' + errorStack : '') }),
       };
     }
   }

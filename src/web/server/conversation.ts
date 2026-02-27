@@ -12,7 +12,7 @@ import { toolRegistry, registerBlueprintTools } from '../../tools/index.js';
 import { systemPromptBuilder, type PromptContext } from '../../prompt/index.js';
 import { modelConfig } from '../../models/index.js';
 import { configManager } from '../../config/index.js';
-import { initAuth, getAuth, createOAuthApiKey } from '../../auth/index.js';
+import { getAuth, createOAuthApiKey } from '../../auth/index.js';
 import type { Message, ContentBlock, ToolUseBlock, TextBlock } from '../../types/index.js';
 import type { ChatMessage, ChatContent, ToolResultData, PermissionConfigPayload, PermissionRequestPayload, SystemPromptConfig, SystemPromptGetPayload, DebugMessagesPayload } from '../shared/types.js';
 import { UserInteractionHandler } from './user-interaction.js';
@@ -543,12 +543,12 @@ export class ConversationManager {
       // navigateToSwarm 在 createSession 中按会话设置（需要 ws 引用）
     });
 
-    // 初始化认证系统（加载 OAuth token 或 API key）
-    const auth = initAuth();
-    if (auth) {
-      console.log(`[ConversationManager] 认证类型: ${auth.type}${auth.accountType ? ` (${auth.accountType})` : ''}`);
+    // 检查认证状态（WebUI 使用 webAuth 作为唯一认证入口）
+    const authStatus = webAuth.getStatus();
+    if (authStatus.authenticated) {
+      console.log(`[ConversationManager] 认证类型: ${authStatus.type} (${authStatus.provider})`);
     } else {
-      console.warn('[ConversationManager] 警告: 未找到认证信息，请先运行 /login 登录');
+      console.log('[ConversationManager] 未配置认证，等待用户在设置页面配置 API Key 或登录 OAuth');
     }
 
     // 设置 ExecutionManager 的认证配置，供蜂群子 agent 使用
@@ -2173,7 +2173,7 @@ export class ConversationManager {
           spawnCmd = process.execPath;
           spawnArgs = [compiledCliPath, 'daemon', 'start'];
         }
-        const dp = spawn(spawnCmd, spawnArgs, { detached: true, stdio: ['ignore', logFd, logFd], cwd: process.cwd() });
+        const dp = spawn(spawnCmd, spawnArgs, { detached: true, stdio: ['ignore', logFd, logFd], cwd: process.cwd(), windowsHide: true });
         dp.unref();
         fs.closeSync(logFd);
       } catch { /* 不影响任务执行 */ }

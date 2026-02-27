@@ -128,6 +128,9 @@ async function createRelayServer(
   port: number,
 ): Promise<ChromeExtensionRelayServer> {
   const authToken = resolveRelayAuthToken(port);
+
+  // Verbose CDP logging — only when CLAUDE_VERBOSE or RELAY_VERBOSE is set
+  const verbose = process.env.CLAUDE_VERBOSE === 'true' || process.env.RELAY_VERBOSE === 'true';
   
   // State
   const connectedTargets = new Map<string, ConnectedTarget>();
@@ -191,7 +194,7 @@ async function createRelayServer(
       sessionEventBuffer.set(sessionId, buf);
     }
     buf.push(message);
-    console.log(`[Relay] Buffered ${eventMethod} for session ${sessionId} (${buf.length} buffered)`);
+    if (verbose) console.log(`[Relay] Buffered ${eventMethod} for session ${sessionId} (${buf.length} buffered)`);
     return true;
   }
 
@@ -203,7 +206,7 @@ async function createRelayServer(
       return;
     }
     sessionEventBuffer.delete(sessionId);
-    console.log(`[Relay] Flushing ${buf.length} buffered events for session ${sessionId}`);
+    if (verbose) console.log(`[Relay] Flushing ${buf.length} buffered events for session ${sessionId}`);
     for (const msg of buf) {
       broadcastToCDPClients(msg);
     }
@@ -455,7 +458,7 @@ async function createRelayServer(
       return;
     }
 
-    console.log(`[Relay] EXT <<< ${method || 'response'}`, id !== undefined ? `id=${id}` : '', params ? JSON.stringify(params).substring(0, 200) : '');
+    if (verbose) console.log(`[Relay] EXT <<< ${method || 'response'}`, id !== undefined ? `id=${id}` : '', params ? JSON.stringify(params).substring(0, 200) : '');
 
     // Handle forwardCDPEvent
     if (method === 'forwardCDPEvent') {
@@ -634,13 +637,13 @@ async function createRelayServer(
    */
   async function handleCDPMessage(client: WebSocket, message: any) {
     const { id, method, params, sessionId } = message;
-    console.log(`[Relay] CDP <<< ${method}`, params ? JSON.stringify(params).substring(0, 200) : '', 'targets:', connectedTargets.size);
+    if (verbose) console.log(`[Relay] CDP <<< ${method}`, params ? JSON.stringify(params).substring(0, 200) : '', 'targets:', connectedTargets.size);
 
     // Track Page.getFrameTree commands to buffer Runtime events during init.
     const isFrameTree = method === 'Page.getFrameTree' && sessionId;
     if (isFrameTree) {
       sessionsPendingFrameTree.add(sessionId);
-      console.log(`[Relay] Page.getFrameTree pending for session ${sessionId}`);
+      if (verbose) console.log(`[Relay] Page.getFrameTree pending for session ${sessionId}`);
     }
 
     try {
@@ -651,7 +654,7 @@ async function createRelayServer(
       const response: any = { id, result };
       if (sessionId) response.sessionId = sessionId;
       const resultStr = JSON.stringify(result || {});
-      console.log(`[Relay] CDP >>> id=${id} ${method} ${sessionId ? 'sid=' + sessionId : ''}`, resultStr.substring(0, method === 'Page.getFrameTree' ? 5000 : 200));
+      if (verbose) console.log(`[Relay] CDP >>> id=${id} ${method} ${sessionId ? 'sid=' + sessionId : ''}`, resultStr.substring(0, method === 'Page.getFrameTree' ? 5000 : 200));
       sendToCDPClient(client, response);
 
       // After sending Page.getFrameTree response, flush buffered events.

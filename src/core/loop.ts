@@ -620,89 +620,80 @@ export function validateToolResults(messages: Message[]): Message[] {
   }
 
   // 3. 找出孤立的 tool_use（有 tool_use 但没有对应的 tool_result）
-  const orphanedToolUseIds: string[] = [];
+  const orphanedIds = new Set<string>();
   for (const id of toolUseIds) {
     if (!toolResultIds.has(id)) {
-      orphanedToolUseIds.push(id);
+      orphanedIds.add(id);
     }
   }
 
   // 如果没有孤立的 tool_use，直接返回
-  if (orphanedToolUseIds.length === 0) {
+  if (orphanedIds.size === 0) {
     return result;
   }
 
-  // 4. 创建 error tool_result 块
-  const errorToolResults: Array<{ type: 'tool_result'; tool_use_id: string; content: string; is_error: boolean }> = [];
-  for (const id of orphanedToolUseIds) {
-    const toolName = toolUseNames.get(id) || 'unknown';
-    errorToolResults.push({
-      type: 'tool_result',
-      tool_use_id: id,
-      content: `Error: ${ORPHANED_TOOL_ERROR_MESSAGE} (Tool: ${toolName})`,
-      is_error: true,
-    });
-  }
+  // 4. 逐个 assistant 消息就地修复：为其中的孤立 tool_use 在紧接着的 user 消息中补上 error tool_result
+  // API 要求每个 tool_use block 的 tool_result 必须在"紧接的下一条 user 消息"中，
+  // 不能统一放到消息列表末尾。
+  let fixedCount = 0;
 
-  // 5. 将 error tool_result 追加到消息列表
-  // 策略：找到最后一条 assistant 消息之后的 user 消息，如果没有则创建一个新的
-
-  // 从后往前找最后一个 assistant 消息的索引
-  let lastAssistantIndex = -1;
+  // 从后往前遍历，因为 splice 插入会改变后续索引，从后往前不影响前面的索引
   for (let i = result.length - 1; i >= 0; i--) {
-    if (result[i].role === 'assistant') {
-      lastAssistantIndex = i;
-      break;
-    }
-  }
-
-  if (lastAssistantIndex === -1) {
-    // 没有 assistant 消息，这不应该发生，但为了安全起见
-    return result;
-  }
-
-  // 检查最后一个 assistant 消息之后是否有 user 消息包含 tool_result
-  let targetUserMsgIndex = -1;
-  for (let i = lastAssistantIndex + 1; i < result.length; i++) {
     const msg = result[i];
-    if (msg.role === 'user' && Array.isArray(msg.content)) {
-      // 检查是否包含 tool_result
-      const hasToolResult = msg.content.some(
-        (block) =>
-          typeof block === 'object' &&
-          'type' in block &&
-          block.type === 'tool_result'
-      );
-      if (hasToolResult) {
-        targetUserMsgIndex = i;
-        break;
+    if (msg.role !== 'assistant' || !Array.isArray(msg.content)) {
+      continue;
+    }
+
+    // 收集此 assistant 消息中的孤立 tool_use ids
+    const orphansInThisMsg: string[] = [];
+    for (const block of msg.content) {
+      if (
+        typeof block === 'object' &&
+        'type' in block &&
+        block.type === 'tool_use' &&
+        'id' in block &&
+        typeof block.id === 'string' &&
+        orphanedIds.has(block.id)
+      ) {
+        orphansInThisMsg.push(block.id);
       }
     }
-  }
 
-  if (targetUserMsgIndex !== -1) {
-    // 追加到现有的 user 消息中
-    const existingUserMsg = result[targetUserMsgIndex];
-    if (Array.isArray(existingUserMsg.content)) {
-      result[targetUserMsgIndex] = {
-        ...existingUserMsg,
-        content: [...existingUserMsg.content, ...errorToolResults],
-      };
+    if (orphansInThisMsg.length === 0) {
+      continue;
     }
-  } else {
-    // 在最后一个 assistant 消息之后创建新的 user 消息
-    const newUserMsg: Message = {
-      role: 'user',
-      content: errorToolResults,
-    };
-    // 插入到 lastAssistantIndex + 1 位置
-    result.splice(lastAssistantIndex + 1, 0, newUserMsg);
+
+    // 创建 error tool_result 块
+    const errorResults = orphansInThisMsg.map(id => ({
+      type: 'tool_result' as const,
+      tool_use_id: id,
+      content: `Error: ${ORPHANED_TOOL_ERROR_MESSAGE} (Tool: ${toolUseNames.get(id) || 'unknown'})`,
+      is_error: true,
+    }));
+
+    // 检查紧接着的下一条消息是否是 user 消息
+    const nextIndex = i + 1;
+    if (nextIndex < result.length && result[nextIndex].role === 'user' && Array.isArray(result[nextIndex].content)) {
+      // 追加到现有 user 消息中
+      result[nextIndex] = {
+        ...result[nextIndex],
+        content: [...(result[nextIndex].content as any[]), ...errorResults],
+      };
+    } else {
+      // 在 assistant 消息之后插入新的 user 消息
+      result.splice(nextIndex, 0, {
+        role: 'user',
+        content: errorResults,
+      } as Message);
+    }
+
+    fixedCount += orphansInThisMsg.length;
   }
 
   // 输出调试信息
-  if (orphanedToolUseIds.length > 0) {
-    console.log(chalk.yellow(`[validateToolResults] Fixed ${orphanedToolUseIds.length} orphaned tool_use(s):`));
-    for (const id of orphanedToolUseIds) {
+  if (fixedCount > 0) {
+    console.log(chalk.yellow(`[validateToolResults] Fixed ${fixedCount} orphaned tool_use(s):`));
+    for (const id of orphanedIds) {
       const toolName = toolUseNames.get(id) || 'unknown';
       console.log(chalk.yellow(`  - ${toolName} (${id})`));
     }

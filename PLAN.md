@@ -1,108 +1,181 @@
-# Web UI API 额度使用量显示
+# Browser Tool Reliability Fix Plan
 
-## 需求
-用户需要在 Web UI 中看到 Anthropic API 的 Plan 使用量（类似 claude.ai/settings/usage 页面），包括：
-- 当前会话周期的使用率百分比
-- 每周限制的使用率
-- 重置时间
+## 问题清单（按优先级）
 
-## 数据来源
-Anthropic API 每次响应都会返回 `anthropic-ratelimit-unified-*` 系列响应头：
-- `anthropic-ratelimit-unified-status`: allowed / allowed_warning / rejected
-- `anthropic-ratelimit-unified-reset`: 重置时间 (Unix timestamp)
-- `anthropic-ratelimit-unified-5h-utilization`: 5 小时窗口使用率 (0-1)
-- `anthropic-ratelimit-unified-7d-utilization`: 7 天窗口使用率 (0-1)
-- `anthropic-ratelimit-unified-representative-claim`: 限制类型
-- `anthropic-ratelimit-unified-fallback`: 是否有降级可用
+### P0-1: 端口冲突导致 start 反复失败
+**根因**: `findAvailableCdpPort()` 只检查 CDP 端口（如 9222）是否可用，但不检查 relay 端口（cdpPort+1，如 9223）也可用。当其他进程（daemon、orphan Chrome）占了中间端口时，选到的 cdpPort 看起来可用，但 relay 端口被占。
 
-CLI 的 `loop.ts` 已经有 `parseRateLimitHeaders()` 和 `updateRateLimitStatus()` 函数（~line 290-363），但 `conversation.ts` 的流式处理没有处理 `response_headers` 事件。
-
-## 实现方案
-
-### 1. 后端：conversation.ts 添加 response_headers 处理
-
-**文件**: `src/web/server/conversation.ts`
-
-- 从 `../../core/loop.js` 导出 `parseRateLimitHeaders` 函数（需要先在 loop.ts 中 export）
-- 在 StreamCallbacks 接口添加 `onRateLimitUpdate` 回调
-- 在 for-await 循环的 switch 中添加 `case 'response_headers'`，解析 headers 并调用回调
+**修复方案**: 
+- `findAvailableCdpPort()` 需要同时检查 `port` 和 `port+1` 都可用才选中
+- 文件: `src/browser/manager.ts` 行 71-79
 
 ```typescript
-// StreamCallbacks 新增：
-onRateLimitUpdate?: (info: {
-  status: string;        // allowed | allowed_warning | rejected
-  utilization5h?: number; // 5h 使用率 (0-1)
-  utilization7d?: number; // 7d 使用率 (0-1)
-  resetsAt?: number;     // 重置时间 Unix timestamp (seconds)
-  rateLimitType?: string;
-}) => void;
+async function findAvailableCdpPort(preferredPort?: number): Promise<number> {
+  if (preferredPort) {
+    // Must check both CDP port AND relay port (cdpPort+1)
+    if (await isPortAvailable(preferredPort) && await isPortAvailable(preferredPort + 1)) {
+      return preferredPort;
+    }
+  }
+  for (let port = CDP_PORT_RANGE_START; port <= CDP_PORT_RANGE_END; port += 2) {
+    // Allocate in pairs: even=CDP, odd=relay
+    if (await isPortAvailable(port) && await isPortAvailable(port + 1)) {
+      return port;
+    }
+  }
+  throw new Error(`No available CDP+relay port pair found in range ${CDP_PORT_RANGE_START}-${CDP_PORT_RANGE_END}.`);
+}
 ```
 
-### 2. 后端：loop.ts 导出 parseRateLimitHeaders
+### P0-2: stop 不彻底 — orphan 进程
+**根因**: BrowserTool 的 `stop` action 只关闭 session tab，不关 Chrome 进程和 relay server。当最后一个 session 关闭时，Chrome 和 relay 变成孤儿。
 
-**文件**: `src/core/loop.ts`
-
-- 导出 `parseRateLimitHeaders` 函数（当前是模块内部函数）
-- 或者直接在 conversation.ts 中内联解析逻辑（更简单，避免跨模块依赖）
-
-**决定**: 直接在 conversation.ts 中内联解析。因为 conversation.ts 已经不依赖 loop.ts 的流式处理，保持独立性更好。
-
-### 3. 后端：websocket.ts 注册回调
-
-**文件**: `src/web/server/websocket.ts`
-
-在 `onContextUpdate` 回调旁边添加：
+**修复方案**:
+- 在 BrowserTool 的 `stop` 中，关闭 session tab 后检查是否还有活跃 session：如果 `controllers.size === 0`，调用 `manager.stop()` 彻底关闭
+- 文件: `src/tools/browser.ts` 行 246-252
 
 ```typescript
-onRateLimitUpdate: (info) => {
-  sendMessage(getActiveWs(), {
-    type: 'rate_limit_update',
-    payload: { ...info, sessionId: chatSessionId },
-  });
-},
+case 'stop': {
+  const stopSessionId = getSessionId();
+  await this.removeController(stopSessionId);
+  
+  // If no more active sessions, fully shut down browser
+  if (this.controllers.size === 0) {
+    await manager.stop();
+    return this.success('Browser stopped. All sessions closed, Chrome and relay shut down.');
+  }
+  return this.success('Session browser tab closed. Browser process remains running for other sessions.');
+}
 ```
 
-### 4. 前端：useMessageHandler 处理消息
+### P0-3: Orphan Chrome 检测与清理
+**根因**: 当进程异常退出（SelfEvolve 重启、崩溃）时，之前启动的 Chrome 进程成为孤儿，占着 CDP 端口。下次 start 时这些端口不可用但 Chrome 不在我们管控范围内。
 
-**文件**: `src/web/client/src/hooks/useMessageHandler.ts`
+**修复方案**: 
+在 `start()` 中，如果发现目标端口不可用，尝试检测是否是我们自己启动的 Chrome（通过 user-data-dir 路径判断），如果是就 kill 掉。
 
-- 新增 `rateLimitInfo` state
-- 在 switch 中添加 `case 'rate_limit_update'`
-- 返回 `rateLimitInfo`
+- 文件: `src/browser/manager.ts`，在 `start()` 方法中添加
 
-### 5. 前端：创建 ApiUsageBar 组件
+```typescript
+// Before findAvailableCdpPort, kill any orphan Chrome processes using our user-data-dirs
+await killOrphanChromes();
+```
 
-**文件**: `src/web/client/src/components/ApiUsageBar.tsx` + `ApiUsageBar.css`
+```typescript
+async function killOrphanChromes(): Promise<void> {
+  if (process.platform !== 'win32') return; // Linux/macOS 有进程组管理
+  try {
+    // Find Chrome processes with our user-data-dir pattern
+    const output = execSync(
+      'wmic process where "name=\'chrome.exe\'" get commandline,processid /format:csv',
+      { encoding: 'utf-8', timeout: 5000, windowsHide: true }
+    );
+    const browserDir = path.join(os.homedir(), '.claude', 'browser');
+    for (const line of output.split('\n')) {
+      if (line.includes(browserDir) && line.includes('--remote-debugging-port')) {
+        const pidMatch = line.match(/,(\d+)\s*$/);
+        if (pidMatch) {
+          const pid = parseInt(pidMatch[1], 10);
+          console.log(`[BrowserManager] Killing orphan Chrome PID ${pid}`);
+          try {
+            execSync(`taskkill /pid ${pid} /T /F`, { stdio: 'ignore', windowsHide: true });
+          } catch { /* best effort */ }
+        }
+      }
+    }
+  } catch { /* best effort */ }
+}
+```
 
-显示一个紧凑的使用量指示器，类似 ContextBar 风格：
-- 显示 5h 使用率进度条 + 百分比
-- hover 时显示详细信息（7d 使用率、重置时间）
-- 颜色分级：绿/黄/红
+### P0-4: Cloudflare Turnstile 无法通过
+**根因**: Cloudflare Turnstile 检测到浏览器特征不正常，触发人机验证。我们的 Chrome 虽然使用了 extension relay（不直接暴露 CDP），但还有以下问题：
+1. `--remote-debugging-port` 和 `--remote-debugging-pipe` 同时存在，某些检测脚本会通过 Chrome DevTools Protocol 暴露
+2. 没有注入任何 stealth 脚本来隐藏 automation 特征
+3. Turnstile widget 使用 shadow DOM，Playwright 的 `ariaSnapshot` 和 `click` 无法触及
 
-### 6. 前端：在 InputArea 中集成
+**修复方案（分两步）**:
 
-**文件**: `src/web/client/src/components/InputArea.tsx`
+**Step A — Stealth 注入（在 extension background.js 中添加）:**
+在每个 tab attach 时，通过 `chrome.debugger.sendCommand` 注入 stealth 脚本到页面，覆盖常见指纹检测点：
+- `navigator.webdriver = false`（确认是否已生效）
+- `navigator.plugins` 伪造
+- `window.chrome.runtime` 伪造
+- `Permissions.query` 覆盖（notification 权限）
 
-在 ContextBar 旁边添加 ApiUsageBar。
+文件: `src/browser/extension/background.js`，在 attach tab 的回调中注入。
 
-### 7. App.tsx 传递 props
+**Step B — Turnstile 交互支持:**
+在 controller 中添加 Cloudflare turnstile 专门处理：
+- 检测 turnstile iframe（`challenges.cloudflare.com`）
+- 切换到 turnstile iframe 的 frame
+- 点击 checkbox
+- 或者，提供 `frame_select` 后点击的流程
 
-**文件**: `src/web/client/src/App.tsx`
+文件: `src/browser/controller.ts`，添加 turnstile 辅助方法
 
-从 useMessageHandler 获取 rateLimitInfo，传递给 InputArea。
+### P1-1: Screenshot 频繁超时
+**根因**: Playwright 的 `page.screenshot()` 默认超时 30s，复杂页面（Twitter）字体加载可能超时。
 
-## 修改文件清单
+**修复方案**:
+- 给 screenshot 加 timeout 参数，默认设为 60s
+- 如果超时，自动降级为不等待字体加载的截图
+- 文件: `src/browser/controller.ts` 行 913-918
 
-1. `src/web/server/conversation.ts` - 添加 response_headers case + StreamCallbacks
-2. `src/web/server/websocket.ts` - 注册 onRateLimitUpdate 回调
-3. `src/web/client/src/hooks/useMessageHandler.ts` - 处理 rate_limit_update 消息
-4. `src/web/client/src/components/ApiUsageBar.tsx` - 新组件
-5. `src/web/client/src/components/ApiUsageBar.css` - 新样式
-6. `src/web/client/src/components/InputArea.tsx` - 集成 ApiUsageBar
-7. `src/web/client/src/App.tsx` - 传递 rateLimitInfo
-8. `src/web/client/src/components/ContextBar.tsx` - 导出 formatTokens 等工具函数（可选复用）
+```typescript
+async screenshot(options?: { fullPage?: boolean; timeout?: number }): Promise<Buffer> {
+  const page = await this.getSessionPage();
+  const timeout = options?.timeout ?? 60000;
+  try {
+    return await page.screenshot({ 
+      fullPage: options?.fullPage ?? false,
+      scale: 'css',
+      timeout,
+    });
+  } catch (err: any) {
+    if (err.message?.includes('Timeout') || err.message?.includes('timeout')) {
+      // Fallback: disable font waiting via evaluate
+      await page.evaluate(() => document.fonts?.ready).catch(() => {});
+      return await page.screenshot({
+        fullPage: options?.fullPage ?? false,
+        scale: 'css',
+        timeout: 10000,
+        animations: 'disabled',
+      });
+    }
+    throw err;
+  }
+}
+```
 
-## 注意事项
-- response_headers 只在每次 API 调用完成后才有，不是实时更新
-- 如果用户刚进入页面还没有发过消息，不会有使用量数据，不显示即可
-- 5h 和 7d 使用率可能不同时存在，只显示有的那个
+### P1-2: Extension Service Worker 连接不稳定
+**根因**: Extension 加载后 Service Worker 可能因多种原因不启动：
+1. Chrome SW 缓存了旧版本的 background.js
+2. SW 启动延迟
+3. Relay server 的 auth token 不匹配
+
+**修复方案**:
+- 在 manager.start() 中，如果 extension 5s 内没连接，强制 reload extension
+  （这个已有，但需要加强：用 `chrome.runtime.reload` 而不是 `loadUnpacked` 重复调用）
+- 在 relay server 启动前清除旧的 SW 缓存
+- 给 extension 的 background.js 加版本号，确保每次都是新 SW
+
+文件: `src/browser/manager.ts` 行 552-601 (extension connection wait loop)
+文件: `src/browser/extension/background.js` (版本号机制)
+
+## 执行顺序
+
+1. **P0-1**: 修复端口分配（同时检查 CDP+relay）—— 1个文件
+2. **P0-2**: stop 彻底清理（无活跃 session 时关闭一切）—— 1个文件  
+3. **P0-3**: Orphan Chrome 清理（start 前检测并杀死）—— 1个文件
+4. **P1-1**: Screenshot 超时降级 —— 1个文件
+5. **P1-2**: Extension 连接稳定性 —— 2个文件
+6. **P0-4**: Cloudflare turnstile 支持 —— 2个文件（复杂度最高，放最后）
+
+## 涉及文件
+
+| 文件 | 改动 |
+|------|------|
+| `src/browser/manager.ts` | P0-1, P0-3, P1-2 |
+| `src/tools/browser.ts` | P0-2 |
+| `src/browser/controller.ts` | P1-1 |
+| `src/browser/extension/background.js` | P0-4, P1-2 |

@@ -1,0 +1,17 @@
+- generic [ref=e2]:
+  - generic:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - dialog:
+                - group [ref=e3]:
+                  - dialog [ref=e5]:
+                    - generic [ref=e19]:
+                      - generic [ref=e20]: 出错了。请尝试重新加载。
+                      - button "重试" [ref=e21] [cursor=pointer]:
+                        - generic [ref=e22]:
+                          - img [ref=e23]
+                          - generic [ref=e27]: 重试
+      - main [ref=e17]

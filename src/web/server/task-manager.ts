@@ -624,9 +624,9 @@ export class TaskManager {
       // 任务失败 — 保留完整堆栈用于诊断
       task.status = 'failed';
       task.endTime = new Date();
-      const errorMsg = error instanceof Error ? error.message : String(error);
+      const errorMsg = error instanceof Error ? (error.message || error.constructor.name) : String(error);
       const errorStack = error instanceof Error ? error.stack : undefined;
-      task.error = errorMsg;
+      task.error = errorMsg || 'Unknown error';
       const totalDuration = task.endTime.getTime() - task.startTime.getTime();
 
       // v12.0: 构建结构化错误

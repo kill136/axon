@@ -415,6 +415,7 @@ export class UpdateManager extends EventEmitter {
 
       const proc = child_process.spawn(npm, args, {
         stdio: ['pipe', 'pipe', 'pipe'],
+        windowsHide: true,
       });
 
       let stdout = '';

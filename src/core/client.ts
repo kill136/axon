@@ -745,8 +745,7 @@ export class ClaudeClient {
     const apiKey = authToken ? null : (config.apiKey || process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY);
 
     if (!apiKey && !authToken) {
-      console.error('[ClaudeClient] ERROR: No API key found!');
-      console.error('[ClaudeClient] Please set ANTHROPIC_API_KEY environment variable or provide apiKey in config');
+      console.warn('[ClaudeClient] No API key or auth token configured. API calls will fail until authentication is set up.');
     }
 
     // 构建默认 headers（与官方 Claude Code 完全一致）

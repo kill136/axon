@@ -244,10 +244,15 @@ ADVANCED FEATURES:
         }
 
         case 'stop': {
-          // 只关闭当前会话的专属 tab，不关闭整个浏览器
-          // 浏览器是共享资源，其他会话和用户可能仍在使用
+          // 关闭当前会话的专属 tab
           const stopSessionId = getSessionId();
           await this.removeController(stopSessionId);
+
+          // 如果没有更多活跃 session，彻底关闭浏览器和 relay
+          if (this.controllers.size === 0) {
+            await manager.stop();
+            return this.success('Browser fully stopped. All sessions closed, Chrome and relay shut down.');
+          }
           return this.success('Session browser tab closed. Browser process remains running for other sessions.');
         }
 

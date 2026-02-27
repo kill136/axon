@@ -2226,6 +2226,15 @@ async function handleChatMessage(
 
   console.log(`[WebSocket] handleChatMessage - sessionId: ${sessionId}, projectPath: ${projectPath || 'undefined'}`);
 
+  // 认证前置检查：发消息前确认有有效凭证
+  if (!webAuth.isAuthenticated()) {
+    sendMessage(ws, {
+      type: 'error',
+      payload: { message: '未配置 API Key。请在设置页面配置 API Key 或登录 OAuth 后再发送消息。' },
+    });
+    return;
+  }
+
   // 检查是否为斜杠命令
   if (isSlashCommand(content)) {
     await handleSlashCommand(client, content, conversationManager);

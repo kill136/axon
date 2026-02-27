@@ -1010,6 +1010,7 @@ async function runTextInterface(
             detached: true,
             stdio: ['ignore', logFd, logFd],
             cwd: process.cwd(),
+            windowsHide: true,
           });
           daemonProcess.unref();
           daemonFs.closeSync(logFd);

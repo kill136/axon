@@ -161,6 +161,7 @@ async function executeUnsandboxed(
       env: safeEnv,
       stdio: ['pipe', 'pipe', 'pipe'],
       timeout: config.resourceLimits?.maxExecutionTime,
+      windowsHide: true,
     });
 
     let stdout = '';
@@ -225,6 +226,7 @@ async function executeWithUlimit(
         stdio: ['pipe', 'pipe', 'pipe'],
         timeout: config.resourceLimits?.maxExecutionTime,
         shell: true,
+        windowsHide: true,
       });
     } else {
       proc = child_process.spawn('sh', ['-c', fullCommand], {

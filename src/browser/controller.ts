@@ -914,7 +914,8 @@ export class BrowserController {
     const page = await this.getSessionPage();
     return await page.screenshot({ 
       fullPage: options?.fullPage ?? false,
-      scale: 'css'
+      scale: 'css',
+      timeout: 30000,
     });
   }
 
@@ -932,7 +933,8 @@ export class BrowserController {
     if (refs.length === 0) {
       const buffer = await page.screenshot({ 
         fullPage: options?.fullPage ?? false,
-        scale: 'css'
+        scale: 'css',
+        timeout: 15000,
       });
       return { buffer, labelCount: 0, skippedCount: 0 };
     }
@@ -1019,7 +1021,8 @@ export class BrowserController {
     // Take screenshot
     const buffer = await page.screenshot({ 
       fullPage: options?.fullPage ?? false,
-      scale: 'css'
+      scale: 'css',
+      timeout: 15000,
     });
 
     // Remove overlays

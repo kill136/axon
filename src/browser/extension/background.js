@@ -28,8 +28,8 @@ const PING_INTERVAL_MS = 5000;
 const KEEPALIVE_INTERVAL_MS = 30000;
 
 // __RELAY_CONFIG_START__ (do not edit - replaced by installExtension)
-const INJECTED_RELAY_PORT = 9225;
-const INJECTED_GATEWAY_TOKEN = "63732c150e07fa3e9a8df7bd8a31709458b07850a81dbbee702985f2c2afbce9";
+const INJECTED_RELAY_PORT = 9223;
+const INJECTED_GATEWAY_TOKEN = "70aae498aa81cdb63c37f5d561a9e1bfa1dd0208206132417bc0a3301c8b6d37";
 // __RELAY_CONFIG_END__
 
 // Tab states: 'attaching' | 'attached' | 'detaching' | 'detached'
@@ -491,6 +491,62 @@ async function attachTab(tabId) {
       console.log('[Bridge] attachTab: calling chrome.debugger.attach...');
       await chrome.debugger.attach({ tabId }, '1.3');
       console.log('[Bridge] attachTab: debugger attached successfully');
+
+      // --- Inject stealth scripts to avoid bot detection ---
+      const stealthScript = `
+        // 1. navigator.webdriver = false
+        Object.defineProperty(navigator, 'webdriver', { get: () => false });
+
+        // 2. Fake plugins (Chrome typically has 5)
+        Object.defineProperty(navigator, 'plugins', {
+          get: () => {
+            const arr = [
+              { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+              { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai', description: '' },
+              { name: 'Native Client', filename: 'internal-nacl-plugin', description: '' },
+            ];
+            arr.item = (i) => arr[i] || null;
+            arr.namedItem = (n) => arr.find(p => p.name === n) || null;
+            arr.refresh = () => {};
+            return arr;
+          }
+        });
+
+        // 3. Fake languages
+        Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+
+        // 4. Permissions.query override (notification = prompt)
+        const origQuery = window.Permissions?.prototype?.query;
+        if (origQuery) {
+          window.Permissions.prototype.query = function(desc) {
+            if (desc?.name === 'notifications') {
+              return Promise.resolve({ state: Notification.permission });
+            }
+            return origQuery.call(this, desc);
+          };
+        }
+
+        // 5. Patch chrome.runtime to look non-automated
+        if (!window.chrome) window.chrome = {};
+        if (!window.chrome.runtime) window.chrome.runtime = { connect: () => {}, sendMessage: () => {} };
+      `;
+
+      // Inject for all future navigations
+      try {
+        await chrome.debugger.sendCommand({ tabId }, 'Page.addScriptToEvaluateOnNewDocument', { source: stealthScript });
+      } catch (e) {
+        console.warn('[Bridge] Failed to add stealth script for future navigations:', e);
+      }
+
+      // Execute immediately on current page
+      try {
+        await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
+          expression: stealthScript,
+          returnByValue: true,
+        });
+      } catch (e) {
+        console.warn('[Bridge] Failed to evaluate stealth script on current page:', e);
+      }
 
       // Get target info
       const targetInfo = await chrome.debugger.sendCommand({ tabId }, 'Target.getTargetInfo', {});

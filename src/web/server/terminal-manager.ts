@@ -137,6 +137,7 @@ export class TerminalManager {
         },
         stdio: ['pipe', 'pipe', 'pipe'],
         shell: false,
+        windowsHide: true,
       });
 
       childProcess.stdout?.on('data', (data: Buffer) => {

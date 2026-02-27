@@ -70,12 +70,71 @@ async function isPortAvailable(port: number): Promise<boolean> {
 
 async function findAvailableCdpPort(preferredPort?: number): Promise<number> {
   if (preferredPort) {
-    if (await isPortAvailable(preferredPort)) return preferredPort;
+    // Must check both CDP port AND relay port (cdpPort+1)
+    if (await isPortAvailable(preferredPort) && await isPortAvailable(preferredPort + 1)) {
+      return preferredPort;
+    }
   }
   for (let port = CDP_PORT_RANGE_START; port <= CDP_PORT_RANGE_END; port++) {
-    if (await isPortAvailable(port)) return port;
+    // Both CDP port and relay port (port+1) must be free
+    if (await isPortAvailable(port) && await isPortAvailable(port + 1)) {
+      return port;
+    }
   }
-  throw new Error(`No available CDP port found in range ${CDP_PORT_RANGE_START}-${CDP_PORT_RANGE_END}.`);
+  throw new Error(`No available CDP+relay port pair found in range ${CDP_PORT_RANGE_START}-${CDP_PORT_RANGE_END}.`);
+}
+
+/**
+ * Kill orphan Chrome processes from previous interrupted sessions.
+ * Looks for chrome.exe processes with --user-data-dir pointing to .claude/browser.
+ */
+async function killOrphanChromes(): Promise<void> {
+  try {
+    const browserDir = path.join(os.homedir(), '.claude', 'browser').replace(/\\/g, '\\\\');
+    let pids: number[] = [];
+
+    if (process.platform === 'win32') {
+      const output = execSync(
+        `wmic process where "name='chrome.exe'" get commandline,processid /format:csv`,
+        { encoding: 'utf-8', timeout: 5000, windowsHide: true }
+      );
+      for (const line of output.split('\n')) {
+        if (line.includes('.claude') && line.includes('browser') && line.includes('--remote-debugging-')) {
+          const pidMatch = line.match(/,(\d+)\s*$/);
+          if (pidMatch) pids.push(parseInt(pidMatch[1], 10));
+        }
+      }
+      for (const pid of pids) {
+        console.log(`[BrowserManager] Killing orphan Chrome PID ${pid}`);
+        try { execSync(`taskkill /pid ${pid} /T /F`, { stdio: 'ignore', windowsHide: true, timeout: 3000 }); } catch { /* best effort */ }
+      }
+    } else {
+      // Unix: pgrep + ps
+      try {
+        const output = execSync(
+          `ps aux | grep -E 'chrome.*\\.claude.browser.*--remote-debugging-' | grep -v grep`,
+          { encoding: 'utf-8', timeout: 5000 }
+        );
+        for (const line of output.trim().split('\n')) {
+          if (!line) continue;
+          const parts = line.trim().split(/\s+/);
+          if (parts[1]) pids.push(parseInt(parts[1], 10));
+        }
+      } catch { /* no matches */ }
+      for (const pid of pids) {
+        console.log(`[BrowserManager] Killing orphan Chrome PID ${pid}`);
+        try { process.kill(pid, 'SIGKILL'); } catch { /* best effort */ }
+      }
+    }
+
+    if (pids.length > 0) {
+      console.log(`[BrowserManager] Cleaned up ${pids.length} orphan Chrome process(es)`);
+      // Wait briefly for ports to be released
+      await new Promise(r => setTimeout(r, 500));
+    }
+  } catch {
+    // Best effort — don't block browser start
+  }
 }
 
 /** Get auth headers for relay server (no-op for direct Chrome CDP) */
@@ -442,6 +501,9 @@ export class BrowserManager {
     this._starting = true;
 
     try {
+    // Kill orphan Chrome processes from previous crashed sessions
+    await killOrphanChromes();
+
     // Clean up any orphaned Chrome from a previous interrupted start
     if (this.running) {
       try { killProc(this.running.proc); } catch { /* best effort */ }
@@ -480,6 +542,17 @@ export class BrowserManager {
     }
 
     ensureCleanExit(userDataDir);
+
+    // --- Remove stale lockfile to prevent Chrome startup issues ---
+    const lockfile = path.join(userDataDir, 'lockfile');
+    if (fs.existsSync(lockfile)) {
+      try {
+        fs.unlinkSync(lockfile);
+        console.log('[BrowserManager] Removed stale lockfile');
+      } catch {
+        // Chrome may still be holding it; ignore
+      }
+    }
 
     // --- Start relay server ---
     const relayPort = cdpPort + 1;
@@ -537,16 +610,56 @@ export class BrowserManager {
     const extId = await loadExtensionViaPipe(chrome, extensionPath);
     console.log('[BrowserManager] Extension loaded, ID:', extId);
 
-    // --- Wait for extension to connect to relay ---
+    // --- Wait for extension service worker to start and connect to relay ---
     const maxWait = 15000;
     const pollInterval = 500;
     let waited = 0;
+    let reloadAttempted = false;
+
     while (waited < maxWait) {
       if (this._relayServer.extensionConnected()) break;
       await new Promise(resolve => setTimeout(resolve, pollInterval));
       waited += pollInterval;
+
+      // At 5s mark: check if service worker is running; if not, reload extension
+      if (waited >= 5000 && !reloadAttempted) {
+        reloadAttempted = true;
+        try {
+          const targets = await sendCdpViaPipe(chrome, 'Target.getTargets') as {
+            targetInfos: Array<{ targetId: string; type: string; url: string }>;
+          };
+          const swTargets = targets.targetInfos?.filter(
+            (t: any) => t.type === 'service_worker' && t.url?.includes(extId),
+          ) || [];
+
+          if (swTargets.length === 0) {
+            console.warn('[BrowserManager] No extension SW found after 5s, reloading extension...');
+            try {
+              await loadExtensionViaPipe(chrome, extensionPath);
+              console.log('[BrowserManager] Extension reloaded');
+            } catch (reloadErr: any) {
+              console.warn('[BrowserManager] Extension reload failed:', reloadErr.message);
+            }
+          } else {
+            console.log(`[BrowserManager] SW running but not connected to relay yet (url: ${swTargets[0].url})`);
+          }
+        } catch { /* ignore diagnostic errors */ }
+      }
+
+      if (waited % 5000 === 0 && waited > 0) {
+        console.log(`[BrowserManager] Waiting for extension connection... ${waited / 1000}s`);
+      }
     }
+
     if (!this._relayServer.extensionConnected()) {
+      // Final diagnostic
+      try {
+        const targets = await sendCdpViaPipe(chrome, 'Target.getTargets') as {
+          targetInfos: Array<{ type: string; url: string }>;
+        };
+        const types = targets.targetInfos?.map((t: any) => `${t.type}:${t.url?.substring(0, 60)}`).join(' | ') || 'none';
+        console.error(`[BrowserManager] Extension connection timeout. Chrome targets: ${types}`);
+      } catch { /* ignore */ }
       throw new Error(`Extension did not connect to relay within ${maxWait / 1000}s. Extension ID: ${extId}`);
     }
     console.log(`[BrowserManager] Extension connected to relay after ${waited}ms`);
@@ -598,22 +711,10 @@ export class BrowserManager {
       this._relayServer = null;
     }
 
-    // Restore default config in background.js (pipe mode injects real values into dist/)
-    try {
-      const extSourceDir = this.getExtensionSourcePath();
-      const bgPath = path.join(extSourceDir, 'background.js');
-      if (fs.existsSync(bgPath)) {
-        let bgContent = fs.readFileSync(bgPath, 'utf-8');
-        bgContent = bgContent.replace(
-          /\/\/ __RELAY_CONFIG_START__[\s\S]*?\/\/ __RELAY_CONFIG_END__/,
-          `// __RELAY_CONFIG_START__ (do not edit - replaced by installExtension)\n` +
-          `const INJECTED_RELAY_PORT = 0;\n` +
-          `const INJECTED_GATEWAY_TOKEN = '';\n` +
-          `// __RELAY_CONFIG_END__`
-        );
-        fs.writeFileSync(bgPath, bgContent);
-      }
-    } catch { /* ignore */ }
+    // NOTE: We intentionally do NOT reset background.js to port=0 on stop.
+    // Chrome may cache the service worker, so leaving the last valid config
+    // prevents a stale SW from running with port=0. start() always re-injects
+    // the correct config before launching Chrome.
 
     this.cleanup();
   }

@@ -1,0 +1,40 @@
+- generic [ref=e2]:
+  - generic:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - dialog:
+                - group [ref=e3]:
+                  - dialog "注册 X" [ref=e15]:
+                    - group [ref=e17]:
+                      - generic [ref=e22]:
+                        - button "关闭" [active] [ref=e24] [cursor=pointer]:
+                          - img [ref=e26]
+                        - img "X" [ref=e31]
+                      - generic [ref=e38]:
+                        - heading "注册 X" [level=1] [ref=e41]:
+                          - generic [ref=e42]: 注册 X
+                        - iframe [ref=e45]:
+                          - button "使用 Google 账号登录。在新标签页中打开" [ref=f4e3] [cursor=pointer]:
+                            - generic [ref=f4e5]:
+                              - img [ref=f4e7]
+                              - generic [ref=f4e14]: 使用 Google 账号登录
+                        - button "使用 Apple 登录" [ref=e46] [cursor=pointer]:
+                          - generic [ref=e47]:
+                            - img [ref=e48]
+                            - generic [ref=e52]: 使用 Apple 登录
+                        - generic [ref=e57]: 或
+                        - generic [ref=e62]:
+                          - generic [ref=e64]: 手机号码、邮件地址或用户名
+                          - textbox "手机号码、邮件地址或用户名" [ref=e67]
+                        - button "下一步" [ref=e70] [cursor=pointer]:
+                          - generic [ref=e73]: 下一步
+                        - button "忘记密码？" [ref=e74] [cursor=pointer]:
+                          - generic [ref=e77]: 忘记密码？
+                        - generic [ref=e78]:
+                          - generic [ref=e79]: 还没有账号？
+                          - button "注册" [ref=e80]:
+                            - generic [ref=e81]: 注册
+      - main [ref=e13]

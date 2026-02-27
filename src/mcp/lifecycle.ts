@@ -224,6 +224,7 @@ export class McpLifecycleManager extends EventEmitter {
     const childProcess = spawn(config.command, config.args || [], {
       env: { ...(globalThis.process?.env || {}), ...config.env },
       stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
     });
 
     this.childProcesses.set(serverName, childProcess);

@@ -107,6 +107,7 @@ export class ShellManager extends EventEmitter {
         env: safeEnv,
         stdio: ['ignore', 'pipe', 'pipe'],
         shell: true,
+        windowsHide: true,
       });
     } else {
       // Unix: 使用 bash -c
