@@ -85,30 +85,28 @@ npm install -g @anthropic-ai/claude-code
 
 ## Quick Installation (Recommended)
 
-### Windows Quick Install (Easiest)
+### Method 1: npm (Recommended)
 
-**Option A: One-Click Installer** — download and double-click, no command line needed!
+Requires [Node.js](https://nodejs.org/) >= 18 already installed.
+
+```bash
+npm install -g claude-code-open
+```
+
+After install, run `claude` (CLI) or `claude-web` (Web UI). A desktop shortcut is created automatically on Windows/Linux.
+
+### Method 2: One-Click Installer
+
+For users who don't have Node.js or any dev tools installed. The script handles everything automatically.
+
+**Windows:**
 
 [![Windows Installer](https://img.shields.io/badge/Windows-Download%20Installer-blue?style=for-the-badge&logo=windows)](https://github.com/kill136/claude-code-open/releases/latest/download/install.bat)
 [![Gitee Mirror](https://img.shields.io/badge/Gitee-China%20Mirror-orange?style=for-the-badge&logo=gitee)](https://gitee.com/lubanbbs/claude-code-open/raw/private_web_ui/install.bat)
 
-1. Click the button above to download `install.bat`
-2. Double-click the downloaded file to run
-3. Done! The installer handles everything (Node.js, dependencies, build, shortcut)
+Download `install.bat`, double-click to run. Done.
 
-**Option B: Pre-built Package** — download, unzip, run. No build needed!
-
-[![Download Release](https://img.shields.io/badge/Download-Pre--built%20Package-green?style=for-the-badge&logo=github)](https://github.com/kill136/claude-code-open/releases/latest)
-
-1. Download `claude-code-open-windows-x64-*.zip` from the latest Release
-2. Unzip to any folder
-3. Double-click `start.bat` to launch (requires [Node.js](https://nodejs.org/) pre-installed)
-
----
-
-### macOS / Linux Quick Install
-
-**Option A: One-Click Install Script**
+**macOS / Linux:**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/kill136/claude-code-open/private_web_ui/install.sh | bash
@@ -119,123 +117,45 @@ China mirror:
 curl -fsSL https://gitee.com/lubanbbs/claude-code-open/raw/private_web_ui/install.sh | bash
 ```
 
-**Option B: Pre-built Package** — download, extract, run!
+The installer will: detect & install Node.js/Git, clone repo, build, create desktop shortcut, link global commands.
 
-[![Download Release](https://img.shields.io/badge/Download-Pre--built%20Package-green?style=for-the-badge&logo=github)](https://github.com/kill136/claude-code-open/releases/latest)
-
-| Platform | File |
-| --- | --- |
-| macOS Apple Silicon (M1/M2/M3/M4) | `claude-code-open-macos-arm64-*.tar.gz` |
-| macOS Intel | `claude-code-open-macos-x64-*.tar.gz` |
-| Linux x64 | `claude-code-open-linux-x64-*.tar.gz` |
+### Method 3: Docker
 
 ```bash
-# Extract and run (requires Node.js pre-installed)
-tar -xzf claude-code-open-*.tar.gz
-cd claude-code-open-*/
-./start.sh
-```
-
----
-
-### Advanced: PowerShell (Windows)
-
-```powershell
-irm https://raw.githubusercontent.com/kill136/claude-code-open/private_web_ui/install.ps1 | iex
-```
-
-The install script will automatically:
-- ✅ Detect and install missing dependencies (Node.js, Git, g++, make)
-- ✅ Clone the repository
-- ✅ Install all npm dependencies
-- ✅ Build frontend and backend
-- ✅ Create desktop shortcut
-- ✅ Preset API configuration
-- ✅ Link global commands
-
-**After installation:**
-1. Double-click the desktop shortcut "Claude Code WebUI"
-2. Browser opens http://localhost:3456 automatically
-3. Start using!
-
-### Manual Installation
-
-```bash
-# Clone repository
-git clone https://github.com/kill136/claude-code-open.git
-cd claude-code-open
-
-# Install dependencies
-npm install
-
-# Build frontend
-cd src/web/client
-npm install
-npm run build
-cd ../../..
-
-# Build backend
-npm run build
-
-# Link globally (optional)
-npm link
-
-# Optional: Install Playwright CLI (browser automation)
-npm run install:playwright
-```
-
-### Windows Notes
-
-**Native addon compilation (usually NOT required):**
-
-The project depends on native addons (`better-sqlite3`, `node-pty`, `sharp`, etc.), but they all ship with **prebuilt binaries** for Windows x64. Under normal circumstances, `npm install` downloads the prebuilt binaries directly — no compilation needed.
-
-If prebuilt download fails (e.g., network issues, uncommon Node.js version), npm falls back to compiling from source. **Only in this case** do you need:
-
-- **Python 3.6+** — required by node-gyp
-- **Visual Studio Build Tools 2022** — "Desktop development with C++" workload
-
-**Environment variable conflicts:**
-
-| Variable | Purpose |
-| --- | --- |
-| `ANTHROPIC_API_KEY` / `CLAUDE_API_KEY` | API authentication |
-| `ANTHROPIC_BASE_URL` | Custom API endpoint (default: `https://api.anthropic.com`) |
-
-If you already have these set system-wide, set them per session to avoid conflicts:
-
-```powershell
-# PowerShell (current session only)
-$env:ANTHROPIC_API_KEY="your-key-for-this-project"
-$env:ANTHROPIC_BASE_URL="https://your-api-endpoint"
-```
-
-> Note: The `.env` file in the project root is **NOT** loaded automatically. Environment variables must be set via system settings, `settings.json`, or the `--env` CLI flag.
-
-### Docker Deployment
-
-```bash
-# Build Docker image
-docker build -t claude-code-open .
-
-# For users in China (with mirror acceleration)
-docker build --build-arg REGISTRY=docker.1ms.run -t claude-code-open .
-
-# Run CLI
-docker run -it \
-  -e ANTHROPIC_API_KEY=your-api-key \
-  -v $(pwd):/workspace \
-  -v ~/.claude:/root/.claude \
-  claude-code-open
-
-# Run Web UI
+# Web UI
 docker run -it \
   -e ANTHROPIC_API_KEY=your-api-key \
   -p 3456:3456 \
   -v $(pwd):/workspace \
   -v ~/.claude:/root/.claude \
   claude-code-open node /app/dist/web-cli.js --host 0.0.0.0
+
+# CLI only
+docker run -it \
+  -e ANTHROPIC_API_KEY=your-api-key \
+  -v $(pwd):/workspace \
+  -v ~/.claude:/root/.claude \
+  claude-code-open
 ```
+
+Build the image yourself: `docker build -t claude-code-open .` (China: add `--build-arg REGISTRY=docker.1ms.run`)
+
+### Configuration
+
+Set your API key:
+
+```bash
+# Environment variable
+export ANTHROPIC_API_KEY="sk-..."
+
+# Or on Windows PowerShell
+$env:ANTHROPIC_API_KEY="sk-..."
+```
+
+| Variable | Purpose |
+| --- | --- |
+| `ANTHROPIC_API_KEY` / `CLAUDE_API_KEY` | API authentication |
+| `ANTHROPIC_BASE_URL` | Custom API endpoint (default: `https://api.anthropic.com`) |
 
 ## Usage
 

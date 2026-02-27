@@ -85,30 +85,28 @@ npm install -g @anthropic-ai/claude-code
 
 ## 快速安装（推荐）
 
-### Windows 快速安装（最简单）
+### 方式一：npm 安装（推荐）
 
-**方式 A：一键安装器** — 下载后双击即可，无需命令行操作！
+需要已安装 [Node.js](https://nodejs.org/) >= 18。
+
+```bash
+npm install -g claude-code-open
+```
+
+安装后运行 `claude`（CLI）或 `claude-web`（Web UI）。Windows/Linux 会自动创建桌面快捷方式。
+
+### 方式二：一键安装脚本
+
+适合没有装过 Node.js 等开发工具的用户，脚本会自动处理所有依赖。
+
+**Windows：**
 
 [![Windows 安装器](https://img.shields.io/badge/Windows-下载安装器-blue?style=for-the-badge&logo=windows)](https://github.com/kill136/claude-code-open/releases/latest/download/install.bat)
 [![Gitee 镜像](https://img.shields.io/badge/Gitee-国内镜像-orange?style=for-the-badge&logo=gitee)](https://gitee.com/lubanbbs/claude-code-open/raw/private_web_ui/install.bat)
 
-1. 点击上方按钮下载 `install.bat`
-2. 双击下载的文件运行
-3. 完成！安装器会自动处理一切（Node.js、依赖安装、编译构建、桌面快捷方式）
+下载 `install.bat`，双击运行即可。
 
-**方式 B：预编译包** — 下载解压即用，无需编译！
-
-[![下载预编译包](https://img.shields.io/badge/下载-预编译安装包-green?style=for-the-badge&logo=github)](https://github.com/kill136/claude-code-open/releases/latest)
-
-1. 从最新 Release 下载 `claude-code-open-windows-x64-*.zip`
-2. 解压到任意文件夹
-3. 双击 `start.bat` 启动（需预装 [Node.js](https://nodejs.org/)）
-
----
-
-### macOS / Linux 快速安装
-
-**方式 A：一键安装脚本**
+**macOS / Linux：**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/kill136/claude-code-open/private_web_ui/install.sh | bash
@@ -119,123 +117,45 @@ curl -fsSL https://raw.githubusercontent.com/kill136/claude-code-open/private_we
 curl -fsSL https://gitee.com/lubanbbs/claude-code-open/raw/private_web_ui/install.sh | bash
 ```
 
-**方式 B：预编译包** — 下载解压即用！
+安装脚本会自动：检测并安装 Node.js/Git、克隆仓库、构建项目、创建桌面快捷方式、链接全局命令。
 
-[![下载预编译包](https://img.shields.io/badge/下载-预编译安装包-green?style=for-the-badge&logo=github)](https://github.com/kill136/claude-code-open/releases/latest)
-
-| 平台 | 文件名 |
-| --- | --- |
-| macOS Apple Silicon (M1/M2/M3/M4) | `claude-code-open-macos-arm64-*.tar.gz` |
-| macOS Intel | `claude-code-open-macos-x64-*.tar.gz` |
-| Linux x64 | `claude-code-open-linux-x64-*.tar.gz` |
+### 方式三：Docker
 
 ```bash
-# 解压并运行（需预装 Node.js）
-tar -xzf claude-code-open-*.tar.gz
-cd claude-code-open-*/
-./start.sh
-```
-
----
-
-### 进阶：PowerShell 安装（Windows）
-
-```powershell
-irm https://raw.githubusercontent.com/kill136/claude-code-open/private_web_ui/install.ps1 | iex
-```
-
-安装脚本会自动完成：
-- ✅ 检测并安装缺失依赖（Node.js、Git、g++、make）
-- ✅ 克隆代码仓库
-- ✅ 安装所有 npm 依赖
-- ✅ 构建前端和后端
-- ✅ 创建桌面快捷方式
-- ✅ 预设 API 配置
-- ✅ 全局命令链接
-
-**安装完成后：**
-1. 双击桌面快捷方式 "Claude Code WebUI"
-2. 浏览器自动打开 http://localhost:3456
-3. 开始使用！
-
-### 手动安装
-
-```bash
-# 克隆仓库
-git clone https://github.com/kill136/claude-code-open.git
-cd claude-code-open
-
-# 安装依赖
-npm install
-
-# 构建前端
-cd src/web/client
-npm install
-npm run build
-cd ../../..
-
-# 构建后端
-npm run build
-
-# 全局链接（可选）
-npm link
-
-# 可选：安装 Playwright CLI（浏览器自动化）
-npm run install:playwright
-```
-
-### Windows 部署注意事项
-
-**Native addon 编译（通常不需要）：**
-
-项目依赖了 `better-sqlite3`、`node-pty`、`sharp` 等 native addon，但它们都自带 **Windows x64 预编译二进制**。正常情况下，`npm install` 会直接下载预编译文件，无需本地编译。
-
-如果预编译下载失败（如无法访问 GitHub releases、冷门 Node.js 版本），npm 会回退到从源码编译。**仅在此情况下**才需要：
-
-- **Python 3.6+** — node-gyp 依赖
-- **Visual Studio Build Tools 2022** — 安装时选择"使用 C++ 的桌面开发"工作负载
-
-**环境变量冲突：**
-
-| 变量 | 用途 |
-| --- | --- |
-| `ANTHROPIC_API_KEY` / `CLAUDE_API_KEY` | API 认证 |
-| `ANTHROPIC_BASE_URL` | 自定义 API 端点（默认：`https://api.anthropic.com`） |
-
-如果系统级已设置这些变量，按会话设置以避免冲突：
-
-```powershell
-# PowerShell（仅当前会话生效）
-$env:ANTHROPIC_API_KEY="your-key-for-this-project"
-$env:ANTHROPIC_BASE_URL="https://your-api-endpoint"
-```
-
-> 注意：项目根目录的 `.env` 文件**不会被自动加载**。环境变量需通过系统设置、`settings.json` 或 `--env` CLI 参数配置。
-
-### Docker 部署
-
-```bash
-# 构建 Docker 镜像
-docker build -t claude-code-open .
-
-# 国内用户（使用镜像加速）
-docker build --build-arg REGISTRY=docker.1ms.run -t claude-code-open .
-
-# 运行 CLI
-docker run -it \
-  -e ANTHROPIC_API_KEY=your-api-key \
-  -v $(pwd):/workspace \
-  -v ~/.claude:/root/.claude \
-  claude-code-open
-
-# 运行 Web UI
+# Web UI
 docker run -it \
   -e ANTHROPIC_API_KEY=your-api-key \
   -p 3456:3456 \
   -v $(pwd):/workspace \
   -v ~/.claude:/root/.claude \
   claude-code-open node /app/dist/web-cli.js --host 0.0.0.0
+
+# 仅 CLI
+docker run -it \
+  -e ANTHROPIC_API_KEY=your-api-key \
+  -v $(pwd):/workspace \
+  -v ~/.claude:/root/.claude \
+  claude-code-open
 ```
+
+自行构建镜像：`docker build -t claude-code-open .`（国内加速：加 `--build-arg REGISTRY=docker.1ms.run`）
+
+### 配置
+
+设置 API Key：
+
+```bash
+# 环境变量
+export ANTHROPIC_API_KEY="sk-..."
+
+# Windows PowerShell
+$env:ANTHROPIC_API_KEY="sk-..."
+```
+
+| 变量 | 用途 |
+| --- | --- |
+| `ANTHROPIC_API_KEY` / `CLAUDE_API_KEY` | API 认证 |
+| `ANTHROPIC_BASE_URL` | 自定义 API 端点（默认：`https://api.anthropic.com`） |
 
 ## 使用
 
