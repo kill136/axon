@@ -89,7 +89,7 @@ npm install -g @anthropic-ai/claude-code
 
 **方式 A：一键安装器** — 下载后双击即可，无需命令行操作！
 
-[![Windows 安装器](https://img.shields.io/badge/Windows-下载安装器-blue?style=for-the-badge&logo=windows)](https://raw.githubusercontent.com/kill136/claude-code-open/private_web_ui/install.bat)
+[![Windows 安装器](https://img.shields.io/badge/Windows-下载安装器-blue?style=for-the-badge&logo=windows)](https://github.com/kill136/claude-code-open/releases/latest/download/install.bat)
 [![Gitee 镜像](https://img.shields.io/badge/Gitee-国内镜像-orange?style=for-the-badge&logo=gitee)](https://gitee.com/lubanbbs/claude-code-open/raw/private_web_ui/install.bat)
 
 1. 点击上方按钮下载 `install.bat`

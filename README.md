@@ -89,7 +89,7 @@ npm install -g @anthropic-ai/claude-code
 
 **Option A: One-Click Installer** — download and double-click, no command line needed!
 
-[![Windows Installer](https://img.shields.io/badge/Windows-Download%20Installer-blue?style=for-the-badge&logo=windows)](https://raw.githubusercontent.com/kill136/claude-code-open/private_web_ui/install.bat)
+[![Windows Installer](https://img.shields.io/badge/Windows-Download%20Installer-blue?style=for-the-badge&logo=windows)](https://github.com/kill136/claude-code-open/releases/latest/download/install.bat)
 [![Gitee Mirror](https://img.shields.io/badge/Gitee-China%20Mirror-orange?style=for-the-badge&logo=gitee)](https://gitee.com/lubanbbs/claude-code-open/raw/private_web_ui/install.bat)
 
 1. Click the button above to download `install.bat`
