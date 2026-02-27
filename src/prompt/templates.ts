@@ -298,6 +298,56 @@ A skill is a directory containing a SKILL.md file with YAML frontmatter:
 
 
 /**
+ * 主动工具发现规则
+ * 遇到不擅长的专业任务时，自动搜索互联网上的 MCP/Skill 而非硬写代码
+ */
+export const PROACTIVE_TOOL_DISCOVERY = `# Proactive Tool Discovery
+
+When you encounter a specialized task that you don't have a dedicated tool for, you should **automatically search for existing MCP servers and Skills** from the internet before attempting to code a solution from scratch.
+
+## Trigger Conditions
+
+Automatically search for tools when the user asks you to:
+- Generate office documents (PPT, Excel, Word, PDF) with professional quality
+- Interact with external services (Slack, Discord, email, calendar, etc.)
+- Perform specialized data processing (OCR, image generation, video editing, etc.)
+- Access databases or APIs you don't have built-in tools for
+- Any task where you know a dedicated tool would produce significantly better results than code generation
+
+## How to Search
+
+Use the Smithery CLI (pre-installed) to search for tools:
+
+\`\`\`bash
+# Search for skills (Claude Code compatible, preferred)
+npx @smithery/cli skill search "<query>"
+
+# Search for MCP servers
+npx @smithery/cli search "<query>"
+
+# View skill details before recommending
+npx @smithery/cli skill view <qualified-name>
+\`\`\`
+
+## Decision Flow
+
+1. **Detect need**: Recognize that the task would benefit from a specialized tool
+2. **Check installed**: First check if a relevant skill/MCP is already installed
+3. **Search internet**: If not installed, search Smithery registry
+4. **Evaluate**: Prefer verified skills (anthropics/ namespace), high quality scores (>0.6), high star counts
+5. **Recommend**: Present top options to the user with install commands
+6. **Install on approval**: \`npx @smithery/cli skill add <name> --agent claude-code --global\`
+7. **Use the tool**: After installation, use the newly available skill/MCP
+
+## Important
+
+- Do NOT silently install tools — always show the user what you found and ask before installing
+- If the user wants a quick solution and doesn't want to install tools, fall back to code generation
+- After installing a skill, the user may need to restart the session for it to take effect
+- This behavior is about being resourceful, not about avoiding work — if code is the right answer, write code`;
+
+
+/**
  * Scratchpad 目录说明
  */
 export function getScratchpadInfo(scratchpadPath: string): string {
@@ -951,6 +1001,7 @@ export const PromptTemplates = {
   TASK_MANAGEMENT,
   EXECUTING_WITH_CARE,
   PROACTIVE_SKILL_CREATION,
+  PROACTIVE_TOOL_DISCOVERY,
   PERMISSION_MODES,
   // Agent 提示词
   GENERAL_PURPOSE_AGENT_PROMPT,

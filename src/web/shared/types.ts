@@ -103,6 +103,7 @@ export type ClientMessage =
   | { type: 'session_delete'; payload: { sessionId: string } }
   | { type: 'session_rename'; payload: { sessionId: string; name: string } }
   | { type: 'session_export'; payload: { sessionId: string; format?: 'json' | 'md' } }
+  | { type: 'session_import'; payload: { content: string; format?: 'json' | 'md'; model?: string } }
   | { type: 'session_resume'; payload: { sessionId: string } }
   | { type: 'tool_filter_update'; payload: ToolFilterUpdatePayload }
   | { type: 'tool_list_get' }
@@ -280,6 +281,7 @@ export type ServerMessage =
   | { type: 'session_deleted'; payload: { sessionId: string; success: boolean } }
   | { type: 'session_renamed'; payload: { sessionId: string; name: string; success: boolean } }
   | { type: 'session_exported'; payload: { sessionId: string; content: string; format: 'json' | 'md' } }
+  | { type: 'session_imported'; payload: { sessionId: string; name: string; success: boolean } }
   | { type: 'tool_list_response'; payload: ToolListPayload }
   | { type: 'tool_filter_updated'; payload: { success: boolean; config: ToolFilterConfig } }
   | { type: 'system_prompt_response'; payload: SystemPromptGetPayload }

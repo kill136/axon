@@ -4215,6 +4215,13 @@ Guidelines:
     }
   }
 
+  /**
+   * 导入会话（从 JSON 字符串）
+   */
+  importSession(jsonContent: string): { sessionId: string; name: string } | null {
+    return this.sessionManager.importSessionJSON(jsonContent);
+  }
+
   // ============ 系统提示配置方法 ============
 
   /**

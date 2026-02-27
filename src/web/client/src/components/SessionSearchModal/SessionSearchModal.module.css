@@ -272,6 +272,12 @@
   justify-content: space-between;
 }
 
+.footerLeft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .newSessionBtn {
   display: flex;
   align-items: center;
@@ -289,6 +295,26 @@
 
 .newSessionBtn:hover {
   background: var(--accent-hover);
+}
+
+.importBtn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.importBtn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border-color: var(--text-muted);
 }
 
 .footerHints {

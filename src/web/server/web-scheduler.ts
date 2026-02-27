@@ -129,7 +129,7 @@ export class WebScheduler {
   }
 
   /**
-   * 外部通知：有新任务创建，触发重新计算
+   * 外部通知：有新任务创建或 run-now 触发，重新调度
    */
   onTaskCreated(): void {
     this.store.reload();
@@ -807,17 +807,23 @@ export class WebScheduler {
       }
 
       const nextRun = task.nextRunAtMs;
-      if (nextRun === undefined || now >= nextRun) {
+      if (nextRun === undefined) {
+        // 新任务，还没有 nextRunAtMs，需要计算
         let newNext: number | undefined;
         if (task.type === 'once' && task.triggerAt) {
           newNext = task.triggerAt;
         } else if (task.type === 'interval') {
           newNext = this.computeIntervalNextRun(task, now);
         }
-        if (newNext !== undefined && newNext !== task.nextRunAtMs) {
+        if (newNext !== undefined) {
           this.store.updateTask(task.id, { nextRunAtMs: newNext });
         }
       }
+      // 注意：当 now >= nextRun 时，不在这里重新计算。
+      // 到期任务由 findDueJobs → executeTask 流程处理，
+      // 执行完成后在 onRunComplete 中计算下一次运行时间。
+      // 如果在这里提前覆盖，run-now 设置的 nextRunAtMs=now 会被替换为下个周期，
+      // 导致"立即执行"功能失效。
     }
   }
 

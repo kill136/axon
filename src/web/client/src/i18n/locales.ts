@@ -942,6 +942,8 @@ const en: Translations = {
   'sessionSearch.deleteConfirm': 'Delete session "{{name}}"?',
   'sessionSearch.messages': '{{count}} msgs',
   'sessionSearch.shortcut': 'Ctrl+K',
+  'sessionSearch.export': 'Export',
+  'sessionSearch.import': 'Import',
 
   // SchedulePage
   'schedule.title': 'Scheduled Tasks',
@@ -973,6 +975,10 @@ const en: Translations = {
   'schedule.timeout': 'Timeout',
   'schedule.duration': 'Duration',
   'schedule.refresh': 'Refresh',
+  'schedule.save': 'Save',
+  'schedule.cancel': 'Cancel',
+  'schedule.runNow': 'Run Now',
+  'schedule.taskType': 'Type',
 
   // LogsView
   'logs.autoScroll': 'Auto Scroll',
@@ -2009,6 +2015,8 @@ const zh: Translations = {
   'sessionSearch.deleteConfirm': '确认删除会话 "{{name}}"？',
   'sessionSearch.messages': '{{count}} 条',
   'sessionSearch.shortcut': 'Ctrl+K',
+  'sessionSearch.export': '导出',
+  'sessionSearch.import': '导入',
 
   // SchedulePage
   'schedule.title': '定时任务',
@@ -2040,6 +2048,10 @@ const zh: Translations = {
   'schedule.timeout': '超时',
   'schedule.duration': '耗时',
   'schedule.refresh': '刷新',
+  'schedule.save': '保存',
+  'schedule.cancel': '取消',
+  'schedule.runNow': '立即执行',
+  'schedule.taskType': '类型',
   // LogsView
   'logs.autoScroll': '自动滚动',
   'logs.clearLogs': '清除日志',

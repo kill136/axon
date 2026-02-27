@@ -3570,6 +3570,13 @@ async function main(): Promise<void> {
     return;
   }
 
+  // Email MCP 服务器路径 - 用于邮件 IMAP/SMTP 操作
+  if (args[0] === '--email-mcp') {
+    const { main: runEmailMcp } = await import('./email-mcp/mcp-server.js');
+    await runEmailMcp();
+    return;
+  }
+
   // Chrome Native Host 路径 - 用于 Chrome 扩展与 Native Host 通信
   if (args[0] === '--chrome-native-host') {
     await emitLifecycleEvent('cli_chrome_native_host_path');

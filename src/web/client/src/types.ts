@@ -273,6 +273,8 @@ export interface SessionActions {
   renameSession: (id: string, name: string) => void;
   newSession: () => void;
   searchSessions: (query: string) => void;
+  exportSession: (id: string, format?: 'json' | 'md') => void;
+  importSession: (content: string) => void;
 }
 
 // 斜杠命令

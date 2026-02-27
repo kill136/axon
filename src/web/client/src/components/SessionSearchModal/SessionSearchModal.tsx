@@ -31,6 +31,18 @@ const PlusIcon = () => (
   </svg>
 );
 
+const DownloadIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M8 2v9M4.5 7.5L8 11l3.5-3.5M2 13h12" />
+  </svg>
+);
+
+const UploadIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M8 11V2M11.5 5.5L8 2 4.5 5.5M2 13h12" />
+  </svg>
+);
+
 const ChatBubbleIcon = () => (
   <svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
     <path d="M28 19c0 3-2 5-5 5H8L4 28V8c0-2 2-4 4-4h16c3 0 5 2 5 5v10z" />
@@ -84,6 +96,10 @@ interface SessionSearchModalProps {
   onClose: () => void;
   /** 服务端搜索：输入关键词时调用，让父组件发 WebSocket 请求 */
   onSearch?: (query: string) => void;
+  /** 导出会话 */
+  onSessionExport?: (id: string, format?: 'json' | 'md') => void;
+  /** 导入会话（JSON 字符串） */
+  onSessionImport?: (content: string) => void;
 }
 
 // ─── Component ───────────────────────────────────────────
@@ -98,6 +114,8 @@ export function SessionSearchModal({
   onNewSession,
   onClose,
   onSearch,
+  onSessionExport,
+  onSessionImport,
 }: SessionSearchModalProps) {
   const { t } = useLanguage();
   const [query, setQuery] = useState('');
@@ -107,6 +125,7 @@ export function SessionSearchModal({
   const inputRef = useRef<HTMLInputElement>(null);
   const renameRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Reset state when opening
@@ -218,6 +237,28 @@ export function SessionSearchModal({
     onNewSession();
     onClose();
   }, [onNewSession, onClose]);
+
+  const handleExport = useCallback((e: React.MouseEvent, session: Session) => {
+    e.stopPropagation();
+    onSessionExport?.(session.id, 'json');
+  }, [onSessionExport]);
+
+  const handleImport = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const content = reader.result as string;
+      onSessionImport?.(content);
+    };
+    reader.readAsText(file);
+    // 重置 input 以便再次选择同一文件
+    e.target.value = '';
+  }, [onSessionImport]);
 
   // Keyboard navigation
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -334,6 +375,13 @@ export function SessionSearchModal({
                           <div className={styles.sessionActions}>
                             <button
                               className={styles.actionBtn}
+                              onClick={e => handleExport(e, session)}
+                              title={t('sessionSearch.export')}
+                            >
+                              <DownloadIcon />
+                            </button>
+                            <button
+                              className={styles.actionBtn}
                               onClick={e => handleStartRename(e, session)}
                               title={t('nav.rename')}
                             >
@@ -359,10 +407,23 @@ export function SessionSearchModal({
 
         {/* Footer */}
         <div className={styles.footer}>
-          <button className={styles.newSessionBtn} onClick={handleNewSession}>
-            <PlusIcon />
-            {t('sessionSearch.newSession')}
-          </button>
+          <div className={styles.footerLeft}>
+            <button className={styles.newSessionBtn} onClick={handleNewSession}>
+              <PlusIcon />
+              {t('sessionSearch.newSession')}
+            </button>
+            <button className={styles.importBtn} onClick={handleImport} title={t('sessionSearch.import')}>
+              <UploadIcon />
+              {t('sessionSearch.import')}
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json"
+              style={{ display: 'none' }}
+              onChange={handleFileChange}
+            />
+          </div>
           <div className={styles.footerHints}>
             <span className={styles.footerHint}><kbd>↑↓</kbd> navigate</span>
             <span className={styles.footerHint}><kbd>↵</kbd> select</span>

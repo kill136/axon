@@ -1755,6 +1755,10 @@ async function handleClientMessage(
       await handleSessionExport(client, message.payload.sessionId, message.payload.format, conversationManager);
       break;
 
+    case 'session_import':
+      await handleSessionImport(client, message.payload.content, message.payload.format, conversationManager);
+      break;
+
     case 'session_resume':
       await handleSessionResume(client, message.payload.sessionId, conversationManager);
       break;
@@ -3185,6 +3189,50 @@ async function handleSessionExport(
       type: 'error',
       payload: {
         message: error instanceof Error ? error.message : '导出会话失败',
+      },
+    });
+  }
+}
+
+/**
+ * 处理导入会话请求
+ */
+async function handleSessionImport(
+  client: ClientConnection,
+  content: string,
+  format: 'json' | 'md' | undefined,
+  conversationManager: ConversationManager
+): Promise<void> {
+  const { ws } = client;
+
+  try {
+    const result = conversationManager.importSession(content);
+
+    if (result) {
+      sendMessage(ws, {
+        type: 'session_imported',
+        payload: {
+          sessionId: result.sessionId,
+          name: result.name,
+          success: true,
+        },
+      });
+    } else {
+      sendMessage(ws, {
+        type: 'session_imported',
+        payload: {
+          sessionId: '',
+          name: '',
+          success: false,
+        },
+      });
+    }
+  } catch (error) {
+    console.error('[WebSocket] 导入会话失败:', error);
+    sendMessage(ws, {
+      type: 'error',
+      payload: {
+        message: error instanceof Error ? error.message : '导入会话失败',
       },
     });
   }
