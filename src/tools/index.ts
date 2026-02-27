@@ -36,7 +36,7 @@ export * from './mcp-manage.js';
 import { toolRegistry } from './base.js';
 
 // ============ 核心工具 imports ============
-import { BashTool, KillShellTool } from './bash.js';
+import { BashTool, KillShellTool, cleanupStaleTasks } from './bash.js';
 import { ReadTool, WriteTool, EditTool } from './file.js';
 import { GlobTool, GrepTool } from './search.js';
 import { WebFetchTool } from './web.js';
@@ -76,6 +76,16 @@ let blueprintToolsRegistered = false;
 export function registerCoreTools(): void {
   if (coreToolsRegistered) return;
   coreToolsRegistered = true;
+
+  // 启动时清理僵尸任务文件（空 log、status=running 的 orphan meta）
+  try {
+    const { cleaned, errors } = cleanupStaleTasks();
+    if (cleaned > 0) {
+      console.log(`[Tools] Cleaned up ${cleaned} stale task files${errors > 0 ? ` (${errors} errors)` : ''}`);
+    }
+  } catch {
+    // 清理失败不影响启动
+  }
 
   // 1. Bash 工具 (2个) - Bash + KillShell(对标官方 TaskStop)
   toolRegistry.register(new BashTool());
