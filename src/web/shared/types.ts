@@ -142,6 +142,10 @@ export type ClientMessage =
   | { type: 'plugin_disable'; payload: { name: string } }
   | { type: 'plugin_install'; payload: { pluginId?: string; pluginPath?: string } }
   | { type: 'plugin_uninstall'; payload: { name: string } }
+  | { type: 'skill_list' }
+  | { type: 'skill_view'; payload: { name: string } }
+  | { type: 'skill_delete'; payload: { name: string; source: string } }
+  | { type: 'skill_toggle'; payload: { name: string; enabled: boolean } }
   | { type: 'auth_status' }
   | { type: 'auth_set_key'; payload: AuthSetKeyPayload }
   | { type: 'auth_clear' }
@@ -318,6 +322,10 @@ export type ServerMessage =
   | { type: 'plugin_installed'; payload: { success: boolean; plugin?: any; error?: string } }
   | { type: 'plugin_progress'; payload: { pluginId: string; step: number; totalSteps: number; message: string } }
   | { type: 'plugin_uninstalled'; payload: { name: string; success: boolean } }
+  | { type: 'skill_list_response'; payload: { skills: SkillInfo[] } }
+  | { type: 'skill_view_response'; payload: { name: string; content: string } }
+  | { type: 'skill_deleted'; payload: { name: string; success: boolean } }
+  | { type: 'skill_toggled'; payload: { name: string; enabled: boolean; success: boolean } }
   | { type: 'auth_status_response'; payload: AuthStatusPayload }
   | { type: 'auth_key_set'; payload: { success: boolean; message?: string } }
   | { type: 'auth_cleared'; payload: { success: boolean } }

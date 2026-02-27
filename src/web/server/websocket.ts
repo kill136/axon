@@ -8,7 +8,7 @@ import { randomUUID } from 'crypto';
 import { ConversationManager } from './conversation.js';
 import { isSlashCommand, executeSlashCommand } from './slash-commands.js';
 import { initializeSkills, getAllSkills, findSkill } from '../../tools/skill.js';
-import { runWithCwd } from '../../core/cwd-context.js';
+import { runWithCwd, getCurrentCwd } from '../../core/cwd-context.js';
 import { apiManager } from './api-manager.js';
 import { webAuth } from './web-auth.js';
 import { oauthManager } from './oauth-manager.js';
@@ -4808,7 +4808,7 @@ async function handleSkillList(
     const fs = await import('fs');
     const path = await import('path');
     const homeDir = process.env.HOME || process.env.USERPROFILE || '';
-    const cwd = client.currentCwd;
+    const cwd = getCurrentCwd();
 
     // 获取所有已加载的 skills
     const loadedSkills = getAllSkills();
