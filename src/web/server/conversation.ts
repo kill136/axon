@@ -430,6 +430,8 @@ interface SessionState {
   systemPromptConfig: SystemPromptConfig;
   /** 标记会话是否正在处理对话（防止并发覆盖 ws） */
   isProcessing: boolean;
+  /** 处理代次（用于插话强制重置后防止旧 conversationLoop 的 finally 覆盖新循环的状态） */
+  processingGeneration: number;
   /** 上一次 API 返回的实际 inputTokens（用于精确判断是否需要压缩） */
   lastActualInputTokens: number;
   /** 最后一次 API 调用成功时 state.messages 的长度（用于混合 token 估算） */
@@ -867,6 +869,7 @@ export class ConversationManager {
         useDefault: true, // 默认使用默认提示
       },
       isProcessing: false,
+      processingGeneration: 0,
       lastActualInputTokens: 0,
       messagesLenAtLastApiCall: 0,
       lastPersistedMessageCount: 0,
@@ -1174,18 +1177,22 @@ export class ConversationManager {
 
       // 等待当前处理完成（带超时）
       const waitStart = Date.now();
-      while (state.isProcessing && Date.now() - waitStart < 10000) {
+      while (state.isProcessing && Date.now() - waitStart < 15000) {
         await new Promise(resolve => setTimeout(resolve, 50));
       }
 
       if (state.isProcessing) {
-        callbacks.onError?.(new Error('取消当前操作超时，请重试'));
-        return;
+        // 超时后强制重置：旧的 conversationLoop 仍在后台跑，
+        // 但它检查 state.cancelled 后会自行退出。
+        // 这里强制放行，让新消息能被处理。
+        console.warn('[ConversationManager] 插话取消超时，强制重置 isProcessing');
+        state.isProcessing = false;
       }
     }
 
     state.cancelled = false;
     state.isProcessing = true;
+    const currentGeneration = ++state.processingGeneration;
 
     // 关键修复：确保会话的 WebSocket 已设置
     // 在 getOrCreateSession 后设置 WebSocket，保证 UserInteractionHandler 可用
@@ -1260,7 +1267,11 @@ export class ConversationManager {
     } catch (error) {
       callbacks.onError?.(error instanceof Error ? error : new Error(String(error)));
     } finally {
-      state.isProcessing = false;
+      // 只有当前代次仍是最新时才重置 isProcessing
+      // 防止被插话强制重置后，旧 conversationLoop 的 finally 覆盖新循环的状态
+      if (state.processingGeneration === currentGeneration) {
+        state.isProcessing = false;
+      }
       // 通知 WebScheduler 对话空闲，可能有待投递的闹钟
       if (sessionId) {
         this.webScheduler?.onSessionIdle(sessionId);
@@ -4053,9 +4064,11 @@ Guidelines:
           useDefault: true,
         },
         isProcessing: false,
+        processingGeneration: 0,
         lastActualInputTokens: 0,
         messagesLenAtLastApiCall: 0,
         lastPersistedMessageCount: sessionData.messages.length, // 从磁盘加载时，初始化为当前消息数
+        credentialsFingerprint: this.getCredentialsFingerprint(),
       };
 
       this.sessions.set(sessionId, state);

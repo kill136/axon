@@ -428,7 +428,16 @@ export class BrowserManager {
    * Websites cannot detect automation.
    */
   async start(options?: BrowserStartOptions): Promise<void> {
-    if (this._isRunning) return;
+    if (this._isRunning) {
+      // Verify extension is still connected; if not, force restart
+      if (this._relayServer && !this._relayServer.extensionConnected()) {
+        console.warn('[BrowserManager] Extension disconnected. Restarting browser...');
+        await this.stop();
+        // Fall through to full start
+      } else {
+        return;
+      }
+    }
     if (this._starting) throw new Error('Browser is already starting. Please wait.');
     this._starting = true;
 

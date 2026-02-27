@@ -13,10 +13,10 @@ import type { OAuthConfig, OAuthTokenResponse, UserRoles, SubscriptionInfo } fro
  */
 export const OAUTH_CONSTANTS = {
   CLIENT_ID: '9d1c250a-e61b-44d9-88ed-5944d1962f5e',
-  SCOPES: ['user:profile', 'user:inference', 'user:sessions:claude_code'],
+  SCOPES: ['org:create_api_key', 'user:profile', 'user:inference', 'user:sessions:claude_code', 'user:mcp_servers'],
 
   // 生产环境 URLs
-  AUTHORIZE_URL: 'https://platform.claude.com/oauth/authorize',
+  CONSOLE_AUTHORIZE_URL: 'https://platform.claude.com/oauth/authorize',
   CLAUDE_AI_AUTHORIZE_URL: 'https://claude.ai/oauth/authorize',
   TOKEN_URL: 'https://platform.claude.com/v1/oauth/token',
   API_KEY_URL: 'https://api.anthropic.com/api/oauth/claude_cli/create_api_key',
@@ -64,7 +64,7 @@ export class OAuthManager {
       };
     }
     return {
-      authorize: OAUTH_CONSTANTS.AUTHORIZE_URL,
+      authorize: OAUTH_CONSTANTS.CONSOLE_AUTHORIZE_URL,
       token: OAUTH_CONSTANTS.TOKEN_URL,
       apiKey: OAUTH_CONSTANTS.API_KEY_URL,
       roles: OAUTH_CONSTANTS.ROLES_URL,

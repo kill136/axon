@@ -100,6 +100,7 @@ export function InputArea({
   onCancel,
   contextUsage,
   compactState,
+  rateLimitInfo,
   hasCompactBoundary,
   isTranscriptMode,
   onToggleTranscriptMode,

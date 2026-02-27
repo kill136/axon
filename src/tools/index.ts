@@ -32,6 +32,7 @@ export * from './self-evolve.js';
 export * from './browser.js';
 export * from './create-tool.js';
 export * from './goal.js';
+export * from './mcp-manage.js';
 
 // 蓝图工具不通过此处 re-export
 // 蓝图模块直接 import 各自需要的工具文件 (如 ../tools/dispatch-worker.js)
@@ -66,6 +67,7 @@ import { CreateToolTool } from './create-tool.js';
 import { DatabaseTool } from './database.js';
 import { DebuggerTool } from './debugger.js';
 import { GoalWriteTool } from './goal.js';
+import { McpManageTool } from './mcp-manage.js';
 
 // ============ 蓝图工具 imports (lazy) ============
 import { BlueprintTool } from './blueprint.js';
@@ -134,9 +136,10 @@ export function registerCoreTools(): void {
   // 9. Skill 系统 (1个)
   toolRegistry.register(new SkillTool());
 
-  // 10. MCP 工具 (2个) - MCPSearch + McpResource (合并了 ListMcpResources/ReadMcpResource)
+  // 10. MCP 工具 (3个) - MCPSearch + McpResource + McpManage
   toolRegistry.register(new MCPSearchTool());
   toolRegistry.register(new McpResourceTool());
+  toolRegistry.register(new McpManageTool());
 
   // 18. Agent Teams v2.1.33 工具 (3个) - TeamCreate/TeamDelete/TeamSendMessage
   // v2.1.34: 添加 try-catch 保护，防止 agent teams 设置变化时崩溃
