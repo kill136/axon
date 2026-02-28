@@ -94,6 +94,7 @@ function AppContent({
     setStatus,
     contextUsage,
     compactState,
+    rateLimitInfo,
     permissionRequest,
     setPermissionRequest,
     userQuestion,
@@ -202,8 +203,10 @@ function AppContent({
       renameSession: sessionManager.handleSessionRename,
       newSession: sessionManager.handleNewSession,
       searchSessions: sessionManager.handleSearchSessions,
+      exportSession: sessionManager.handleSessionExport,
+      importSession: sessionManager.handleSessionImport,
     });
-  }, [sessionManager.handleSessionSelect, sessionManager.handleSessionDelete, sessionManager.handleSessionRename, sessionManager.handleNewSession, sessionManager.handleSearchSessions, registerSessionActions]);
+  }, [sessionManager.handleSessionSelect, sessionManager.handleSessionDelete, sessionManager.handleSessionRename, sessionManager.handleNewSession, sessionManager.handleSearchSessions, sessionManager.handleSessionExport, sessionManager.handleSessionImport, registerSessionActions]);
 
   // 全局快捷键
   useEffect(() => {
@@ -492,6 +495,7 @@ function AppContent({
               onCancel={chatInput.handleCancel}
               contextUsage={contextUsage}
               compactState={compactState}
+              rateLimitInfo={rateLimitInfo}
               hasCompactBoundary={hasCompactBoundary}
               isTranscriptMode={isTranscriptMode}
               onToggleTranscriptMode={() => setIsTranscriptMode(!isTranscriptMode)}

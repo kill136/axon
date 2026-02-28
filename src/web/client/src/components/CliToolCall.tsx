@@ -473,35 +473,33 @@ function GrepToolContent({ input, result }: { input: any; result?: any }) {
 function BrowserToolContent({ input, result }: { input: any; result?: any }) {
   const action = input?.action || '';
   const images = result?.data?.images as Array<{ type: string; source: { type: string; media_type: string; data: string } }> | undefined;
-
-  // 截图操作：渲染图片
-  if (action === 'screenshot' && images && images.length > 0) {
-    return (
-      <div className="cli-browser-content">
-        {images.map((img, i) => (
-          <div key={i} style={{ marginTop: '8px' }}>
-            <img
-              src={`data:${img.source.media_type};base64,${img.source.data}`}
-              alt="Browser screenshot"
-              style={{
-                maxWidth: '100%',
-                borderRadius: '6px',
-                border: '1px solid var(--border-color, #333)',
-              }}
-            />
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  // 其他 Browser 操作：显示文本输出
   const output = result?.output || result?.error || '';
-  return output ? (
+  const hasImages = images && images.length > 0;
+
+  if (!output && !hasImages) return null;
+
+  return (
     <div className="cli-browser-content">
-      <pre className="cli-generic-output">{output}</pre>
+      {/* 文本输出 */}
+      {output && (
+        <pre className="cli-generic-output">{output}</pre>
+      )}
+      {/* 图片（screenshot / screenshot_labeled 等任何返回 images 的操作） */}
+      {hasImages && images.map((img, i) => (
+        <div key={i} style={{ marginTop: '8px' }}>
+          <img
+            src={`data:${img.source.media_type};base64,${img.source.data}`}
+            alt={`Browser ${action}`}
+            style={{
+              maxWidth: '100%',
+              borderRadius: '6px',
+              border: '1px solid var(--border-color, #333)',
+            }}
+          />
+        </div>
+      ))}
     </div>
-  ) : null;
+  );
 }
 
 /**

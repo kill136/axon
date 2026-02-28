@@ -12,6 +12,7 @@
   color: rgba(255, 255, 255, 0.7);
   font-size: 13px;
   overflow: hidden;
+  position: relative;
 }
 
 /* ==================== 树形容器 ==================== */
@@ -21,6 +22,12 @@
   overflow-y: auto;
   overflow-x: hidden;
   padding: 4px 0;
+  outline: none;
+}
+
+/* 聚焦时的容器样式（微妙的内部边框） */
+.treeContainer:focus-visible {
+  box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.3);
 }
 
 /* 自定义滚动条 */
@@ -58,9 +65,45 @@
   background-color: rgba(255, 255, 255, 0.05);
 }
 
-.treeNode.selected {
+/* 当前在编辑器中打开的文件 */
+.treeNode.currentFile {
   background-color: rgba(99, 102, 241, 0.15);
   color: rgba(255, 255, 255, 0.95);
+}
+
+/* 多选高亮（区别于 currentFile） */
+.treeNode.multiSelected {
+  background-color: rgba(99, 102, 241, 0.1);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+/* 同时是 currentFile 和 multiSelected 时 */
+.treeNode.currentFile.multiSelected {
+  background-color: rgba(99, 102, 241, 0.2);
+}
+
+/* 键盘焦点指示 */
+.treeNode.focused {
+  outline: 1px solid rgba(99, 102, 241, 0.5);
+  outline-offset: -1px;
+}
+
+/* ==================== 拖拽状态 ==================== */
+
+.treeNode.dragging {
+  opacity: 0.4;
+}
+
+.treeNode.dragOver {
+  background-color: rgba(99, 102, 241, 0.2) !important;
+  box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.4);
+}
+
+/* ==================== 剪切节点样式 ==================== */
+
+.treeNode.cutNode {
+  opacity: 0.5;
+  transition: opacity 0.2s;
 }
 
 /* ==================== 图标和文字 ==================== */
@@ -312,9 +355,62 @@
   box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.3);
 }
 
-/* ==================== 剪切节点样式 ==================== */
+/* ==================== 批量操作工具栏 ==================== */
 
-.cutNode {
-  opacity: 0.5;
-  transition: opacity 0.2s;
+.batchToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: #1a1a1f;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+  animation: slideUp 0.15s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.batchCount {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.6);
+  white-space: nowrap;
+}
+
+.batchActions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.batchButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 24px;
+  border: none;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  transition: all 0.1s;
+}
+
+.batchButton:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.batchButton.batchDanger:hover {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
 }

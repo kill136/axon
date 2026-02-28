@@ -432,10 +432,9 @@ export class AttachmentManager {
 You are running as a team lead in delegate mode. Your role is to:
 1. Create and manage tasks using TaskCreate, TaskGet, TaskUpdate, TaskList
 2. Spawn teammate agents using the Task tool
-3. Communicate with teammates using SendMessage
-4. Coordinate work and track progress
+3. Coordinate work and track progress
 
-You have access to team management tools (TeamCreate, TeamDelete, SendMessage) and task tools (TaskCreate, TaskGet, TaskUpdate, TaskList).
+You have access to task tools (TaskCreate, TaskGet, TaskUpdate, TaskList).
 Do not directly edit files - delegate work to teammate agents.
 </delegate-mode>`,
         label: 'Delegate Mode',

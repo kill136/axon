@@ -12,6 +12,7 @@ export {
   SECURITY_RULES,
   EXECUTING_WITH_CARE,
   PROACTIVE_SKILL_CREATION,
+  PROACTIVE_TOOL_DISCOVERY,
   getSystemSection,
   getCodingGuidelines,
   getToolGuidelines,

@@ -1,0 +1,55 @@
+# ============================================
+# Stage 1: Build
+# ============================================
+FROM node:18-slim AS builder
+
+RUN apt-get update && apt-get install -y --fix-missing \
+    python3 \
+    make \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm install
+
+COPY . .
+RUN npm run build
+
+# Frontend build
+RUN cd src/web/client && \
+    npm install && \
+    npm run build
+
+# ============================================
+# Stage 2: Production
+# ============================================
+FROM node:18-slim
+
+RUN apt-get update && apt-get install -y --fix-missing \
+    git \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy build artifacts
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./
+COPY --from=builder /app/src/web/client/dist ./src/web/client/dist
+
+# Create working directories
+RUN mkdir -p /root/.claude /workspace
+WORKDIR /workspace
+
+# Railway injects PORT env var
+EXPOSE ${PORT:-3456}
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+    CMD curl -f http://localhost:${PORT:-3456}/api/health || exit 1
+
+# Start Web UI (no evolve mode for public demo, use compiled dist)
+CMD ["node", "/app/dist/web-cli.js", "-H", "0.0.0.0"]

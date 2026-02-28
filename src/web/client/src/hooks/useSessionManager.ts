@@ -46,6 +46,8 @@ interface UseSessionManagerReturn {
   handleSessionRename: (id: string, name: string) => void;
   handleNewSession: () => void;
   handleSearchSessions: (query: string) => void;
+  handleSessionExport: (id: string, format?: 'json' | 'md') => void;
+  handleSessionImport: (content: string) => void;
 }
 
 export function useSessionManager({
@@ -128,6 +130,28 @@ export function useSessionManager({
               if (prev.some(s => s.id === newSession.id)) return prev;
               return [newSession, ...prev];
             });
+          }
+          break;
+
+        case 'session_exported': {
+          const content = payload.content as string;
+          const fmt = payload.format as string;
+          const ext = fmt === 'md' ? 'md' : 'json';
+          const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `session-${(payload.sessionId as string).slice(0, 8)}.${ext}`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          break;
+        }
+
+        case 'session_imported':
+          if (payload.success) {
+            refreshSessions();
           }
           break;
 
@@ -219,6 +243,16 @@ export function useSessionManager({
     }
   }, [connected, send, currentProjectPath]);
 
+  // 导出会话
+  const handleSessionExport = useCallback((id: string, format: 'json' | 'md' = 'json') => {
+    send({ type: 'session_export', payload: { sessionId: id, format } });
+  }, [send]);
+
+  // 导入会话（接收 JSON 字符串）
+  const handleSessionImport = useCallback((content: string) => {
+    send({ type: 'session_import', payload: { content } });
+  }, [send]);
+
   return {
     sessions,
     refreshSessions,
@@ -227,5 +261,7 @@ export function useSessionManager({
     handleSessionRename,
     handleNewSession,
     handleSearchSessions,
+    handleSessionExport,
+    handleSessionImport,
   };
 }

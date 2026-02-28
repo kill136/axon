@@ -68,7 +68,7 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
   // 定时任务由 WebScheduler 统一管理（稍后初始化）
 
   const {
-    port = parseInt(process.env.CLAUDE_WEB_PORT || '3456'),
+    port = parseInt(process.env.PORT || process.env.CLAUDE_WEB_PORT || '3456'),
     host = process.env.CLAUDE_WEB_HOST || '0.0.0.0',
     cwd = process.cwd(),
     model = process.env.CLAUDE_MODEL || 'opus',

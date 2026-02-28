@@ -529,6 +529,57 @@ function getBackgroundOutputPath(taskId: string): string {
   return getTaskOutputPath(taskId);
 }
 
+/**
+ * 启动时清理僵尸任务文件
+ * - 将 status=running 的 meta 标记为 failed（进程已不存在）
+ * - 删除空 log 文件和对应的 meta（无有效数据）
+ */
+export function cleanupStaleTasks(): { cleaned: number; errors: number } {
+  let cleaned = 0;
+  let errors = 0;
+  const homeDir = process.env.HOME || process.env.USERPROFILE || '/tmp';
+
+  for (const subDir of ['tasks', path.join('tasks', 'conversations')]) {
+    const dir = path.join(homeDir, '.claude', subDir);
+    if (!fs.existsSync(dir)) continue;
+
+    try {
+      const files = fs.readdirSync(dir);
+      for (const file of files) {
+        if (!file.endsWith('.log')) continue;
+        const logPath = path.join(dir, file);
+        const metaPath = logPath.replace(/\.log$/, '.meta.json');
+
+        try {
+          const stat = fs.statSync(logPath);
+          if (stat.size === 0) {
+            // 空 log 文件：删除 log + meta
+            fs.unlinkSync(logPath);
+            if (fs.existsSync(metaPath)) fs.unlinkSync(metaPath);
+            cleaned++;
+          } else if (fs.existsSync(metaPath)) {
+            // 非空 log：检查 meta status
+            const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
+            if (meta.status === 'running') {
+              meta.status = 'failed';
+              meta.endTime = Date.now();
+              meta.error = 'Process lost (cleaned up on startup)';
+              fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2));
+              cleaned++;
+            }
+          }
+        } catch {
+          errors++;
+        }
+      }
+    } catch {
+      errors++;
+    }
+  }
+
+  return { cleaned, errors };
+}
+
 // 配置
 const MAX_OUTPUT_LENGTH = parseInt(process.env.BASH_MAX_OUTPUT_LENGTH || '30000', 10);
 const DEFAULT_TIMEOUT = parseInt(process.env.BASH_DEFAULT_TIMEOUT_MS || '120000', 10); // 默认 2 分钟

@@ -1145,6 +1145,8 @@ class ExecutionManager {
   private planner: SmartPlanner;
   // 主 agent 的认证配置（由 ConversationManager 设置，透传给子 agent）
   private clientConfig: { apiKey?: string; authToken?: string; baseUrl?: string } = {};
+  // 实时凭证提供者（优先于缓存的 clientConfig，确保认证变更后立即生效）
+  private credentialsProvider?: () => { apiKey?: string; authToken?: string; baseUrl?: string };
 
   // v13.0: 执行队列 - 保证同一时刻只有一个 LeadAgent 在运行
   // 静态工具上下文（UpdateTaskPlanTool.context 等）是进程级全局变量，
@@ -1168,6 +1170,34 @@ class ExecutionManager {
    */
   setClientConfig(config: { apiKey?: string; authToken?: string; baseUrl?: string }): void {
     this.clientConfig = config;
+  }
+
+  /**
+   * 设置实时凭证提供者（优先于缓存的 clientConfig）
+   * 每次启动执行时会调用此函数获取最新凭证，确保认证变更（如删除 API Key 后切换到 OAuth）立即生效
+   */
+  setCredentialsProvider(provider: () => { apiKey?: string; authToken?: string; baseUrl?: string }): void {
+    this.credentialsProvider = provider;
+  }
+
+  /**
+   * 获取当前认证凭证：options > credentialsProvider > 缓存的 clientConfig
+   */
+  private resolveCredentials(options?: { apiKey?: string; authToken?: string; baseUrl?: string }): { apiKey?: string; authToken?: string; baseUrl?: string } {
+    // 1. options 显式传入的优先
+    if (options?.apiKey || options?.authToken) {
+      return {
+        apiKey: options.apiKey,
+        authToken: options.authToken,
+        baseUrl: options.baseUrl,
+      };
+    }
+    // 2. 实时凭证提供者（每次调用都获取最新值）
+    if (this.credentialsProvider) {
+      return this.credentialsProvider();
+    }
+    // 3. fallback: 缓存的 clientConfig（init 时设置的）
+    return this.clientConfig;
   }
 
   /**
@@ -1283,10 +1313,8 @@ class ExecutionManager {
       leadAgentMaxTurns: 200,
       leadAgentSelfExecuteComplexity: 'complex',
       // 认证透传：主 agent → coordinator → LeadAgent/Worker
-      // 优先使用 options 传入的，fallback 到 ExecutionManager 缓存的主 agent 认证
-      apiKey: options?.apiKey || this.clientConfig.apiKey,
-      authToken: options?.authToken || this.clientConfig.authToken,
-      baseUrl: options?.baseUrl || this.clientConfig.baseUrl,
+      // 实时获取最新凭证（确保删除 API Key 后切换到 OAuth 等变更立即生效）
+      ...this.resolveCredentials(options),
     });
 
     // 设置真正的任务执行器（LeadAgent 模式下仍需作为 fallback）
@@ -1958,9 +1986,8 @@ class ExecutionManager {
       leadAgentModel: 'sonnet',
       leadAgentMaxTurns: 200,
       leadAgentSelfExecuteComplexity: 'complex',
-      apiKey: this.clientConfig.apiKey,
-      authToken: this.clientConfig.authToken,
-      baseUrl: this.clientConfig.baseUrl,
+      // 实时获取最新凭证
+      ...this.resolveCredentials(),
     });
 
     const executor = new RealTaskExecutor(blueprint);

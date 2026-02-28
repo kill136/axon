@@ -477,6 +477,41 @@ export class WebSessionManager {
   }
 
   /**
+   * 从 JSON 内容导入会话
+   * 生成新的会话 ID 和时间戳，保存到磁盘并加载到内存
+   */
+  importSessionJSON(jsonContent: string): { sessionId: string; name: string } | null {
+    try {
+      const data = JSON.parse(jsonContent) as WebSessionData;
+
+      // 生成新的会话 ID
+      const newId = generateSessionId();
+      const now = Date.now();
+
+      data.metadata.id = newId;
+      data.metadata.createdAt = now;
+      data.metadata.updatedAt = now;
+
+      // 清除分支信息
+      delete (data.metadata as any).branches;
+
+      // 保存到磁盘
+      saveSession(data);
+
+      // 加载到内存
+      this.sessions.set(newId, data);
+
+      return {
+        sessionId: newId,
+        name: data.metadata.name || newId,
+      };
+    } catch (err) {
+      console.error('[WebSessionManager] 导入会话失败:', err);
+      return null;
+    }
+  }
+
+  /**
    * 获取会话统计信息
    */
   getSessionStats(sessionId: string): {

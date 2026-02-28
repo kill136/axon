@@ -514,6 +514,7 @@ export function ProjectProvider({ children }: ProjectProviderProps) {
 
         // 2. 尝试恢复上次选中的项目
         const savedProject = loadSavedProject();
+        let projectRestored = false;
         if (savedProject) {
           // 验证保存的项目是否仍在列表中
           const exists = projects.some(p => p && p.id === savedProject.id);
@@ -526,13 +527,31 @@ export function ProjectProvider({ children }: ProjectProviderProps) {
                 payload: { project, blueprint },
               });
               emitProjectChangeEvent(project, blueprint);
+              projectRestored = true;
             } catch (error) {
               console.warn('[ProjectContext] 恢复保存的项目失败，使用缓存数据:', error);
               dispatch({ type: 'SET_CURRENT_PROJECT', payload: savedProject });
+              projectRestored = true;
             }
           } else {
             // 保存的项目已不存在，清除
             saveProjectToStorage(null);
+          }
+        }
+
+        // 3. 如果没有恢复任何项目，使用 server 的工作目录作为默认项目
+        if (!projectRestored) {
+          try {
+            const defaultProject = await fetchCurrentProject();
+            if (defaultProject) {
+              dispatch({ type: 'SET_CURRENT_PROJECT', payload: defaultProject });
+              dispatch({ type: 'ADD_PROJECT', payload: defaultProject });
+              saveProjectToStorage(defaultProject);
+              emitProjectChangeEvent(defaultProject, null);
+              console.log('[ProjectContext] 使用默认工作目录:', defaultProject.path);
+            }
+          } catch (error) {
+            console.warn('[ProjectContext] 获取默认工作目录失败:', error);
           }
         }
 
@@ -546,7 +565,7 @@ export function ProjectProvider({ children }: ProjectProviderProps) {
     };
 
     initialize();
-  }, [fetchRecentProjects, openProjectApi]);
+  }, [fetchRecentProjects, openProjectApi, fetchCurrentProject]);
 
   // ========================================
   // Context 值

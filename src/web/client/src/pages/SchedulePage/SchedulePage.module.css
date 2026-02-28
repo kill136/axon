@@ -802,6 +802,49 @@
   outline: none;
 }
 
+.editTextareaWrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.editTextareaActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.editCancelBtn {
+  padding: 5px 14px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.editCancelBtn:hover {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.editSaveBtn {
+  padding: 5px 14px;
+  background: var(--accent-primary);
+  border: 1px solid var(--accent-primary);
+  border-radius: 4px;
+  font-size: 13px;
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.editSaveBtn:hover {
+  opacity: 0.9;
+}
+
 .editSelect {
   width: 100%;
   padding: 8px 10px;

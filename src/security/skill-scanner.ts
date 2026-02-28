@@ -69,14 +69,29 @@ const WARN_PATTERNS = [
 ];
 
 /**
+ * 从 markdown 内容中剥离代码块和行内代码引用
+ * 这些区域中的关键词是文档说明，不是可执行指令
+ */
+function stripMarkdownCode(content: string): string {
+  // 先移除 fenced code blocks (```...```)
+  let stripped = content.replace(/```[\s\S]*?```/g, '');
+  // 再移除 inline code (`...`)
+  stripped = stripped.replace(/`[^`]+`/g, '');
+  return stripped;
+}
+
+/**
  * 扫描 skill 内容，检测危险模式
  */
 export function scanSkillContent(content: string): SkillScanResult {
   const warnings: SkillScanWarning[] = [];
 
-  // 检查 critical 级别的模式
+  // 剥离 markdown 代码块后再扫描，避免文档描述中的关键词被误报
+  const strippedContent = stripMarkdownCode(content);
+
+  // 检查 critical 级别的模式（只扫描非代码区域）
   for (const { pattern, rule, detail } of CRITICAL_PATTERNS) {
-    if (pattern.test(content)) {
+    if (pattern.test(strippedContent)) {
       warnings.push({
         level: 'critical',
         rule,
@@ -85,7 +100,7 @@ export function scanSkillContent(content: string): SkillScanResult {
     }
   }
 
-  // 检查 warn 级别的模式
+  // 检查 warn 级别的模式（扫描完整内容，因为 warn 不阻断加载）
   for (const { pattern, rule, detail } of WARN_PATTERNS) {
     if (rule === 'env_harvesting') {
       // 特殊处理：检测是否访问了多个环境变量（>=3个）

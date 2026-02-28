@@ -839,7 +839,10 @@ export const App: React.FC<AppProps> = ({
                 // 更新后台任务列表
                 updateBackgroundTasks();
               } catch (err) {
-                completeTask(bgTask.id, false, String(err));
+                const errorMsg = err instanceof Error
+                  ? `${err.message || 'Unknown error'}${err.stack ? '\n' + err.stack : ''}`
+                  : String(err);
+                completeTask(bgTask.id, false, errorMsg);
                 updateBackgroundTasks();
               }
             })();

@@ -19,6 +19,17 @@ export type Status = 'idle' | 'thinking' | 'streaming' | 'tool_executing';
 export type PermissionMode = 'default' | 'bypassPermissions' | 'acceptEdits' | 'plan';
 
 /**
+ * API 速率限制信息
+ */
+export interface RateLimitInfo {
+  status: string;
+  utilization5h?: number;
+  utilization7d?: number;
+  resetsAt?: number;
+  rateLimitType?: string;
+}
+
+/**
  * 跨会话通知：当其他会话有弹窗等待时，通知当前用户
  */
 export interface CrossSessionNotification {
@@ -45,6 +56,7 @@ interface UseMessageHandlerReturn {
   setStatus: React.Dispatch<React.SetStateAction<Status>>;
   contextUsage: ContextUsage | null;
   compactState: CompactState;
+  rateLimitInfo: RateLimitInfo | null;
   permissionRequest: PermissionRequest | null;
   setPermissionRequest: React.Dispatch<React.SetStateAction<PermissionRequest | null>>;
   userQuestion: UserQuestion | null;
@@ -74,6 +86,7 @@ export function useMessageHandler({
   const [status, setStatus] = useState<Status>('idle');
   const [contextUsage, setContextUsage] = useState<ContextUsage | null>(null);
   const [compactState, setCompactState] = useState<CompactState>({ phase: 'idle' });
+  const [rateLimitInfo, setRateLimitInfo] = useState<RateLimitInfo | null>(null);
   const [permissionRequest, setPermissionRequest] = useState<PermissionRequest | null>(null);
   const [userQuestion, setUserQuestion] = useState<UserQuestion | null>(null);
   const [permissionMode, setPermissionMode] = useState<PermissionMode>('default');
@@ -332,6 +345,10 @@ export function useMessageHandler({
 
         case 'context_update':
           setContextUsage(payload as unknown as ContextUsage);
+          break;
+
+        case 'rate_limit_update':
+          setRateLimitInfo(payload as unknown as RateLimitInfo);
           break;
 
         case 'context_compact': {
@@ -949,13 +966,13 @@ export function useMessageHandler({
           break;
 
         case 'design_image_generated': {
-          const designPayload = payload as { imageUrl: string; projectName: string; style: string; generatedText?: string };
+          const designPayload = payload as { imageUrl: string; title?: string; style?: string; generatedText?: string };
           if (designPayload.imageUrl) {
             const designContent: ChatContent = {
               type: 'design_image',
               imageUrl: designPayload.imageUrl,
-              projectName: designPayload.projectName || '',
-              style: designPayload.style || 'modern',
+              title: designPayload.title,
+              style: designPayload.style,
               generatedText: designPayload.generatedText,
             };
 
@@ -1027,6 +1044,7 @@ export function useMessageHandler({
     setStatus,
     contextUsage,
     compactState,
+    rateLimitInfo,
     permissionRequest,
     setPermissionRequest,
     userQuestion,

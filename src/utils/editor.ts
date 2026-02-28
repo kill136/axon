@@ -65,6 +65,7 @@ export async function openInEditor(filePath: string, editor?: string): Promise<v
         detached: true,
         stdio: 'ignore',
         shell: true,
+        windowsHide: true,
       });
 
       child.unref();

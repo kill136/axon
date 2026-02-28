@@ -109,29 +109,32 @@ const ENCRYPTION_KEY = crypto
   .update(os.hostname() + os.userInfo().username)
   .digest();
 
-// OAuth scope 定义（与官方一致）
-// qB4 = ["org:create_api_key", "user:profile"]
-// Aq1 = ["user:profile", "user:inference", "user:sessions:claude_code"]
-// CBQ = 合并去重
-const OAUTH_SCOPES = ['org:create_api_key', 'user:profile', 'user:inference', 'user:sessions:claude_code'];
+// OAuth scope 定义（从官方混淆源码还原）
+// hKK (Console scopes) = ["org:create_api_key", "user:profile"]
+// ph6 (Claude.ai scopes) = ["user:profile", "user:inference", "user:sessions:claude_code", "user:mcp_servers"]
+// vqA = 合并去重后的全部 scopes（官方在构建 authUrl 时统一使用 vqA）
+const CONSOLE_SCOPES = ['org:create_api_key', 'user:profile'];
+const CLAUDE_AI_SCOPES = ['user:profile', 'user:inference', 'user:sessions:claude_code', 'user:mcp_servers'];
+const ALL_SCOPES = Array.from(new Set([...CONSOLE_SCOPES, ...CLAUDE_AI_SCOPES]));
 
 // OAuth 端点配置
+// 关键区别：claude.ai 使用 https://claude.ai/oauth/authorize，console 使用 https://platform.claude.com/oauth/authorize
 export const OAUTH_ENDPOINTS: Record<'claude.ai' | 'console', OAuthConfig> = {
   'claude.ai': {
     clientId: '9d1c250a-e61b-44d9-88ed-5944d1962f5e',
-    authorizationEndpoint: 'https://platform.claude.com/oauth/authorize',
+    authorizationEndpoint: 'https://claude.ai/oauth/authorize',
     deviceCodeEndpoint: 'https://platform.claude.com/oauth/device/code',
     tokenEndpoint: 'https://platform.claude.com/v1/oauth/token',
-    redirectUri: 'https://platform.claude.com/oauth/code/callback',  // 使用官方的回调页面
-    scope: OAUTH_SCOPES,
+    redirectUri: 'https://platform.claude.com/oauth/code/callback',
+    scope: ALL_SCOPES,
   },
   console: {
     clientId: '9d1c250a-e61b-44d9-88ed-5944d1962f5e',
     authorizationEndpoint: 'https://platform.claude.com/oauth/authorize',
     deviceCodeEndpoint: 'https://platform.claude.com/oauth/device/code',
     tokenEndpoint: 'https://platform.claude.com/v1/oauth/token',
-    redirectUri: 'https://platform.claude.com/oauth/code/callback',  // 使用官方的回调页面
-    scope: OAUTH_SCOPES,
+    redirectUri: 'https://platform.claude.com/oauth/code/callback',
+    scope: ALL_SCOPES,
   },
 };
 

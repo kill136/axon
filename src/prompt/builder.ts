@@ -17,6 +17,7 @@ import {
   SECURITY_RULES,
   EXECUTING_WITH_CARE,
   PROACTIVE_SKILL_CREATION,
+  PROACTIVE_TOOL_DISCOVERY,
   getCodingGuidelines,
   getToolGuidelines,
   getToneAndStyle,
@@ -175,6 +176,9 @@ You have access to the ${askTool} tool to ask the user questions when you need c
 
     // 9.5 主动创建 Skill 规则 - 检测重复模式和复杂工作流时提议创建 skill
     staticParts.push(PROACTIVE_SKILL_CREATION);
+
+    // 9.6 主动工具发现规则 - 遇到不擅长的任务时自动搜索互联网上的 MCP/Skill
+    staticParts.push(PROACTIVE_TOOL_DISCOVERY);
 
     // 10. 安全规则 (BV6)
     staticParts.push(SECURITY_RULES);

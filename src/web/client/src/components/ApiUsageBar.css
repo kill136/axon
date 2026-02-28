@@ -1,0 +1,156 @@
+/* ApiUsageBar - API 额度使用量指示器 */
+
+.api-usage-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  font-size: 11px;
+  color: var(--text-muted);
+  user-select: none;
+  transition: opacity 0.3s ease;
+}
+
+/* 标签 */
+.api-usage-bar__label {
+  font-weight: 500;
+  opacity: 0.8;
+}
+
+/* 进度条容器 */
+.api-usage-bar__progress {
+  position: relative;
+  flex: 1;
+  height: 4px;
+  background: var(--bg-tertiary);
+  border-radius: 2px;
+  overflow: hidden;
+  min-width: 60px;
+  max-width: 120px;
+}
+
+/* 进度条填充 */
+.api-usage-bar__fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+              background-color 0.4s ease;
+}
+
+/* 颜色状态 */
+.api-usage-bar__fill--safe {
+  background: var(--accent-success);
+}
+
+.api-usage-bar__fill--warning {
+  background: var(--accent-warning);
+}
+
+.api-usage-bar__fill--danger {
+  background: var(--accent-error);
+}
+
+/* 百分比文字 */
+.api-usage-bar__text {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  min-width: 28px;
+  text-align: right;
+}
+
+.api-usage-bar__text--safe {
+  color: var(--accent-success);
+}
+
+.api-usage-bar__text--warning {
+  color: var(--accent-warning);
+}
+
+.api-usage-bar__text--danger {
+  color: var(--accent-error);
+}
+
+/* Tooltip */
+.api-usage-bar__tooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 11px;
+  white-space: nowrap;
+  z-index: 1000;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  animation: apiUsageTooltipFadeIn 0.2s ease-out;
+}
+
+.api-usage-bar__tooltip-arrow {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 5px solid var(--bg-elevated);
+}
+
+.api-usage-bar__tooltip-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.api-usage-bar__tooltip-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  color: var(--text-primary);
+}
+
+.api-usage-bar__tooltip-row span:first-child {
+  color: var(--text-muted);
+}
+
+.api-usage-bar__tooltip-reset {
+  color: var(--accent-info, #818cf8) !important;
+  font-weight: 500;
+}
+
+.api-usage-bar__tooltip-type {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  font-size: 10px;
+  text-align: center;
+}
+
+@keyframes apiUsageTooltipFadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+/* 手机屏幕：缩小进度条 */
+@media (max-width: 480px) {
+  .api-usage-bar {
+    gap: 4px;
+    padding: 4px 6px;
+  }
+
+  .api-usage-bar__progress {
+    min-width: 40px;
+    max-width: 60px;
+  }
+}

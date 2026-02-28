@@ -21,17 +21,14 @@ export * from './mcp.js';
 export * from './ask.js';
 export * from './sandbox.js';
 export * from './skill.js';
-export * from './lsp.js';
 export * from './task-storage.js';
 export * from './task-v2.js';
-export * from './agent-teams.js';
 export * from './notebook-write.js';
-export * from './team.js';
 export * from './schedule.js';
 export * from './self-evolve.js';
 export * from './browser.js';
 export * from './create-tool.js';
-export * from './goal.js';
+export * from './mcp-manage.js';
 
 // 蓝图工具不通过此处 re-export
 // 蓝图模块直接 import 各自需要的工具文件 (如 ../tools/dispatch-worker.js)
@@ -39,7 +36,7 @@ export * from './goal.js';
 import { toolRegistry } from './base.js';
 
 // ============ 核心工具 imports ============
-import { BashTool, KillShellTool } from './bash.js';
+import { BashTool, KillShellTool, cleanupStaleTasks } from './bash.js';
 import { ReadTool, WriteTool, EditTool } from './file.js';
 import { GlobTool, GrepTool } from './search.js';
 import { WebFetchTool } from './web.js';
@@ -52,29 +49,22 @@ import { EnterPlanModeTool, ExitPlanModeTool } from './planmode.js';
 import { MCPSearchTool, McpResourceTool } from './mcp.js';
 import { AskUserQuestionTool } from './ask.js';
 import { SkillTool } from './skill.js';
-import { LSPTool } from './lsp.js';
 import { NotebookWriteTool } from './notebook-write.js';
-import { TeammateTool } from './agent-teams.js';
-import { isAgentTeamsEnabled } from '../agents/teammate-context.js';
-import { TeamCreateTool, TeamDeleteTool, TeamSendMessageTool } from './team.js';
 import { ScheduleTaskTool } from './schedule.js';
 import { SelfEvolveTool } from './self-evolve.js';
 import { BrowserTool } from './browser.js';
 import { MemorySearchTool } from './memory-search.js';
-import { MemoryDiagnosticsTool } from './memory-diagnostics.js';
 import { CreateToolTool } from './create-tool.js';
 import { DatabaseTool } from './database.js';
-import { DebuggerTool } from './debugger.js';
-import { GoalWriteTool } from './goal.js';
+import { McpManageTool } from './mcp-manage.js';
 
 // ============ 蓝图工具 imports (lazy) ============
 import { BlueprintTool } from './blueprint.js';
 import { GenerateBlueprintTool } from './generate-blueprint.js';
 import { StartLeadAgentTool } from './start-lead-agent.js';
-import { GenerateDesignTool } from './generate-design.js';
 import { UpdateTaskPlanTool } from './update-task-plan.js';
 import { DispatchWorkerTool } from './dispatch-worker.js';
-import { TriggerE2ETestTool } from './trigger-e2e-test.js';
+import { GenerateImageTool } from './generate-design.js';
 
 // ============ 幂等保护标志 ============
 let coreToolsRegistered = false;
@@ -87,6 +77,16 @@ let blueprintToolsRegistered = false;
 export function registerCoreTools(): void {
   if (coreToolsRegistered) return;
   coreToolsRegistered = true;
+
+  // 启动时清理僵尸任务文件（空 log、status=running 的 orphan meta）
+  try {
+    const { cleaned, errors } = cleanupStaleTasks();
+    if (cleaned > 0) {
+      console.log(`[Tools] Cleaned up ${cleaned} stale task files${errors > 0 ? ` (${errors} errors)` : ''}`);
+    }
+  } catch {
+    // 清理失败不影响启动
+  }
 
   // 1. Bash 工具 (2个) - Bash + KillShell(对标官方 TaskStop)
   toolRegistry.register(new BashTool());
@@ -107,9 +107,8 @@ export function registerCoreTools(): void {
   // WebSearch: 使用 Anthropic API Server Tool (web_search_20250305)
   // 在 client.ts 的 buildApiTools 中自动添加，无需注册客户端工具
 
-  // 5. 任务管理 (4个)
+  // 5. 任务管理 (3个)
   toolRegistry.register(new TodoWriteTool());
-  toolRegistry.register(new GoalWriteTool());
   toolRegistry.register(new TaskTool());
   toolRegistry.register(new TaskOutputTool());
 
@@ -134,39 +133,12 @@ export function registerCoreTools(): void {
   // 9. Skill 系统 (1个)
   toolRegistry.register(new SkillTool());
 
-  // 10. MCP 工具 (2个) - MCPSearch + McpResource (合并了 ListMcpResources/ReadMcpResource)
+  // 10. MCP 工具 (3个) - MCPSearch + McpResource + McpManage
   toolRegistry.register(new MCPSearchTool());
   toolRegistry.register(new McpResourceTool());
-
-  // 18. Agent Teams v2.1.33 工具 (3个) - TeamCreate/TeamDelete/TeamSendMessage
-  // v2.1.34: 添加 try-catch 保护，防止 agent teams 设置变化时崩溃
-  try {
-    if (isAgentTeamsEnabled()) {
-      toolRegistry.register(new TeamCreateTool());
-      toolRegistry.register(new TeamDeleteTool());
-      toolRegistry.register(new TeamSendMessageTool());
-    }
-  } catch (err) {
-    // v2.1.34: 静默处理 agent teams 注册错误，防止影响整体工具系统
-    if (process.env.CLAUDE_DEBUG) {
-      console.warn('[Tools] Failed to register agent teams tools:', err);
-    }
-  }
-
-  // 19. Agent Teams 工具 (1个) - v2.1.32 TeammateTool
-  // v2.1.34: 添加 try-catch 保护
-  try {
-    if (isAgentTeamsEnabled()) {
-      toolRegistry.register(new TeammateTool());
-    }
-  } catch (err) {
-    if (process.env.CLAUDE_DEBUG) {
-      console.warn('[Tools] Failed to register TeammateTool:', err);
-    }
-  }
+  toolRegistry.register(new McpManageTool());
 
   // 12. 项目扩展工具 (非官方，但 CLI 模式也用)
-  toolRegistry.register(new LSPTool());
   toolRegistry.register(new NotebookWriteTool());
 
   // 13. Daemon 定时任务工具
@@ -180,14 +152,12 @@ export function registerCoreTools(): void {
 
   // 16. MemorySearch 长期记忆搜索工具
   toolRegistry.register(new MemorySearchTool());
-  toolRegistry.register(new MemoryDiagnosticsTool());
 
   // 17. CreateTool 自定义 Skill 创建（写入 ~/.claude/skills/，利用 Skill 系统）
   toolRegistry.register(new CreateToolTool());
 
-  // 20. 开发工具 (2个) - Database, Debugger
+  // 20. Database 开发工具
   toolRegistry.register(new DatabaseTool());
-  toolRegistry.register(new DebuggerTool());
 }
 
 /**
@@ -195,7 +165,7 @@ export function registerCoreTools(): void {
  * 仅在 Web 模式下由 ConversationManager.initialize() 调用
  *
  * 各 Agent 类型使用的蓝图工具：
- * - Chat Tab Agent: BlueprintTool, GenerateBlueprintTool, StartLeadAgentTool, GenerateDesignTool
+ * - Chat Tab Agent: BlueprintTool, GenerateBlueprintTool, StartLeadAgentTool, GenerateImageTool
  */
 export function registerBlueprintTools(): void {
   if (blueprintToolsRegistered) return;
@@ -205,12 +175,11 @@ export function registerBlueprintTools(): void {
   toolRegistry.register(new BlueprintTool());
   toolRegistry.register(new GenerateBlueprintTool());
   toolRegistry.register(new StartLeadAgentTool());
-  toolRegistry.register(new GenerateDesignTool());
+  toolRegistry.register(new GenerateImageTool());
 
-  // LeadAgent 专用 (3个) - 任务计划管理、Worker 派发、E2E 测试
+  // LeadAgent 专用 (2个) - 任务计划管理、Worker 派发
   toolRegistry.register(new UpdateTaskPlanTool());
   toolRegistry.register(new DispatchWorkerTool());
-  toolRegistry.register(new TriggerE2ETestTool());
 }
 
 /**

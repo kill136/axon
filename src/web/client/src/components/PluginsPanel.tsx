@@ -1,11 +1,11 @@
 /**
- * 插件管理面板组件
- * 复刻 CLI 的 PluginsDialog 交互式界面
+ * Skills & Plugins 管理面板组件
+ * 复刻 CLI 的 PluginsDialog 交互式界面，扩展了 Skills 管理功能
  */
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useLanguage } from '../i18n';
-import { PluginInfo } from '../../shared/types';
+import { PluginInfo, SkillInfo } from '../../shared/types';
 import './PluginsPanel.css';
 
 // 图标常量
@@ -22,14 +22,17 @@ const ICONS = {
   warning: '⚠',
   plus: '+',
   trash: '🗑',
+  eye: '👁',
+  skill: '⚡',
 };
 
 // Tab 定义
-type TabId = 'discover' | 'installed' | 'marketplaces' | 'errors';
+type TabId = 'skills' | 'plugins' | 'discover' | 'marketplaces' | 'errors';
 
-// TAB_LABELS 通过 i18n 动态获取
+const TAB_ORDER: TabId[] = ['skills', 'plugins', 'discover', 'marketplaces', 'errors'];
 
-const TAB_ORDER: TabId[] = ['discover', 'installed', 'marketplaces', 'errors'];
+// Source filter type
+type SourceFilter = 'all' | 'plugin' | 'smithery' | 'manual';
 
 // 插件接口
 interface MarketplacePlugin {
@@ -83,6 +86,18 @@ function formatInstalls(count: number): string {
 }
 
 /**
+ * 获取来源 badge 的 CSS 类名
+ */
+function getSourceBadgeClass(source: SkillInfo['source']): string {
+  switch (source) {
+    case 'plugin': return 'plugins-source-badge plugins-source-badge-plugin';
+    case 'smithery': return 'plugins-source-badge plugins-source-badge-smithery';
+    case 'manual': return 'plugins-source-badge plugins-source-badge-manual';
+    default: return 'plugins-source-badge';
+  }
+}
+
+/**
  * Tab 栏组件
  */
 function TabBar({
@@ -106,6 +121,244 @@ function TabBar({
           {t(`plugins.tab.${tab}`)}
         </button>
       ))}
+    </div>
+  );
+}
+
+/**
+ * Skill 内容查看模态框
+ */
+function SkillContentModal({
+  skillName,
+  content,
+  onClose,
+}: {
+  skillName: string;
+  content: string;
+  onClose: () => void;
+}) {
+  const { t } = useLanguage();
+  return (
+    <div className="plugins-skill-modal-overlay" onClick={onClose}>
+      <div className="plugins-skill-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="plugins-skill-modal-header">
+          <h4>{t('plugins.skills.viewContent')}: {skillName}</h4>
+          <button className="plugins-action-btn" onClick={onClose}>
+            {t('plugins.skills.closeModal')}
+          </button>
+        </div>
+        <div className="plugins-skill-modal-content">
+          <pre>{content}</pre>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Skills Tab 组件
+ */
+function SkillsTab({
+  skills,
+  onViewContent,
+  onDelete,
+  onToggle,
+}: {
+  skills: SkillInfo[];
+  onViewContent: (name: string) => void;
+  onDelete: (name: string, source: string) => void;
+  onToggle: (name: string, enabled: boolean) => void;
+}) {
+  const { t } = useLanguage();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
+  const [expandedSkill, setExpandedSkill] = useState<string | null>(null);
+
+  // 过滤 skills
+  const filteredSkills = useMemo(() => {
+    let result = skills;
+
+    // 按来源过滤
+    if (sourceFilter !== 'all') {
+      result = result.filter((s) => s.source === sourceFilter);
+    }
+
+    // 按搜索关键词过滤
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(
+        (s) =>
+          s.displayName.toLowerCase().includes(q) ||
+          s.name.toLowerCase().includes(q) ||
+          s.description.toLowerCase().includes(q)
+      );
+    }
+
+    return result;
+  }, [skills, sourceFilter, searchQuery]);
+
+  if (skills.length === 0) {
+    return (
+      <div className="plugins-tab-content">
+        <h4>{t('plugins.skills.title')}</h4>
+        <div className="plugins-empty">
+          <p>{t('plugins.skills.empty')}</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="plugins-tab-content">
+      <h4>{t('plugins.skills.title')}</h4>
+
+      {/* 搜索框和筛选器 */}
+      <div className="plugins-skills-toolbar">
+        <div className="plugins-search" style={{ flex: 1, marginBottom: 0 }}>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder={t('plugins.skills.search')}
+            className="plugins-search-input"
+          />
+        </div>
+        <select
+          className="plugins-source-filter"
+          value={sourceFilter}
+          onChange={(e) => setSourceFilter(e.target.value as SourceFilter)}
+        >
+          <option value="all">{t('plugins.skills.filter.all')}</option>
+          <option value="plugin">{t('plugins.skills.filter.plugin')}</option>
+          <option value="smithery">{t('plugins.skills.filter.smithery')}</option>
+          <option value="manual">{t('plugins.skills.filter.manual')}</option>
+        </select>
+      </div>
+
+      {/* 无搜索结果 */}
+      {filteredSkills.length === 0 && (searchQuery || sourceFilter !== 'all') && (
+        <div className="plugins-no-results">{t('plugins.skills.noResults')}</div>
+      )}
+
+      {/* Skills 列表 */}
+      <div className="plugins-list">
+        {filteredSkills.map((skill) => {
+          const isExpanded = expandedSkill === skill.name;
+
+          return (
+            <div
+              key={skill.name}
+              className={`plugins-list-item ${isExpanded ? 'selected' : ''}`}
+            >
+              {/* 卡片头部：名称 + badge + 操作按钮 */}
+              <div className="plugins-skill-item-header">
+                <span className="plugins-item-name">{skill.displayName}</span>
+                <span className={getSourceBadgeClass(skill.source)}>
+                  {t(`plugins.skills.source.${skill.source}`)}
+                </span>
+                {skill.version && (
+                  <span className="plugins-item-version">v{skill.version}</span>
+                )}
+                {!skill.enabled && (
+                  <span className="plugins-tag plugins-tag-disabled">{t('plugins.skills.detail.disabled')}</span>
+                )}
+                
+                {/* 右侧操作按钮 */}
+                <div className="plugins-skill-actions-inline">
+                  <button
+                    className="plugins-skill-action-icon"
+                    title={t('plugins.skills.actions.view')}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onViewContent(skill.name);
+                    }}
+                  >
+                    {ICONS.eye}
+                  </button>
+                  {skill.source !== 'plugin' && (
+                    <button
+                      className="plugins-skill-action-icon danger"
+                      title={t('plugins.skills.actions.delete')}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (confirm(t('plugins.skills.actions.confirmDelete'))) {
+                          onDelete(skill.name, skill.source);
+                        }
+                      }}
+                    >
+                      {ICONS.cross}
+                    </button>
+                  )}
+                  <span
+                    className="plugins-skill-expand-icon"
+                    onClick={() => setExpandedSkill(isExpanded ? null : skill.name)}
+                  >
+                    {isExpanded ? ICONS.arrowUp : ICONS.arrowDown}
+                  </span>
+                </div>
+              </div>
+
+              {/* 描述（2行截断） */}
+              {skill.description && (
+                <div className="plugins-item-desc">{skill.description}</div>
+              )}
+
+              {/* 展开的详细信息 */}
+              {isExpanded && (
+                <div className="plugins-skill-detail">
+                  {skill.sourceName && (
+                    <div className="plugins-skill-detail-row">
+                      <span className="plugins-skill-detail-label">{t('plugins.skills.detail.source')}:</span>
+                      <span>{skill.sourceName}</span>
+                    </div>
+                  )}
+                  {skill.model && (
+                    <div className="plugins-skill-detail-row">
+                      <span className="plugins-skill-detail-label">{t('plugins.skills.detail.model')}:</span>
+                      <span>{skill.model}</span>
+                    </div>
+                  )}
+                  {skill.allowedTools && skill.allowedTools.length > 0 && (
+                    <div className="plugins-skill-detail-row">
+                      <span className="plugins-skill-detail-label">{t('plugins.skills.detail.tools')}:</span>
+                      <span>{skill.allowedTools.join(', ')}</span>
+                    </div>
+                  )}
+                  {skill.argumentHint && (
+                    <div className="plugins-skill-detail-row">
+                      <span className="plugins-skill-detail-label">{t('plugins.skills.detail.argumentHint')}:</span>
+                      <span>{skill.argumentHint}</span>
+                    </div>
+                  )}
+                  {skill.author && (
+                    <div className="plugins-skill-detail-row">
+                      <span className="plugins-skill-detail-label">{t('plugins.skills.detail.author')}:</span>
+                      <span>{skill.author}</span>
+                    </div>
+                  )}
+                  <div className="plugins-skill-detail-row">
+                    <span className="plugins-skill-detail-label">{t('plugins.skills.detail.path')}:</span>
+                    <code>{skill.path}</code>
+                  </div>
+
+                  {/* 展开区域的操作按钮 */}
+                  <div className="plugins-item-actions" style={{ marginLeft: 0, marginTop: 12 }}>
+                    <button
+                      className="plugins-action-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onToggle(skill.name, !skill.enabled);
+                      }}
+                    >
+                      {skill.enabled ? t('plugins.skills.actions.disable') : t('plugins.skills.actions.enable')}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -291,9 +544,9 @@ function DiscoverTab({
 }
 
 /**
- * Installed Tab 组件
+ * Plugins Tab 组件 (原 InstalledTab)
  */
-function InstalledTab({
+function PluginsTab({
   plugins,
   onUninstall,
   onViewDetails,
@@ -670,18 +923,22 @@ function AddMarketplace({
 }
 
 /**
- * 插件管理主面板
+ * Skills & Plugins 管理主面板
  */
 export function PluginsPanel({ onClose, onSendMessage, addMessageHandler }: PluginsPanelProps) {
   const { t } = useLanguage();
-  const [currentTab, setCurrentTab] = useState<TabId>('discover');
+  const [currentTab, setCurrentTab] = useState<TabId>('skills');
   const [viewMode, setViewMode] = useState<ViewMode>('tabs');
 
-  // 数据状态
+  // Plugin 数据状态
   const [discoverPlugins, setDiscoverPlugins] = useState<MarketplacePlugin[]>([]);
   const [installedPlugins, setInstalledPlugins] = useState<PluginInfo[]>([]);
   const [marketplaces, setMarketplaces] = useState<Marketplace[]>([]);
   const [errors, setErrors] = useState<PluginError[]>([]);
+
+  // Skills 数据状态
+  const [skills, setSkills] = useState<SkillInfo[]>([]);
+  const [skillContentModal, setSkillContentModal] = useState<{ name: string; content: string } | null>(null);
 
   // UI 状态
   const [selectedPlugins, setSelectedPlugins] = useState<Set<string>>(new Set());
@@ -700,10 +957,12 @@ export function PluginsPanel({ onClose, onSendMessage, addMessageHandler }: Plug
       onSendMessage({ type: 'plugin_list' });
       // 请求 marketplace 和可发现插件
       onSendMessage({ type: 'plugin_discover' });
+      // 请求 skills 列表
+      onSendMessage({ type: 'skill_list' });
     }
   }, [onSendMessage]);
 
-  // 监听 WebSocket 消息：plugin_list_response + plugin_discover_response
+  // 监听 WebSocket 消息
   useEffect(() => {
     if (!addMessageHandler) {
       setLoading(false);
@@ -739,6 +998,37 @@ export function PluginsPanel({ onClose, onSendMessage, addMessageHandler }: Plug
           tags: p.tags || [],
         })));
         setLoading(false);
+      }
+
+      // Skills 列表
+      if (msg.type === 'skill_list_response') {
+        const { skills: skillList } = msg.payload;
+        setSkills(skillList || []);
+        setLoading(false);
+      }
+
+      // Skill 内容查看
+      if (msg.type === 'skill_view_response') {
+        const { name, content } = msg.payload;
+        setSkillContentModal({ name, content });
+      }
+
+      // Skill 删除
+      if (msg.type === 'skill_deleted') {
+        const { name, success } = msg.payload;
+        if (success) {
+          setSkills((prev) => prev.filter((s) => s.name !== name));
+        }
+      }
+
+      // Skill 切换启用/禁用
+      if (msg.type === 'skill_toggled') {
+        const { name, enabled, success } = msg.payload;
+        if (success) {
+          setSkills((prev) =>
+            prev.map((s) => (s.name === name ? { ...s, enabled } : s))
+          );
+        }
       }
     });
 
@@ -988,11 +1278,44 @@ export function PluginsPanel({ onClose, onSendMessage, addMessageHandler }: Plug
     setSelectedPlugin(null);
   };
 
+  // Skills 操作
+  const handleViewSkillContent = useCallback((name: string) => {
+    if (onSendMessage) {
+      onSendMessage({
+        type: 'skill_view',
+        payload: { name },
+      });
+    }
+  }, [onSendMessage]);
+
+  const handleDeleteSkill = useCallback((name: string, source: string) => {
+    if (onSendMessage) {
+      onSendMessage({
+        type: 'skill_delete',
+        payload: { name, source },
+      });
+    }
+  }, [onSendMessage]);
+
+  const handleToggleSkill = useCallback((name: string, enabled: boolean) => {
+    // 乐观更新
+    setSkills((prev) =>
+      prev.map((s) => (s.name === name ? { ...s, enabled } : s))
+    );
+
+    if (onSendMessage) {
+      onSendMessage({
+        type: 'skill_toggle',
+        payload: { name, enabled },
+      });
+    }
+  }, [onSendMessage]);
+
   if (loading) {
     return (
       <div className="plugins-panel">
         <div className="plugins-panel-header">
-          <h3>/plugins</h3>
+          <h3>{t('plugins.title')}</h3>
           <span className="plugins-panel-subtitle">{t('common.loading')}</span>
         </div>
       </div>
@@ -1043,13 +1366,31 @@ export function PluginsPanel({ onClose, onSendMessage, addMessageHandler }: Plug
   return (
     <div className="plugins-panel">
       <div className="plugins-panel-header">
-        <h3>/plugins</h3>
+        <h3>{t('plugins.title')}</h3>
       </div>
 
       {/* Tab 栏 */}
       <TabBar tabs={TAB_ORDER} selectedTab={currentTab} onTabChange={handleTabChange} />
 
       {/* Tab 内容 */}
+      {currentTab === 'skills' && (
+        <SkillsTab
+          skills={skills}
+          onViewContent={handleViewSkillContent}
+          onDelete={handleDeleteSkill}
+          onToggle={handleToggleSkill}
+        />
+      )}
+
+      {currentTab === 'plugins' && (
+        <PluginsTab
+          plugins={installedPlugins}
+          onUninstall={handleUninstall}
+          onViewDetails={handleViewPluginDetails}
+          onToggle={handleToggle}
+        />
+      )}
+
       {currentTab === 'discover' && (
         <DiscoverTab
           plugins={discoverPlugins}
@@ -1069,15 +1410,6 @@ export function PluginsPanel({ onClose, onSendMessage, addMessageHandler }: Plug
         />
       )}
 
-      {currentTab === 'installed' && (
-        <InstalledTab
-          plugins={installedPlugins}
-          onUninstall={handleUninstall}
-          onViewDetails={handleViewPluginDetails}
-          onToggle={handleToggle}
-        />
-      )}
-
       {currentTab === 'marketplaces' && (
         <MarketplacesTab
           marketplaces={marketplaces}
@@ -1089,6 +1421,15 @@ export function PluginsPanel({ onClose, onSendMessage, addMessageHandler }: Plug
 
       {currentTab === 'errors' && (
         <ErrorsTab errors={errors} onClear={handleClearErrors} />
+      )}
+
+      {/* Skill 内容查看模态框 */}
+      {skillContentModal && (
+        <SkillContentModal
+          skillName={skillContentModal.name}
+          content={skillContentModal.content}
+          onClose={() => setSkillContentModal(null)}
+        />
       )}
     </div>
   );

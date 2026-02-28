@@ -6,8 +6,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { SlashCommandPalette } from './SlashCommandPalette';
 import { ContextBar, type ContextUsage, type CompactState } from './ContextBar';
+import { ApiUsageBar } from './ApiUsageBar';
 import type { Attachment, SlashCommand } from '../types';
-import type { Status, PermissionMode } from '../hooks/useMessageHandler';
+import type { Status, PermissionMode, RateLimitInfo } from '../hooks/useMessageHandler';
 import { useLanguage } from '../i18n';
 
 interface InputAreaProps {
@@ -46,6 +47,7 @@ interface InputAreaProps {
   // Context
   contextUsage: ContextUsage | null;
   compactState: CompactState;
+  rateLimitInfo: RateLimitInfo | null;
 
   // Transcript 模式
   hasCompactBoundary: boolean;
@@ -98,6 +100,7 @@ export function InputArea({
   onCancel,
   contextUsage,
   compactState,
+  rateLimitInfo,
   hasCompactBoundary,
   isTranscriptMode,
   onToggleTranscriptMode,
@@ -300,6 +303,7 @@ export function InputArea({
               <option value="plan">{`📋 ${t('input.permPlan')}`}</option>
             </select>
             <ContextBar usage={contextUsage} compactState={compactState} />
+            <ApiUsageBar info={rateLimitInfo} />
             <span className="toolbar-divider" />
             <button className="attach-btn" onClick={() => fileInputRef.current?.click()} title={t('input.attach')}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">

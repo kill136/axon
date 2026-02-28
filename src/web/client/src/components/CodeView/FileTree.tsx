@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import type { OutlineSymbol, OutlineSymbolKind } from '../../hooks/useOutlineSymbols';
 import styles from './FileTree.module.css';
 
@@ -37,13 +37,51 @@ interface FileTreeProps {
   onSymbolClick?: (line: number) => void;
 }
 
+// ============================================================================
+// 工具函数
+// ============================================================================
+
 /**
- * 文件类型图标组件
+ * 将树结构扁平化为可见节点列表（仅展开的目录下的子节点可见）
  */
+function flattenVisibleNodes(
+  node: FileTreeNode,
+  expandedDirs: Set<string>,
+  level: number = 0,
+): { node: FileTreeNode; level: number }[] {
+  const result: { node: FileTreeNode; level: number }[] = [];
+  result.push({ node, level });
+
+  if (node.type === 'directory' && expandedDirs.has(node.path) && node.children) {
+    for (const child of node.children) {
+      result.push(...flattenVisibleNodes(child, expandedDirs, level + 1));
+    }
+  }
+  return result;
+}
+
+/**
+ * 检查 path 是否是 parentPath 的子路径
+ */
+function isDescendantOf(path: string, parentPath: string): boolean {
+  return path.startsWith(parentPath + '/');
+}
+
+/**
+ * 获取节点的父目录路径
+ */
+function getParentPath(path: string): string {
+  const idx = path.lastIndexOf('/');
+  return idx > 0 ? path.substring(0, idx) : '.';
+}
+
+// ============================================================================
+// 文件类型图标组件
+// ============================================================================
+
 const FileIcon: React.FC<{ fileName: string }> = ({ fileName }) => {
   const ext = fileName.split('.').pop()?.toLowerCase();
 
-  // TypeScript/TSX
   if (ext === 'ts' || ext === 'tsx') {
     return (
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -53,7 +91,6 @@ const FileIcon: React.FC<{ fileName: string }> = ({ fileName }) => {
     );
   }
 
-  // JavaScript/JSX
   if (ext === 'js' || ext === 'jsx') {
     return (
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -63,7 +100,6 @@ const FileIcon: React.FC<{ fileName: string }> = ({ fileName }) => {
     );
   }
 
-  // CSS/SCSS/LESS
   if (ext === 'css' || ext === 'scss' || ext === 'less') {
     return (
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -73,7 +109,6 @@ const FileIcon: React.FC<{ fileName: string }> = ({ fileName }) => {
     );
   }
 
-  // JSON
   if (ext === 'json') {
     return (
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -83,7 +118,6 @@ const FileIcon: React.FC<{ fileName: string }> = ({ fileName }) => {
     );
   }
 
-  // Markdown
   if (ext === 'md' || ext === 'markdown') {
     return (
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -93,7 +127,6 @@ const FileIcon: React.FC<{ fileName: string }> = ({ fileName }) => {
     );
   }
 
-  // 通用文件图标
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
       <path d="M4 2h5l3 3v8a1 1 0 01-1 1H4a1 1 0 01-1-1V3a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.5" fill="none"/>
@@ -154,7 +187,6 @@ const ContextMenu: React.FC<{
 }> = ({ x, y, items, onClose }) => {
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // 关闭菜单的处理
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
@@ -177,7 +209,6 @@ const ContextMenu: React.FC<{
     };
   }, [onClose]);
 
-  // 调整菜单位置，防止超出视口
   const adjustedPosition = useMemo(() => {
     const menuWidth = 220;
     const menuHeight = items.length * 28 + 8;
@@ -225,7 +256,7 @@ const ContextMenu: React.FC<{
             >
               <span className={styles.menuLabel}>{item.label}</span>
               {item.shortcut && (
-                <span className={styles.menuShortcut}>{item.shortcut}</span>
+                <span className={styles.contextMenuShortcut}>{item.shortcut}</span>
               )}
             </div>
           );
@@ -390,34 +421,42 @@ const TreeNode: React.FC<{
   onSymbolClick?: (line: number) => void;
   // 右键菜单
   onContextMenu?: (e: React.MouseEvent, node: FileTreeNode) => void;
-  clipboard?: { node: FileTreeNode; operation: 'cut' | 'copy' } | null;
+  clipboard?: { node: FileTreeNode; nodes: FileTreeNode[]; operation: 'cut' | 'copy' } | null;
   // 内联编辑
   inlineEdit?: { path: string; type: 'rename' | 'newFile' | 'newFolder'; parentPath?: string; initialValue?: string } | null;
   onInlineEditSubmit?: (value: string) => void;
   onInlineEditCancel?: () => void;
+  // 多选
+  selectedPaths: Set<string>;
+  focusedPath: string | null;
+  onNodeClick: (e: React.MouseEvent, node: FileTreeNode) => void;
+  // 拖拽
+  dragState: { dragging: boolean; sourcePaths: Set<string>; overPath: string | null };
+  onDragStart: (e: React.DragEvent, node: FileTreeNode) => void;
+  onDragOver: (e: React.DragEvent, node: FileTreeNode) => void;
+  onDragLeave: (e: React.DragEvent) => void;
+  onDrop: (e: React.DragEvent, node: FileTreeNode) => void;
+  onDragEnd: () => void;
 }> = ({
   node, level, currentFile, onFileSelect, expandedDirs, onToggleDir,
   outlineSymbols, symbolsExpanded, onToggleSymbols, activeSymbolKey,
   expandedSymbols, onToggleSymbol, onSymbolClick, onContextMenu, clipboard,
   inlineEdit, onInlineEditSubmit, onInlineEditCancel,
+  selectedPaths, focusedPath, onNodeClick,
+  dragState, onDragStart, onDragOver, onDragLeave, onDrop, onDragEnd,
 }) => {
   const isDirectory = node.type === 'directory';
   const isExpanded = expandedDirs.has(node.path);
-  const isSelected = currentFile === node.path;
   const isCurrentFile = currentFile === node.path;
+  const isSelected = selectedPaths.has(node.path);
+  const isFocused = focusedPath === node.path;
   const hasSymbols = isCurrentFile && outlineSymbols && outlineSymbols.length > 0;
-  const isCut = clipboard?.node.path === node.path && clipboard.operation === 'cut';
+  const isCut = clipboard?.operation === 'cut' && clipboard.nodes.some(n => n.path === node.path);
+  const isDragOver = dragState.overPath === node.path && isDirectory;
+  const isDragSource = dragState.dragging && dragState.sourcePaths.has(node.path);
 
-  const handleClick = () => {
-    if (isDirectory) {
-      onToggleDir(node.path);
-    } else {
-      onFileSelect(node.path);
-      // 如果已经是当前文件，切换符号展开状态
-      if (isCurrentFile && hasSymbols) {
-        onToggleSymbols();
-      }
-    }
+  const handleClick = (e: React.MouseEvent) => {
+    onNodeClick(e, node);
   };
 
   const handleChevronClick = (e: React.MouseEvent) => {
@@ -437,13 +476,46 @@ const TreeNode: React.FC<{
     }
   };
 
+  const handleDragStart = (e: React.DragEvent) => {
+    onDragStart(e, node);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    onDragOver(e, node);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    onDragLeave(e);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    onDrop(e, node);
+  };
+
+  const nodeClasses = [
+    styles.treeNode,
+    isCurrentFile ? styles.currentFile : '',
+    isSelected ? styles.multiSelected : '',
+    isFocused ? styles.focused : '',
+    isCut ? styles.cutNode : '',
+    isDragOver ? styles.dragOver : '',
+    isDragSource ? styles.dragging : '',
+  ].filter(Boolean).join(' ');
+
   return (
     <>
       <div
-        className={`${styles.treeNode} ${isSelected ? styles.selected : ''} ${isCut ? styles.cutNode : ''}`}
+        data-path={node.path}
+        className={nodeClasses}
         style={{ paddingLeft: `${level * 12 + 8}px` }}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
+        draggable
+        onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        onDragEnd={onDragEnd}
       >
         {(isDirectory || hasSymbols) ? (
           <span className={styles.chevron} onClick={handleChevronClick}>
@@ -509,6 +581,15 @@ const TreeNode: React.FC<{
               inlineEdit={inlineEdit}
               onInlineEditSubmit={onInlineEditSubmit}
               onInlineEditCancel={onInlineEditCancel}
+              selectedPaths={selectedPaths}
+              focusedPath={focusedPath}
+              onNodeClick={onNodeClick}
+              dragState={dragState}
+              onDragStart={onDragStart}
+              onDragOver={onDragOver}
+              onDragLeave={onDragLeave}
+              onDrop={onDrop}
+              onDragEnd={onDragEnd}
             />
           ))}
         </div>
@@ -536,8 +617,7 @@ const TreeNode: React.FC<{
 
 /**
  * FileTree 组件
- * 显示项目文件树，支持展开/折叠目录，点击选择文件
- * 当前文件支持展开显示代码符号（函数、类、接口等）
+ * 支持多选、键盘导航、拖拽移动、批量操作
  */
 export const FileTree: React.FC<FileTreeProps> = ({
   projectPath,
@@ -567,9 +647,10 @@ export const FileTree: React.FC<FileTreeProps> = ({
     targetType: 'file' | 'directory' | 'blank';
   } | null>(null);
 
-  // 剪贴板状态
+  // 剪贴板状态（支持多文件）
   const [clipboard, setClipboard] = useState<{
     node: FileTreeNode;
+    nodes: FileTreeNode[];
     operation: 'cut' | 'copy';
   } | null>(null);
 
@@ -580,6 +661,37 @@ export const FileTree: React.FC<FileTreeProps> = ({
     parentPath?: string;
     initialValue?: string;
   } | null>(null);
+
+  // ==================== 多选状态 ====================
+  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
+  const [focusedPath, setFocusedPath] = useState<string | null>(null);
+  const [lastClickedPath, setLastClickedPath] = useState<string | null>(null);
+
+  // ==================== 拖拽状态 ====================
+  const [dragState, setDragState] = useState<{
+    dragging: boolean;
+    sourcePaths: Set<string>;
+    overPath: string | null;
+  }>({ dragging: false, sourcePaths: new Set(), overPath: null });
+  const dragExpandTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Container ref（用于焦点和键盘事件）
+  const treeContainerRef = useRef<HTMLDivElement>(null);
+
+  // 扁平化的可见节点列表
+  const flatNodes = useMemo(() => {
+    if (!tree) return [];
+    return flattenVisibleNodes(tree, expandedDirs);
+  }, [tree, expandedDirs]);
+
+  // 所有可见节点的 path 到 FileTreeNode 映射
+  const nodeByPath = useMemo(() => {
+    const map = new Map<string, FileTreeNode>();
+    for (const { node } of flatNodes) {
+      map.set(node.path, node);
+    }
+    return map;
+  }, [flatNodes]);
 
   // 当 symbols 变化时，重置默认展开状态
   useEffect(() => {
@@ -618,48 +730,9 @@ export const FileTree: React.FC<FileTreeProps> = ({
     });
   };
 
-  // 加载文件树
-  useEffect(() => {
-    const fetchTree = async () => {
-      setLoading(true);
-      setError(null);
+  // ==================== 加载文件树 ====================
 
-      try {
-        const response = await fetch(`/api/files/tree?root=${encodeURIComponent(projectPath)}&path=.&depth=3`);
-
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || '加载文件树失败');
-        }
-
-        const data = await response.json();
-        setTree(data);
-      } catch (err) {
-        console.error('[FileTree] 加载失败:', err);
-        setError(err instanceof Error ? err.message : '未知错误');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchTree();
-  }, [projectPath]);
-
-  // 切换目录展开/折叠
-  const handleToggleDir = (path: string) => {
-    setExpandedDirs((prev) => {
-      const next = new Set(prev);
-      if (next.has(path)) {
-        next.delete(path);
-      } else {
-        next.add(path);
-      }
-      return next;
-    });
-  };
-
-  // 刷新文件树
-  const refreshTree = async () => {
+  const fetchTree = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -676,80 +749,355 @@ export const FileTree: React.FC<FileTreeProps> = ({
     } finally {
       setLoading(false);
     }
-  };
+  }, [projectPath]);
 
-  // ==================== 右键菜单操作函数 ====================
+  useEffect(() => {
+    fetchTree();
+  }, [fetchTree]);
 
-  const handleCut = (node: FileTreeNode) => {
-    setClipboard({ node, operation: 'cut' });
-  };
-
-  const handleCopy = (node: FileTreeNode) => {
-    setClipboard({ node, operation: 'copy' });
-  };
-
-  const handlePaste = async (targetNode: FileTreeNode) => {
-    if (!clipboard) return;
-    
-    const destDir = targetNode.type === 'directory' ? targetNode.path : targetNode.path.substring(0, targetNode.path.lastIndexOf('/'));
-    const destPath = `${destDir}/${clipboard.node.name}`;
-    
-    try {
-      if (clipboard.operation === 'cut') {
-        const response = await fetch('/api/files/move', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sourcePath: clipboard.node.path, destPath, root: projectPath }),
-        });
-        
-        if (!response.ok) {
-          const error = await response.json();
-          alert(`移动失败: ${error.error}`);
-          return;
-        }
-        
-        setClipboard(null);
+  // 切换目录展开/折叠
+  const handleToggleDir = useCallback((path: string) => {
+    setExpandedDirs((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) {
+        next.delete(path);
       } else {
-        const response = await fetch('/api/files/copy', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sourcePath: clipboard.node.path, destPath, root: projectPath }),
-        });
-        
-        if (!response.ok) {
-          const error = await response.json();
-          alert(`复制失败: ${error.error}`);
-          return;
+        next.add(path);
+      }
+      return next;
+    });
+  }, []);
+
+  // ==================== 节点点击处理（多选逻辑） ====================
+
+  const handleNodeClick = useCallback((e: React.MouseEvent, node: FileTreeNode) => {
+    const isCtrl = e.ctrlKey || e.metaKey;
+    const isShift = e.shiftKey;
+
+    if (isCtrl) {
+      // Ctrl+Click: 切换选中状态
+      setSelectedPaths(prev => {
+        const next = new Set(prev);
+        if (next.has(node.path)) {
+          next.delete(node.path);
+        } else {
+          next.add(node.path);
+        }
+        return next;
+      });
+      setFocusedPath(node.path);
+      setLastClickedPath(node.path);
+    } else if (isShift && lastClickedPath) {
+      // Shift+Click: 范围选择
+      const startIdx = flatNodes.findIndex(n => n.node.path === lastClickedPath);
+      const endIdx = flatNodes.findIndex(n => n.node.path === node.path);
+
+      if (startIdx !== -1 && endIdx !== -1) {
+        const minIdx = Math.min(startIdx, endIdx);
+        const maxIdx = Math.max(startIdx, endIdx);
+        const rangePaths = new Set<string>();
+        for (let i = minIdx; i <= maxIdx; i++) {
+          rangePaths.add(flatNodes[i].node.path);
+        }
+        setSelectedPaths(rangePaths);
+      }
+      setFocusedPath(node.path);
+    } else {
+      // 普通点击：清除多选，选中当前
+      setSelectedPaths(new Set([node.path]));
+      setFocusedPath(node.path);
+      setLastClickedPath(node.path);
+
+      // 原有的文件打开/目录切换逻辑
+      if (node.type === 'directory') {
+        handleToggleDir(node.path);
+      } else {
+        onFileSelect(node.path);
+        // 如果已经是当前文件，切换符号展开状态
+        if (currentFile === node.path && outlineSymbols && outlineSymbols.length > 0) {
+          handleToggleSymbols();
         }
       }
-      
-      await refreshTree();
-    } catch (err) {
-      console.error('[FileTree] 粘贴操作失败:', err);
-      alert('粘贴失败');
     }
-  };
+  }, [flatNodes, lastClickedPath, currentFile, outlineSymbols, onFileSelect, handleToggleDir]);
 
-  const handleRename = (node: FileTreeNode) => {
+  // ==================== 键盘导航 ====================
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    // 如果正在内联编辑，不处理快捷键
+    if (inlineEdit) return;
+
+    const currentIdx = focusedPath ? flatNodes.findIndex(n => n.node.path === focusedPath) : -1;
+
+    switch (e.key) {
+      case 'ArrowDown': {
+        e.preventDefault();
+        const nextIdx = currentIdx < flatNodes.length - 1 ? currentIdx + 1 : 0;
+        const nextNode = flatNodes[nextIdx];
+        if (nextNode) {
+          setFocusedPath(nextNode.node.path);
+          if (!e.shiftKey) {
+            setSelectedPaths(new Set([nextNode.node.path]));
+            setLastClickedPath(nextNode.node.path);
+          } else {
+            // Shift+Arrow: 扩展选择
+            setSelectedPaths(prev => {
+              const next = new Set(prev);
+              next.add(nextNode.node.path);
+              return next;
+            });
+          }
+          // 滚动到可见区域
+          const el = treeContainerRef.current?.querySelector(`[data-path="${CSS.escape(nextNode.node.path)}"]`);
+          el?.scrollIntoView({ block: 'nearest' });
+        }
+        break;
+      }
+      case 'ArrowUp': {
+        e.preventDefault();
+        const prevIdx = currentIdx > 0 ? currentIdx - 1 : flatNodes.length - 1;
+        const prevNode = flatNodes[prevIdx];
+        if (prevNode) {
+          setFocusedPath(prevNode.node.path);
+          if (!e.shiftKey) {
+            setSelectedPaths(new Set([prevNode.node.path]));
+            setLastClickedPath(prevNode.node.path);
+          } else {
+            setSelectedPaths(prev => {
+              const next = new Set(prev);
+              next.add(prevNode.node.path);
+              return next;
+            });
+          }
+          const el = treeContainerRef.current?.querySelector(`[data-path="${CSS.escape(prevNode.node.path)}"]`);
+          el?.scrollIntoView({ block: 'nearest' });
+        }
+        break;
+      }
+      case 'ArrowRight': {
+        e.preventDefault();
+        if (focusedPath) {
+          const node = nodeByPath.get(focusedPath);
+          if (node?.type === 'directory') {
+            if (!expandedDirs.has(node.path)) {
+              handleToggleDir(node.path);
+            } else if (node.children && node.children.length > 0) {
+              // 已展开：焦点移到第一个子节点
+              const childIdx = flatNodes.findIndex(n => n.node.path === node.children![0].path);
+              if (childIdx !== -1) {
+                setFocusedPath(flatNodes[childIdx].node.path);
+                setSelectedPaths(new Set([flatNodes[childIdx].node.path]));
+                setLastClickedPath(flatNodes[childIdx].node.path);
+              }
+            }
+          }
+        }
+        break;
+      }
+      case 'ArrowLeft': {
+        e.preventDefault();
+        if (focusedPath) {
+          const node = nodeByPath.get(focusedPath);
+          if (node?.type === 'directory' && expandedDirs.has(node.path)) {
+            // 折叠当前目录
+            handleToggleDir(node.path);
+          } else {
+            // 跳到父目录
+            const parentPath = getParentPath(focusedPath);
+            if (parentPath && nodeByPath.has(parentPath)) {
+              setFocusedPath(parentPath);
+              setSelectedPaths(new Set([parentPath]));
+              setLastClickedPath(parentPath);
+            }
+          }
+        }
+        break;
+      }
+      case 'Enter': {
+        e.preventDefault();
+        if (focusedPath) {
+          const node = nodeByPath.get(focusedPath);
+          if (node) {
+            if (node.type === 'directory') {
+              handleToggleDir(node.path);
+            } else {
+              onFileSelect(node.path);
+            }
+          }
+        }
+        break;
+      }
+      case 'Delete':
+      case 'Backspace': {
+        if (e.key === 'Backspace' && !e.ctrlKey && !e.metaKey) break; // Backspace 需要 Ctrl
+        e.preventDefault();
+        const pathsToDelete = selectedPaths.size > 0 ? selectedPaths : (focusedPath ? new Set([focusedPath]) : new Set<string>());
+        if (pathsToDelete.size > 0) {
+          handleBatchDelete(pathsToDelete);
+        }
+        break;
+      }
+      case 'F2': {
+        e.preventDefault();
+        if (focusedPath) {
+          const node = nodeByPath.get(focusedPath);
+          if (node) {
+            handleRename(node);
+          }
+        }
+        break;
+      }
+      case 'Escape': {
+        e.preventDefault();
+        if (inlineEdit) {
+          setInlineEdit(null);
+        } else {
+          setSelectedPaths(new Set());
+        }
+        break;
+      }
+      case 'a':
+      case 'A': {
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          // 全选当前可见节点
+          const allPaths = new Set(flatNodes.map(n => n.node.path));
+          setSelectedPaths(allPaths);
+        }
+        break;
+      }
+      case 'c':
+      case 'C': {
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          handleCopySelected();
+        }
+        break;
+      }
+      case 'x':
+      case 'X': {
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          handleCutSelected();
+        }
+        break;
+      }
+      case 'v':
+      case 'V': {
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          if (focusedPath) {
+            const node = nodeByPath.get(focusedPath);
+            if (node) {
+              handlePaste(node);
+            }
+          }
+        }
+        break;
+      }
+    }
+  }, [flatNodes, focusedPath, expandedDirs, nodeByPath, inlineEdit, selectedPaths, onFileSelect, handleToggleDir]);
+
+  // ==================== 文件操作函数 ====================
+
+  const handleCut = useCallback((node: FileTreeNode) => {
+    const nodes = selectedPaths.has(node.path) && selectedPaths.size > 1
+      ? Array.from(selectedPaths).map(p => nodeByPath.get(p)).filter((n): n is FileTreeNode => !!n)
+      : [node];
+    setClipboard({ node, nodes, operation: 'cut' });
+  }, [selectedPaths, nodeByPath]);
+
+  const handleCopy = useCallback((node: FileTreeNode) => {
+    const nodes = selectedPaths.has(node.path) && selectedPaths.size > 1
+      ? Array.from(selectedPaths).map(p => nodeByPath.get(p)).filter((n): n is FileTreeNode => !!n)
+      : [node];
+    setClipboard({ node, nodes, operation: 'copy' });
+  }, [selectedPaths, nodeByPath]);
+
+  const handleCutSelected = useCallback(() => {
+    const paths = selectedPaths.size > 0 ? selectedPaths : (focusedPath ? new Set([focusedPath]) : new Set<string>());
+    if (paths.size === 0) return;
+    const nodes = Array.from(paths).map(p => nodeByPath.get(p)).filter((n): n is FileTreeNode => !!n);
+    if (nodes.length > 0) {
+      setClipboard({ node: nodes[0], nodes, operation: 'cut' });
+    }
+  }, [selectedPaths, focusedPath, nodeByPath]);
+
+  const handleCopySelected = useCallback(() => {
+    const paths = selectedPaths.size > 0 ? selectedPaths : (focusedPath ? new Set([focusedPath]) : new Set<string>());
+    if (paths.size === 0) return;
+    const nodes = Array.from(paths).map(p => nodeByPath.get(p)).filter((n): n is FileTreeNode => !!n);
+    if (nodes.length > 0) {
+      setClipboard({ node: nodes[0], nodes, operation: 'copy' });
+    }
+  }, [selectedPaths, focusedPath, nodeByPath]);
+
+  const handlePaste = useCallback(async (targetNode: FileTreeNode) => {
+    if (!clipboard || clipboard.nodes.length === 0) return;
+
+    const destDir = targetNode.type === 'directory' ? targetNode.path : getParentPath(targetNode.path);
+    const errors: string[] = [];
+
+    for (const srcNode of clipboard.nodes) {
+      const destPath = `${destDir}/${srcNode.name}`;
+      try {
+        if (clipboard.operation === 'cut') {
+          const response = await fetch('/api/files/move', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sourcePath: srcNode.path, destPath, root: projectPath }),
+          });
+          if (!response.ok) {
+            const error = await response.json();
+            errors.push(`${srcNode.name}: ${error.error}`);
+          }
+        } else {
+          const response = await fetch('/api/files/copy', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sourcePath: srcNode.path, destPath, root: projectPath }),
+          });
+          if (!response.ok) {
+            const error = await response.json();
+            errors.push(`${srcNode.name}: ${error.error}`);
+          }
+        }
+      } catch (err) {
+        errors.push(`${srcNode.name}: 操作失败`);
+      }
+    }
+
+    if (clipboard.operation === 'cut') {
+      setClipboard(null);
+    }
+
+    if (errors.length > 0) {
+      alert(`部分操作失败:\n${errors.join('\n')}`);
+    }
+
+    await fetchTree();
+  }, [clipboard, projectPath, fetchTree]);
+
+  const handleRename = useCallback((node: FileTreeNode) => {
     setInlineEdit({
       path: node.path,
       type: 'rename',
       initialValue: node.name,
     });
-  };
+  }, []);
 
-  const handleDelete = async (node: FileTreeNode) => {
+  const handleDelete = useCallback(async (node: FileTreeNode) => {
     if (!window.confirm(`确定删除 "${node.name}"？`)) return;
-    
+
     try {
       const response = await fetch('/api/files/delete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path: node.path, root: projectPath }),
       });
-      
+
       if (response.ok) {
-        await refreshTree();
+        await fetchTree();
       } else {
         const error = await response.json();
         alert(`删除失败: ${error.error}`);
@@ -758,28 +1106,66 @@ export const FileTree: React.FC<FileTreeProps> = ({
       console.error('[FileTree] 删除失败:', err);
       alert('删除失败');
     }
-  };
+  }, [projectPath, fetchTree]);
 
-  const handleNewFile = (node: FileTreeNode) => {
-    const parentPath = node.type === 'directory' ? node.path : node.path.substring(0, node.path.lastIndexOf('/'));
+  const handleBatchDelete = useCallback(async (paths: Set<string>) => {
+    const nodeNames = Array.from(paths)
+      .map(p => nodeByPath.get(p)?.name || p)
+      .slice(0, 10);
+    const suffix = paths.size > 10 ? `\n...等 ${paths.size} 个文件` : '';
+    const msg = `确定删除以下 ${paths.size} 个文件/文件夹？\n\n${nodeNames.join('\n')}${suffix}`;
+
+    if (!window.confirm(msg)) return;
+
+    const errors: string[] = [];
+    for (const path of paths) {
+      try {
+        const response = await fetch('/api/files/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path, root: projectPath }),
+        });
+        if (!response.ok) {
+          const error = await response.json();
+          errors.push(`${path}: ${error.error}`);
+        }
+      } catch (err) {
+        errors.push(`${path}: 操作失败`);
+      }
+    }
+
+    if (errors.length > 0) {
+      alert(`部分删除失败:\n${errors.join('\n')}`);
+    }
+
+    setSelectedPaths(new Set());
+    await fetchTree();
+  }, [projectPath, nodeByPath, fetchTree]);
+
+  const handleNewFile = useCallback((node: FileTreeNode) => {
+    const parentPath = node.type === 'directory' ? node.path : getParentPath(node.path);
     setInlineEdit({ path: '', type: 'newFile', parentPath });
-  };
+  }, []);
 
-  const handleNewFolder = (node: FileTreeNode) => {
-    const parentPath = node.type === 'directory' ? node.path : node.path.substring(0, node.path.lastIndexOf('/'));
+  const handleNewFolder = useCallback((node: FileTreeNode) => {
+    const parentPath = node.type === 'directory' ? node.path : getParentPath(node.path);
     setInlineEdit({ path: '', type: 'newFolder', parentPath });
-  };
+  }, []);
 
-  const handleCopyPath = async (node: FileTreeNode, relative: boolean) => {
-    const pathStr = relative ? node.path : `${projectPath}/${node.path}`;
+  const handleCopyPath = useCallback(async (node: FileTreeNode, relative: boolean) => {
+    // 多选时复制所有路径
+    const paths = selectedPaths.has(node.path) && selectedPaths.size > 1
+      ? Array.from(selectedPaths)
+      : [node.path];
+    const result = paths.map(p => relative ? p : `${projectPath}/${p}`).join('\n');
     try {
-      await navigator.clipboard.writeText(pathStr);
+      await navigator.clipboard.writeText(result);
     } catch (err) {
       console.error('[FileTree] 复制路径失败:', err);
     }
-  };
+  }, [selectedPaths, projectPath]);
 
-  const handleReveal = async (node: FileTreeNode) => {
+  const handleReveal = useCallback(async (node: FileTreeNode) => {
     try {
       await fetch('/api/files/reveal', {
         method: 'POST',
@@ -789,9 +1175,9 @@ export const FileTree: React.FC<FileTreeProps> = ({
     } catch (err) {
       console.error('[FileTree] Reveal失败:', err);
     }
-  };
+  }, [projectPath]);
 
-  const handleInlineEditSubmit = async (value: string) => {
+  const handleInlineEditSubmit = useCallback(async (value: string) => {
     if (!inlineEdit || !value.trim()) {
       setInlineEdit(null);
       return;
@@ -801,13 +1187,13 @@ export const FileTree: React.FC<FileTreeProps> = ({
       if (inlineEdit.type === 'rename') {
         const oldPath = inlineEdit.path;
         const newPath = oldPath.substring(0, oldPath.lastIndexOf('/') + 1) + value;
-        
+
         const response = await fetch('/api/files/rename', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ oldPath, newPath, root: projectPath }),
         });
-        
+
         if (!response.ok) {
           const error = await response.json();
           alert(`重命名失败: ${error.error}`);
@@ -815,13 +1201,13 @@ export const FileTree: React.FC<FileTreeProps> = ({
         }
       } else if (inlineEdit.type === 'newFile') {
         const filePath = `${inlineEdit.parentPath}/${value}`;
-        
+
         const response = await fetch('/api/files/create', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ path: filePath, content: '', root: projectPath }),
         });
-        
+
         if (!response.ok) {
           const error = await response.json();
           alert(`创建文件失败: ${error.error}`);
@@ -829,82 +1215,207 @@ export const FileTree: React.FC<FileTreeProps> = ({
         }
       } else if (inlineEdit.type === 'newFolder') {
         const dirPath = `${inlineEdit.parentPath}/${value}`;
-        
+
         const response = await fetch('/api/files/mkdir', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ path: dirPath, root: projectPath }),
         });
-        
+
         if (!response.ok) {
           const error = await response.json();
           alert(`创建文件夹失败: ${error.error}`);
           return;
         }
       }
-      
+
       setInlineEdit(null);
-      await refreshTree();
+      await fetchTree();
     } catch (err) {
       console.error('[FileTree] 内联编辑失败:', err);
       alert('操作失败');
     }
-  };
+  }, [inlineEdit, projectPath, fetchTree]);
 
-  // 获取右键菜单项
-  const getContextMenuItems = (
+  // ==================== 拖拽处理 ====================
+
+  const handleDragStart = useCallback((e: React.DragEvent, node: FileTreeNode) => {
+    // 确定要拖的文件集合
+    const sourcePaths = selectedPaths.has(node.path) && selectedPaths.size > 1
+      ? new Set(selectedPaths)
+      : new Set([node.path]);
+
+    setDragState({ dragging: true, sourcePaths, overPath: null });
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', Array.from(sourcePaths).join('\n'));
+  }, [selectedPaths]);
+
+  const handleDragOver = useCallback((e: React.DragEvent, node: FileTreeNode) => {
+    if (!dragState.dragging) return;
+
+    // 不能拖到自身或自身的子目录
+    for (const srcPath of dragState.sourcePaths) {
+      if (node.path === srcPath || isDescendantOf(node.path, srcPath)) {
+        e.dataTransfer.dropEffect = 'none';
+        return;
+      }
+    }
+
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+
+    const targetDir = node.type === 'directory' ? node.path : getParentPath(node.path);
+
+    if (dragState.overPath !== targetDir) {
+      setDragState(prev => ({ ...prev, overPath: targetDir }));
+
+      // 清除之前的定时器
+      if (dragExpandTimerRef.current) {
+        clearTimeout(dragExpandTimerRef.current);
+      }
+
+      // 500ms 后自动展开目标目录
+      if (node.type === 'directory' && !expandedDirs.has(node.path)) {
+        dragExpandTimerRef.current = setTimeout(() => {
+          handleToggleDir(node.path);
+        }, 500);
+      }
+    }
+  }, [dragState.dragging, dragState.sourcePaths, dragState.overPath, expandedDirs, handleToggleDir]);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    // 清除自动展开定时器
+    if (dragExpandTimerRef.current) {
+      clearTimeout(dragExpandTimerRef.current);
+      dragExpandTimerRef.current = null;
+    }
+  }, []);
+
+  const handleDrop = useCallback(async (e: React.DragEvent, node: FileTreeNode) => {
+    e.preventDefault();
+    if (dragExpandTimerRef.current) {
+      clearTimeout(dragExpandTimerRef.current);
+      dragExpandTimerRef.current = null;
+    }
+
+    if (!dragState.dragging || dragState.sourcePaths.size === 0) {
+      setDragState({ dragging: false, sourcePaths: new Set(), overPath: null });
+      return;
+    }
+
+    const destDir = node.type === 'directory' ? node.path : getParentPath(node.path);
+    const errors: string[] = [];
+
+    for (const srcPath of dragState.sourcePaths) {
+      // 不能拖到自身目录
+      if (destDir === srcPath || isDescendantOf(destDir, srcPath)) continue;
+
+      const srcName = srcPath.split('/').pop() || '';
+      const destPath = `${destDir}/${srcName}`;
+
+      // 跳过已在目标目录的文件
+      if (getParentPath(srcPath) === destDir) continue;
+
+      try {
+        const response = await fetch('/api/files/move', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sourcePath: srcPath, destPath, root: projectPath }),
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          errors.push(`${srcName}: ${error.error}`);
+        }
+      } catch (err) {
+        errors.push(`${srcName}: 移动失败`);
+      }
+    }
+
+    setDragState({ dragging: false, sourcePaths: new Set(), overPath: null });
+
+    if (errors.length > 0) {
+      alert(`部分移动失败:\n${errors.join('\n')}`);
+    }
+
+    await fetchTree();
+  }, [dragState, projectPath, fetchTree]);
+
+  const handleDragEnd = useCallback(() => {
+    if (dragExpandTimerRef.current) {
+      clearTimeout(dragExpandTimerRef.current);
+      dragExpandTimerRef.current = null;
+    }
+    setDragState({ dragging: false, sourcePaths: new Set(), overPath: null });
+  }, []);
+
+  // ==================== 右键菜单 ====================
+
+  const getContextMenuItems = useCallback((
     targetNode: FileTreeNode | null,
     targetType: 'file' | 'directory' | 'blank'
   ): ContextMenuItem[] => {
-    if (targetType === 'file' && targetNode) {
-      return [
-        { label: 'Cut', shortcut: 'Ctrl+X', onClick: () => handleCut(targetNode) },
-        { label: 'Copy', shortcut: 'Ctrl+C', onClick: () => handleCopy(targetNode) },
-        { label: 'Paste', shortcut: 'Ctrl+V', disabled: !clipboard, onClick: () => handlePaste(targetNode) },
-        { divider: true },
-        { label: 'Copy Path', onClick: () => handleCopyPath(targetNode, false) },
-        { label: 'Copy Relative Path', onClick: () => handleCopyPath(targetNode, true) },
-        { divider: true },
-        { label: 'Rename', shortcut: 'F2', onClick: () => handleRename(targetNode) },
-        { label: 'Delete', shortcut: 'Delete', onClick: () => handleDelete(targetNode) },
-        { divider: true },
-        { label: 'New File...', onClick: () => handleNewFile(targetNode) },
-        { label: 'New Folder...', onClick: () => handleNewFolder(targetNode) },
-        { divider: true },
-        { label: 'Reveal in File Explorer', onClick: () => handleReveal(targetNode) },
-      ];
-    }
-    
-    if (targetType === 'directory' && targetNode) {
-      return [
-        { label: 'Cut', shortcut: 'Ctrl+X', onClick: () => handleCut(targetNode) },
-        { label: 'Copy', shortcut: 'Ctrl+C', onClick: () => handleCopy(targetNode) },
-        { label: 'Paste', shortcut: 'Ctrl+V', disabled: !clipboard, onClick: () => handlePaste(targetNode) },
-        { divider: true },
-        { label: 'Copy Path', onClick: () => handleCopyPath(targetNode, false) },
-        { label: 'Copy Relative Path', onClick: () => handleCopyPath(targetNode, true) },
-        { divider: true },
-        { label: 'New File...', onClick: () => handleNewFile(targetNode) },
-        { label: 'New Folder...', onClick: () => handleNewFolder(targetNode) },
-        { divider: true },
-        { label: 'Rename', shortcut: 'F2', onClick: () => handleRename(targetNode) },
-        { label: 'Delete', shortcut: 'Delete', onClick: () => handleDelete(targetNode) },
-        { divider: true },
-        { label: 'Reveal in File Explorer', onClick: () => handleReveal(targetNode) },
-      ];
-    }
-    
-    // 空白区域右键菜单
-    return [
-      { label: 'New File...', onClick: () => handleNewFile({ name: '', path: '.', type: 'directory' }) },
-      { label: 'New Folder...', onClick: () => handleNewFolder({ name: '', path: '.', type: 'directory' }) },
-      { divider: true },
-      { label: 'Paste', shortcut: 'Ctrl+V', disabled: !clipboard, onClick: () => handlePaste({ name: '', path: '.', type: 'directory' }) },
-    ];
-  };
+    // 计算当前操作的节点集合
+    const isMultiSelection = targetNode && selectedPaths.has(targetNode.path) && selectedPaths.size > 1;
+    const selCount = isMultiSelection ? selectedPaths.size : 0;
 
-  // TreeNode 右键菜单处理
-  const handleTreeNodeContextMenu = (e: React.MouseEvent, node: FileTreeNode) => {
+    if (targetType === 'blank') {
+      return [
+        { label: '新建文件...', onClick: () => handleNewFile({ name: '', path: '.', type: 'directory' }) },
+        { label: '新建文件夹...', onClick: () => handleNewFolder({ name: '', path: '.', type: 'directory' }) },
+        { divider: true } as ContextMenuItem,
+        { label: '粘贴', shortcut: 'Ctrl+V', disabled: !clipboard, onClick: () => handlePaste({ name: '', path: '.', type: 'directory' }) },
+      ];
+    }
+
+    if (isMultiSelection && targetNode) {
+      // 多选右键菜单
+      return [
+        { label: `剪切 ${selCount} 个项目`, shortcut: 'Ctrl+X', onClick: () => handleCut(targetNode) },
+        { label: `复制 ${selCount} 个项目`, shortcut: 'Ctrl+C', onClick: () => handleCopy(targetNode) },
+        { label: '粘贴', shortcut: 'Ctrl+V', disabled: !clipboard, onClick: () => handlePaste(targetNode) },
+        { divider: true } as ContextMenuItem,
+        { label: `复制 ${selCount} 个路径`, onClick: () => handleCopyPath(targetNode, false) },
+        { label: `复制 ${selCount} 个相对路径`, onClick: () => handleCopyPath(targetNode, true) },
+        { divider: true } as ContextMenuItem,
+        { label: `删除 ${selCount} 个项目`, shortcut: 'Delete', onClick: () => handleBatchDelete(selectedPaths) },
+      ];
+    }
+
+    if (targetNode) {
+      const isFile = targetType === 'file';
+      return [
+        { label: '剪切', shortcut: 'Ctrl+X', onClick: () => handleCut(targetNode) },
+        { label: '复制', shortcut: 'Ctrl+C', onClick: () => handleCopy(targetNode) },
+        { label: '粘贴', shortcut: 'Ctrl+V', disabled: !clipboard, onClick: () => handlePaste(targetNode) },
+        { divider: true } as ContextMenuItem,
+        { label: '复制路径', onClick: () => handleCopyPath(targetNode, false) },
+        { label: '复制相对路径', onClick: () => handleCopyPath(targetNode, true) },
+        { divider: true } as ContextMenuItem,
+        ...(isFile ? [] : [
+          { label: '新建文件...', onClick: () => handleNewFile(targetNode) } as ContextMenuItem,
+          { label: '新建文件夹...', onClick: () => handleNewFolder(targetNode) } as ContextMenuItem,
+          { divider: true } as ContextMenuItem,
+        ]),
+        { label: '重命名', shortcut: 'F2', onClick: () => handleRename(targetNode) },
+        { label: '删除', shortcut: 'Delete', onClick: () => handleDelete(targetNode) },
+        { divider: true } as ContextMenuItem,
+        { label: '在文件管理器中显示', onClick: () => handleReveal(targetNode) },
+      ];
+    }
+
+    return [];
+  }, [selectedPaths, clipboard, handleCut, handleCopy, handlePaste, handleCopyPath, handleRename, handleDelete, handleBatchDelete, handleNewFile, handleNewFolder, handleReveal]);
+
+  // 右键菜单处理
+  const handleTreeNodeContextMenu = useCallback((e: React.MouseEvent, node: FileTreeNode) => {
+    // 如果右键的节点不在已选中列表中，先选中它
+    if (!selectedPaths.has(node.path)) {
+      setSelectedPaths(new Set([node.path]));
+      setFocusedPath(node.path);
+      setLastClickedPath(node.path);
+    }
+
     setContextMenu({
       visible: true,
       x: e.clientX,
@@ -912,10 +1423,9 @@ export const FileTree: React.FC<FileTreeProps> = ({
       targetNode: node,
       targetType: node.type,
     });
-  };
+  }, [selectedPaths]);
 
-  // 空白区域右键菜单处理
-  const handleContainerContextMenu = (e: React.MouseEvent) => {
+  const handleContainerContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     setContextMenu({
       visible: true,
@@ -924,9 +1434,25 @@ export const FileTree: React.FC<FileTreeProps> = ({
       targetNode: null,
       targetType: 'blank',
     });
-  };
+  }, []);
 
-  // 加载中
+  // ==================== 批量操作工具栏 ====================
+
+  const handleClearSelection = useCallback(() => {
+    setSelectedPaths(new Set());
+  }, []);
+
+  const handleBatchCopyPaths = useCallback(async () => {
+    const paths = Array.from(selectedPaths).join('\n');
+    try {
+      await navigator.clipboard.writeText(paths);
+    } catch (err) {
+      console.error('[FileTree] 复制路径失败:', err);
+    }
+  }, [selectedPaths]);
+
+  // ==================== 渲染 ====================
+
   if (loading) {
     return (
       <div className={styles.fileTree}>
@@ -941,7 +1467,6 @@ export const FileTree: React.FC<FileTreeProps> = ({
     );
   }
 
-  // 错误状态
   if (error) {
     return (
       <div className={styles.fileTree}>
@@ -959,12 +1484,14 @@ export const FileTree: React.FC<FileTreeProps> = ({
     );
   }
 
-  // 正常显示
   return (
     <div className={styles.fileTree}>
-      <div 
+      <div
+        ref={treeContainerRef}
         className={styles.treeContainer}
+        tabIndex={0}
         onContextMenu={handleContainerContextMenu}
+        onKeyDown={handleKeyDown}
       >
         {tree && (
           <TreeNode
@@ -986,9 +1513,57 @@ export const FileTree: React.FC<FileTreeProps> = ({
             inlineEdit={inlineEdit}
             onInlineEditSubmit={handleInlineEditSubmit}
             onInlineEditCancel={() => setInlineEdit(null)}
+            selectedPaths={selectedPaths}
+            focusedPath={focusedPath}
+            onNodeClick={handleNodeClick}
+            dragState={dragState}
+            onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            onDragEnd={handleDragEnd}
           />
         )}
       </div>
+
+      {/* 多选批量操作工具栏 */}
+      {selectedPaths.size > 1 && (
+        <div className={styles.batchToolbar}>
+          <span className={styles.batchCount}>
+            已选 {selectedPaths.size} 项
+          </span>
+          <div className={styles.batchActions}>
+            <button
+              className={styles.batchButton}
+              onClick={handleBatchCopyPaths}
+              title="复制路径"
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                <rect x="5" y="5" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none"/>
+                <path d="M3 11V3h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" fill="none"/>
+              </svg>
+            </button>
+            <button
+              className={`${styles.batchButton} ${styles.batchDanger}`}
+              onClick={() => handleBatchDelete(selectedPaths)}
+              title="删除选中项"
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                <path d="M3 4h10M6 4V3h4v1M5 4v8a1 1 0 001 1h4a1 1 0 001-1V4" stroke="currentColor" strokeWidth="1.5" fill="none"/>
+              </svg>
+            </button>
+            <button
+              className={styles.batchButton}
+              onClick={handleClearSelection}
+              title="取消选择 (Esc)"
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 右键菜单 */}
       {contextMenu && contextMenu.visible && (

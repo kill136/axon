@@ -39,6 +39,8 @@ function RootContent() {
     renameSession: () => {},
     newSession: () => {},
     searchSessions: () => {},
+    exportSession: () => {},
+    importSession: () => {},
   });
 
   // 项目上下文
@@ -210,6 +212,8 @@ function RootContent() {
         onNewSession={() => sessionActionsRef.current.newSession()}
         onClose={() => setShowSessionSearch(false)}
         onSearch={(q) => sessionActionsRef.current.searchSessions(q)}
+        onSessionExport={(id, fmt) => sessionActionsRef.current.exportSession(id, fmt)}
+        onSessionImport={(content) => sessionActionsRef.current.importSession(content)}
       />
       <AuthDialog
         isOpen={showAuthDialog}

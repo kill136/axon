@@ -12,7 +12,7 @@ import { toolRegistry, registerBlueprintTools } from '../../tools/index.js';
 import { systemPromptBuilder, type PromptContext } from '../../prompt/index.js';
 import { modelConfig } from '../../models/index.js';
 import { configManager } from '../../config/index.js';
-import { initAuth, getAuth, createOAuthApiKey } from '../../auth/index.js';
+import { getAuth, createOAuthApiKey } from '../../auth/index.js';
 import type { Message, ContentBlock, ToolUseBlock, TextBlock } from '../../types/index.js';
 import type { ChatMessage, ChatContent, ToolResultData, PermissionConfigPayload, PermissionRequestPayload, SystemPromptConfig, SystemPromptGetPayload, DebugMessagesPayload } from '../shared/types.js';
 import { UserInteractionHandler } from './user-interaction.js';
@@ -41,7 +41,7 @@ import {
 } from '../../context/session-memory.js';
 import { initNotebookManager, getNotebookManager } from '../../memory/notebook.js';
 import { initMemorySearchManager, getMemorySearchManager } from '../../memory/memory-search.js';
-import { registerMcpServer, connectMcpServer, createMcpTools, getMcpServers, callMcpTool, disconnectMcpServer, unregisterMcpServer, type McpToolDefinition } from '../../tools/mcp.js';
+import { registerMcpServer, connectMcpServer, createMcpTools, getMcpServers, callMcpTool, disconnectMcpServer, unregisterMcpServer, MCPSearchTool, type McpToolDefinition } from '../../tools/mcp.js';
 import { getChromeIntegrationConfig } from '../../chrome-mcp/index.js';
 import { CHROME_MCP_TOOLS } from '../../chrome-mcp/tools.js';
 import { RewindManager, type RewindOption } from '../../rewind/index.js';
@@ -407,6 +407,8 @@ export interface StreamCallbacks {
   onContextCompact?: (phase: 'start' | 'end' | 'error', info?: Record<string, any>) => void;
   /** 上下文使用量更新 */
   onContextUpdate?: (usage: { usedTokens: number; maxTokens: number; percentage: number; model: string }) => void;
+  /** API 速率限制更新 */
+  onRateLimitUpdate?: (info: { status: string; utilization5h?: number; utilization7d?: number; resetsAt?: number; rateLimitType?: string; }) => void;
 }
 
 /**
@@ -428,6 +430,8 @@ interface SessionState {
   systemPromptConfig: SystemPromptConfig;
   /** 标记会话是否正在处理对话（防止并发覆盖 ws） */
   isProcessing: boolean;
+  /** 处理代次（用于插话强制重置后防止旧 conversationLoop 的 finally 覆盖新循环的状态） */
+  processingGeneration: number;
   /** 上一次 API 返回的实际 inputTokens（用于精确判断是否需要压缩） */
   lastActualInputTokens: number;
   /** 最后一次 API 调用成功时 state.messages 的长度（用于混合 token 估算） */
@@ -473,6 +477,8 @@ export class ConversationManager {
   private webScheduler?: import('./web-scheduler.js').WebScheduler;
   /** 广播回调（由 index.ts 注入，用于 ErrorWatcher 通知等） */
   private broadcastFn?: (msg: any) => void;
+  /** AI 通过 McpManage enable 的临时 MCP 服务器，工具调用完毕后自动 disable */
+  private temporarilyEnabledMcpServers = new Set<string>();
 
   constructor(cwd: string, defaultModel: string = 'opus', options?: { verbose?: boolean }) {
     this.cwd = cwd;
@@ -539,12 +545,12 @@ export class ConversationManager {
       // navigateToSwarm 在 createSession 中按会话设置（需要 ws 引用）
     });
 
-    // 初始化认证系统（加载 OAuth token 或 API key）
-    const auth = initAuth();
-    if (auth) {
-      console.log(`[ConversationManager] 认证类型: ${auth.type}${auth.accountType ? ` (${auth.accountType})` : ''}`);
+    // 检查认证状态（WebUI 使用 webAuth 作为唯一认证入口）
+    const authStatus = webAuth.getStatus();
+    if (authStatus.authenticated) {
+      console.log(`[ConversationManager] 认证类型: ${authStatus.type} (${authStatus.provider})`);
     } else {
-      console.warn('[ConversationManager] 警告: 未找到认证信息，请先运行 /login 登录');
+      console.log('[ConversationManager] 未配置认证，等待用户在设置页面配置 API Key 或登录 OAuth');
     }
 
     // 设置 ExecutionManager 的认证配置，供蜂群子 agent 使用
@@ -555,6 +561,9 @@ export class ConversationManager {
       authToken: clientConfig.authToken,
       baseUrl: clientConfig.baseUrl,
     });
+    // 注册实时凭证提供者：每次启动执行时实时获取最新凭证
+    // 避免用户在 UI 中切换认证方式（如删除 API Key 后改用 OAuth）后，子 agent 仍使用旧凭证
+    executionManager.setCredentialsProvider(() => this.getClientConfig());
 
     // Skills 会在 SkillTool 第一次执行时延迟初始化
     // 此时在 runWithCwd 上下文中，可以正确获取工作目录
@@ -602,6 +611,9 @@ export class ConversationManager {
     } catch (error) {
       console.warn('[ConversationManager] MCP 服务器初始化失败:', error);
     }
+
+    // 同步禁用服务器列表到 MCPSearchTool，使搜索无结果时能提示可启用的服务器
+    this.syncDisabledServersToSearchTool();
 
     // 初始化长期记忆搜索系统（在 initialize 中而非 getOrCreateSession 中，确保首次搜索就可用）
     try {
@@ -694,6 +706,15 @@ export class ConversationManager {
       // 忽略
     }
     return [];
+  }
+
+  /**
+   * 同步禁用服务器列表到 MCPSearchTool
+   * 使 MCPSearchTool 搜索无结果时能提示有哪些已安装但禁用的服务器
+   */
+  private syncDisabledServersToSearchTool(): void {
+    const disabledServers = this.getDisabledMcpServers();
+    MCPSearchTool.disabledServers = disabledServers;
   }
 
   /**
@@ -865,6 +886,7 @@ export class ConversationManager {
         useDefault: true, // 默认使用默认提示
       },
       isProcessing: false,
+      processingGeneration: 0,
       lastActualInputTokens: 0,
       messagesLenAtLastApiCall: 0,
       lastPersistedMessageCount: 0,
@@ -1172,18 +1194,22 @@ export class ConversationManager {
 
       // 等待当前处理完成（带超时）
       const waitStart = Date.now();
-      while (state.isProcessing && Date.now() - waitStart < 10000) {
+      while (state.isProcessing && Date.now() - waitStart < 15000) {
         await new Promise(resolve => setTimeout(resolve, 50));
       }
 
       if (state.isProcessing) {
-        callbacks.onError?.(new Error('取消当前操作超时，请重试'));
-        return;
+        // 超时后强制重置：旧的 conversationLoop 仍在后台跑，
+        // 但它检查 state.cancelled 后会自行退出。
+        // 这里强制放行，让新消息能被处理。
+        console.warn('[ConversationManager] 插话取消超时，强制重置 isProcessing');
+        state.isProcessing = false;
       }
     }
 
     state.cancelled = false;
     state.isProcessing = true;
+    const currentGeneration = ++state.processingGeneration;
 
     // 关键修复：确保会话的 WebSocket 已设置
     // 在 getOrCreateSession 后设置 WebSocket，保证 UserInteractionHandler 可用
@@ -1258,7 +1284,24 @@ export class ConversationManager {
     } catch (error) {
       callbacks.onError?.(error instanceof Error ? error : new Error(String(error)));
     } finally {
-      state.isProcessing = false;
+      // 只有当前代次仍是最新时才重置 isProcessing
+      // 防止被插话强制重置后，旧 conversationLoop 的 finally 覆盖新循环的状态
+      if (state.processingGeneration === currentGeneration) {
+        state.isProcessing = false;
+      }
+      // 自动 disable AI 临时启用的 MCP 服务器（对话轮次结束后统一清理）
+      if (this.temporarilyEnabledMcpServers.size > 0) {
+        const servers = [...this.temporarilyEnabledMcpServers];
+        this.temporarilyEnabledMcpServers.clear();
+        for (const serverName of servers) {
+          try {
+            await this.toggleMcpServer(serverName, false);
+            console.log(`[MCP] 对话结束，自动禁用临时 MCP 服务器: ${serverName}`);
+          } catch (err) {
+            console.warn(`[MCP] 自动禁用 MCP 服务器 ${serverName} 失败:`, err);
+          }
+        }
+      }
       // 通知 WebScheduler 对话空闲，可能有待投递的闹钟
       if (sessionId) {
         this.webScheduler?.onSessionIdle(sessionId);
@@ -1651,6 +1694,27 @@ export class ConversationManager {
                 }
               }
               break;
+
+            case 'response_headers': {
+              if (event.headers) {
+                const headers = event.headers as Headers;
+                const status = (headers.get('anthropic-ratelimit-unified-status') || 'allowed') as string;
+                const resetStr = headers.get('anthropic-ratelimit-unified-reset');
+                const resetsAt = resetStr ? Number(resetStr) : undefined;
+                const representativeClaim = headers.get('anthropic-ratelimit-unified-representative-claim') || undefined;
+                // 解析 5h 和 7d 使用率
+                const util5h = headers.get('anthropic-ratelimit-unified-5h-utilization');
+                const util7d = headers.get('anthropic-ratelimit-unified-7d-utilization');
+                callbacks.onRateLimitUpdate?.({
+                  status,
+                  utilization5h: util5h !== null ? Number(util5h) : undefined,
+                  utilization7d: util7d !== null ? Number(util7d) : undefined,
+                  resetsAt,
+                  rateLimitType: representativeClaim,
+                });
+              }
+              break;
+            }
 
             case 'error':
               throw new Error(event.error || 'Unknown stream error');
@@ -2139,7 +2203,7 @@ export class ConversationManager {
           spawnCmd = process.execPath;
           spawnArgs = [compiledCliPath, 'daemon', 'start'];
         }
-        const dp = spawn(spawnCmd, spawnArgs, { detached: true, stdio: ['ignore', logFd, logFd], cwd: process.cwd() });
+        const dp = spawn(spawnCmd, spawnArgs, { detached: true, stdio: ['ignore', logFd, logFd], cwd: process.cwd(), windowsHide: true });
         dp.unref();
         fs.closeSync(logFd);
       } catch { /* 不影响任务执行 */ }
@@ -2782,47 +2846,93 @@ export class ConversationManager {
         }
       }
 
-      // 拦截 GenerateDesign 工具 - 使用 Gemini 生成 UI 设计图
-      if (toolUse.name === 'GenerateDesign') {
+      // 拦截 GenerateImage 工具 - 使用 Gemini 生成任意类型图片
+      if (toolUse.name === 'GenerateImage') {
         const input = toolUse.input as any;
 
         try {
-          console.log(`[Tool] GenerateDesign: 开始生成设计图 - ${input.projectName}`);
+          const { prompt, style } = input;
+          console.log(`[Tool] GenerateImage: 开始生成图片 - ${prompt.substring(0, 50)}...`);
 
-          const result = await geminiImageService.generateDesign({
-            projectName: input.projectName,
-            projectDescription: input.projectDescription,
-            requirements: input.requirements || [],
-            constraints: input.constraints,
-            techStack: input.techStack,
-            style: input.style,
-          });
+          const result = await geminiImageService.generateImage(prompt, style);
 
           if (!result.success) {
-            const error = result.error || '设计图生成失败';
+            const error = result.error || '图片生成失败';
             callbacks.onToolResult?.(toolUse.id, false, undefined, error);
             return { success: false, error };
           }
 
-          // 通过 WebSocket 发送设计图给前端显示
+          // 通过 WebSocket 发送图片给前端显示
           if (state.ws && state.ws.readyState === 1) {
             state.ws.send(JSON.stringify({
               type: 'design_image_generated',
               payload: {
                 imageUrl: result.imageUrl,
-                projectName: input.projectName,
-                style: input.style || 'modern',
+                title: prompt.substring(0, 50),
+                style: style || '',
                 generatedText: result.generatedText,
               },
             }));
           }
 
-          const output = `UI 设计图已生成并发送给用户预览。${result.generatedText ? `\n\n设计说明: ${result.generatedText}` : ''}\n\n用户可以在聊天界面中查看设计预览图。`;
+          const output = `图片已生成并发送给用户预览。${result.generatedText ? `\n\n描述: ${result.generatedText}` : ''}\n\n用户可以在聊天界面中查看生成的图片。`;
           callbacks.onToolResult?.(toolUse.id, true, output);
           return { success: true, output };
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error);
-          console.error(`[Tool] GenerateDesign 执行失败:`, errorMessage);
+          console.error(`[Tool] GenerateImage 执行失败:`, errorMessage);
+          callbacks.onToolResult?.(toolUse.id, false, undefined, errorMessage);
+          return { success: false, error: errorMessage };
+        }
+      }
+
+      // 拦截 McpManage 工具 - AI Agent 管理 MCP 服务器生命周期
+      if (toolUse.name === 'McpManage') {
+        const input = toolUse.input as { action: string; name?: string };
+        try {
+          if (input.action === 'list') {
+            const servers = this.listMcpServers();
+            const lines = servers.map((s: any) =>
+              `- ${s.name}: ${s.enabled ? 'ENABLED' : 'DISABLED'} (type: ${s.type}, tools: ${s.toolsCount})`
+            );
+            const output = servers.length > 0
+              ? `MCP Servers (${servers.length}):\n${lines.join('\n')}`
+              : 'No MCP servers configured.';
+            callbacks.onToolResult?.(toolUse.id, true, output);
+            return { success: true, output };
+          }
+
+          if (input.action === 'enable' || input.action === 'disable') {
+            if (!input.name) {
+              const error = `"name" parameter is required for ${input.action} action.`;
+              callbacks.onToolResult?.(toolUse.id, false, undefined, error);
+              return { success: false, error };
+            }
+            const enabled = input.action === 'enable';
+            const result = await this.toggleMcpServer(input.name, enabled);
+            if (result.success) {
+              // 记录 AI 临时启用的 MCP 服务器，用完后自动 disable
+              if (enabled) {
+                this.temporarilyEnabledMcpServers.add(input.name);
+              } else {
+                this.temporarilyEnabledMcpServers.delete(input.name);
+              }
+              const output = `MCP server "${input.name}" has been ${result.enabled ? 'enabled' : 'disabled'}.`;
+              callbacks.onToolResult?.(toolUse.id, true, output);
+              return { success: true, output };
+            } else {
+              const error = `Failed to ${input.action} MCP server "${input.name}".`;
+              callbacks.onToolResult?.(toolUse.id, false, undefined, error);
+              return { success: false, error };
+            }
+          }
+
+          const error = `Unknown McpManage action: ${input.action}. Use "list", "enable", or "disable".`;
+          callbacks.onToolResult?.(toolUse.id, false, undefined, error);
+          return { success: false, error };
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          console.error(`[Tool] McpManage 执行失败:`, errorMessage);
           callbacks.onToolResult?.(toolUse.id, false, undefined, errorMessage);
           return { success: false, error: errorMessage };
         }
@@ -3358,7 +3468,7 @@ export class ConversationManager {
       prompt += '\n\n' + config.appendPrompt;
     }
 
-    // 注入 WebUI 专属工具引导（GenerateDesign 等）
+    // 注入 WebUI 专属工具引导（GenerateImage 等）
     const webuiToolGuidance = this.buildWebuiToolGuidance();
     if (webuiToolGuidance) {
       prompt += '\n\n' + webuiToolGuidance;
@@ -3433,7 +3543,7 @@ export class ConversationManager {
 
   /**
    * 构建 WebUI 专属工具引导指令
-   * 让 Agent 知道何时应主动调用 WebUI 专属工具（如 GenerateDesign）
+   * 让 Agent 知道何时应主动调用 WebUI 专属工具（如 GenerateImage）
    */
   private buildWebuiToolGuidance(): string | null {
     const sections: string[] = [];
@@ -3493,26 +3603,27 @@ export class ConversationManager {
    - TaskPlan 模式：直接用 StartLeadAgent(taskPlan) 传入任务列表（适合中等复杂度任务）
 4. **向用户汇报** — 执行完成后向用户报告成功/失败情况和关键结果`);
 
-    // GenerateDesign 工具引导（需要 GEMINI_API_KEY）
+    // GenerateImage 工具引导（需要 GEMINI_API_KEY）
     const hasGeminiKey = !!(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY);
     if (hasGeminiKey) {
-      sections.push(`# UI 设计图生成（GenerateDesign 工具）
+      sections.push(`# Image Generation (GenerateImage Tool)
 
-你拥有一个强大的 GenerateDesign 工具，可以调用 Gemini AI 实时生成 UI 设计图/界面原型图。
+You have access to a powerful GenerateImage tool that can generate any type of image using Gemini AI.
 
-## 主动调用时机
-在以下场景中，你应该**主动**调用 GenerateDesign 工具，无需等待用户明确要求：
+## When to Call This Tool
+Call GenerateImage tool in the following scenarios:
 
-1. **需求讨论阶段**：当用户描述了一个项目的核心功能和界面需求后，主动生成设计图帮助用户可视化
-2. **项目启动阶段**：当你收集到足够的项目信息（名称、描述、至少2-3个核心需求）时，主动提议并生成设计预览
-3. **方案确认阶段**：当用户对 UI 布局、页面结构进行讨论时，生成设计图辅助沟通
-4. **用户提到"界面"、"设计"、"UI"、"页面"、"原型"等关键词时**
+1. **User requests an image**: When user explicitly asks to generate, create, or visualize something
+2. **Visualization needs**: When visual content would significantly enhance understanding (UI mockups, diagrams, illustrations, etc.)
+3. **Design discussions**: When discussing UI layouts, page structures, or visual concepts
+4. **Conceptual clarity**: When an image would help clarify abstract ideas or technical concepts
+5. **Any scenario requiring visual output**: Charts, mockups, wireframes, illustrations, architectural diagrams, etc.
 
-## 调用策略
-- 在收集到项目名称、描述和至少2个核心需求后，就应该调用此工具
-- 不要等到所有需求都明确后才调用——早期预览有助于用户校准方向
-- 如果用户对生成的设计图提出修改意见，可以调整参数后再次调用
-- 生成设计图后，继续与用户讨论细节和改进方向`);
+## Calling Strategy
+- Use clear, detailed prompts describing what image to generate
+- Include style hints when relevant (e.g., "modern minimalist UI", "hand-drawn diagram", "photorealistic")
+- Can be called multiple times to refine or generate different variations
+- After generating, discuss the result with the user and offer to adjust if needed`);
     }
 
     if (sections.length === 0) {
@@ -3984,9 +4095,11 @@ Guidelines:
           useDefault: true,
         },
         isProcessing: false,
+        processingGeneration: 0,
         lastActualInputTokens: 0,
         messagesLenAtLastApiCall: 0,
         lastPersistedMessageCount: sessionData.messages.length, // 从磁盘加载时，初始化为当前消息数
+        credentialsFingerprint: this.getCredentialsFingerprint(),
       };
 
       this.sessions.set(sessionId, state);
@@ -4069,9 +4182,39 @@ Guidelines:
   private convertMessagesToChatHistory(messages: Message[]): ChatMessage[] {
     const chatHistory: ChatMessage[] = [];
 
+    // 预构建 tool_use_id → tool_result 映射，用于将工具结果关联回工具调用
+    const toolResultMap = new Map<string, { output?: string; error?: string; images?: any[] }>();
+    for (const msg of messages) {
+      if (!Array.isArray(msg.content)) continue;
+      for (const block of msg.content) {
+        if ((block as any).type === 'tool_result' && (block as any).tool_use_id) {
+          const tr = block as any;
+          let output = '';
+          let images: any[] | undefined;
+          if (typeof tr.content === 'string') {
+            output = tr.content;
+          } else if (Array.isArray(tr.content)) {
+            const textParts: string[] = [];
+            const imgParts: any[] = [];
+            for (const part of tr.content) {
+              if (part.type === 'text') textParts.push(part.text);
+              else if (part.type === 'image') imgParts.push(part);
+            }
+            output = textParts.join('\n');
+            if (imgParts.length > 0) images = imgParts;
+          }
+          toolResultMap.set(tr.tool_use_id, {
+            output: output || undefined,
+            error: tr.is_error ? output : undefined,
+            images,
+          });
+        }
+      }
+    }
+
     for (let i = 0; i < messages.length; i++) {
       const msg = messages[i];
-      // 跳过 tool_result 消息（它们会被合并到工具调用中）
+      // 跳过 tool_result 消息（它们已被合并到工具调用中）
       if (Array.isArray(msg.content) && msg.content.some((c: any) => c.type === 'tool_result')) {
         continue;
       }
@@ -4110,13 +4253,24 @@ Guidelines:
             });
           } else if (block.type === 'tool_use') {
             const toolBlock = block as ToolUseBlock;
-            chatMsg.content.push({
+            // 从 toolResultMap 中查找对应的工具结果
+            const toolResult = toolResultMap.get(toolBlock.id);
+            const chatToolUse: any = {
               type: 'tool_use',
               id: toolBlock.id,
               name: toolBlock.name,
               input: toolBlock.input,
               status: 'completed',
-            });
+            };
+            if (toolResult) {
+              chatToolUse.result = {
+                success: !toolResult.error,
+                output: toolResult.error ? undefined : toolResult.output,
+                error: toolResult.error,
+                data: toolResult.images ? { images: toolResult.images } : undefined,
+              };
+            }
+            chatMsg.content.push(chatToolUse);
           }
         }
       }
@@ -4213,6 +4367,13 @@ Guidelines:
     } else {
       return this.sessionManager.exportSessionMarkdown(sessionId);
     }
+  }
+
+  /**
+   * 导入会话（从 JSON 字符串）
+   */
+  importSession(jsonContent: string): { sessionId: string; name: string } | null {
+    return this.sessionManager.importSessionJSON(jsonContent);
   }
 
   // ============ 系统提示配置方法 ============
@@ -4442,6 +4603,9 @@ Guidelines:
           console.warn(`[ConversationManager] 重新连接 MCP 服务器 ${name} 失败:`, err);
         }
       }
+
+      // 同步禁用服务器列表到 MCPSearchTool
+      this.syncDisabledServersToSearchTool();
 
       console.log(`[ConversationManager] MCP 服务器 ${name} ${newEnabled ? '已启用' : '已禁用'}, mcpTools 剩余: ${this.mcpTools.length}, 工具名: [${this.mcpTools.map(t => t.name).join(', ')}]`);
       return { success: true, enabled: newEnabled };

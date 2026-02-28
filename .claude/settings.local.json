@@ -141,6 +141,7 @@
     ]
   },
   "disabledMcpServers": [
-    "claude-in-chrome"
+    "claude-in-chrome",
+    "email"
   ]
 }

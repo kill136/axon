@@ -40,6 +40,12 @@ This is an educational reverse-engineering project that recreates Claude Code CL
 
 ### 铁律7：采用第一性原理思考和解决问题
 
+### 铁律8：先查 Skills，再动手
+- **执行任务前，必须检查可用 Skills 列表中是否有匹配当前任务的 Skill**。
+- 有匹配的 Skill 就**必须先调用**，获取专业指导后再动手。
+- "我自己会"不是跳过 Skill 的理由——Skill 里有你没想到的最佳实践。
+- 违反此条 = 用业余方式做了本可以专业完成的事。
+
 ## 项目性质
 - 这是一个**复刻还原项目**，目标是还原 Claude Code CLI v2.1.4。
 - 唯一准则：**保持和官方一致**。不要"改进"，不要"优化"，不要"我觉得这样更好"。

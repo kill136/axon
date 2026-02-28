@@ -807,19 +807,39 @@ const SchedulePage: React.FC = () => {
                    }
                  }}>
               {editingField === 'prompt' ? (
-                <textarea
-                  className={styles.editTextarea}
-                  value={editValue}
-                  onChange={(e) => setEditValue(e.target.value)}
-                  onBlur={() => {
-                    if (editValue.trim() && editValue !== selectedTask.prompt) {
-                      handleSave('prompt', editValue.trim());
-                    } else {
-                      setEditingField(null);
-                    }
-                  }}
-                  autoFocus
-                />
+                <div className={styles.editTextareaWrapper}>
+                  <textarea
+                    className={styles.editTextarea}
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Escape') {
+                        setEditingField(null);
+                      }
+                    }}
+                    autoFocus
+                  />
+                  <div className={styles.editTextareaActions}>
+                    <button
+                      className={styles.editCancelBtn}
+                      onClick={() => setEditingField(null)}
+                    >
+                      {t('schedule.cancel') || '取消'}
+                    </button>
+                    <button
+                      className={styles.editSaveBtn}
+                      onClick={() => {
+                        if (editValue.trim() && editValue !== selectedTask.prompt) {
+                          handleSave('prompt', editValue.trim());
+                        } else {
+                          setEditingField(null);
+                        }
+                      }}
+                    >
+                      {t('schedule.save') || '保存'}
+                    </button>
+                  </div>
+                </div>
               ) : (
                 <div className={styles.promptValue}>{selectedTask.prompt}</div>
               )}

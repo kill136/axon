@@ -124,7 +124,7 @@ def scene_opening(frame_idx, total_frames):
     if t > 0.3:
         tag_alpha = min((t - 0.3) * 3, 1.0)
         tag_color = tuple(int(c * tag_alpha) for c in ACCENT)
-        center_text(draw, 410, "v2.1.34  |  MIT License", FONT_MED, fill=tag_color)
+        center_text(draw, 410, "v2.1.36  |  MIT License", FONT_MED, fill=tag_color)
 
     # subtitle
     if t > 0.5:
@@ -136,7 +136,7 @@ def scene_opening(frame_idx, total_frames):
     if t > 0.7:
         stat_alpha = min((t - 0.7) * 3, 1.0)
         stat_color = tuple(int(c * stat_alpha) for c in WHITE)
-        center_text(draw, 580, "126+ Stars  |  47 Forks  |  37+ Tools", FONT_TAG, fill=stat_color)
+        center_text(draw, 580, "136+ Stars  |  52 Forks  |  37+ Tools", FONT_TAG, fill=stat_color)
 
     # bottom gradient bar
     if t > 0.4:

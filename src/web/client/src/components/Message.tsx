@@ -336,7 +336,7 @@ export function Message({
             gap: '8px',
           }}>
             <span style={{ fontSize: '16px' }}>🎨</span>
-            <span>{t('message.designImage', { name: item.projectName })}</span>
+            <span>{item.title || 'Generated Image'}</span>
             <span style={{
               marginLeft: 'auto',
               fontSize: '11px',

@@ -96,7 +96,6 @@ export function getToolGuidelines(
     hasSkillTool ? `/<skill-name> (e.g., /commit) is shorthand for users to invoke a user-invocable skill. When executed, the skill gets expanded to a full prompt. Use the ${skill} tool to execute them. IMPORTANT: Only use ${skill} for skills listed in its user-invocable skills section - do not guess or use built-in CLI commands.` : null,
     'You can call multiple tools in a single response. If you intend to call multiple tools and there are no dependencies between them, make all independent tool calls in parallel. Maximize use of parallel tool calls where possible to increase efficiency. However, if some tool calls depend on previous calls to inform dependent values, do NOT call these tools in parallel and instead call them sequentially. For instance, if one operation must complete before another starts, run these operations sequentially instead.',
     toolNames.has('Database') ? 'Use the Database tool to directly query databases (postgres/mysql/sqlite/redis/mongo), instead of calling mysql/psql/redis-cli via Bash. Database tool provides structured results, readonly safety mode, and connection management.' : null,
-    toolNames.has('Debugger') ? 'Use the Debugger tool to set breakpoints, inspect call stacks and variable values, and step through code. Prefer Debugger over adding console.log statements for debugging.' : null,
   ];
 
   return ['# Using your tools', ...items.filter(item => item !== null).flatMap(item =>
@@ -295,6 +294,61 @@ A skill is a directory containing a SKILL.md file with YAML frontmatter:
 - Always ASK the user before creating a skill — never create one silently
 - Explain the benefit: "This will save time next time you need to do X"
 - If the user declines, respect that and do not ask again for the same pattern in the current session`;
+
+
+/**
+ * 主动工具发现规则
+ * 遇到不擅长的专业任务时，自动搜索互联网上的 MCP/Skill 而非硬写代码
+ */
+export const PROACTIVE_TOOL_DISCOVERY = `# Proactive Tool Discovery
+
+When you encounter a specialized task that you don't have a dedicated tool for, you should **automatically search for existing MCP servers and Skills** from the internet before attempting to code a solution from scratch.
+
+## Trigger Conditions
+
+Automatically search for tools when the user asks you to:
+- Generate office documents (PPT, Excel, Word, PDF) with professional quality
+- Interact with external services (Slack, Discord, email, calendar, etc.)
+- Perform specialized data processing (OCR, image generation, video generation, video editing, audio processing, etc.)
+- Generate or manipulate media (images, videos, audio, 3D models, etc.)
+- Access databases or APIs you don't have built-in tools for
+- Any task where you know a dedicated tool would produce significantly better results than code generation
+
+## CRITICAL RULE
+
+**NEVER say "I can't do X" or "I don't have this capability" without FIRST searching for available tools.** If a user asks you to do something you don't have a built-in tool for, your FIRST action must be to search Smithery for relevant skills and MCP servers. Only after searching and finding nothing suitable may you inform the user of the limitation. Skipping the search and directly claiming inability is a violation of this rule.
+
+## How to Search
+
+Use the Smithery CLI (pre-installed) to search for tools:
+
+\`\`\`bash
+# Search for skills (Claude Code compatible, preferred)
+npx @smithery/cli skill search "<query>"
+
+# Search for MCP servers
+npx @smithery/cli search "<query>"
+
+# View skill details before recommending
+npx @smithery/cli skill view <qualified-name>
+\`\`\`
+
+## Decision Flow
+
+1. **Detect need**: Recognize that the task would benefit from a specialized tool
+2. **Check installed**: First check if a relevant skill/MCP is already installed
+3. **Search internet**: If not installed, search Smithery registry
+4. **Evaluate**: Prefer verified skills (anthropics/ namespace), high quality scores (>0.6), high star counts
+5. **Recommend**: Present top options to the user with install commands
+6. **Install on approval**: \`npx @smithery/cli skill add <name> --agent claude-code --global\`
+7. **Use the tool**: After installation, use the newly available skill/MCP
+
+## Important
+
+- Do NOT silently install tools — always show the user what you found and ask before installing
+- If the user wants a quick solution and doesn't want to install tools, fall back to code generation
+- After installing a skill, the user may need to restart the session for it to take effect
+- This behavior is about being resourceful, not about avoiding work — if code is the right answer, write code`;
 
 
 /**
@@ -951,6 +1005,7 @@ export const PromptTemplates = {
   TASK_MANAGEMENT,
   EXECUTING_WITH_CARE,
   PROACTIVE_SKILL_CREATION,
+  PROACTIVE_TOOL_DISCOVERY,
   PERMISSION_MODES,
   // Agent 提示词
   GENERAL_PURPOSE_AGENT_PROMPT,

@@ -1010,6 +1010,7 @@ async function runTextInterface(
             detached: true,
             stdio: ['ignore', logFd, logFd],
             cwd: process.cwd(),
+            windowsHide: true,
           });
           daemonProcess.unref();
           daemonFs.closeSync(logFd);
@@ -3567,6 +3568,13 @@ async function main(): Promise<void> {
     await emitLifecycleEvent('cli_claude_in_chrome_mcp_path');
     const { runMcpServer } = await import('./chrome-mcp/index.js');
     await runMcpServer();
+    return;
+  }
+
+  // Email MCP 服务器路径 - 用于邮件 IMAP/SMTP 操作
+  if (args[0] === '--email-mcp') {
+    const { main: runEmailMcp } = await import('./email-mcp/mcp-server.js');
+    await runEmailMcp();
     return;
   }
 

@@ -14,7 +14,28 @@
  * - Playwright connects to relay, controls tabs through extension (anti-detection)
  */
 
-import { reconnectDelayMs, buildRelayWsUrl, isRetryableReconnectError } from './background-utils.js';
+// Inlined from background-utils.js to avoid ES module import issues in some Chrome versions
+function reconnectDelayMs(attempt, opts = {}) {
+  const { baseMs = 1000, maxMs = 30000, factor = 2 } = opts;
+  const delay = baseMs * Math.pow(factor, attempt);
+  return Math.min(delay, maxMs);
+}
+
+function buildRelayWsUrl(port, gatewayToken) {
+  const host = '127.0.0.1';
+  const encodedToken = encodeURIComponent(gatewayToken);
+  return `ws://${host}:${port}/extension?token=${encodedToken}`;
+}
+
+function isRetryableReconnectError(err) {
+  const errMsg = typeof err === 'string' ? err : (err?.message || '');
+  const retryablePatterns = [
+    /ECONNREFUSED/i, /ECONNRESET/i, /ETIMEDOUT/i, /EHOSTUNREACH/i,
+    /socket hang up/i, /network error/i, /Failed to fetch/i,
+    /ERR_CONNECTION_REFUSED/i, /ERR_CONNECTION_RESET/i, /AbortError/i,
+  ];
+  return retryablePatterns.some(pattern => pattern.test(errMsg));
+}
 
 // ========================================================================
 // Configuration & State
@@ -491,6 +512,62 @@ async function attachTab(tabId) {
       console.log('[Bridge] attachTab: calling chrome.debugger.attach...');
       await chrome.debugger.attach({ tabId }, '1.3');
       console.log('[Bridge] attachTab: debugger attached successfully');
+
+      // --- Inject stealth scripts to avoid bot detection ---
+      const stealthScript = `
+        // 1. navigator.webdriver = false
+        Object.defineProperty(navigator, 'webdriver', { get: () => false });
+
+        // 2. Fake plugins (Chrome typically has 5)
+        Object.defineProperty(navigator, 'plugins', {
+          get: () => {
+            const arr = [
+              { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+              { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai', description: '' },
+              { name: 'Native Client', filename: 'internal-nacl-plugin', description: '' },
+            ];
+            arr.item = (i) => arr[i] || null;
+            arr.namedItem = (n) => arr.find(p => p.name === n) || null;
+            arr.refresh = () => {};
+            return arr;
+          }
+        });
+
+        // 3. Fake languages
+        Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+
+        // 4. Permissions.query override (notification = prompt)
+        const origQuery = window.Permissions?.prototype?.query;
+        if (origQuery) {
+          window.Permissions.prototype.query = function(desc) {
+            if (desc?.name === 'notifications') {
+              return Promise.resolve({ state: Notification.permission });
+            }
+            return origQuery.call(this, desc);
+          };
+        }
+
+        // 5. Patch chrome.runtime to look non-automated
+        if (!window.chrome) window.chrome = {};
+        if (!window.chrome.runtime) window.chrome.runtime = { connect: () => {}, sendMessage: () => {} };
+      `;
+
+      // Inject for all future navigations
+      try {
+        await chrome.debugger.sendCommand({ tabId }, 'Page.addScriptToEvaluateOnNewDocument', { source: stealthScript });
+      } catch (e) {
+        console.warn('[Bridge] Failed to add stealth script for future navigations:', e);
+      }
+
+      // Execute immediately on current page
+      try {
+        await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
+          expression: stealthScript,
+          returnByValue: true,
+        });
+      } catch (e) {
+        console.warn('[Bridge] Failed to evaluate stealth script on current page:', e);
+      }
 
       // Get target info
       const targetInfo = await chrome.debugger.sendCommand({ tabId }, 'Target.getTargetInfo', {});

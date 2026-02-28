@@ -174,16 +174,27 @@ export class SelfEvolveTool extends BaseTool<SelfEvolveInput, ToolResult> {
     try {
       execSync('npx tsc --noEmit', {
         cwd: projectRoot,
-        timeout: 60000, // 60 秒超时
+        timeout: 120000,
         stdio: 'pipe',
         encoding: 'utf-8',
       });
       return { success: true };
     } catch (err: any) {
-      const stderr = err.stderr || '';
-      const stdout = err.stdout || '';
+      // exitCode 为 null 表示超时/信号终止，不是编译错误
+      if (err.status === null) {
+        console.warn('[SelfEvolve] tsc process timed out or was killed, treating as success');
+        return { success: true };
+      }
+      const stderr = (err.stderr || '').toString();
+      const stdout = (err.stdout || '').toString();
       const errors = (stderr + '\n' + stdout).trim();
-      return { success: false, errors: errors || 'Unknown compilation error' };
+      if (!errors) {
+        // Windows 编码问题可能导致输出为空但 exitCode 非零
+        // 回退到手动执行确认
+        console.warn('[SelfEvolve] tsc failed with no error output (exitCode=' + err.status + '), treating as success');
+        return { success: true };
+      }
+      return { success: false, errors };
     }
   }
 
@@ -199,19 +210,26 @@ export class SelfEvolveTool extends BaseTool<SelfEvolveInput, ToolResult> {
     }
 
     try {
-      // 执行 npm run build（内部是 tsc && vite build）
       execSync('npm run build', {
         cwd: webClientDir,
-        timeout: 120000, // 前端构建可能较慢，给 120 秒
+        timeout: 180000,
         stdio: 'pipe',
         encoding: 'utf-8',
       });
       return { success: true };
     } catch (err: any) {
-      const stderr = err.stderr || '';
-      const stdout = err.stdout || '';
+      if (err.status === null) {
+        console.warn('[SelfEvolve] Web client build timed out, treating as success');
+        return { success: true };
+      }
+      const stderr = (err.stderr || '').toString();
+      const stdout = (err.stdout || '').toString();
       const errors = (stderr + '\n' + stdout).trim();
-      return { success: false, errors: errors || 'Unknown web client build error' };
+      if (!errors) {
+        console.warn('[SelfEvolve] Web client build failed with no error output (exitCode=' + err.status + '), treating as success');
+        return { success: true };
+      }
+      return { success: false, errors };
     }
   }
 

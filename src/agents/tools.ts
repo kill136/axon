@@ -99,7 +99,6 @@ export const AGENT_TOOL_CONFIGS: Record<string, AgentToolConfig> = {
       'Blueprint',        // CLI 模式工具，Chat Tab 使用 GenerateBlueprint
       'UpdateTaskPlan',   // LeadAgent 专用 - 更新执行计划中的任务状态
       'DispatchWorker',   // LeadAgent 专用 - 派发任务给 Worker 执行
-      'TriggerE2ETest',   // LeadAgent 专用 - 触发 E2E 端到端测试
     ],
     permissionLevel: 'standard',
   },
@@ -107,8 +106,8 @@ export const AGENT_TOOL_CONFIGS: Record<string, AgentToolConfig> = {
     agentType: 'lead-agent',
     allowedTools: [
       'Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep',
-      'UpdateTaskPlan', 'DispatchWorker', 'TriggerE2ETest',
-      'AskUserQuestion', 'Database', 'Debugger',
+      'UpdateTaskPlan', 'DispatchWorker',
+      'AskUserQuestion', 'Database',
     ],
     permissionLevel: 'elevated',
   },

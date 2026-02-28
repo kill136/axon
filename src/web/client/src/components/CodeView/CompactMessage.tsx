@@ -41,7 +41,7 @@ export function CompactMessage({ message, onOpenFile, isStreaming = false }: Com
           <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
             <path d="M2 2h12v12H2V2zm1 1v10h10V3H3zm2 2h6v1H5V5zm0 2h6v1H5V7z"/>
           </svg>
-          <span>{t('compact.design', { name: item.projectName, style: item.style })}</span>
+          <span>{item.title || 'Generated Image'}</span>
         </div>
       );
     }

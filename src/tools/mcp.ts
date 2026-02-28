@@ -1131,6 +1131,13 @@ ${toolList}`;
 export class MCPSearchTool extends BaseTool<MCPSearchInput, MCPSearchToolResult> {
   name = 'Mcp';
 
+  /**
+   * 已配置但被禁用的 MCP 服务器名称列表
+   * 由外部（conversation.ts）在初始化和状态变更时更新
+   * 当搜索无结果时用于提示用户可以启用哪些服务器
+   */
+  static disabledServers: string[] = [];
+
   // 静态描述（不包含工具列表）
   private static baseDescription = `Search for or select MCP tools to make them available for use.
 
@@ -1194,11 +1201,20 @@ WRONG - You must load the tool FIRST using this tool
       }
     }
 
+    const disabled = MCPSearchTool.disabledServers;
+    const disabledHint = disabled.length > 0
+      ? `\n\nDisabled MCP servers (use McpManage to enable):\n${disabled.join('\n')}`
+      : '';
+
     if (tools.length > 0) {
       return `${MCPSearchTool.baseDescription}
 
 Available MCP tools (must be loaded before use):
-${tools.join('\n')}`;
+${tools.join('\n')}${disabledHint}`;
+    }
+
+    if (disabledHint) {
+      return `${MCPSearchTool.baseDescription}${disabledHint}`;
     }
 
     return MCPSearchTool.baseDescription;
@@ -1232,6 +1248,16 @@ ${tools.join('\n')}`;
       }
     }
     return tools.join('\n');
+  }
+
+  /**
+   * 获取禁用服务器的提示信息
+   * 当搜索无结果且有禁用服务器时，提示用户可以用 McpManage 启用
+   */
+  private getDisabledServersHint(): string {
+    const disabled = MCPSearchTool.disabledServers;
+    if (disabled.length === 0) return '';
+    return `\n\nNote: The following MCP servers are installed but DISABLED. Use the McpManage tool with action="enable" to activate them:\n${disabled.map(s => `- ${s}`).join('\n')}`;
   }
 
   /**
@@ -1306,7 +1332,7 @@ ${tools.join('\n')}`;
       if (!found) {
         return {
           success: true,
-          output: `${t('mcp.toolNotFound', { name: toolName, available: '' })}\n\nAvailable tools:\n${this.getAvailableMcpTools()}`,
+          output: `${t('mcp.toolNotFound', { name: toolName, available: '' })}\n\nAvailable tools:\n${this.getAvailableMcpTools()}${this.getDisabledServersHint()}`,
           matches: [],
           query,
           total_mcp_tools: totalMcpTools,
@@ -1328,7 +1354,7 @@ ${tools.join('\n')}`;
     if (matches.length === 0) {
       return {
         success: true,
-        output: `${t('mcp.noMatchingTools', { query })}\n\nAvailable tools:\n${this.getAvailableMcpTools()}`,
+        output: `${t('mcp.noMatchingTools', { query })}\n\nAvailable tools:\n${this.getAvailableMcpTools()}${this.getDisabledServersHint()}`,
         matches: [],
         query,
         total_mcp_tools: totalMcpTools,

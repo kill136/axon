@@ -8,7 +8,7 @@ import { randomUUID } from 'crypto';
 import { ConversationManager } from './conversation.js';
 import { isSlashCommand, executeSlashCommand } from './slash-commands.js';
 import { initializeSkills, getAllSkills, findSkill } from '../../tools/skill.js';
-import { runWithCwd } from '../../core/cwd-context.js';
+import { runWithCwd, getCurrentCwd } from '../../core/cwd-context.js';
 import { apiManager } from './api-manager.js';
 import { webAuth } from './web-auth.js';
 import { oauthManager } from './oauth-manager.js';
@@ -1755,6 +1755,10 @@ async function handleClientMessage(
       await handleSessionExport(client, message.payload.sessionId, message.payload.format, conversationManager);
       break;
 
+    case 'session_import':
+      await handleSessionImport(client, message.payload.content, message.payload.format, conversationManager);
+      break;
+
     case 'session_resume':
       await handleSessionResume(client, message.payload.sessionId, conversationManager);
       break;
@@ -1906,6 +1910,22 @@ async function handleClientMessage(
 
     case 'plugin_uninstall':
       await handlePluginUninstall(client, message.payload.name, conversationManager);
+      break;
+
+    case 'skill_list':
+      await handleSkillList(client, conversationManager);
+      break;
+
+    case 'skill_view':
+      await handleSkillView(client, message.payload.name);
+      break;
+
+    case 'skill_delete':
+      await handleSkillDelete(client, message.payload.name, message.payload.source);
+      break;
+
+    case 'skill_toggle':
+      await handleSkillToggle(client, message.payload.name, message.payload.enabled);
       break;
 
     case 'auth_status':
@@ -2206,6 +2226,15 @@ async function handleChatMessage(
 
   console.log(`[WebSocket] handleChatMessage - sessionId: ${sessionId}, projectPath: ${projectPath || 'undefined'}`);
 
+  // 认证前置检查：发消息前确认有有效凭证
+  if (!webAuth.isAuthenticated()) {
+    sendMessage(ws, {
+      type: 'error',
+      payload: { message: '未配置 API Key。请在设置页面配置 API Key 或登录 OAuth 后再发送消息。' },
+    });
+    return;
+  }
+
   // 检查是否为斜杠命令
   if (isSlashCommand(content)) {
     await handleSlashCommand(client, content, conversationManager);
@@ -2468,6 +2497,13 @@ async function handleChatMessage(
         sendMessage(getActiveWs(), {
           type: 'context_update',
           payload: { ...usage, sessionId: chatSessionId },
+        });
+      },
+
+      onRateLimitUpdate: (info: { status: string; utilization5h?: number; utilization7d?: number; resetsAt?: number; rateLimitType?: string; }) => {
+        sendMessage(getActiveWs(), {
+          type: 'rate_limit_update',
+          payload: { ...info, sessionId: chatSessionId },
         });
       },
 
@@ -3040,6 +3076,12 @@ async function handleSessionSwitch(
               payload: { ...usage, sessionId: chatSessionId },
             });
           },
+          onRateLimitUpdate: (info: { status: string; utilization5h?: number; utilization7d?: number; resetsAt?: number; rateLimitType?: string; }) => {
+            sendMessage(getActiveWs(), {
+              type: 'rate_limit_update',
+              payload: { ...info, sessionId: chatSessionId },
+            });
+          },
           onContextCompact: (phase: 'start' | 'end' | 'error', info?: Record<string, any>) => {
             sendMessage(getActiveWs(), {
               type: 'context_compact',
@@ -3185,6 +3227,50 @@ async function handleSessionExport(
       type: 'error',
       payload: {
         message: error instanceof Error ? error.message : '导出会话失败',
+      },
+    });
+  }
+}
+
+/**
+ * 处理导入会话请求
+ */
+async function handleSessionImport(
+  client: ClientConnection,
+  content: string,
+  format: 'json' | 'md' | undefined,
+  conversationManager: ConversationManager
+): Promise<void> {
+  const { ws } = client;
+
+  try {
+    const result = conversationManager.importSession(content);
+
+    if (result) {
+      sendMessage(ws, {
+        type: 'session_imported',
+        payload: {
+          sessionId: result.sessionId,
+          name: result.name,
+          success: true,
+        },
+      });
+    } else {
+      sendMessage(ws, {
+        type: 'session_imported',
+        payload: {
+          sessionId: '',
+          name: '',
+          success: false,
+        },
+      });
+    }
+  } catch (error) {
+    console.error('[WebSocket] 导入会话失败:', error);
+    sendMessage(ws, {
+      type: 'error',
+      payload: {
+        message: error instanceof Error ? error.message : '导入会话失败',
       },
     });
   }
@@ -4711,6 +4797,389 @@ async function handlePluginUninstall(
       type: 'error',
       payload: {
         message: error instanceof Error ? error.message : '卸载插件失败',
+      },
+    });
+  }
+}
+
+// ============ Skills 相关处理函数 ============
+
+/**
+ * 处理 skill 列表请求
+ */
+async function handleSkillList(
+  client: ClientConnection,
+  conversationManager: ConversationManager
+): Promise<void> {
+  const { ws } = client;
+
+  try {
+    const fs = await import('fs');
+    const path = await import('path');
+    const homeDir = process.env.HOME || process.env.USERPROFILE || '';
+    const cwd = client.projectPath || process.cwd();
+
+    // 确保 skills 已加载（需要 runWithCwd 上下文）
+    await runWithCwd(cwd, () => initializeSkills());
+
+    // 获取所有已加载的 skills
+    const loadedSkills = getAllSkills();
+    
+    // 获取已加载的 plugins
+    const plugins = await conversationManager.listPlugins();
+
+    // 构建 SkillInfo 列表
+    const skills: any[] = [];
+
+    // 1. 从已加载的 skills 中提取信息
+    for (const skill of loadedSkills) {
+      let source: 'plugin' | 'smithery' | 'manual' = 'manual';
+      let sourceName: string | undefined;
+
+      // 判断来源
+      if (skill.source === 'plugin') {
+        source = 'plugin';
+        sourceName = skill.pluginName;
+      } else {
+        // 检查是否是 smithery（符号链接）
+        const userSkillsDir = path.join(homeDir, '.claude', 'skills');
+        const skillNameWithoutPrefix = skill.skillName.split(':').pop() || skill.skillName;
+        const skillPath = path.join(userSkillsDir, skillNameWithoutPrefix);
+        
+        try {
+          if (fs.existsSync(skillPath) && fs.lstatSync(skillPath).isSymbolicLink()) {
+            source = 'smithery';
+          }
+        } catch (err) {
+          // 忽略错误，默认为 manual
+        }
+      }
+
+      skills.push({
+        name: skill.skillName,
+        displayName: skill.displayName,
+        description: skill.description,
+        source,
+        sourceName,
+        path: skill.filePath,
+        enabled: true, // TODO: blocklist 机制待实现
+        userInvocable: skill.userInvocable,
+        model: skill.model,
+        allowedTools: skill.allowedTools,
+        argumentHint: skill.argumentHint,
+        version: skill.version,
+      });
+    }
+
+    // 2. 检查 ~/.claude/skills/ 目录中未加载的 skills
+    const userSkillsDir = path.join(homeDir, '.claude', 'skills');
+    if (fs.existsSync(userSkillsDir)) {
+      const entries = fs.readdirSync(userSkillsDir);
+      for (const entry of entries) {
+        const entryPath = path.join(userSkillsDir, entry);
+        const stat = fs.lstatSync(entryPath);
+
+        // 检查是否已在列表中
+        const isLoaded = skills.some(s => {
+          const skillNameWithoutPrefix = s.name.split(':').pop() || s.name;
+          return skillNameWithoutPrefix === entry;
+        });
+
+        if (!isLoaded && stat.isDirectory()) {
+          // 未加载的目录
+          const skillMdPath = path.join(entryPath, 'SKILL.md');
+          if (fs.existsSync(skillMdPath)) {
+            const isSymlink = stat.isSymbolicLink();
+            skills.push({
+              name: entry,
+              displayName: entry,
+              description: '',
+              source: isSymlink ? 'smithery' : 'manual',
+              path: entryPath,
+              enabled: false,
+              userInvocable: true,
+            });
+          }
+        }
+      }
+    }
+
+    // 3. 检查 .claude/skills/ 项目级目录中未加载的 skills
+    const projectSkillsDir = path.join(cwd, '.claude', 'skills');
+    if (fs.existsSync(projectSkillsDir)) {
+      const entries = fs.readdirSync(projectSkillsDir);
+      for (const entry of entries) {
+        const entryPath = path.join(projectSkillsDir, entry);
+        const stat = fs.lstatSync(entryPath);
+
+        // 检查是否已在列表中
+        const isLoaded = skills.some(s => {
+          const skillNameWithoutPrefix = s.name.split(':').pop() || s.name;
+          return skillNameWithoutPrefix === entry;
+        });
+
+        if (!isLoaded && stat.isDirectory()) {
+          const skillMdPath = path.join(entryPath, 'SKILL.md');
+          if (fs.existsSync(skillMdPath)) {
+            skills.push({
+              name: entry,
+              displayName: entry,
+              description: '',
+              source: 'manual',
+              path: entryPath,
+              enabled: false,
+              userInvocable: true,
+            });
+          }
+        }
+      }
+    }
+
+    sendMessage(ws, {
+      type: 'skill_list_response',
+      payload: {
+        skills,
+      },
+    });
+  } catch (error) {
+    console.error('[WebSocket] 获取 skill 列表失败:', error);
+    sendMessage(ws, {
+      type: 'error',
+      payload: {
+        message: error instanceof Error ? error.message : '获取 skill 列表失败',
+      },
+    });
+  }
+}
+
+/**
+ * 处理查看单个 skill 请求
+ */
+async function handleSkillView(
+  client: ClientConnection,
+  name: string
+): Promise<void> {
+  const { ws } = client;
+
+  try {
+    if (!name) {
+      sendMessage(ws, {
+        type: 'error',
+        payload: {
+          message: '缺少 skill 名称',
+        },
+      });
+      return;
+    }
+
+    // 查找 skill
+    const skill = findSkill(name);
+
+    if (!skill) {
+      sendMessage(ws, {
+        type: 'error',
+        payload: {
+          message: `未找到 skill: ${name}`,
+        },
+      });
+      return;
+    }
+
+    // 读取 SKILL.md 文件
+    const fs = await import('fs');
+    const skillMdPath = skill.filePath;
+
+    if (!fs.existsSync(skillMdPath)) {
+      sendMessage(ws, {
+        type: 'error',
+        payload: {
+          message: `SKILL.md 文件不存在: ${skillMdPath}`,
+        },
+      });
+      return;
+    }
+
+    const content = fs.readFileSync(skillMdPath, 'utf-8');
+
+    sendMessage(ws, {
+      type: 'skill_view_response',
+      payload: {
+        name,
+        content,
+      },
+    });
+  } catch (error) {
+    console.error('[WebSocket] 查看 skill 失败:', error);
+    sendMessage(ws, {
+      type: 'error',
+      payload: {
+        message: error instanceof Error ? error.message : '查看 skill 失败',
+      },
+    });
+  }
+}
+
+/**
+ * 处理删除 skill 请求
+ */
+async function handleSkillDelete(
+  client: ClientConnection,
+  name: string,
+  source: string
+): Promise<void> {
+  const { ws } = client;
+
+  try {
+    if (!name) {
+      sendMessage(ws, {
+        type: 'error',
+        payload: {
+          message: '缺少 skill 名称',
+        },
+      });
+      return;
+    }
+
+    // 不允许删除 plugin 内的 skill
+    if (source === 'plugin') {
+      sendMessage(ws, {
+        type: 'error',
+        payload: {
+          message: 'Plugin 内的 skill 不能单独删除，请卸载对应的 plugin',
+        },
+      });
+      return;
+    }
+
+    const fs = await import('fs');
+    const path = await import('path');
+    const homeDir = process.env.HOME || process.env.USERPROFILE || '';
+
+    // 查找 skill
+    const skill = findSkill(name);
+    let skillPath: string;
+
+    if (skill) {
+      skillPath = skill.baseDir;
+    } else {
+      // 未加载的 skill，尝试从文件系统查找
+      const userSkillsDir = path.join(homeDir, '.claude', 'skills');
+      const skillNameWithoutPrefix = name.split(':').pop() || name;
+      skillPath = path.join(userSkillsDir, skillNameWithoutPrefix);
+
+      if (!fs.existsSync(skillPath)) {
+        sendMessage(ws, {
+          type: 'error',
+          payload: {
+            message: `未找到 skill: ${name}`,
+          },
+        });
+        return;
+      }
+    }
+
+    // 删除逻辑
+    if (source === 'smithery') {
+      // 删除符号链接
+      const userSkillsDir = path.join(homeDir, '.claude', 'skills');
+      const skillNameWithoutPrefix = name.split(':').pop() || name;
+      const symlinkPath = path.join(userSkillsDir, skillNameWithoutPrefix);
+
+      if (fs.existsSync(symlinkPath) && fs.lstatSync(symlinkPath).isSymbolicLink()) {
+        // 读取符号链接目标
+        const targetPath = fs.readlinkSync(symlinkPath);
+        
+        // 删除符号链接
+        fs.unlinkSync(symlinkPath);
+
+        // 删除源目录（~/.agents/skills/ 下）
+        const agentsSkillsDir = path.join(homeDir, '.agents', 'skills');
+        const sourceDir = path.join(agentsSkillsDir, skillNameWithoutPrefix);
+        
+        if (fs.existsSync(sourceDir)) {
+          fs.rmSync(sourceDir, { recursive: true, force: true });
+        }
+      }
+    } else if (source === 'manual') {
+      // 删除普通目录
+      if (fs.existsSync(skillPath)) {
+        fs.rmSync(skillPath, { recursive: true, force: true });
+      }
+    }
+
+    sendMessage(ws, {
+      type: 'skill_deleted',
+      payload: {
+        name,
+        success: true,
+      },
+    });
+  } catch (error) {
+    console.error('[WebSocket] 删除 skill 失败:', error);
+    sendMessage(ws, {
+      type: 'error',
+      payload: {
+        message: error instanceof Error ? error.message : '删除 skill 失败',
+      },
+    });
+
+    sendMessage(ws, {
+      type: 'skill_deleted',
+      payload: {
+        name,
+        success: false,
+      },
+    });
+  }
+}
+
+/**
+ * 处理启用/禁用 skill 请求
+ */
+async function handleSkillToggle(
+  client: ClientConnection,
+  name: string,
+  enabled: boolean
+): Promise<void> {
+  const { ws } = client;
+
+  try {
+    if (!name) {
+      sendMessage(ws, {
+        type: 'error',
+        payload: {
+          message: '缺少 skill 名称',
+        },
+      });
+      return;
+    }
+
+    // TODO: 实现 blocklist 机制
+    // 当前暂时返回成功
+
+    sendMessage(ws, {
+      type: 'skill_toggled',
+      payload: {
+        name,
+        enabled,
+        success: true,
+      },
+    });
+  } catch (error) {
+    console.error('[WebSocket] 切换 skill 状态失败:', error);
+    sendMessage(ws, {
+      type: 'error',
+      payload: {
+        message: error instanceof Error ? error.message : '切换 skill 状态失败',
+      },
+    });
+
+    sendMessage(ws, {
+      type: 'skill_toggled',
+      payload: {
+        name,
+        enabled,
+        success: false,
       },
     });
   }

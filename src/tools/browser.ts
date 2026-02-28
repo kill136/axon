@@ -32,6 +32,19 @@ USAGE NOTES:
   - Screenshots are returned as base64-encoded PNG images
   - Browser uses persistent profile for login state persistence
   - If playwright-core is not installed, you'll see installation instructions
+
+ADVANCED FEATURES:
+  - scroll: Scroll page or scroll element into view
+  - dblclick/rightclick: Double-click and right-click support
+  - drag: Drag and drop between elements
+  - wait_for_selector/wait_for_url/wait_for_load_state: Wait for dynamic content
+  - dialog_handle: View and control browser dialogs (alert/confirm/prompt)
+  - download_start/download_list: Capture and save file downloads
+  - mouse_move/mouse_down/mouse_up/mouse_wheel: Precise mouse control
+  - set_viewport: Change browser viewport size
+  - network_intercept/network_abort: Intercept and modify network requests
+  - storage_get/storage_set/storage_clear: Access localStorage/sessionStorage
+  - pdf: Generate PDF from current page
 `;
 
   getInputSchema(): ToolDefinition['inputSchema'] {
@@ -70,6 +83,28 @@ USAGE NOTES:
             'profile_create',
             'profile_delete',
             'upload_file',
+            'scroll',
+            'dblclick',
+            'rightclick',
+            'drag',
+            'wait_for_selector',
+            'wait_for_url',
+            'wait_for_load_state',
+            'wait_for_timeout',
+            'dialog_handle',
+            'download_start',
+            'download_list',
+            'mouse_move',
+            'mouse_down',
+            'mouse_up',
+            'mouse_wheel',
+            'set_viewport',
+            'network_intercept',
+            'network_abort',
+            'storage_get',
+            'storage_set',
+            'storage_clear',
+            'pdf',
           ],
           description: 'The browser action to perform',
         },
@@ -125,6 +160,28 @@ USAGE NOTES:
           type: 'string',
           description: 'Absolute file path for upload_file action. If ref is provided, sets file on that element; if ref is omitted, auto-detects the <input type="file"> on the page (click the upload button first to trigger it).',
         },
+        selector: { type: 'string', description: 'CSS selector for wait_for_selector' },
+        timeout: { type: 'number', description: 'Timeout in ms for wait operations' },
+        deltaX: { type: 'number', description: 'Horizontal scroll/mouse delta' },
+        deltaY: { type: 'number', description: 'Vertical scroll/mouse delta (positive = down)' },
+        x: { type: 'number', description: 'Mouse X coordinate for mouse_move' },
+        y: { type: 'number', description: 'Mouse Y coordinate for mouse_move' },
+        button: { type: 'string', enum: ['left', 'middle', 'right'], description: 'Mouse button (default: left)' },
+        sourceRef: { type: 'string', description: 'Source element ref for drag action' },
+        targetRef: { type: 'string', description: 'Target element ref for drag action' },
+        dialogAction: { type: 'string', enum: ['accept', 'dismiss'], description: 'How to handle dialog' },
+        dialogText: { type: 'string', description: 'Text to enter in prompt dialog' },
+        width: { type: 'number', description: 'Viewport width for set_viewport' },
+        height: { type: 'number', description: 'Viewport height for set_viewport' },
+        loadState: { type: 'string', enum: ['load', 'domcontentloaded', 'networkidle'], description: 'Load state to wait for' },
+        storageType: { type: 'string', enum: ['local', 'session'], description: 'Storage type (localStorage or sessionStorage)' },
+        storageKey: { type: 'string', description: 'Storage key' },
+        storageValue: { type: 'string', description: 'Storage value to set' },
+        routePattern: { type: 'string', description: 'URL pattern for network interception (glob)' },
+        routeAction: { type: 'string', enum: ['block', 'continue', 'fulfill'], description: 'Action for intercepted requests' },
+        routeBody: { type: 'string', description: 'Response body for fulfill action' },
+        routeStatus: { type: 'number', description: 'HTTP status code for fulfill action' },
+        savePath: { type: 'string', description: 'File save path for download_start and pdf actions' },
       },
       required: ['action'],
     };
@@ -187,10 +244,15 @@ USAGE NOTES:
         }
 
         case 'stop': {
-          // 只关闭当前会话的专属 tab，不关闭整个浏览器
-          // 浏览器是共享资源，其他会话和用户可能仍在使用
+          // 关闭当前会话的专属 tab
           const stopSessionId = getSessionId();
           await this.removeController(stopSessionId);
+
+          // 如果没有更多活跃 session，彻底关闭浏览器和 relay
+          if (this.controllers.size === 0) {
+            await manager.stop();
+            return this.success('Browser fully stopped. All sessions closed, Chrome and relay shut down.');
+          }
           return this.success('Session browser tab closed. Browser process remains running for other sessions.');
         }
 
@@ -314,19 +376,33 @@ USAGE NOTES:
         }
 
         case 'click': {
-          if (!input.ref) {
-            return this.error(t('browser.missingRef'));
+          // 支持 ref 模式或坐标模式
+          if (input.ref) {
+            await controller.click(input.ref);
+            return this.success(`Clicked element: ${input.ref}`);
+          } else if (input.x !== undefined && input.y !== undefined) {
+            await controller.click(undefined, { x: input.x, y: input.y });
+            return this.success(`Clicked at coordinates (${input.x}, ${input.y})`);
+          } else {
+            return this.error('Either ref or x/y coordinates must be provided for click');
           }
-          await controller.click(input.ref);
-          return this.success(`Clicked element: ${input.ref}`);
         }
 
         case 'fill': {
-          if (!input.ref || !input.value) {
-            return this.error(t('browser.missingRefValue'));
+          if (!input.value) {
+            return this.error('value is required for fill');
           }
-          await controller.fill(input.ref, input.value);
-          return this.success(`Filled element ${input.ref} with: ${input.value}`);
+          
+          // 支持 ref 模式或坐标模式
+          if (input.ref) {
+            await controller.fill(input.ref, input.value);
+            return this.success(`Filled element ${input.ref} with: ${input.value}`);
+          } else if (input.x !== undefined && input.y !== undefined) {
+            await controller.fill(undefined, input.value, { x: input.x, y: input.y });
+            return this.success(`Filled at coordinates (${input.x}, ${input.y}) with: ${input.value}`);
+          } else {
+            return this.error('Either ref or x/y coordinates must be provided for fill');
+          }
         }
 
         case 'type': {
@@ -414,6 +490,24 @@ USAGE NOTES:
           await controller.tabClose(input.index);
           return this.success(
             `Closed tab${input.index !== undefined ? ` ${input.index}` : ''}`
+          );
+        }
+
+        case 'frame_list': {
+          const frames = await controller.frameList();
+          const output = frames.map(f => 
+            `[${f.index}] ${f.name ? `"${f.name}" ` : ''}${f.url}${f.parentFrame !== null ? ` (parent: ${f.parentFrame})` : ''}`
+          ).join('\n');
+          return this.success(`Frames:\n${output}`);
+        }
+
+        case 'frame_select': {
+          const frameIndex = input.frameIndex ?? 0;
+          controller.frameSelect(frameIndex);
+          return this.success(
+            frameIndex === 0 
+              ? 'Selected main frame (index 0)' 
+              : `Selected frame ${frameIndex}. All subsequent operations will target this frame.`
           );
         }
 
@@ -513,6 +607,203 @@ USAGE NOTES:
           deleteProfile(input.profileName);
           
           return this.success(`Profile "${input.profileName}" deleted successfully.`);
+        }
+
+        case 'scroll': {
+          await controller.scroll({
+            ref: input.ref,
+            deltaX: input.deltaX,
+            deltaY: input.deltaY,
+          });
+          if (input.ref) {
+            return this.success(`Scrolled element ${input.ref} into view.`);
+          }
+          return this.success(`Scrolled page by (${input.deltaX ?? 0}, ${input.deltaY ?? 300}).`);
+        }
+
+        case 'dblclick': {
+          // 支持 ref 模式或坐标模式
+          if (input.ref) {
+            await controller.dblclick(input.ref);
+            return this.success(`Double-clicked element: ${input.ref}`);
+          } else if (input.x !== undefined && input.y !== undefined) {
+            await controller.dblclick(undefined, { x: input.x, y: input.y });
+            return this.success(`Double-clicked at coordinates (${input.x}, ${input.y})`);
+          } else {
+            return this.error('Either ref or x/y coordinates must be provided for dblclick');
+          }
+        }
+
+        case 'rightclick': {
+          // 支持 ref 模式或坐标模式
+          if (input.ref) {
+            await controller.rightclick(input.ref);
+            return this.success(`Right-clicked element: ${input.ref}`);
+          } else if (input.x !== undefined && input.y !== undefined) {
+            await controller.rightclick(undefined, { x: input.x, y: input.y });
+            return this.success(`Right-clicked at coordinates (${input.x}, ${input.y})`);
+          } else {
+            return this.error('Either ref or x/y coordinates must be provided for rightclick');
+          }
+        }
+
+        case 'drag': {
+          if (!input.sourceRef || !input.targetRef) {
+            return this.error('drag requires sourceRef and targetRef parameters.');
+          }
+          await controller.dragAndDrop(input.sourceRef, input.targetRef);
+          return this.success(`Dragged ${input.sourceRef} to ${input.targetRef}`);
+        }
+
+        case 'wait_for_selector': {
+          if (!input.selector) return this.error('wait_for_selector requires selector parameter.');
+          await controller.waitForSelector(input.selector, { timeout: input.timeout });
+          return this.success(`Selector "${input.selector}" is now visible.`);
+        }
+
+        case 'wait_for_url': {
+          if (!input.url) return this.error('wait_for_url requires url parameter.');
+          await controller.waitForUrl(input.url, { timeout: input.timeout });
+          return this.success(`URL now matches: ${input.url}`);
+        }
+
+        case 'wait_for_load_state': {
+          const state = input.loadState ?? 'networkidle';
+          await controller.waitForLoadState(state, { timeout: input.timeout });
+          return this.success(`Page reached load state: ${state}`);
+        }
+
+        case 'wait_for_timeout': {
+          const ms = input.timeout ?? 1000;
+          await controller.waitForTimeout(ms);
+          return this.success(`Waited ${ms}ms.`);
+        }
+
+        case 'wait_for_stable': {
+          const timeout = input.timeout ?? 10000;
+          const stableMs = input.stableMs ?? 500;
+          await controller.waitForStable({ timeout, stableMs });
+          return this.success(
+            `Page became stable (no DOM changes for ${stableMs}ms, timeout: ${timeout}ms).`
+          );
+        }
+
+        case 'dialog_handle': {
+          const info = controller.getDialogHistory();
+          if (input.dialogAction) {
+            controller.setAutoAcceptDialogs(input.dialogAction === 'accept');
+            return this.success(
+              `Dialog auto-${input.dialogAction} mode enabled.\n` +
+              `Recent dialogs (${info.length}):\n` +
+              info.map((d: any) => `  [${d.type}] "${d.message}" → ${d.handled ? d.response : 'pending'}`).join('\n')
+            );
+          }
+          if (info.length === 0) {
+            return this.success('No dialogs detected. Dialogs are auto-accepted by default to prevent page hanging.');
+          }
+          return this.success(
+            `Dialog history (${info.length}):\n` +
+            info.map((d: any) => `  [${d.type}] "${d.message}" → ${d.handled ? d.response : 'pending'}`).join('\n')
+          );
+        }
+
+        case 'download_start': {
+          await controller.setupDownloadListener(input.savePath);
+          return this.success(`Download listener active. Files will be saved to: ${input.savePath || 'default download path'}`);
+        }
+
+        case 'download_list': {
+          const downloads = controller.getDownloads();
+          if (downloads.length === 0) {
+            return this.success('No downloads captured. Use download_start first, then trigger a download.');
+          }
+          return this.success(
+            `Downloads (${downloads.length}):\n` +
+            downloads.map((d: any) => `  ${d.suggestedFilename} (${d.url})\n    → ${d.savedPath || 'pending'}`).join('\n')
+          );
+        }
+
+        case 'mouse_move': {
+          if (input.x === undefined || input.y === undefined) {
+            return this.error('mouse_move requires x and y coordinates.');
+          }
+          await controller.mouseMove(input.x, input.y);
+          return this.success(`Mouse moved to (${input.x}, ${input.y})`);
+        }
+
+        case 'mouse_down': {
+          await controller.mouseDown({ button: input.button as any });
+          return this.success(`Mouse button ${input.button ?? 'left'} pressed down.`);
+        }
+
+        case 'mouse_up': {
+          await controller.mouseUp({ button: input.button as any });
+          return this.success(`Mouse button ${input.button ?? 'left'} released.`);
+        }
+
+        case 'mouse_wheel': {
+          await controller.mouseWheel(input.deltaX ?? 0, input.deltaY ?? 0);
+          return this.success(`Mouse wheel scrolled (${input.deltaX ?? 0}, ${input.deltaY ?? 0}).`);
+        }
+
+        case 'set_viewport': {
+          if (!input.width || !input.height) {
+            return this.error('set_viewport requires width and height parameters.');
+          }
+          await controller.setViewport(input.width, input.height);
+          return this.success(`Viewport set to ${input.width}x${input.height}`);
+        }
+
+        case 'network_intercept': {
+          if (!input.routePattern || !input.routeAction) {
+            return this.error('network_intercept requires routePattern and routeAction parameters.');
+          }
+          await controller.networkIntercept(
+            input.routePattern,
+            input.routeAction as any,
+            { body: input.routeBody, status: input.routeStatus }
+          );
+          return this.success(`Network route set: ${input.routePattern} → ${input.routeAction}`);
+        }
+
+        case 'network_abort': {
+          if (!input.routePattern) {
+            return this.error('network_abort requires routePattern parameter.');
+          }
+          await controller.networkAbort(input.routePattern);
+          return this.success(`Network route removed: ${input.routePattern}`);
+        }
+
+        case 'storage_get': {
+          const sType = input.storageType ?? 'local';
+          const result = await controller.storageGet(sType, input.storageKey);
+          if (input.storageKey) {
+            return this.success(`${sType}Storage["${input.storageKey}"] = ${JSON.stringify(result)}`);
+          }
+          return this.success(`${sType}Storage contents:\n${JSON.stringify(result, null, 2)}`);
+        }
+
+        case 'storage_set': {
+          if (!input.storageKey || input.storageValue === undefined) {
+            return this.error('storage_set requires storageKey and storageValue parameters.');
+          }
+          const sTypeSet = input.storageType ?? 'local';
+          await controller.storageSet(sTypeSet, input.storageKey, input.storageValue);
+          return this.success(`${sTypeSet}Storage["${input.storageKey}"] = ${JSON.stringify(input.storageValue)}`);
+        }
+
+        case 'storage_clear': {
+          const sTypeClear = input.storageType ?? 'local';
+          await controller.storageClear(sTypeClear);
+          return this.success(`${sTypeClear}Storage cleared.`);
+        }
+
+        case 'pdf': {
+          if (!input.savePath) {
+            return this.error('pdf requires savePath parameter.');
+          }
+          const pdfPath = await controller.generatePdf(input.savePath);
+          return this.success(`PDF saved to: ${pdfPath}`);
         }
 
         default:

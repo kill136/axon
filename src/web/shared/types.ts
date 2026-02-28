@@ -103,6 +103,7 @@ export type ClientMessage =
   | { type: 'session_delete'; payload: { sessionId: string } }
   | { type: 'session_rename'; payload: { sessionId: string; name: string } }
   | { type: 'session_export'; payload: { sessionId: string; format?: 'json' | 'md' } }
+  | { type: 'session_import'; payload: { content: string; format?: 'json' | 'md'; model?: string } }
   | { type: 'session_resume'; payload: { sessionId: string } }
   | { type: 'tool_filter_update'; payload: ToolFilterUpdatePayload }
   | { type: 'tool_list_get' }
@@ -141,6 +142,10 @@ export type ClientMessage =
   | { type: 'plugin_disable'; payload: { name: string } }
   | { type: 'plugin_install'; payload: { pluginId?: string; pluginPath?: string } }
   | { type: 'plugin_uninstall'; payload: { name: string } }
+  | { type: 'skill_list' }
+  | { type: 'skill_view'; payload: { name: string } }
+  | { type: 'skill_delete'; payload: { name: string; source: string } }
+  | { type: 'skill_toggle'; payload: { name: string; enabled: boolean } }
   | { type: 'auth_status' }
   | { type: 'auth_set_key'; payload: AuthSetKeyPayload }
   | { type: 'auth_clear' }
@@ -264,6 +269,7 @@ export type ServerMessage =
   | { type: 'tool_result'; payload: ToolResultPayload }
   | { type: 'message_complete'; payload: MessageCompletePayload }
   | { type: 'context_update'; payload: ContextUpdatePayload }
+  | { type: 'rate_limit_update'; payload: RateLimitUpdatePayload }
   | { type: 'context_compact'; payload: ContextCompactPayload }
   | { type: 'error'; payload: { message: string; code?: string; sessionId?: string; source?: string } }
   | { type: 'thinking_start'; payload: { messageId: string; sessionId?: string } }
@@ -280,6 +286,7 @@ export type ServerMessage =
   | { type: 'session_deleted'; payload: { sessionId: string; success: boolean } }
   | { type: 'session_renamed'; payload: { sessionId: string; name: string; success: boolean } }
   | { type: 'session_exported'; payload: { sessionId: string; content: string; format: 'json' | 'md' } }
+  | { type: 'session_imported'; payload: { sessionId: string; name: string; success: boolean } }
   | { type: 'tool_list_response'; payload: ToolListPayload }
   | { type: 'tool_filter_updated'; payload: { success: boolean; config: ToolFilterConfig } }
   | { type: 'system_prompt_response'; payload: SystemPromptGetPayload }
@@ -315,6 +322,10 @@ export type ServerMessage =
   | { type: 'plugin_installed'; payload: { success: boolean; plugin?: any; error?: string } }
   | { type: 'plugin_progress'; payload: { pluginId: string; step: number; totalSteps: number; message: string } }
   | { type: 'plugin_uninstalled'; payload: { name: string; success: boolean } }
+  | { type: 'skill_list_response'; payload: { skills: SkillInfo[] } }
+  | { type: 'skill_view_response'; payload: { name: string; content: string } }
+  | { type: 'skill_deleted'; payload: { name: string; success: boolean } }
+  | { type: 'skill_toggled'; payload: { name: string; enabled: boolean; success: boolean } }
   | { type: 'auth_status_response'; payload: AuthStatusPayload }
   | { type: 'auth_key_set'; payload: { success: boolean; message?: string } }
   | { type: 'auth_cleared'; payload: { success: boolean } }
@@ -460,6 +471,18 @@ export interface ContextUpdatePayload {
   percentage: number;
   /** 当前模型 */
   model: string;
+  sessionId?: string;
+}
+
+/**
+ * API 速率限制更新负载
+ */
+export interface RateLimitUpdatePayload {
+  status: string;
+  utilization5h?: number;
+  utilization7d?: number;
+  resetsAt?: number;
+  rateLimitType?: string;
   sessionId?: string;
 }
 
@@ -1586,6 +1609,38 @@ export interface PluginInfo {
   tools?: string[];
   /** 错误信息（如果有） */
   error?: string;
+}
+
+/**
+ * Skill 信息
+ */
+export interface SkillInfo {
+  /** skill 名称（完整名称，如 plugin:skillname） */
+  name: string;
+  /** 显示名称（去掉 prefix） */
+  displayName: string;
+  /** skill 描述 */
+  description: string;
+  /** 来源类型 */
+  source: 'plugin' | 'smithery' | 'manual';
+  /** 来源插件名（plugin 类型时） */
+  sourceName?: string;
+  /** 文件路径 */
+  path: string;
+  /** 是否启用 */
+  enabled: boolean;
+  /** 是否可被用户调用 */
+  userInvocable: boolean;
+  /** 指定的模型 */
+  model?: string;
+  /** 允许的工具列表 */
+  allowedTools?: string[];
+  /** 参数提示 */
+  argumentHint?: string;
+  /** 版本号 */
+  version?: string;
+  /** 作者 */
+  author?: string;
 }
 
 /**

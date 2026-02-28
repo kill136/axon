@@ -29,6 +29,14 @@ interface GenerateDesignResult {
   generatedText?: string; // AI 生成的描述文字
 }
 
+// 通用图片生成结果类型
+export interface GenerateImageResult {
+  success: boolean;
+  imageUrl?: string;
+  error?: string;
+  generatedText?: string;
+}
+
 // 缓存条目
 interface CacheEntry {
   imageData: string;
@@ -275,6 +283,106 @@ ${techInfo ? `技术栈: ${techInfo}` : ''}
       return {
         success: false,
         error: `生成设计图失败: ${errorMessage}`,
+      };
+    }
+  }
+
+  /**
+   * 通用图片生成方法
+   * 直接使用 prompt 调用 Gemini API
+   */
+  async generateImage(prompt: string, style?: string): Promise<GenerateImageResult> {
+    try {
+      this.initClient();
+
+      // 构建完整提示词（如果有 style，追加到 prompt 末尾）
+      let fullPrompt = prompt;
+      if (style) {
+        fullPrompt = `${prompt}\n\nStyle: ${style}`;
+      }
+
+      // 检查缓存
+      const cacheKey = crypto.createHash('md5').update(fullPrompt).digest('hex');
+      const cachedImage = this.getFromCache(cacheKey);
+      if (cachedImage) {
+        console.log('[GeminiImageService] 使用缓存的图片');
+        return {
+          success: true,
+          imageUrl: cachedImage,
+        };
+      }
+
+      console.log('[GeminiImageService] 开始生成图片...');
+      console.log('[GeminiImageService] 提示词:', fullPrompt.substring(0, 200) + '...');
+
+      // 调用 Gemini API
+      const response = await this.ai!.models.generateContent({
+        model: this.MODEL,
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: fullPrompt }],
+          },
+        ],
+        config: {
+          responseModalities: ['IMAGE', 'TEXT'],
+        },
+      });
+
+      // 解析响应
+      let imageData: string | null = null;
+      let generatedText: string | undefined;
+
+      if (response.candidates && response.candidates[0]?.content?.parts) {
+        for (const part of response.candidates[0].content.parts) {
+          if (part.inlineData) {
+            const { mimeType, data } = part.inlineData;
+            imageData = `data:${mimeType};base64,${data}`;
+          } else if (part.text) {
+            generatedText = part.text;
+          }
+        }
+      }
+
+      if (!imageData) {
+        return {
+          success: false,
+          error: '未能生成图片，请稍后重试',
+          generatedText,
+        };
+      }
+
+      // 保存到缓存
+      this.saveToCache(cacheKey, imageData);
+
+      console.log('[GeminiImageService] 图片生成成功');
+      return {
+        success: true,
+        imageUrl: imageData,
+        generatedText,
+      };
+    } catch (error) {
+      console.error('[GeminiImageService] 生成图片失败:', error);
+
+      const errorMessage = error instanceof Error ? error.message : '未知错误';
+
+      if (errorMessage.includes('API key')) {
+        return {
+          success: false,
+          error: '未配置有效的 Gemini API Key，请检查环境变量 GEMINI_API_KEY',
+        };
+      }
+
+      if (errorMessage.includes('quota') || errorMessage.includes('rate')) {
+        return {
+          success: false,
+          error: 'API 配额已用尽或请求频率过高，请稍后重试',
+        };
+      }
+
+      return {
+        success: false,
+        error: `生成图片失败: ${errorMessage}`,
       };
     }
   }

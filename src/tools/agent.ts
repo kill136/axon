@@ -22,7 +22,6 @@ import {
 import type { Message } from '../types/index.js';
 import { GENERAL_PURPOSE_AGENT_PROMPT, EXPLORE_AGENT_PROMPT, CODE_ANALYZER_PROMPT, BLUEPRINT_WORKER_PROMPT } from '../prompt/templates.js';
 import { notificationManager, type AgentCompletionResult } from '../notifications/index.js';
-import { isAgentTeamsEnabled } from '../agents/teammate-context.js';
 import { t } from '../i18n/index.js';
 
 // 代理类型定义（参照官方）
@@ -994,7 +993,8 @@ Since the user is greeting, use the greeting-responder agent to respond with a f
 assistant: "I'm going to use the Task tool to launch the greeting-responder agent"
 </example>
 
-${!isAgentTeamsEnabled() ? `\nNote: The "Agent Teams" feature (TeammateTool, SendMessage, spawnTeam) is not available on this plan. Only mention this if the user explicitly asks for "agent teams" by name, or asks for agents to send messages to each other (peer-to-peer messaging). Do NOT mention this limitation when users ask for parallel subagents, coordinating agents, launching a "team" of agents, or having agents work together — those are all normal Task tool usage and you should proceed normally.` : ''}`;
+
+Note: The "Agent Teams" feature (TeammateTool, SendMessage, spawnTeam) is not available on this plan. Only mention this if the user explicitly asks for "agent teams" by name, or asks for agents to send messages to each other (peer-to-peer messaging). Do NOT mention this limitation when users ask for parallel subagents, coordinating agents, launching a "team" of agents, or having agents work together — those are all normal Task tool usage and you should proceed normally.`;
   }
 
   // 父对话上下文（用于 forkContext）
@@ -1258,11 +1258,11 @@ ${!isAgentTeamsEnabled() ? `\nNote: The "Agent Teams" feature (TeammateTool, Sen
       .catch((error) => {
         // 执行失败 — 记录完整堆栈到日志
         agent.status = 'failed';
-        const errorMsg = error instanceof Error ? error.message : String(error);
+        const errorMsg = error instanceof Error ? (error.message || error.constructor.name) : String(error);
         const errorStack = error instanceof Error ? error.stack : undefined;
-        agent.error = errorStack || errorMsg;
+        agent.error = errorStack || errorMsg || 'Unknown error';
         agent.endTime = new Date();
-        addAgentHistory(agent, 'failed', `Agent failed: ${errorMsg}${errorStack ? '\n' + errorStack : ''}`);
+        addAgentHistory(agent, 'failed', `Agent failed: ${errorMsg || 'Unknown error'}${errorStack ? '\n' + errorStack : ''}`);
         saveAgentState(agent);
 
         // v2.1.7: 发送代理失败通知
@@ -1298,17 +1298,17 @@ ${!isAgentTeamsEnabled() ? `\nNote: The "Agent Teams" feature (TeammateTool, Sen
       return agent.result;
     } catch (error) {
       agent.status = 'failed';
-      const errorMsg = error instanceof Error ? error.message : String(error);
+      const errorMsg = error instanceof Error ? (error.message || error.constructor.name) : String(error);
       const errorStack = error instanceof Error ? error.stack : undefined;
-      agent.error = errorStack || errorMsg;
+      agent.error = errorStack || errorMsg || 'Unknown error';
       agent.endTime = new Date();
 
-      addAgentHistory(agent, 'failed', `Agent failed: ${errorMsg}${errorStack ? '\n' + errorStack : ''}`);
+      addAgentHistory(agent, 'failed', `Agent failed: ${errorMsg || 'Unknown error'}${errorStack ? '\n' + errorStack : ''}`);
       saveAgentState(agent);
 
       return {
         success: false,
-        error: t('agent.executionFailed', { error: errorMsg + (errorStack ? '\nStack: ' + errorStack : '') }),
+        error: t('agent.executionFailed', { error: (errorMsg || 'Unknown error') + (errorStack ? '\nStack: ' + errorStack : '') }),
       };
     }
   }
