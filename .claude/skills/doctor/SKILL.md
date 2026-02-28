@@ -1,12 +1,12 @@
 ---
-description: Perform comprehensive security audit of Claude Code configuration, skills, browser settings, and environment. Use when asked to check security or diagnose potential vulnerabilities.
+description: Perform comprehensive security audit of Axon configuration, skills, browser settings, and environment. Use when asked to check security or diagnose potential vulnerabilities.
 user-invocable: true
 argument-hint: "[component=all|config|skills|browser|web|env]"
 ---
 
 # Security Doctor Skill
 
-Perform a comprehensive security audit of the Claude Code environment, identifying potential security risks and misconfigurations.
+Perform a comprehensive security audit of the Axon environment, identifying potential security risks and misconfigurations.
 
 ## Audit Components
 
@@ -15,17 +15,17 @@ Perform a comprehensive security audit of the Claude Code environment, identifyi
 **Purpose**: Ensure sensitive directories and files are properly protected.
 
 **Steps**:
-1. Check `~/.claude/` directory permissions
-   - Read using Bash: `ls -la ~/.claude`
+1. Check `~/.axon/` directory permissions
+   - Read using Bash: `ls -la ~/.axon`
    - **CRITICAL**: Directory should NOT be world-readable (no `drwxrwxrwx`)
-   - **WARN**: Recommend `chmod 700 ~/.claude` if too permissive
+   - **WARN**: Recommend `chmod 700 ~/.axon` if too permissive
 
-2. Check `~/.claude/settings.json` permissions
-   - Read using Bash: `ls -l ~/.claude/settings.json`
+2. Check `~/.axon/settings.json` permissions
+   - Read using Bash: `ls -l ~/.axon/settings.json`
    - **CRITICAL**: File should be readable only by owner (recommend `600`)
 
 3. Check browser profile directory
-   - Read using Bash: `ls -la ~/.claude/browser-profile` (or wherever browser profile is stored)
+   - Read using Bash: `ls -la ~/.axon/browser-profile` (or wherever browser profile is stored)
    - **WARN**: Browser profile should not be world-accessible
 
 ### 2. Configuration Security Check
@@ -33,7 +33,7 @@ Perform a comprehensive security audit of the Claude Code environment, identifyi
 **Purpose**: Detect plain-text API keys and sensitive data in configuration files.
 
 **Steps**:
-1. Read `~/.claude/settings.json` using Read tool
+1. Read `~/.axon/settings.json` using Read tool
 2. Check for sensitive patterns:
    - **CRITICAL**: Plain-text API keys matching pattern `sk-ant-[a-zA-Z0-9-_]+`
    - **CRITICAL**: AWS credentials (`aws_access_key_id`, `aws_secret_access_key`)
@@ -46,8 +46,8 @@ Perform a comprehensive security audit of the Claude Code environment, identifyi
 
 **Steps**:
 1. Scan all skills in:
-   - `~/.claude/skills/`
-   - `.claude/skills/` (project-level)
+   - `~/.axon/skills/`
+   - `.axon/skills/` (project-level)
    
 2. For each skill SKILL.md file, check for dangerous patterns:
    - **CRITICAL**: `child_process` module usage
@@ -58,8 +58,8 @@ Perform a comprehensive security audit of the Claude Code environment, identifyi
 
 3. Use Grep tool with patterns:
    ```
-   grep -rn "child_process\|exec(\|spawn(\|eval(" ~/.claude/skills .claude/skills
-   grep -rn "stratum+tcp\|xmrig\|coinhive" ~/.claude/skills .claude/skills
+   grep -rn "child_process\|exec(\|spawn(\|eval(" ~/.axon/skills .axon/skills
+   grep -rn "stratum+tcp\|xmrig\|coinhive" ~/.axon/skills .axon/skills
    ```
 
 4. Report any matches with file path and line number
@@ -70,7 +70,7 @@ Perform a comprehensive security audit of the Claude Code environment, identifyi
 
 **Steps**:
 1. Check if browser profile directory exists
-   - Bash: `ls ~/.claude/browser-profile 2>/dev/null`
+   - Bash: `ls ~/.axon/browser-profile 2>/dev/null`
    
 2. **WARN** if profile directory is in a shared location (e.g., `/tmp/`)
 
@@ -85,7 +85,7 @@ Perform a comprehensive security audit of the Claude Code environment, identifyi
 
 **Steps**:
 1. Check if Web mode is running:
-   - Bash: `ps aux | grep -i "claude.*web\|claude.*server" | grep -v grep`
+   - Bash: `ps aux | grep -i "axon.*web\|axon.*server" | grep -v grep`
    
 2. If running, check:
    - **CRITICAL**: Port should not be exposed to 0.0.0.0 without authentication
@@ -108,7 +108,7 @@ Perform a comprehensive security audit of the Claude Code environment, identifyi
 2. **INFO**: Report count of potentially sensitive env vars
 
 3. **WARN** if any skill or config attempts to log environment variables:
-   - Grep: `grep -rn "console.log.*process.env\|console.error.*process.env" ~/.claude .claude`
+   - Grep: `grep -rn "console.log.*process.env\|console.error.*process.env" ~/.axon .axon`
 
 ## Output Format
 

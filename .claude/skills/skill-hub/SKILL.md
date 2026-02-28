@@ -2,7 +2,7 @@
 name: Skill Hub Manager
 description: Manage skills from the community skill registry - search, install, list, and publish skills
 version: 1.0.0
-author: Claude Code Open
+author: Axon
 user-invocable: true
 argument-hint: "search|install|list|publish [args]"
 category: tools
@@ -14,7 +14,7 @@ tags:
 
 # Skill Hub Manager
 
-This skill provides a command-line interface to interact with the Claude Code Skill Hub - a community registry of skills.
+This skill provides a command-line interface to interact with the Axon Skill Hub - a community registry of skills.
 
 ## Usage
 
@@ -37,7 +37,7 @@ Search the community skill registry for skills matching the query. The search lo
 /skill-hub install <skill-id>
 ```
 
-Install a skill from the community registry. The skill will be downloaded, security-scanned, and installed to `~/.claude/skills/<skill-id>/`.
+Install a skill from the community registry. The skill will be downloaded, security-scanned, and installed to `~/.axon/skills/<skill-id>/`.
 
 **Example:**
 ```
