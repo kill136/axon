@@ -272,7 +272,7 @@ export const exitCommand: SlashCommand = {
 // /status - 显示会话状态 (完全基于官方实现)
 export const statusCommand: SlashCommand = {
   name: 'status',
-  description: 'Show Axon status including version, model, account, API connectivity, and tool statuses';
+  description: 'Show Axon status including version, model, account, API connectivity, and tool statuses',
   category: 'general',
   execute: (ctx: CommandContext): CommandResult => {
     const stats = ctx.session.getStats();
@@ -389,7 +389,7 @@ function getShortModelName(fullModelName: string): string {
 // /doctor - 运行诊断 (官方风格，v2.1.6+ 增加 Updates 部分)
 export const doctorCommand: SlashCommand = {
   name: 'doctor',
-  description: 'Diagnose and verify your Axon installation and settings';
+  description: 'Diagnose and verify your Axon installation and settings',
   category: 'general',
   execute: async (ctx: CommandContext): Promise<CommandResult> => {
     const { config } = ctx;

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Claude Code Browser Bridge",
+  "name": "Axon Browser Bridge",
   "version": "1.0.37005",
-  "description": "CDP relay bridge for Claude Code CLI - attach your Chrome tabs for AI control",
+  "description": "CDP relay bridge for Axon CLI - attach your Chrome tabs for AI control",
   "permissions": [
     "debugger",
     "tabs",
@@ -19,7 +19,7 @@
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "Claude Code Browser Bridge (click to attach/detach)"
+    "default_title": "Axon Browser Bridge (click to attach/detach)"
   },
   "options_ui": {
     "page": "options.html",

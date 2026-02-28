@@ -1,6 +1,6 @@
 {
-  "name": "Claude Code",
-  "short_name": "Claude Code",
+  "name": "Axon",
+  "short_name": "Axon",
   "description": "AI-powered coding assistant - remote access to your development environment",
   "start_url": "/",
   "display": "standalone",
