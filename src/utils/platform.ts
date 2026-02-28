@@ -89,11 +89,11 @@ export function getHomeDir(): string {
 }
 
 /**
- * 获取配置目录 (~/.claude 或 %USERPROFILE%\.claude)
+ * 获取配置目录 (~/.axon 或 %USERPROFILE%\.axon)
  */
 export function getConfigDir(): string {
   const home = getHomeDir();
-  return path.join(home, '.claude');
+  return path.join(home, '.axon');
 }
 
 /**
@@ -105,11 +105,11 @@ export function getSessionsDir(): string {
 
 /**
  * 获取临时目录
- * 支持 CLAUDE_CODE_TMPDIR 环境变量覆盖
+ * 支持 AXON_TMPDIR 环境变量覆盖
  */
 export function getTempDir(): string {
-  if (process.env.CLAUDE_CODE_TMPDIR) {
-    return process.env.CLAUDE_CODE_TMPDIR;
+  if (process.env.AXON_TMPDIR) {
+    return process.env.AXON_TMPDIR;
   }
   if (isWindows()) {
     return process.env.TEMP || 'C:\\Temp';
@@ -629,7 +629,7 @@ let titleSpinnerFrameIndex = 0;
  */
 function setTerminalTitleInternal(icon: string, suffix?: string): void {
   // 检查是否禁用终端标题
-  if (process.env.CLAUDE_CODE_DISABLE_TERMINAL_TITLE) {
+  if (process.env.AXON_DISABLE_TERMINAL_TITLE) {
     return;
   }
 
@@ -651,7 +651,7 @@ function setTerminalTitleInternal(icon: string, suffix?: string): void {
  */
 export function setTerminalTitle(title: string, suffix?: string): void {
   // 检查是否禁用终端标题
-  if (process.env.CLAUDE_CODE_DISABLE_TERMINAL_TITLE) {
+  if (process.env.AXON_DISABLE_TERMINAL_TITLE) {
     return;
   }
 
@@ -679,10 +679,10 @@ export function setTerminalTitleSuffix(suffix: string): void {
 }
 
 /**
- * 重置终端标题为 "Claude Code"
+ * 重置终端标题为 "Axon"
  */
 export function resetTerminalTitle(): void {
-  setTerminalTitleSuffix('Claude Code');
+  setTerminalTitleSuffix('Axon');
 }
 
 /**
@@ -699,7 +699,7 @@ export function getTerminalTitle(): string {
  */
 export function startTerminalTitleSpinner(): void {
   // 检查是否禁用终端标题
-  if (process.env.CLAUDE_CODE_DISABLE_TERMINAL_TITLE) {
+  if (process.env.AXON_DISABLE_TERMINAL_TITLE) {
     return;
   }
 

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { MarkdownContent } from './MarkdownContent';
 import { CliToolCall } from './CliToolCall';
 import { CliThinkingBlock } from './CliThinkingBlock';
@@ -186,13 +186,20 @@ export function Message({
     }
   };
 
+  // 代码引用点击 → 跳转到代码编辑器
+  const handleCodeRefClick = useCallback((filePath: string, line: number) => {
+    if (onNavigateToCode) {
+      onNavigateToCode({ filePath, line });
+    }
+  }, [onNavigateToCode]);
+
   const renderContent = (item: ChatContent, index: number) => {
     if (item.type === 'text') {
       // 检查是否是 Skill 消息
       if (isSkillMessage(item.text)) {
         return <SkillMessage key={index} text={item.text} />;
       }
-      return <MarkdownContent key={index} content={item.text} isUserMessage={role === 'user'} />;
+      return <MarkdownContent key={index} content={item.text} isUserMessage={role === 'user'} onCodeRefClick={handleCodeRefClick} />;
     }
     if (item.type === 'image') {
       const imgSrc = item.source?.type === 'base64'
@@ -405,7 +412,7 @@ export function Message({
         </div>
         {isTranscriptMode && summaryText && (
           <div className="compact-summary__content">
-            <MarkdownContent content={summaryText} />
+            <MarkdownContent content={summaryText} onCodeRefClick={handleCodeRefClick} />
           </div>
         )}
       </div>
@@ -431,14 +438,14 @@ export function Message({
               <div className="user-message-collapsed" ref={userContentRef} style={{ maxHeight: USER_MESSAGE_COLLAPSE_HEIGHT }}>
                 {Array.isArray(content)
                   ? content.map(renderContent)
-                  : <MarkdownContent content={content as unknown as string} isUserMessage={role === 'user'} />
+                  : <MarkdownContent content={content as unknown as string} isUserMessage={role === 'user'} onCodeRefClick={handleCodeRefClick} />
                 }
                 <div className="user-message-fade" />
               </div>
             ) : (
               Array.isArray(content)
                 ? content.map(renderContent)
-                : <MarkdownContent content={content as unknown as string} isUserMessage={role === 'user'} />
+                : <MarkdownContent content={content as unknown as string} isUserMessage={role === 'user'} onCodeRefClick={handleCodeRefClick} />
             )}
             {shouldCollapseUserMessage && (
               <button

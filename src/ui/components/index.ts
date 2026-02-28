@@ -47,12 +47,12 @@ export { ResumeSession } from './ResumeSession.js';
 export { PluginsDialog } from '../PluginsDialog.js';
 export { TrustDialog, useTrustDialog } from './TrustDialog.js';
 export type { TrustDialogProps } from './TrustDialog.js';
-export { ClaudeMdImportDialog, scanClaudeMdFiles } from './ClaudeMdImportDialog.js';
+export { AxonMdImportDialog, scanAxonMdFiles } from './AxonMdImportDialog.js';
 export type {
-  ClaudeMdFile,
-  ClaudeMdSource,
-  ClaudeMdApprovalResult,
-  ClaudeMdImportDialogProps
-} from './ClaudeMdImportDialog.js';
+  AxonMdFile,
+  AxonMdSource,
+  AxonMdApprovalResult,
+  AxonMdImportDialogProps
+} from './AxonMdImportDialog.js';
 export { StatsPanel } from './StatsPanel.js';
 export type { default as StatsPanelProps } from './StatsPanel.js';

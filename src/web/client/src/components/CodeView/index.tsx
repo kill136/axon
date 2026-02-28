@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { FileTree } from './FileTree';
 import { CodeEditor, CodeEditorRef } from './CodeEditor';
 import { CompactChatPanel } from './CompactChatPanel';
@@ -25,10 +25,17 @@ export interface CodeViewProps {
 }
 
 /**
+ * CodeView Ref 接口
+ */
+export interface CodeViewRef {
+  openFileAtLine: (filePath: string, line?: number) => void;
+}
+
+/**
  * CodeView 容器组件
  * 三栏布局：FileTree | CodeEditor | CompactChatPanel
  */
-export const CodeView: React.FC<CodeViewProps> = ({
+export const CodeView = forwardRef<CodeViewRef, CodeViewProps>(({
   messages,
   status,
   model,
@@ -40,7 +47,7 @@ export const CodeView: React.FC<CodeViewProps> = ({
   currentMessageId,
   isStreaming = false,
   projectPath,
-}) => {
+}, ref) => {
   // 面板宽度和状态
   const [fileTreeWidth, setFileTreeWidth] = useState(220);
   const [chatPanelWidth, setChatPanelWidth] = useState(360);
@@ -63,6 +70,20 @@ export const CodeView: React.FC<CodeViewProps> = ({
   // 拖拽状态
   const [isResizingFileTree, setIsResizingFileTree] = useState(false);
   const [isResizingChatPanel, setIsResizingChatPanel] = useState(false);
+
+  // 暴露 openFileAtLine 方法给父组件
+  useImperativeHandle(ref, () => ({
+    openFileAtLine: async (filePath: string, line?: number) => {
+      setCurrentFile(filePath);
+      await codeEditorRef.current?.openFile(filePath);
+      if (line) {
+        // 等待文件加载完成后跳转行号
+        setTimeout(() => {
+          codeEditorRef.current?.goToLine(line);
+        }, 200);
+      }
+    },
+  }));
 
   // 处理文件选择
   const handleFileSelect = (filePath: string) => {
@@ -373,6 +394,8 @@ export const CodeView: React.FC<CodeViewProps> = ({
       )}
     </div>
   );
-};
+});
+
+CodeView.displayName = 'CodeView';
 
 export default CodeView;

@@ -6,7 +6,7 @@
  */
 
 /**
- * Claude Code CLI 版本号
+ * Axon CLI 版本号
  * @description 当前实现版本，与官方 @anthropic-ai/claude-code 对齐
  */
 export const VERSION = '2.1.37';

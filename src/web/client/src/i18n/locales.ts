@@ -52,14 +52,14 @@ const en: Translations = {
   'settings.model.haiku.desc': 'Fastest and most cost-effective. Ideal for simple tasks and quick responses.',
 
   // SettingsPanel - About tab
-  'settings.about.title': 'About Claude Code WebUI',
-  'settings.about.description': 'An educational reverse-engineering project that recreates Claude Code CLI.',
+  'settings.about.title': 'About Axon WebUI',
+  'settings.about.description': 'An educational reverse-engineering project that recreates Axon CLI.',
   'settings.about.version': 'Version',
   'settings.about.repository': 'Repository',
   'settings.about.license': 'License',
   'settings.about.licenseValue': 'Educational Use Only',
   'settings.about.disclaimer': 'Disclaimer',
-  'settings.about.disclaimerText': 'This is NOT the official Claude Code source. It is a learning project based on public APIs and type definitions.',
+  'settings.about.disclaimerText': 'This is NOT the official Axon source. It is a learning project based on public APIs and type definitions.',
   'settings.about.features': 'Features',
   'settings.about.feature1': '25+ integrated tools for file operations and code analysis',
   'settings.about.feature2': 'Session management with persistence',
@@ -69,7 +69,7 @@ const en: Translations = {
   'settings.about.feature6': 'File attachments and image support',
   'settings.about.feature7': 'Slash commands for quick actions',
   'settings.about.links': 'Useful Links',
-  'settings.about.link.docs': 'Claude Code Documentation',
+  'settings.about.link.docs': 'Axon Documentation',
   'settings.about.link.mcp': 'MCP Documentation',
   'settings.about.link.github': 'GitHub Repository',
 
@@ -191,11 +191,11 @@ const en: Translations = {
   'cli.debugThreads': 'Threads',
 
   // WelcomeScreen
-  'welcome.emptyProject.subtitle': 'Welcome to Claude Code! Describe the project you want, and I\'ll help you plan and implement it.',
+  'welcome.emptyProject.subtitle': 'Welcome to Axon! Describe the project you want, and I\'ll help you plan and implement it.',
   'welcome.emptyProject.hint1': 'Describe your project requirements in the input box below, and I\'ll help you organize and generate a project blueprint through conversation',
   'welcome.emptyProject.hint2': 'For example: "Build me a Todo App with React + Express + SQLite"',
   'welcome.emptyProject.hint3': 'After the blueprint is confirmed, LeadAgent will automatically explore code, plan tasks, and execute development',
-  'welcome.project.subtitle': 'Welcome to the Claude Code Web interface. Enter your questions or instructions in the input box below, and I\'ll help you with programming tasks.',
+  'welcome.project.subtitle': 'Welcome to the Axon Web interface. Enter your questions or instructions in the input box below, and I\'ll help you with programming tasks.',
   'welcome.project.hint1': 'You can ask me code questions, or have me modify and optimize code',
   'welcome.project.hint2': 'Type "/" to see the list of available commands',
   'welcome.project.hint3': 'Click the attachment button at the bottom left to upload files',
@@ -209,7 +209,7 @@ const en: Translations = {
   'session.deleteConfirm': 'Are you sure you want to delete session "{{name}}"?',
 
   // AuthDialog
-  'auth.title': 'Sign in to Claude Code',
+  'auth.title': 'Sign in to Axon',
   'auth.close': 'Close',
 
   // ContextBar
@@ -275,7 +275,7 @@ const en: Translations = {
 
   // PermissionsConfigPanel
   'permissions.title': 'Permissions Configuration',
-  'permissions.description': 'Configure the Claude Code permission system to control tool, file, command, and network access',
+  'permissions.description': 'Configure the Axon permission system to control tool, file, command, and network access',
   'permissions.mode.title': 'Default Permission Mode',
   'permissions.mode.description': 'Choose the default permission checking behavior',
   'permissions.mode.label': 'Permission Mode',
@@ -548,7 +548,7 @@ const en: Translations = {
   'plugins.back': 'Back',
 
   // OAuth Login
-  'auth.oauth.title': 'Login to Claude Code',
+  'auth.oauth.title': 'Login to Axon',
   'auth.oauth.selectMethod': 'Choose your authentication method',
   'auth.oauth.claudeAi': 'Claude.ai Account',
   'auth.oauth.claudeAiDesc': 'For Claude Pro/Max/Team subscribers',
@@ -1214,7 +1214,7 @@ const zh: Translations = {
   'settings.about.license': '许可证',
   'settings.about.licenseValue': 'Educational Use Only',
   'settings.about.disclaimer': 'Disclaimer',
-  'settings.about.disclaimerText': 'This is NOT the official Claude Code source. It is a learning project based on public APIs and type definitions.',
+  'settings.about.disclaimerText': 'This is NOT the official Axon source. It is a learning project based on public APIs and type definitions.',
   'settings.about.features': 'Features',
   'settings.about.feature1': '25+ integrated tools for file operations and code analysis',
   'settings.about.feature2': 'Session management with persistence',
@@ -1224,7 +1224,7 @@ const zh: Translations = {
   'settings.about.feature6': 'File attachments and image support',
   'settings.about.feature7': 'Slash commands for quick actions',
   'settings.about.links': 'Useful Links',
-  'settings.about.link.docs': 'Claude Code Documentation',
+  'settings.about.link.docs': 'Axon Documentation',
   'settings.about.link.mcp': 'MCP Documentation',
   'settings.about.link.github': 'GitHub Repository',
   // PermissionDialog
@@ -1335,11 +1335,11 @@ const zh: Translations = {
   'cli.debugScopes': '作用域',
   'cli.debugThreads': '线程',
   // WelcomeScreen
-  'welcome.emptyProject.subtitle': 'Welcome to Claude Code! Describe the project you want, and I\'ll help you plan and implement it.',
+  'welcome.emptyProject.subtitle': 'Welcome to Axon! Describe the project you want, and I\'ll help you plan and implement it.',
   'welcome.emptyProject.hint1': 'Describe your project requirements in the input box below, and I\'ll help you organize and generate a project blueprint through conversation',
   'welcome.emptyProject.hint2': 'For example: "Build me a Todo App with React + Express + SQLite"',
   'welcome.emptyProject.hint3': 'After the blueprint is confirmed, LeadAgent will automatically explore code, plan tasks, and execute development',
-  'welcome.project.subtitle': 'Welcome to the Claude Code Web interface. Enter your questions or instructions in the input box below, and I\'ll help you with programming tasks.',
+  'welcome.project.subtitle': 'Welcome to the Axon Web interface. Enter your questions or instructions in the input box below, and I\'ll help you with programming tasks.',
   'welcome.project.hint1': 'You can ask me code questions, or have me modify and optimize code',
   'welcome.project.hint2': 'Type "/" to see the list of available commands',
   'welcome.project.hint3': 'Click the attachment button at the bottom left to upload files',
@@ -1412,7 +1412,7 @@ const zh: Translations = {
   'apiConfig.save': 'Save Configuration',
   // PermissionsConfigPanel
   'permissions.title': 'Permissions Configuration',
-  'permissions.description': 'Configure the Claude Code permission system to control tool, file, command, and network access',
+  'permissions.description': 'Configure the Axon permission system to control tool, file, command, and network access',
   'permissions.mode.title': 'Default Permission Mode',
   'permissions.mode.description': 'Choose the default permission checking behavior',
   'permissions.mode.label': 'Permission Mode',

@@ -164,8 +164,8 @@ export interface SystemPromptOptions {
   includeToolGuidelines?: boolean;
   /** 包含权限模式说明 */
   includePermissionMode?: boolean;
-  /** 包含 CLAUDE.md 内容 */
-  includeClaudeMd?: boolean;
+  /** 包含 AXON.md 内容 */
+  includeAxonMd?: boolean;
   /** 包含 IDE 集成信息 */
   includeIdeInfo?: boolean;
   /** 包含诊断信息 */

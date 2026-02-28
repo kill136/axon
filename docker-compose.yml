@@ -1,6 +1,6 @@
 services:
-  claude:
-    image: wbj66/claude-code-open:latest
+  axon:
+    image: wbj66/axon:latest
     # 本地构建时取消注释下面这行并注释上面 image 行
     # build: .
     stdin_open: true
@@ -12,17 +12,17 @@ services:
       - "3456:3456"
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - CLAUDE_WEB_HOST=0.0.0.0
-      - CLAUDE_WEB_PORT=3456
-      - CLAUDE_MODEL=${CLAUDE_MODEL:-sonnet}
+      - AXON_WEB_HOST=0.0.0.0
+      - AXON_WEB_PORT=3456
+      - AXON_MODEL=${AXON_MODEL:-sonnet}
       - PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
     env_file:
       - path: .env
         required: false
     volumes:
       # 持久化会话、配置、笔记本
-      - ~/.claude:/root/.claude
-      # 映射当前目录为工作区，让 Claude 能读写你的文件
+      - ~/.axon:/root/.axon
+      # 映射当前目录为工作区，让 Axon 能读写你的文件
       - .:/workspace
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3456/api/health"]

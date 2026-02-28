@@ -1,9 +1,9 @@
 /**
- * CLAUDE.md 导入审批对话框
+ * AXON.md 导入审批对话框
  * v2.1.6 改进版
  *
  * 功能：
- * - 显示待导入的 CLAUDE.md 文件列表
+ * - 显示待导入的 AXON.md 文件列表
  * - 清晰的路径预览和层级显示
  * - 文件内容预览
  * - 双重确认机制（首次确认 + 详情确认）
@@ -19,24 +19,24 @@ import * as path from 'path';
 import * as os from 'os';
 
 /**
- * CLAUDE.md 文件来源类型
+ * AXON.md 文件来源类型
  */
-export type ClaudeMdSource =
-  | 'project'      // 项目根目录 CLAUDE.md
-  | 'project-dir'  // .claude/CLAUDE.md
+export type AxonMdSource =
+  | 'project'      // 项目根目录 AXON.md
+  | 'project-dir'  // .axon/AXON.md
   | 'local'        // CLAUDE.local.md
-  | 'user-global'  // ~/.claude/CLAUDE.md
-  | 'rules'        // .claude/rules/*.md
+  | 'user-global'  // ~/.axon/AXON.md
+  | 'rules'        // .axon/rules/*.md
   | 'external';    // 外部引用的文件
 
 /**
- * CLAUDE.md 文件信息
+ * AXON.md 文件信息
  */
-export interface ClaudeMdFile {
+export interface AxonMdFile {
   /** 文件路径 */
   path: string;
   /** 文件来源 */
-  source: ClaudeMdSource;
+  source: AxonMdSource;
   /** 文件是否存在 */
   exists: boolean;
   /** 文件大小 (bytes) */
@@ -56,7 +56,7 @@ export interface ClaudeMdFile {
 /**
  * 对话框审批结果
  */
-export interface ClaudeMdApprovalResult {
+export interface AxonMdApprovalResult {
   /** 是否批准导入 */
   approved: boolean;
   /** 批准的文件列表 */
@@ -69,13 +69,13 @@ export interface ClaudeMdApprovalResult {
   rememberScope?: 'session' | 'always';
 }
 
-export interface ClaudeMdImportDialogProps {
-  /** 待审批的 CLAUDE.md 文件列表 */
-  files: ClaudeMdFile[];
+export interface AxonMdImportDialogProps {
+  /** 待审批的 AXON.md 文件列表 */
+  files: AxonMdFile[];
   /** 工作目录 */
   cwd: string;
   /** 审批完成回调 */
-  onComplete: (result: ClaudeMdApprovalResult) => void;
+  onComplete: (result: AxonMdApprovalResult) => void;
   /** 取消回调 */
   onCancel: () => void;
   /** 是否显示详细模式 */
@@ -87,16 +87,16 @@ export interface ClaudeMdImportDialogProps {
 /**
  * 获取来源的显示名称和颜色
  */
-function getSourceDisplay(source: ClaudeMdSource): { label: string; color: string } {
-  const displays: Record<ClaudeMdSource, { label: string; color: string }> = {
-    'project': { label: t('claudemd.source.project'), color: 'cyan' },
-    'project-dir': { label: t('claudemd.source.projectDir'), color: 'cyan' },
-    'local': { label: t('claudemd.source.local'), color: 'green' },
-    'user-global': { label: t('claudemd.source.userGlobal'), color: 'blue' },
-    'rules': { label: t('claudemd.source.rules'), color: 'magenta' },
-    'external': { label: t('claudemd.source.external'), color: 'yellow' },
+function getSourceDisplay(source: AxonMdSource): { label: string; color: string } {
+  const displays: Record<AxonMdSource, { label: string; color: string }> = {
+    'project': { label: t('axonmd.source.project'), color: 'cyan' },
+    'project-dir': { label: t('axonmd.source.projectDir'), color: 'cyan' },
+    'local': { label: t('axonmd.source.local'), color: 'green' },
+    'user-global': { label: t('axonmd.source.userGlobal'), color: 'blue' },
+    'rules': { label: t('axonmd.source.rules'), color: 'magenta' },
+    'external': { label: t('axonmd.source.external'), color: 'yellow' },
   };
-  return displays[source] || { label: t('claudemd.source.unknown'), color: 'white' };
+  return displays[source] || { label: t('axonmd.source.unknown'), color: 'white' };
 }
 
 /**
@@ -132,7 +132,7 @@ function getRelativePath(filePath: string, cwd: string): string {
  * 文件项组件
  */
 const FileItem: React.FC<{
-  file: ClaudeMdFile;
+  file: AxonMdFile;
   cwd: string;
   isSelected: boolean;
   showPreview: boolean;
@@ -178,26 +178,26 @@ const FileItem: React.FC<{
 
         {/* 存在状态 */}
         {!file.exists && (
-          <Text color="red"> [{t('claudemd.notFound')}]</Text>
+          <Text color="red"> [{t('axonmd.notFound')}]</Text>
         )}
       </Box>
 
       {/* 验证错误 */}
       {file.validationError && (
         <Box marginLeft={4}>
-          <Text color="red">{t('claudemd.validationError', { error: file.validationError })}</Text>
+          <Text color="red">{t('axonmd.validationError', { error: file.validationError })}</Text>
         </Box>
       )}
 
       {/* 包含的文件 */}
       {file.includes && file.includes.length > 0 && isSelected && (
         <Box marginLeft={4} flexDirection="column">
-          <Text color="gray" dimColor>{t('claudemd.includes')}</Text>
+          <Text color="gray" dimColor>{t('axonmd.includes')}</Text>
           {file.includes.slice(0, 3).map((inc, i) => (
             <Text key={i} color="gray" dimColor>  @{inc}</Text>
           ))}
           {file.includes.length > 3 && (
-            <Text color="gray" dimColor>  {t('claudemd.andMore', { count: file.includes.length - 3 })}</Text>
+            <Text color="gray" dimColor>  {t('axonmd.andMore', { count: file.includes.length - 3 })}</Text>
           )}
         </Box>
       )}
@@ -212,7 +212,7 @@ const FileItem: React.FC<{
           paddingX={1}
           flexDirection="column"
         >
-          <Text color="gray" dimColor>{t('claudemd.preview')}</Text>
+          <Text color="gray" dimColor>{t('axonmd.preview')}</Text>
           {file.preview.split('\n').slice(0, 5).map((line, i) => (
             <Text key={i} color="gray" dimColor>
               {line.length > 60 ? line.slice(0, 57) + '...' : line}
@@ -225,9 +225,9 @@ const FileItem: React.FC<{
 };
 
 /**
- * CLAUDE.md 导入审批对话框组件
+ * AXON.md 导入审批对话框组件
  */
-export const ClaudeMdImportDialog: React.FC<ClaudeMdImportDialogProps> = ({
+export const AxonMdImportDialog: React.FC<AxonMdImportDialogProps> = ({
   files,
   cwd,
   onComplete,
@@ -349,21 +349,21 @@ export const ClaudeMdImportDialog: React.FC<ClaudeMdImportDialogProps> = ({
         paddingY={1}
       >
         <Box marginBottom={1}>
-          <Text color="yellow" bold>{t('claudemd.confirmTitle')}</Text>
+          <Text color="yellow" bold>{t('axonmd.confirmTitle')}</Text>
         </Box>
 
         <Box flexDirection="column" marginBottom={1}>
           <Text>
-            {approvedCount !== 1 ? t('claudemd.confirmBodyPlural', { count: approvedCount }) : t('claudemd.confirmBody', { count: approvedCount })}
+            {approvedCount !== 1 ? t('axonmd.confirmBodyPlural', { count: approvedCount }) : t('axonmd.confirmBody', { count: approvedCount })}
           </Text>
           <Text color="gray" dimColor>
-            {t('claudemd.confirmHint')}
+            {t('axonmd.confirmHint')}
           </Text>
         </Box>
 
         {/* 已批准文件列表 */}
         <Box flexDirection="column" marginBottom={1}>
-          <Text color="gray">{t('claudemd.filesToImport')}</Text>
+          <Text color="gray">{t('axonmd.filesToImport')}</Text>
           {Array.from(fileApprovals.entries())
             .filter(([_, approved]) => approved)
             .slice(0, 5)
@@ -371,7 +371,7 @@ export const ClaudeMdImportDialog: React.FC<ClaudeMdImportDialogProps> = ({
               <Text key={i} color="green">  + {getRelativePath(filePath, cwd)}</Text>
             ))}
           {approvedCount > 5 && (
-            <Text color="gray">  {t('claudemd.andMoreFiles', { count: approvedCount - 5 })}</Text>
+            <Text color="gray">  {t('axonmd.andMoreFiles', { count: approvedCount - 5 })}</Text>
           )}
         </Box>
 
@@ -381,14 +381,14 @@ export const ClaudeMdImportDialog: React.FC<ClaudeMdImportDialogProps> = ({
             <Text color={rememberChoice ? 'green' : 'gray'}>
               [{rememberChoice ? 'x' : ' '}]
             </Text>
-            <Text> {t('claudemd.rememberChoice')} </Text>
+            <Text> {t('axonmd.rememberChoice')} </Text>
             <Text color="gray" dimColor>(r)</Text>
           </Box>
           {rememberChoice && (
             <Box marginLeft={2}>
-              <Text color="gray">{t('claudemd.scope')}</Text>
+              <Text color="gray">{t('axonmd.scope')}</Text>
               <Text color="cyan">{rememberScope}</Text>
-              <Text color="gray" dimColor> ({t('claudemd.toggleScope')})</Text>
+              <Text color="gray" dimColor> ({t('axonmd.toggleScope')})</Text>
             </Box>
           )}
         </Box>
@@ -396,14 +396,14 @@ export const ClaudeMdImportDialog: React.FC<ClaudeMdImportDialogProps> = ({
         {/* 操作提示 */}
         <Box marginTop={1}>
           <Text color="green">[y]</Text>
-          <Text> {t('claudemd.yesImport')} </Text>
+          <Text> {t('axonmd.yesImport')} </Text>
           <Text color="gray">|</Text>
           <Text color="red"> [n]</Text>
-          <Text> {t('claudemd.noGoBack')} </Text>
+          <Text> {t('axonmd.noGoBack')} </Text>
           <Text color="gray">|</Text>
-          <Text color="gray"> [r] {t('claudemd.toggleRemember')} </Text>
+          <Text color="gray"> [r] {t('axonmd.toggleRemember')} </Text>
           <Text color="gray">|</Text>
-          <Text color="gray"> [s] {t('claudemd.toggleScopeLabel')}</Text>
+          <Text color="gray"> [s] {t('axonmd.toggleScopeLabel')}</Text>
         </Box>
       </Box>
     );
@@ -421,11 +421,11 @@ export const ClaudeMdImportDialog: React.FC<ClaudeMdImportDialogProps> = ({
       {/* 标题 */}
       <Box marginBottom={1}>
         <Text color="cyan" bold>
-          {title || t('claudemd.title')}
+          {title || t('axonmd.title')}
         </Text>
         {files.length > 0 && (
           <Text color="gray" dimColor>
-            {' '}({t('claudemd.selected', { approved: approvedCount, total: validFiles.length })})
+            {' '}({t('axonmd.selected', { approved: approvedCount, total: validFiles.length })})
           </Text>
         )}
       </Box>
@@ -433,14 +433,14 @@ export const ClaudeMdImportDialog: React.FC<ClaudeMdImportDialogProps> = ({
       {/* 说明文字 */}
       <Box marginBottom={1}>
         <Text color="gray" dimColor>
-          {t('claudemd.description')}
+          {t('axonmd.description')}
         </Text>
       </Box>
 
       {/* 文件列表 */}
       <Box flexDirection="column" marginBottom={1}>
         {processedFiles.length === 0 ? (
-          <Text color="gray">{t('claudemd.noFiles')}</Text>
+          <Text color="gray">{t('axonmd.noFiles')}</Text>
         ) : (
           processedFiles.map((file, index) => (
             <FileItem
@@ -463,22 +463,22 @@ export const ClaudeMdImportDialog: React.FC<ClaudeMdImportDialogProps> = ({
       <Box flexDirection="column">
         <Box>
           <Text color="gray">
-            <Text color="cyan">space/enter</Text> {t('claudemd.toggle')}
+            <Text color="cyan">space/enter</Text> {t('axonmd.toggle')}
             <Text> | </Text>
-            <Text color="cyan">a</Text> {t('claudemd.approveAll')}
+            <Text color="cyan">a</Text> {t('axonmd.approveAll')}
             <Text> | </Text>
-            <Text color="cyan">d</Text> {t('claudemd.denyAll')}
+            <Text color="cyan">d</Text> {t('axonmd.denyAll')}
             <Text> | </Text>
-            <Text color="cyan">v</Text> {detailMode ? t('claudemd.hideDetails') : t('claudemd.showDetails')}
+            <Text color="cyan">v</Text> {detailMode ? t('axonmd.hideDetails') : t('axonmd.showDetails')}
           </Text>
         </Box>
         <Box>
           <Text color="gray">
-            <Text color="cyan">c</Text> {t('claudemd.confirm')}
+            <Text color="cyan">c</Text> {t('axonmd.confirm')}
             <Text> | </Text>
-            <Text color="cyan">q/esc</Text> {t('claudemd.cancel')}
+            <Text color="cyan">q/esc</Text> {t('axonmd.cancel')}
             <Text> | </Text>
-            <Text color="cyan">j/k</Text> {t('claudemd.navigate')}
+            <Text color="cyan">j/k</Text> {t('axonmd.navigate')}
           </Text>
         </Box>
       </Box>
@@ -487,7 +487,7 @@ export const ClaudeMdImportDialog: React.FC<ClaudeMdImportDialogProps> = ({
       {processedFiles.some(f => f.source === 'external') && (
         <Box marginTop={1} borderStyle="single" borderColor="yellow" paddingX={1}>
           <Text color="yellow">
-            {t('claudemd.externalWarning')}
+            {t('axonmd.externalWarning')}
           </Text>
         </Box>
       )}
@@ -496,26 +496,26 @@ export const ClaudeMdImportDialog: React.FC<ClaudeMdImportDialogProps> = ({
 };
 
 /**
- * 扫描并收集 CLAUDE.md 文件
+ * 扫描并收集 AXON.md 文件
  */
-export function scanClaudeMdFiles(cwd: string): ClaudeMdFile[] {
-  const files: ClaudeMdFile[] = [];
+export function scanAxonMdFiles(cwd: string): AxonMdFile[] {
+  const files: AxonMdFile[] = [];
   const homeDir = os.homedir();
 
   // 定义要扫描的文件路径和来源
-  const scanPaths: Array<{ path: string; source: ClaudeMdSource }> = [
+  const scanPaths: Array<{ path: string; source: AxonMdSource }> = [
     // 项目级别
-    { path: path.join(cwd, 'CLAUDE.md'), source: 'project' },
-    { path: path.join(cwd, '.claude', 'CLAUDE.md'), source: 'project-dir' },
+    { path: path.join(cwd, 'AXON.md'), source: 'project' },
+    { path: path.join(cwd, '.axon', 'AXON.md'), source: 'project-dir' },
     { path: path.join(cwd, 'CLAUDE.local.md'), source: 'local' },
     // 用户级别
-    { path: path.join(homeDir, '.claude', 'CLAUDE.md'), source: 'user-global' },
+    { path: path.join(homeDir, '.axon', 'AXON.md'), source: 'user-global' },
   ];
 
   // 扫描主文件
   for (const { path: filePath, source } of scanPaths) {
     const exists = fs.existsSync(filePath);
-    let fileInfo: ClaudeMdFile = {
+    let fileInfo: AxonMdFile = {
       path: filePath,
       source,
       exists,
@@ -536,18 +536,18 @@ export function scanClaudeMdFiles(cwd: string): ClaudeMdFile[] {
 
         // 验证文件大小
         if (stats.size > 40 * 1024) {
-          fileInfo.validationError = t('claudemd.fileTooLarge');
+          fileInfo.validationError = t('axonmd.fileTooLarge');
         }
       } catch (error) {
-        fileInfo.validationError = t('claudemd.cannotRead', { error: String(error) });
+        fileInfo.validationError = t('axonmd.cannotRead', { error: String(error) });
       }
     }
 
     files.push(fileInfo);
   }
 
-  // 扫描 .claude/rules/ 目录
-  const rulesDir = path.join(cwd, '.claude', 'rules');
+  // 扫描 .axon/rules/ 目录
+  const rulesDir = path.join(cwd, '.axon', 'rules');
   if (fs.existsSync(rulesDir)) {
     try {
       const ruleFiles = fs.readdirSync(rulesDir)
@@ -567,14 +567,14 @@ export function scanClaudeMdFiles(cwd: string): ClaudeMdFile[] {
             modifiedAt: stats.mtime,
             preview: content.slice(0, 500),
             includes: extractIncludes(content),
-            validationError: stats.size > 40 * 1024 ? t('claudemd.fileTooLarge') : undefined,
+            validationError: stats.size > 40 * 1024 ? t('axonmd.fileTooLarge') : undefined,
           });
         } catch {
           files.push({
             path: rulePath,
             source: 'rules',
             exists: true,
-            validationError: t('claudemd.cannotReadShort'),
+            validationError: t('axonmd.cannotReadShort'),
           });
         }
       }
@@ -607,4 +607,4 @@ function extractIncludes(content: string): string[] {
   return includes;
 }
 
-export default ClaudeMdImportDialog;
+export default AxonMdImportDialog;

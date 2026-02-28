@@ -1,4 +1,4 @@
-# Contributing to Claude Code Open
+# Contributing to Axon
 
 Thank you for your interest in contributing! This guide will help you get started.
 
@@ -14,8 +14,8 @@ Thank you for your interest in contributing! This guide will help you get starte
 
 ```bash
 # Fork and clone the repository
-git clone https://github.com/<your-username>/claude-code-open.git
-cd claude-code-open
+git clone https://github.com/<your-username>/axon.git
+cd axon
 
 # Install dependencies
 npm install
@@ -48,7 +48,7 @@ npx tsc --noEmit            # Type checking
 
 ### Reporting Bugs
 
-1. Search [existing issues](https://github.com/kill136/claude-code-open/issues) first
+1. Search [existing issues](https://github.com/kill136/axon/issues) first
 2. Use the **Bug Report** template
 3. Include:
    - Steps to reproduce
@@ -111,7 +111,7 @@ src/
 ## Need Help?
 
 - [Discord](https://discord.gg/bNyJKk6PVZ)
-- [Open an issue](https://github.com/kill136/claude-code-open/issues)
+- [Open an issue](https://github.com/kill136/axon/issues)
 
 ## License
 

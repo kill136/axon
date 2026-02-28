@@ -19,6 +19,8 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { getRgPath } from '../../../search/ripgrep.js';
+import { spawnSync } from 'child_process';
 
 const execPromise = promisify(exec);
 
@@ -1170,6 +1172,135 @@ interface ReplaceResponse {
 }
 
 /**
+ * 使用 ripgrep 执行搜索（同步调用，避免异步开销）
+ */
+function searchWithRipgrep(
+  rgPath: string,
+  projectRoot: string,
+  query: string,
+  options: {
+    isRegex: boolean;
+    isCaseSensitive: boolean;
+    isWholeWord: boolean;
+    includePattern?: string;
+    excludePattern?: string;
+    maxResults: number;
+  }
+): SearchResponse {
+  const args: string[] = [
+    '--json',           // JSON 输出，方便解析
+    '--max-columns', '500', // 限制单行长度
+  ];
+
+  // 大小写
+  if (!options.isCaseSensitive) {
+    args.push('-i');
+  }
+
+  // 全词匹配
+  if (options.isWholeWord) {
+    args.push('-w');
+  }
+
+  // 正则 vs 固定字符串
+  if (!options.isRegex) {
+    args.push('-F'); // 固定字符串模式，不解析正则
+  }
+
+  // include/exclude glob 模式
+  if (options.includePattern) {
+    args.push('--glob', options.includePattern);
+  }
+  if (options.excludePattern) {
+    args.push('--glob', `!${options.excludePattern}`);
+  }
+
+  // 搜索模式和路径
+  args.push('--', query, '.');
+
+  const result = spawnSync(rgPath, args, {
+    cwd: projectRoot,
+    encoding: 'utf-8',
+    maxBuffer: 50 * 1024 * 1024, // 50MB
+    timeout: 30000, // 30 秒超时
+    windowsHide: true,
+  });
+
+  // ripgrep: 0=有匹配, 1=无匹配, 2+=错误
+  if (result.status !== 0 && result.status !== 1) {
+    throw new Error(`ripgrep exited with code ${result.status}: ${result.stderr}`);
+  }
+
+  if (!result.stdout || result.status === 1) {
+    return { results: [], totalMatches: 0, truncated: false };
+  }
+
+  // 解析 ripgrep JSON 输出，转换为前端格式
+  const fileMap = new Map<string, SearchMatch[]>();
+  let totalMatches = 0;
+  let truncated = false;
+  const lines = result.stdout.split('\n');
+
+  for (const line of lines) {
+    if (!line) continue;
+    if (totalMatches >= options.maxResults) {
+      truncated = true;
+      break;
+    }
+
+    try {
+      const obj = JSON.parse(line);
+      if (obj.type !== 'match') continue;
+
+      const data = obj.data;
+      const filePath = data.path.text;
+      // ripgrep 用 ./ 前缀，需要去掉
+      const relativePath = filePath.startsWith('./') ? filePath.slice(2) : filePath;
+      // 将 posix 路径分隔符统一为系统路径
+      const normalizedPath = relativePath.replace(/\//g, path.sep);
+      const lineContent = (data.lines.text || '').replace(/\r?\n$/, '');
+      const lineNumber = data.line_number;
+
+      for (const sub of data.submatches || []) {
+        if (totalMatches >= options.maxResults) {
+          truncated = true;
+          break;
+        }
+
+        const matchStart = sub.start;
+        const matchEnd = sub.end;
+        const matchText = lineContent.slice(matchStart, matchEnd);
+        const previewBefore = lineContent.slice(Math.max(0, matchStart - 50), matchStart);
+        const previewAfter = lineContent.slice(matchEnd, matchEnd + 50);
+
+        if (!fileMap.has(normalizedPath)) {
+          fileMap.set(normalizedPath, []);
+        }
+        fileMap.get(normalizedPath)!.push({
+          line: lineNumber,
+          column: matchStart + 1, // 1-based
+          length: matchEnd - matchStart,
+          lineContent,
+          previewBefore,
+          matchText,
+          previewAfter,
+        });
+        totalMatches++;
+      }
+    } catch {
+      // 忽略解析失败的行
+    }
+  }
+
+  const results: SearchResult[] = [];
+  for (const [file, matches] of fileMap) {
+    results.push({ file, matches });
+  }
+
+  return { results, totalMatches, truncated };
+}
+
+/**
  * POST /api/files/search
  * 在项目中搜索文本
  * 
@@ -1213,9 +1344,27 @@ router.post('/search', async (req: Request, res: Response) => {
       return;
     }
 
-    const results: SearchResult[] = [];
+    // 尝试使用 ripgrep 加速搜索
+    const rgPath = getRgPath();
+    if (rgPath) {
+      try {
+        const rgResult = searchWithRipgrep(rgPath, projectRoot, query, {
+          isRegex,
+          isCaseSensitive,
+          isWholeWord,
+          includePattern,
+          excludePattern,
+          maxResults,
+        });
+        res.json(rgResult);
+        return;
+      } catch (err) {
+        console.warn('[File API] ripgrep 搜索失败，降级为 JS 搜索:', err);
+      }
+    }
 
-    // 递归搜索
+    // Fallback: 纯 JS 搜索
+    const results: SearchResult[] = [];
     await searchInDirectory(
       projectRoot,
       query,
@@ -1231,7 +1380,6 @@ router.post('/search', async (req: Request, res: Response) => {
       maxResults
     );
 
-    // 计算总匹配数
     const totalMatches = results.reduce((sum, r) => sum + r.matches.length, 0);
     const truncated = results.length >= maxResults;
 

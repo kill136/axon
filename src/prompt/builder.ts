@@ -41,7 +41,7 @@ const DEFAULT_OPTIONS: SystemPromptOptions = {
   includeIdentity: true,
   includeToolGuidelines: true,
   includePermissionMode: true,
-  includeClaudeMd: true,
+  includeAxonMd: true,
   includeIdeInfo: true,
   includeDiagnostics: true,
   maxTokens: 180000,

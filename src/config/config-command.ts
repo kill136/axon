@@ -5,7 +5,7 @@
  */
 
 import type { ConfigManager, UserConfig, ConfigSource } from './index.js';
-import { ClaudeMdParser } from './claude-md-parser.js';
+import { AxonMdParser } from './axon-md-parser.js';
 import * as fs from 'fs';
 
 export interface ConfigDisplayOptions {
@@ -172,7 +172,7 @@ export class ConfigCommand {
    * 展示 CLAUDE.md 信息
    */
   private displayClaudeMd(): string {
-    const parser = new ClaudeMdParser();
+    const parser = new AxonMdParser();
     const info = parser.parse();
 
     let output = '**CLAUDE.md Status:**\n\n';

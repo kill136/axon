@@ -1002,6 +1002,22 @@ body {
   color: var(--accent-light, #818cf8);
 }
 
+/* Code Reference Links (clickable file:line references) */
+.code-ref-link {
+  cursor: pointer;
+  color: var(--accent-light, #818cf8) !important;
+  background: rgba(99, 102, 241, 0.1) !important;
+  border-bottom: 1px dashed var(--accent-light, #818cf8);
+  padding: 1px 4px !important;
+  border-radius: 3px;
+  transition: background 0.15s, color 0.15s;
+}
+.code-ref-link:hover {
+  background: rgba(99, 102, 241, 0.25) !important;
+  color: #fff !important;
+  border-bottom-color: transparent;
+}
+
 /* Message Images */
 .image-container {
   margin: 8px 0;

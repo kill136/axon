@@ -1,9 +1,9 @@
 /**
- * CLAUDE.md 导入审批状态管理钩子
+ * AXON.md 导入审批状态管理钩子
  * v2.1.6 新增
  *
  * 功能：
- * - 管理 CLAUDE.md 文件的导入审批状态
+ * - 管理 AXON.md 文件的导入审批状态
  * - 持久化用户的审批选择
  * - 支持会话级别和永久级别的记忆
  */
@@ -12,7 +12,7 @@ import { useState, useCallback, useEffect, useMemo } from 'react';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { scanClaudeMdFiles, type ClaudeMdFile, type ClaudeMdApprovalResult } from '../components/ClaudeMdImportDialog.js';
+import { scanAxonMdFiles, type AxonMdFile, type AxonMdApprovalResult } from '../components/AxonMdImportDialog.js';
 
 /**
  * 已审批的文件记录
@@ -57,7 +57,7 @@ function simpleHash(content: string): string {
  * 获取审批存储文件路径
  */
 function getApprovalStorePath(): string {
-  return path.join(os.homedir(), '.claude', 'claude-md-approvals.json');
+  return path.join(os.homedir(), '.axon', 'claude-md-approvals.json');
 }
 
 /**
@@ -97,18 +97,18 @@ function saveApprovalStore(store: ApprovalStore): void {
     store.lastUpdated = new Date().toISOString();
     fs.writeFileSync(storePath, JSON.stringify(store, null, 2));
   } catch (error) {
-    console.warn('[ClaudeMd] Failed to save approval store:', error);
+    console.warn('[AxonMd] Failed to save approval store:', error);
   }
 }
 
 /**
- * CLAUDE.md 导入状态
+ * AXON.md 导入状态
  */
-export interface ClaudeMdImportState {
+export interface AxonMdImportState {
   /** 待审批的文件列表 */
-  pendingFiles: ClaudeMdFile[];
+  pendingFiles: AxonMdFile[];
   /** 已审批的文件列表 */
-  approvedFiles: ClaudeMdFile[];
+  approvedFiles: AxonMdFile[];
   /** 是否需要显示审批对话框 */
   needsApproval: boolean;
   /** 是否正在加载 */
@@ -118,11 +118,11 @@ export interface ClaudeMdImportState {
 }
 
 /**
- * CLAUDE.md 导入审批钩子
+ * AXON.md 导入审批钩子
  */
-export function useClaudeMdImport(cwd: string) {
+export function useAxonMdImport(cwd: string) {
   // 状态
-  const [state, setState] = useState<ClaudeMdImportState>({
+  const [state, setState] = useState<AxonMdImportState>({
     pendingFiles: [],
     approvedFiles: [],
     needsApproval: false,
@@ -138,7 +138,7 @@ export function useClaudeMdImport(cwd: string) {
   /**
    * 检查文件是否已被审批
    */
-  const isFileApproved = useCallback((file: ClaudeMdFile): boolean => {
+  const isFileApproved = useCallback((file: AxonMdFile): boolean => {
     // 检查会话级别审批
     if (sessionApprovals.has(file.path)) {
       return true;
@@ -174,9 +174,9 @@ export function useClaudeMdImport(cwd: string) {
     setState(prev => ({ ...prev, loading: true, error: undefined }));
 
     try {
-      const allFiles = scanClaudeMdFiles(cwd);
-      const pending: ClaudeMdFile[] = [];
-      const approved: ClaudeMdFile[] = [];
+      const allFiles = scanAxonMdFiles(cwd);
+      const pending: AxonMdFile[] = [];
+      const approved: AxonMdFile[] = [];
 
       for (const file of allFiles) {
         if (isFileApproved(file)) {
@@ -196,7 +196,7 @@ export function useClaudeMdImport(cwd: string) {
       setState(prev => ({
         ...prev,
         loading: false,
-        error: `Failed to scan CLAUDE.md files: ${error}`,
+        error: `Failed to scan AXON.md files: ${error}`,
       }));
     }
   }, [cwd, isFileApproved]);
@@ -204,7 +204,7 @@ export function useClaudeMdImport(cwd: string) {
   /**
    * 处理审批结果
    */
-  const handleApprovalResult = useCallback((result: ClaudeMdApprovalResult) => {
+  const handleApprovalResult = useCallback((result: AxonMdApprovalResult) => {
     // 更新会话级别审批
     const newSessionApprovals = new Set(sessionApprovals);
     for (const filePath of result.approvedFiles) {
@@ -289,14 +289,14 @@ export function useClaudeMdImport(cwd: string) {
 }
 
 /**
- * 获取所有已审批的 CLAUDE.md 文件内容
+ * 获取所有已审批的 AXON.md 文件内容
  */
-export function getApprovedClaudeMdContent(cwd: string): string[] {
+export function getApprovedAxonMdContent(cwd: string): string[] {
   const store = loadApprovalStore();
   const contents: string[] = [];
 
   // 扫描所有文件
-  const allFiles = scanClaudeMdFiles(cwd);
+  const allFiles = scanAxonMdFiles(cwd);
 
   for (const file of allFiles) {
     // 检查是否在审批列表中
@@ -318,4 +318,4 @@ export function getApprovedClaudeMdContent(cwd: string): string[] {
   return contents;
 }
 
-export default useClaudeMdImport;
+export default useAxonMdImport;

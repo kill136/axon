@@ -212,10 +212,10 @@ class FallbackTriggeredError extends Error {
   }
 }
 
-// 官方 Claude Code 的 beta 头 (v2.1.29 对齐)
+// Axon 的 beta 头 (v2.1.29 对齐官方)
 // 重要发现：claude-code-20250219 beta 需要与特定的 system prompt 配合使用
 // system prompt 的第一个 block 必须以下列字符串之一开头：
-// - "You are Claude Code, Anthropic's official CLI for Claude."
+// - "You are Axon, an AI-powered coding assistant."
 // - "You are a Claude agent, built on Anthropic's Claude Agent SDK."
 const CLAUDE_CODE_BETA = 'claude-code-20250219';           // tFA
 const OAUTH_BETA = 'oauth-2025-04-20';                     // zE
@@ -331,29 +331,29 @@ function supportsWebSearch(model: string): boolean {
          model.includes('claude-haiku-4');
 }
 
-// Claude Code 身份验证的 magic string
+// Axon 身份验证的 magic string
 // 官方有三种身份标识，根据不同场景使用
-const CLAUDE_CODE_IDENTITY = "You are Claude Code, Anthropic's official CLI for Claude.";
-const CLAUDE_CODE_AGENT_SDK_IDENTITY = "You are Claude Code, Anthropic's official CLI for Claude, running within the Claude Agent SDK.";
+const AXON_IDENTITY = "You are Axon, an AI-powered coding assistant.";
+const AXON_AGENT_SDK_IDENTITY = "You are Axon, an AI-powered coding assistant, running within the Claude Agent SDK.";
 const CLAUDE_AGENT_IDENTITY = "You are a Claude agent, built on Anthropic's Claude Agent SDK.";
 
 /**
- * 检查 system prompt 是否包含有效的 Claude Code 身份标识
+ * 检查 system prompt 是否包含有效的 Axon 身份标识
  */
 function hasValidIdentity(systemPrompt?: string | Array<{type: string; text: string}>): boolean {
   if (!systemPrompt) return false;
 
   if (typeof systemPrompt === 'string') {
-    return systemPrompt.startsWith(CLAUDE_CODE_IDENTITY) ||
-           systemPrompt.startsWith(CLAUDE_CODE_AGENT_SDK_IDENTITY) ||
+    return systemPrompt.startsWith(AXON_IDENTITY) ||
+           systemPrompt.startsWith(AXON_AGENT_SDK_IDENTITY) ||
            systemPrompt.startsWith(CLAUDE_AGENT_IDENTITY);
   }
 
   if (Array.isArray(systemPrompt) && systemPrompt.length > 0) {
     const firstBlock = systemPrompt[0];
     if (firstBlock?.type === 'text' && firstBlock?.text) {
-      return firstBlock.text.startsWith(CLAUDE_CODE_IDENTITY) ||
-             firstBlock.text.startsWith(CLAUDE_CODE_AGENT_SDK_IDENTITY) ||
+      return firstBlock.text.startsWith(AXON_IDENTITY) ||
+             firstBlock.text.startsWith(AXON_AGENT_SDK_IDENTITY) ||
              firstBlock.text.startsWith(CLAUDE_AGENT_IDENTITY);
     }
   }
@@ -365,7 +365,7 @@ function hasValidIdentity(systemPrompt?: string | Array<{type: string; text: str
  * 格式化 system prompt 以启用 Prompt Caching
  *
  * v5.0: 所有模式都启用 cache_control，节省重复 System Prompt 的 token 消耗
- * - 对于 OAuth 模式：第一个 block 必须以 CLAUDE_CODE_IDENTITY 开头
+ * - 对于 OAuth 模式：第一个 block 必须以 AXON_IDENTITY 开头
  * - 对于非 OAuth 模式：直接缓存整个 System Prompt
  */
 /**
@@ -385,7 +385,7 @@ function formatSystemPrompt(
   if (!systemPrompt) {
     if (isOAuth) {
       return [
-        { type: 'text', text: CLAUDE_CODE_IDENTITY, cache_control: { type: 'ephemeral' } }
+        { type: 'text', text: AXON_IDENTITY, cache_control: { type: 'ephemeral' } }
       ];
     }
     return undefined;
@@ -415,21 +415,21 @@ function formatSystemPrompt(
   }
 
   // OAuth 模式需要身份标识作为第一个 block
-  let identityToUse = CLAUDE_CODE_IDENTITY;
+  let identityToUse = AXON_IDENTITY;
   let remainingText = '';
 
-  if (systemPrompt.startsWith(CLAUDE_CODE_IDENTITY)) {
-    identityToUse = CLAUDE_CODE_IDENTITY;
-    remainingText = systemPrompt.slice(CLAUDE_CODE_IDENTITY.length).trim();
-  } else if (systemPrompt.startsWith(CLAUDE_CODE_AGENT_SDK_IDENTITY)) {
-    identityToUse = CLAUDE_CODE_AGENT_SDK_IDENTITY;
-    remainingText = systemPrompt.slice(CLAUDE_CODE_AGENT_SDK_IDENTITY.length).trim();
+  if (systemPrompt.startsWith(AXON_IDENTITY)) {
+    identityToUse = AXON_IDENTITY;
+    remainingText = systemPrompt.slice(AXON_IDENTITY.length).trim();
+  } else if (systemPrompt.startsWith(AXON_AGENT_SDK_IDENTITY)) {
+    identityToUse = AXON_AGENT_SDK_IDENTITY;
+    remainingText = systemPrompt.slice(AXON_AGENT_SDK_IDENTITY.length).trim();
   } else if (systemPrompt.startsWith(CLAUDE_AGENT_IDENTITY)) {
     identityToUse = CLAUDE_AGENT_IDENTITY;
     remainingText = systemPrompt.slice(CLAUDE_AGENT_IDENTITY.length).trim();
   } else {
     return [
-      { type: 'text', text: CLAUDE_CODE_IDENTITY, cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: AXON_IDENTITY, cache_control: { type: 'ephemeral' } },
       { type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }
     ];
   }
@@ -577,7 +577,7 @@ function buildMetadata(accountUuid?: string): { user_id: string } {
  *
  * 重要发现：
  * - claude-code-20250219 beta 需要与特定的 system prompt 配合使用
- * - system prompt 必须以 CLAUDE_CODE_IDENTITY 或 CLAUDE_AGENT_IDENTITY 开头
+ * - system prompt 必须以 AXON_IDENTITY 或 CLAUDE_AGENT_IDENTITY 开头
  * - 只有满足这个条件，OAuth token 才能使用 sonnet/opus 模型
  *
  * v2.1.29 修复：
@@ -666,7 +666,7 @@ function buildBetas(model: string, isOAuth: boolean, fastMode?: boolean): string
  * v5.0: 为最后一个工具添加 cache_control，启用工具列表缓存
  * 官方实现：最后一个工具添加 { type: "ephemeral" } 来缓存整个工具列表
  *
- * 官方 Claude Code 使用 Anthropic API 的 Server Tool 进行网络搜索：
+ * 官方 Anthropic API 的 Server Tool 进行网络搜索：
  * - type: 'web_search_20250305'
  * - name: 'web_search'
  *
@@ -739,16 +739,16 @@ export class ClaudeClient {
   constructor(config: ClientConfig = {}) {
     // 准备 Anthropic 客户端配置
     // 关键：对于 OAuth 模式，只使用 authToken，不使用 apiKey
-    // 官方 Claude Code 的逻辑：zB() ? null : apiKey
+    // OAuth 模式下不需要 API Key
     const authToken = config.authToken || process.env.ANTHROPIC_AUTH_TOKEN;
     // 如果有 authToken，则不使用 apiKey（官方逻辑）
-    const apiKey = authToken ? null : (config.apiKey || process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY);
+    const apiKey = authToken ? null : (config.apiKey || process.env.ANTHROPIC_API_KEY || process.env.AXON_API_KEY);
 
     if (!apiKey && !authToken) {
       console.warn('[ClaudeClient] No API key or auth token configured. API calls will fail until authentication is set up.');
     }
 
-    // 构建默认 headers（与官方 Claude Code 完全一致）
+    // 构建默认 headers（与官方 Anthropic API 完全一致）
     // 官方 User-Agent 格式: claude-cli/${VERSION} (external, ${ENTRYPOINT}${agent-sdk})
     const entrypoint = process.env.CLAUDE_CODE_ENTRYPOINT || 'claude-vscode';
     const agentSdkVersion = process.env.CLAUDE_AGENT_SDK_VERSION;
@@ -1727,7 +1727,7 @@ let _defaultClient: ClaudeClient | null = null;
 
 /**
  * 检查 OAuth scope 是否包含 user:inference
- * 官方 Claude Code 只有在有这个 scope 时才直接使用 OAuth token
+ * 官方 Anthropic OAuth 只有在有这个 scope 时才直接使用 OAuth token
  */
 function hasInferenceScope(scopes?: string[]): boolean {
   return Boolean(scopes?.includes('user:inference'));

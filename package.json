@@ -1,13 +1,12 @@
 {
-  "name": "claude-code-open",
+  "name": "axon",
   "version": "2.1.37",
-  "description": "Free & open source Claude Code alternative with Web IDE, multi-agent system, and self-evolution",
+  "description": "Free & open source AI coding assistant with Web IDE, multi-agent system, and self-evolution",
   "type": "module",
   "bin": {
-    "claude": "./dist/cli.js",
-    "claude-code-open": "./dist/cli.js",
-    "claude-web": "./dist/web-cli.js",
-    "claude-proxy": "./dist/proxy-cli.js"
+    "axon": "./dist/cli.js",
+    "axon-web": "./dist/web-cli.js",
+    "axon-proxy": "./dist/proxy-cli.js"
   },
   "engines": {
     "node": ">=18.0.0"

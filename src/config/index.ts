@@ -352,46 +352,46 @@ function parseEnvNumber(value: string | undefined): number | undefined {
 
 function getEnvConfig(): Partial<UserConfig> {
   const config: Partial<UserConfig> = {
-    // ===== ANTHROPIC_* 和 CLAUDE_API_KEY =====
-    apiKey: process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY,
-    oauthToken: process.env.CLAUDE_CODE_OAUTH_TOKEN,
+    // ===== ANTHROPIC_* 和 AXON_API_KEY =====
+    apiKey: process.env.ANTHROPIC_API_KEY || process.env.AXON_API_KEY,
+    oauthToken: process.env.AXON_OAUTH_TOKEN,
 
     // ===== 后端选择 =====
-    useBedrock: parseEnvBoolean(process.env.CLAUDE_CODE_USE_BEDROCK),
-    useVertex: parseEnvBoolean(process.env.CLAUDE_CODE_USE_VERTEX),
+    useBedrock: parseEnvBoolean(process.env.AXON_USE_BEDROCK),
+    useVertex: parseEnvBoolean(process.env.AXON_USE_VERTEX),
 
     // ===== 性能配置 =====
-    maxTokens: parseEnvNumber(process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS),
-    maxRetries: parseEnvNumber(process.env.CLAUDE_CODE_MAX_RETRIES),
-    debugLogsDir: process.env.CLAUDE_CODE_DEBUG_LOGS_DIR,
+    maxTokens: parseEnvNumber(process.env.AXON_MAX_OUTPUT_TOKENS),
+    maxRetries: parseEnvNumber(process.env.AXON_MAX_RETRIES),
+    debugLogsDir: process.env.AXON_DEBUG_LOGS_DIR,
 
     // ===== 功能开关 =====
-    enableTelemetry: parseEnvBoolean(process.env.CLAUDE_CODE_ENABLE_TELEMETRY) ?? (parseEnvBoolean(process.env.DISABLE_TELEMETRY) === false ? true : undefined),
-    disableFileCheckpointing: parseEnvBoolean(process.env.CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING),
+    enableTelemetry: parseEnvBoolean(process.env.AXON_ENABLE_TELEMETRY) ?? (parseEnvBoolean(process.env.DISABLE_TELEMETRY) === false ? true : undefined),
+    disableFileCheckpointing: parseEnvBoolean(process.env.AXON_DISABLE_FILE_CHECKPOINTING),
 
     // ===== Agent 系统 =====
-    agentId: process.env.CLAUDE_CODE_AGENT_ID,
+    agentId: process.env.AXON_AGENT_ID,
 
     // ===== IDE 集成 =====
-    autoConnectIde: parseEnvBoolean(process.env.CLAUDE_CODE_AUTO_CONNECT_IDE),
+    autoConnectIde: parseEnvBoolean(process.env.AXON_AUTO_CONNECT_IDE),
 
     // ===== 语言配置 =====
-    language: process.env.CLAUDE_CODE_LANGUAGE,
+    language: process.env.AXON_LANGUAGE,
 
     // ===== UI/UX =====
-    promptSuggestionEnabled: parseEnvBoolean(process.env.CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION),
-    respectGitignore: parseEnvBoolean(process.env.CLAUDE_CODE_RESPECT_GITIGNORE),
+    promptSuggestionEnabled: parseEnvBoolean(process.env.AXON_ENABLE_PROMPT_SUGGESTION),
+    respectGitignore: parseEnvBoolean(process.env.AXON_RESPECT_GITIGNORE),
     autoCompactEnabled: parseEnvBoolean(process.env.DISABLE_COMPACT) === true ? false : undefined,
-    spinnerTipsEnabled: parseEnvBoolean(process.env.CLAUDE_CODE_ENABLE_SPINNER_TIPS),
-    terminalProgressBarEnabled: parseEnvBoolean(process.env.CLAUDE_CODE_ENABLE_PROGRESS_BAR),
+    spinnerTipsEnabled: parseEnvBoolean(process.env.AXON_ENABLE_SPINNER_TIPS),
+    terminalProgressBarEnabled: parseEnvBoolean(process.env.AXON_ENABLE_PROGRESS_BAR),
   };
 
   // ===== API Provider（从布尔标志推导）=====
-  if (parseEnvBoolean(process.env.CLAUDE_CODE_USE_BEDROCK)) {
+  if (parseEnvBoolean(process.env.AXON_USE_BEDROCK)) {
     config.apiProvider = 'bedrock';
-  } else if (parseEnvBoolean(process.env.CLAUDE_CODE_USE_VERTEX)) {
+  } else if (parseEnvBoolean(process.env.AXON_USE_VERTEX)) {
     config.apiProvider = 'vertex';
-  } else if (parseEnvBoolean(process.env.CLAUDE_CODE_USE_FOUNDRY)) {
+  } else if (parseEnvBoolean(process.env.AXON_USE_FOUNDRY)) {
     config.apiProvider = 'anthropic'; // Foundry 也使用 anthropic provider
   }
 
@@ -406,9 +406,9 @@ function getEnvConfig(): Partial<UserConfig> {
   }
 
   // ===== 遥测配置 =====
-  if (process.env.CLAUDE_CODE_OTEL_SHUTDOWN_TIMEOUT_MS) {
+  if (process.env.AXON_OTEL_SHUTDOWN_TIMEOUT_MS) {
     config.telemetry = {
-      otelShutdownTimeoutMs: parseEnvNumber(process.env.CLAUDE_CODE_OTEL_SHUTDOWN_TIMEOUT_MS),
+      otelShutdownTimeoutMs: parseEnvNumber(process.env.AXON_OTEL_SHUTDOWN_TIMEOUT_MS),
     };
   }
 
@@ -439,73 +439,73 @@ function getEnvConfig(): Partial<UserConfig> {
   }
 
   // ===== Git 集成 =====
-  if (process.env.CLAUDE_CODE_GIT_BASH_PATH) {
+  if (process.env.AXON_GIT_BASH_PATH) {
     (config as any).git = {
-      bashPath: process.env.CLAUDE_CODE_GIT_BASH_PATH,
+      bashPath: process.env.AXON_GIT_BASH_PATH,
     };
   }
 
   // ===== 会话管理扩展 =====
-  if (process.env.CLAUDE_CODE_SESSION_ID ||
-      process.env.CLAUDE_CODE_PARENT_SESSION_ID ||
-      process.env.CLAUDE_CODE_SESSION_ACCESS_TOKEN ||
-      process.env.CLAUDE_CODE_SKIP_PROMPT_HISTORY ||
-      process.env.CLAUDE_CODE_EXIT_AFTER_STOP_DELAY ||
-      process.env.CLAUDE_CODE_SSE_PORT) {
+  if (process.env.AXON_SESSION_ID ||
+      process.env.AXON_PARENT_SESSION_ID ||
+      process.env.AXON_SESSION_ACCESS_TOKEN ||
+      process.env.AXON_SKIP_PROMPT_HISTORY ||
+      process.env.AXON_EXIT_AFTER_STOP_DELAY ||
+      process.env.AXON_SSE_PORT) {
     (config as any).session = {
-      id: process.env.CLAUDE_CODE_SESSION_ID,
-      parentId: process.env.CLAUDE_CODE_PARENT_SESSION_ID,
-      accessToken: process.env.CLAUDE_CODE_SESSION_ACCESS_TOKEN,
-      skipPromptHistory: parseEnvBoolean(process.env.CLAUDE_CODE_SKIP_PROMPT_HISTORY),
-      exitAfterStopDelay: parseEnvNumber(process.env.CLAUDE_CODE_EXIT_AFTER_STOP_DELAY),
-      ssePort: parseEnvNumber(process.env.CLAUDE_CODE_SSE_PORT),
+      id: process.env.AXON_SESSION_ID,
+      parentId: process.env.AXON_PARENT_SESSION_ID,
+      accessToken: process.env.AXON_SESSION_ACCESS_TOKEN,
+      skipPromptHistory: parseEnvBoolean(process.env.AXON_SKIP_PROMPT_HISTORY),
+      exitAfterStopDelay: parseEnvNumber(process.env.AXON_EXIT_AFTER_STOP_DELAY),
+      ssePort: parseEnvNumber(process.env.AXON_SSE_PORT),
     };
   }
 
   // ===== Agent 系统扩展 =====
-  if (process.env.CLAUDE_CODE_AGENT_NAME ||
-      process.env.CLAUDE_CODE_AGENT_TYPE ||
-      process.env.CLAUDE_CODE_SUBAGENT_MODEL ||
-      process.env.CLAUDE_CODE_PLAN_V2_AGENT_COUNT ||
-      process.env.CLAUDE_CODE_PLAN_V2_EXPLORE_AGENT_COUNT ||
-      process.env.CLAUDE_CODE_EFFORT_LEVEL ||
-      process.env.CLAUDE_CODE_ACTION) {
+  if (process.env.AXON_AGENT_NAME ||
+      process.env.AXON_AGENT_TYPE ||
+      process.env.AXON_SUBAGENT_MODEL ||
+      process.env.AXON_PLAN_V2_AGENT_COUNT ||
+      process.env.AXON_PLAN_V2_EXPLORE_AGENT_COUNT ||
+      process.env.AXON_EFFORT_LEVEL ||
+      process.env.AXON_ACTION) {
     (config as any).agent = {
       id: config.agentId,
-      name: process.env.CLAUDE_CODE_AGENT_NAME,
-      type: process.env.CLAUDE_CODE_AGENT_TYPE,
-      subagentModel: process.env.CLAUDE_CODE_SUBAGENT_MODEL,
-      planV2AgentCount: parseEnvNumber(process.env.CLAUDE_CODE_PLAN_V2_AGENT_COUNT),
-      planV2ExploreAgentCount: parseEnvNumber(process.env.CLAUDE_CODE_PLAN_V2_EXPLORE_AGENT_COUNT),
-      effortLevel: process.env.CLAUDE_CODE_EFFORT_LEVEL as any,
-      action: process.env.CLAUDE_CODE_ACTION,
+      name: process.env.AXON_AGENT_NAME,
+      type: process.env.AXON_AGENT_TYPE,
+      subagentModel: process.env.AXON_SUBAGENT_MODEL,
+      planV2AgentCount: parseEnvNumber(process.env.AXON_PLAN_V2_AGENT_COUNT),
+      planV2ExploreAgentCount: parseEnvNumber(process.env.AXON_PLAN_V2_EXPLORE_AGENT_COUNT),
+      effortLevel: process.env.AXON_EFFORT_LEVEL as any,
+      action: process.env.AXON_ACTION,
     };
   }
 
   // ===== IDE 集成扩展 =====
-  if (process.env.CLAUDE_CODE_IDE_HOST_OVERRIDE ||
-      process.env.CLAUDE_CODE_IDE_SKIP_AUTO_INSTALL ||
-      process.env.CLAUDE_CODE_IDE_SKIP_VALID_CHECK) {
+  if (process.env.AXON_IDE_HOST_OVERRIDE ||
+      process.env.AXON_IDE_SKIP_AUTO_INSTALL ||
+      process.env.AXON_IDE_SKIP_VALID_CHECK) {
     (config as any).ide = {
       autoConnect: config.autoConnectIde,
-      hostOverride: process.env.CLAUDE_CODE_IDE_HOST_OVERRIDE,
-      skipAutoInstall: parseEnvBoolean(process.env.CLAUDE_CODE_IDE_SKIP_AUTO_INSTALL),
-      skipValidCheck: parseEnvBoolean(process.env.CLAUDE_CODE_IDE_SKIP_VALID_CHECK),
+      hostOverride: process.env.AXON_IDE_HOST_OVERRIDE,
+      skipAutoInstall: parseEnvBoolean(process.env.AXON_IDE_SKIP_AUTO_INSTALL),
+      skipValidCheck: parseEnvBoolean(process.env.AXON_IDE_SKIP_VALID_CHECK),
     };
   }
 
   // ===== 安全配置 =====
-  if (process.env.CLAUDE_CODE_CLIENT_CERT ||
-      process.env.CLAUDE_CODE_CLIENT_KEY ||
-      process.env.CLAUDE_CODE_CLIENT_KEY_PASSPHRASE ||
-      process.env.CLAUDE_CODE_ADDITIONAL_PROTECTION ||
-      process.env.CLAUDE_CODE_DISABLE_COMMAND_INJECTION_CHECK) {
+  if (process.env.AXON_CLIENT_CERT ||
+      process.env.AXON_CLIENT_KEY ||
+      process.env.AXON_CLIENT_KEY_PASSPHRASE ||
+      process.env.AXON_ADDITIONAL_PROTECTION ||
+      process.env.AXON_DISABLE_COMMAND_INJECTION_CHECK) {
     (config as any).security = {
-      clientCert: process.env.CLAUDE_CODE_CLIENT_CERT,
-      clientKey: process.env.CLAUDE_CODE_CLIENT_KEY,
-      clientKeyPassphrase: process.env.CLAUDE_CODE_CLIENT_KEY_PASSPHRASE,
-      additionalProtection: parseEnvBoolean(process.env.CLAUDE_CODE_ADDITIONAL_PROTECTION),
-      disableCommandInjectionCheck: parseEnvBoolean(process.env.CLAUDE_CODE_DISABLE_COMMAND_INJECTION_CHECK),
+      clientCert: process.env.AXON_CLIENT_CERT,
+      clientKey: process.env.AXON_CLIENT_KEY,
+      clientKeyPassphrase: process.env.AXON_CLIENT_KEY_PASSPHRASE,
+      additionalProtection: parseEnvBoolean(process.env.AXON_ADDITIONAL_PROTECTION),
+      disableCommandInjectionCheck: parseEnvBoolean(process.env.AXON_DISABLE_COMMAND_INJECTION_CHECK),
     };
   }
 
@@ -546,68 +546,68 @@ function getEnvConfig(): Partial<UserConfig> {
   }
 
   // ===== 认证跳过 =====
-  if (process.env.CLAUDE_CODE_SKIP_BEDROCK_AUTH ||
-      process.env.CLAUDE_CODE_SKIP_VERTEX_AUTH ||
-      process.env.CLAUDE_CODE_SKIP_FOUNDRY_AUTH) {
+  if (process.env.AXON_SKIP_BEDROCK_AUTH ||
+      process.env.AXON_SKIP_VERTEX_AUTH ||
+      process.env.AXON_SKIP_FOUNDRY_AUTH) {
     (config as any).skipAuth = {
-      bedrock: parseEnvBoolean(process.env.CLAUDE_CODE_SKIP_BEDROCK_AUTH),
-      vertex: parseEnvBoolean(process.env.CLAUDE_CODE_SKIP_VERTEX_AUTH),
-      foundry: parseEnvBoolean(process.env.CLAUDE_CODE_SKIP_FOUNDRY_AUTH),
+      bedrock: parseEnvBoolean(process.env.AXON_SKIP_BEDROCK_AUTH),
+      vertex: parseEnvBoolean(process.env.AXON_SKIP_VERTEX_AUTH),
+      foundry: parseEnvBoolean(process.env.AXON_SKIP_FOUNDRY_AUTH),
     };
   }
 
   // ===== 远程会话 =====
-  if (process.env.CLAUDE_CODE_REMOTE ||
-      process.env.CLAUDE_CODE_REMOTE_ENVIRONMENT_TYPE ||
-      process.env.CLAUDE_CODE_REMOTE_SESSION_ID) {
+  if (process.env.AXON_REMOTE ||
+      process.env.AXON_REMOTE_ENVIRONMENT_TYPE ||
+      process.env.AXON_REMOTE_SESSION_ID) {
     (config as any).remote = {
-      enabled: parseEnvBoolean(process.env.CLAUDE_CODE_REMOTE),
-      environmentType: process.env.CLAUDE_CODE_REMOTE_ENVIRONMENT_TYPE,
-      sessionId: process.env.CLAUDE_CODE_REMOTE_SESSION_ID,
+      enabled: parseEnvBoolean(process.env.AXON_REMOTE),
+      environmentType: process.env.AXON_REMOTE_ENVIRONMENT_TYPE,
+      sessionId: process.env.AXON_REMOTE_SESSION_ID,
     };
   }
 
   // ===== 沙箱配置 =====
-  if (process.env.CLAUDE_CODE_BUBBLEWRAP ||
-      process.env.CLAUDE_CODE_BASH_SANDBOX_SHOW_INDICATOR ||
-      process.env.CLAUDE_CODE_CONTAINER_ID ||
-      process.env.CLAUDE_CODE_SHELL ||
-      process.env.CLAUDE_CODE_SHELL_PREFIX ||
-      process.env.CLAUDE_CODE_DONT_INHERIT_ENV) {
+  if (process.env.AXON_BUBBLEWRAP ||
+      process.env.AXON_BASH_SANDBOX_SHOW_INDICATOR ||
+      process.env.AXON_CONTAINER_ID ||
+      process.env.AXON_SHELL ||
+      process.env.AXON_SHELL_PREFIX ||
+      process.env.AXON_DONT_INHERIT_ENV) {
     (config as any).sandbox = {
-      bubblewrap: process.env.CLAUDE_CODE_BUBBLEWRAP,
-      showIndicator: parseEnvBoolean(process.env.CLAUDE_CODE_BASH_SANDBOX_SHOW_INDICATOR) ?? true,
-      containerId: process.env.CLAUDE_CODE_CONTAINER_ID,
-      shell: process.env.CLAUDE_CODE_SHELL,
-      shellPrefix: process.env.CLAUDE_CODE_SHELL_PREFIX,
-      dontInheritEnv: parseEnvBoolean(process.env.CLAUDE_CODE_DONT_INHERIT_ENV),
+      bubblewrap: process.env.AXON_BUBBLEWRAP,
+      showIndicator: parseEnvBoolean(process.env.AXON_BASH_SANDBOX_SHOW_INDICATOR) ?? true,
+      containerId: process.env.AXON_CONTAINER_ID,
+      shell: process.env.AXON_SHELL,
+      shellPrefix: process.env.AXON_SHELL_PREFIX,
+      dontInheritEnv: parseEnvBoolean(process.env.AXON_DONT_INHERIT_ENV),
     };
   }
 
   // ===== 临时目录配置 (v2.1.5+) =====
-  if (process.env.CLAUDE_CODE_TMPDIR) {
-    (config as any).tmpDir = process.env.CLAUDE_CODE_TMPDIR;
+  if (process.env.AXON_TMPDIR) {
+    (config as any).tmpDir = process.env.AXON_TMPDIR;
   }
 
   // ===== UI/UX 扩展 =====
-  if (process.env.CLAUDE_CODE_DISABLE_ATTACHMENTS ||
-      process.env.CLAUDE_CODE_DISABLE_CLAUDE_MDS ||
-      process.env.CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY ||
-      process.env.CLAUDE_CODE_DISABLE_TERMINAL_TITLE ||
-      process.env.CLAUDE_CODE_ENABLE_TOKEN_USAGE_ATTACHMENT ||
-      process.env.CLAUDE_CODE_FORCE_FULL_LOGO ||
-      process.env.CLAUDE_CODE_SYNTAX_HIGHLIGHT ||
+  if (process.env.AXON_DISABLE_ATTACHMENTS ||
+      process.env.AXON_DISABLE_CLAUDE_MDS ||
+      process.env.AXON_DISABLE_FEEDBACK_SURVEY ||
+      process.env.AXON_DISABLE_TERMINAL_TITLE ||
+      process.env.AXON_ENABLE_TOKEN_USAGE_ATTACHMENT ||
+      process.env.AXON_FORCE_FULL_LOGO ||
+      process.env.AXON_SYNTAX_HIGHLIGHT ||
       process.env.DISABLE_MICROCOMPACT ||
       process.env.DISABLE_COST_WARNINGS ||
       process.env.ENABLE_INCREMENTAL_TUI) {
     (config as any).ui = {
-      disableAttachments: parseEnvBoolean(process.env.CLAUDE_CODE_DISABLE_ATTACHMENTS),
-      disableClaudeMds: parseEnvBoolean(process.env.CLAUDE_CODE_DISABLE_CLAUDE_MDS),
-      disableFeedbackSurvey: parseEnvBoolean(process.env.CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY),
-      disableTerminalTitle: parseEnvBoolean(process.env.CLAUDE_CODE_DISABLE_TERMINAL_TITLE),
-      enableTokenUsageAttachment: parseEnvBoolean(process.env.CLAUDE_CODE_ENABLE_TOKEN_USAGE_ATTACHMENT),
-      forceFullLogo: parseEnvBoolean(process.env.CLAUDE_CODE_FORCE_FULL_LOGO),
-      syntaxHighlight: parseEnvBoolean(process.env.CLAUDE_CODE_SYNTAX_HIGHLIGHT) ?? true,
+      disableAttachments: parseEnvBoolean(process.env.AXON_DISABLE_ATTACHMENTS),
+      disableClaudeMds: parseEnvBoolean(process.env.AXON_DISABLE_CLAUDE_MDS),
+      disableFeedbackSurvey: parseEnvBoolean(process.env.AXON_DISABLE_FEEDBACK_SURVEY),
+      disableTerminalTitle: parseEnvBoolean(process.env.AXON_DISABLE_TERMINAL_TITLE),
+      enableTokenUsageAttachment: parseEnvBoolean(process.env.AXON_ENABLE_TOKEN_USAGE_ATTACHMENT),
+      forceFullLogo: parseEnvBoolean(process.env.AXON_FORCE_FULL_LOGO),
+      syntaxHighlight: parseEnvBoolean(process.env.AXON_SYNTAX_HIGHLIGHT) ?? true,
       microcompact: !parseEnvBoolean(process.env.DISABLE_MICROCOMPACT),
       disableCostWarnings: parseEnvBoolean(process.env.DISABLE_COST_WARNINGS),
       enableIncrementalTui: parseEnvBoolean(process.env.ENABLE_INCREMENTAL_TUI),
@@ -615,37 +615,37 @@ function getEnvConfig(): Partial<UserConfig> {
   }
 
   // ===== 调试配置扩展 =====
-  if (process.env.CLAUDE_CODE_DIAGNOSTICS_FILE ||
-      process.env.CLAUDE_CODE_PROFILE_QUERY ||
-      process.env.CLAUDE_CODE_PROFILE_STARTUP ||
-      process.env.CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING) {
+  if (process.env.AXON_DIAGNOSTICS_FILE ||
+      process.env.AXON_PROFILE_QUERY ||
+      process.env.AXON_PROFILE_STARTUP ||
+      process.env.AXON_ENABLE_SDK_FILE_CHECKPOINTING) {
     (config as any).debug = {
-      diagnosticsFile: process.env.CLAUDE_CODE_DIAGNOSTICS_FILE,
-      profileQuery: parseEnvBoolean(process.env.CLAUDE_CODE_PROFILE_QUERY),
-      profileStartup: parseEnvBoolean(process.env.CLAUDE_CODE_PROFILE_STARTUP),
-      enableSdkFileCheckpointing: parseEnvBoolean(process.env.CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING),
+      diagnosticsFile: process.env.AXON_DIAGNOSTICS_FILE,
+      profileQuery: parseEnvBoolean(process.env.AXON_PROFILE_QUERY),
+      profileStartup: parseEnvBoolean(process.env.AXON_PROFILE_STARTUP),
+      enableSdkFileCheckpointing: parseEnvBoolean(process.env.AXON_ENABLE_SDK_FILE_CHECKPOINTING),
     };
   }
 
   // ===== 网络配置 =====
-  if (process.env.CLAUDE_CODE_PROXY_RESOLVES_HOSTS ||
-      process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC) {
+  if (process.env.AXON_PROXY_RESOLVES_HOSTS ||
+      process.env.AXON_DISABLE_NONESSENTIAL_TRAFFIC) {
     (config as any).network = {
-      proxyResolvesHosts: parseEnvBoolean(process.env.CLAUDE_CODE_PROXY_RESOLVES_HOSTS),
-      disableNonessentialTraffic: parseEnvBoolean(process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC),
+      proxyResolvesHosts: parseEnvBoolean(process.env.AXON_PROXY_RESOLVES_HOSTS),
+      disableNonessentialTraffic: parseEnvBoolean(process.env.AXON_DISABLE_NONESSENTIAL_TRAFFIC),
     };
   }
 
   // ===== 工具配置 =====
-  if (process.env.CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY ||
+  if (process.env.AXON_MAX_TOOL_USE_CONCURRENCY ||
       process.env.ENABLE_TOOL_SEARCH ||
-      process.env.CLAUDE_CODE_USE_NATIVE_FILE_SEARCH ||
+      process.env.AXON_USE_NATIVE_FILE_SEARCH ||
       process.env.ENABLE_BASH_ENV_VAR_MATCHING ||
       process.env.ENABLE_BASH_WRAPPER_MATCHING) {
     (config as any).tools = {
-      maxConcurrency: parseEnvNumber(process.env.CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY),
+      maxConcurrency: parseEnvNumber(process.env.AXON_MAX_TOOL_USE_CONCURRENCY),
       enableSearch: parseEnvBoolean(process.env.ENABLE_TOOL_SEARCH),
-      useNativeFileSearch: parseEnvBoolean(process.env.CLAUDE_CODE_USE_NATIVE_FILE_SEARCH),
+      useNativeFileSearch: parseEnvBoolean(process.env.AXON_USE_NATIVE_FILE_SEARCH),
       enableBashEnvVarMatching: parseEnvBoolean(process.env.ENABLE_BASH_ENV_VAR_MATCHING),
       enableBashWrapperMatching: parseEnvBoolean(process.env.ENABLE_BASH_WRAPPER_MATCHING),
     };
@@ -655,41 +655,41 @@ function getEnvConfig(): Partial<UserConfig> {
   if (process.env.ENABLE_CODE_GUIDE_SUBAGENT ||
       process.env.ENABLE_BETA_TRACING_DETAILED ||
       process.env.ENABLE_ENHANCED_TELEMETRY_BETA ||
-      process.env.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS) {
+      process.env.AXON_DISABLE_EXPERIMENTAL_BETAS) {
     (config as any).beta = {
       enableCodeGuideSubagent: parseEnvBoolean(process.env.ENABLE_CODE_GUIDE_SUBAGENT),
       enableTracingDetailed: parseEnvBoolean(process.env.ENABLE_BETA_TRACING_DETAILED),
       enableEnhancedTelemetry: parseEnvBoolean(process.env.ENABLE_ENHANCED_TELEMETRY_BETA),
-      disableExperimentalBetas: parseEnvBoolean(process.env.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS),
+      disableExperimentalBetas: parseEnvBoolean(process.env.AXON_DISABLE_EXPERIMENTAL_BETAS),
     };
   }
 
   // ===== 杂项配置 =====
-  if (process.env.CLAUDE_CODE_TAGS) {
+  if (process.env.AXON_TAGS) {
     if (!(config as any).misc) (config as any).misc = {};
-    (config as any).misc.tags = process.env.CLAUDE_CODE_TAGS.split(',').map((s: string) => s.trim());
+    (config as any).misc.tags = process.env.AXON_TAGS.split(',').map((s: string) => s.trim());
   }
-  if (process.env.CLAUDE_CODE_TEAM_NAME) {
+  if (process.env.AXON_TEAM_NAME) {
     if (!(config as any).misc) (config as any).misc = {};
-    (config as any).misc.teamName = process.env.CLAUDE_CODE_TEAM_NAME;
+    (config as any).misc.teamName = process.env.AXON_TEAM_NAME;
   }
-  if (process.env.CLAUDE_CODE_EXTRA_BODY) {
+  if (process.env.AXON_EXTRA_BODY) {
     if (!(config as any).misc) (config as any).misc = {};
     try {
-      (config as any).misc.extraBody = JSON.parse(process.env.CLAUDE_CODE_EXTRA_BODY);
+      (config as any).misc.extraBody = JSON.parse(process.env.AXON_EXTRA_BODY);
     } catch (e) {
-      console.warn('Failed to parse CLAUDE_CODE_EXTRA_BODY:', e);
+      console.warn('Failed to parse AXON_EXTRA_BODY:', e);
     }
   }
-  if (process.env.CLAUDE_CODE_TEST_FIXTURES_ROOT ||
-      process.env.CLAUDE_CODE_ENTRYPOINT ||
+  if (process.env.AXON_TEST_FIXTURES_ROOT ||
+      process.env.AXON_ENTRYPOINT ||
       process.env.DISABLE_ERROR_REPORTING ||
       process.env.DISABLE_AUTOUPDATER ||
       process.env.DISABLE_INSTALLATION_CHECKS ||
       process.env.DISABLE_AUTO_MIGRATE_TO_NATIVE) {
     if (!(config as any).misc) (config as any).misc = {};
-    (config as any).misc.testFixturesRoot = process.env.CLAUDE_CODE_TEST_FIXTURES_ROOT;
-    (config as any).misc.entrypoint = process.env.CLAUDE_CODE_ENTRYPOINT;
+    (config as any).misc.testFixturesRoot = process.env.AXON_TEST_FIXTURES_ROOT;
+    (config as any).misc.entrypoint = process.env.AXON_ENTRYPOINT;
     (config as any).misc.disableErrorReporting = parseEnvBoolean(process.env.DISABLE_ERROR_REPORTING);
     (config as any).misc.disableAutoUpdater = parseEnvBoolean(process.env.DISABLE_AUTOUPDATER);
     (config as any).misc.disableInstallationChecks = parseEnvBoolean(process.env.DISABLE_INSTALLATION_CHECKS);
@@ -718,15 +718,15 @@ function getEnvConfig(): Partial<UserConfig> {
   }
 
   // ===== 文件描述符 =====
-  if (process.env.CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR ||
-      process.env.CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR ||
-      process.env.CLAUDE_CODE_WEBSOCKET_AUTH_FILE_DESCRIPTOR ||
-      process.env.CLAUDE_CODE_API_KEY_HELPER_TTL_MS) {
+  if (process.env.AXON_API_KEY_FILE_DESCRIPTOR ||
+      process.env.AXON_OAUTH_TOKEN_FILE_DESCRIPTOR ||
+      process.env.AXON_WEBSOCKET_AUTH_FILE_DESCRIPTOR ||
+      process.env.AXON_API_KEY_HELPER_TTL_MS) {
     (config as any).fileDescriptors = {
-      apiKey: parseEnvNumber(process.env.CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR),
-      oauthToken: parseEnvNumber(process.env.CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR),
-      websocketAuth: parseEnvNumber(process.env.CLAUDE_CODE_WEBSOCKET_AUTH_FILE_DESCRIPTOR),
-      apiKeyHelperTtlMs: parseEnvNumber(process.env.CLAUDE_CODE_API_KEY_HELPER_TTL_MS),
+      apiKey: parseEnvNumber(process.env.AXON_API_KEY_FILE_DESCRIPTOR),
+      oauthToken: parseEnvNumber(process.env.AXON_OAUTH_TOKEN_FILE_DESCRIPTOR),
+      websocketAuth: parseEnvNumber(process.env.AXON_WEBSOCKET_AUTH_FILE_DESCRIPTOR),
+      apiKeyHelperTtlMs: parseEnvNumber(process.env.AXON_API_KEY_HELPER_TTL_MS),
     };
   }
 
@@ -736,11 +736,11 @@ function getEnvConfig(): Partial<UserConfig> {
   }
 
   // ===== 遥测配置扩展 =====
-  if (process.env.CLAUDE_CODE_OTEL_FLUSH_TIMEOUT_MS ||
-      process.env.CLAUDE_CODE_OTEL_HEADERS_HELPER_DEBOUNCE_MS) {
+  if (process.env.AXON_OTEL_FLUSH_TIMEOUT_MS ||
+      process.env.AXON_OTEL_HEADERS_HELPER_DEBOUNCE_MS) {
     if (!config.telemetry) config.telemetry = {};
-    (config.telemetry as any).otelFlushTimeoutMs = parseEnvNumber(process.env.CLAUDE_CODE_OTEL_FLUSH_TIMEOUT_MS);
-    (config.telemetry as any).otelHeadersHelperDebounceMs = parseEnvNumber(process.env.CLAUDE_CODE_OTEL_HEADERS_HELPER_DEBOUNCE_MS);
+    (config.telemetry as any).otelFlushTimeoutMs = parseEnvNumber(process.env.AXON_OTEL_FLUSH_TIMEOUT_MS);
+    (config.telemetry as any).otelHeadersHelperDebounceMs = parseEnvNumber(process.env.AXON_OTEL_HEADERS_HELPER_DEBOUNCE_MS);
   }
 
   return config;
@@ -912,7 +912,7 @@ export class ConfigManager {
   private loadedSources: ConfigSourceInfo[] = [];
 
   constructor(options?: ConfigManagerOptions) {
-    this.debugMode = options?.debugMode ?? (process.env.CLAUDE_CODE_DEBUG === 'true');
+    this.debugMode = options?.debugMode ?? (process.env.AXON_DEBUG === 'true');
     this.cliFlags = options?.cliFlags;
 
     const workingDir = options?.workingDirectory ?? process.cwd();
@@ -1888,14 +1888,14 @@ export const configManager = new ConfigManager();
 // ============ 导出其他模块 ============
 
 export {
-  ClaudeMdParser,
-  claudeMdParser,
+  AxonMdParser,
+  axonMdParser,
   // v2.1.2+ @include 二进制文件过滤辅助函数
   isTextFile,
   isBinaryFile,
   getTextFileExtensions,
   hasBinaryContent,
-} from './claude-md-parser.js';
+} from './axon-md-parser.js';
 export { ConfigCommand, createConfigCommand } from './config-command.js';
 
 // ============ v2.1.18 Keybindings 模块导出 ============
@@ -1943,7 +1943,6 @@ export {
 
   // 内置验证器
   BASH_MAX_OUTPUT_LENGTH,
-  CLAUDE_CODE_MAX_OUTPUT_TOKENS,
   createBooleanValidator,
   createNumberRangeValidator,
   createEnumValidator,
@@ -1969,18 +1968,18 @@ export const ENV_VARS = {
   // API 配置
   ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
   CLAUDE_API_KEY: process.env.CLAUDE_API_KEY,
-  CLAUDE_CODE_OAUTH_TOKEN: process.env.CLAUDE_CODE_OAUTH_TOKEN,
+  AXON_OAUTH_TOKEN: process.env.AXON_OAUTH_TOKEN,
 
   // 后端选择
-  CLAUDE_CODE_USE_BEDROCK: process.env.CLAUDE_CODE_USE_BEDROCK,
-  CLAUDE_CODE_USE_VERTEX: process.env.CLAUDE_CODE_USE_VERTEX,
+  AXON_USE_BEDROCK: process.env.AXON_USE_BEDROCK,
+  AXON_USE_VERTEX: process.env.AXON_USE_VERTEX,
 
   // 功能配置
-  CLAUDE_CODE_MAX_OUTPUT_TOKENS: process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS,
-  CLAUDE_CODE_MAX_RETRIES: process.env.CLAUDE_CODE_MAX_RETRIES,
-  CLAUDE_CODE_DEBUG_LOGS_DIR: process.env.CLAUDE_CODE_DEBUG_LOGS_DIR,
+  AXON_MAX_OUTPUT_TOKENS: process.env.AXON_MAX_OUTPUT_TOKENS,
+  AXON_MAX_RETRIES: process.env.AXON_MAX_RETRIES,
+  AXON_DEBUG_LOGS_DIR: process.env.AXON_DEBUG_LOGS_DIR,
 
   // 开关
-  CLAUDE_CODE_ENABLE_TELEMETRY: process.env.CLAUDE_CODE_ENABLE_TELEMETRY,
-  CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING: process.env.CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING,
+  AXON_ENABLE_TELEMETRY: process.env.AXON_ENABLE_TELEMETRY,
+  AXON_DISABLE_FILE_CHECKPOINTING: process.env.AXON_DISABLE_FILE_CHECKPOINTING,
 };

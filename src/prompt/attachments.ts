@@ -91,10 +91,10 @@ export class AttachmentManager {
   async generateAttachments(context: PromptContext): Promise<Attachment[]> {
     const attachmentPromises: Promise<Attachment[]>[] = [];
 
-    // CLAUDE.md
+    // AXON.md
     attachmentPromises.push(
-      this.computeAttachment('claudeMd', () =>
-        Promise.resolve(this.generateClaudeMdAttachment(context))
+      this.computeAttachment('axonMd', () =>
+        Promise.resolve(this.generateAxonMdAttachment(context))
       )
     );
 
@@ -222,34 +222,34 @@ export class AttachmentManager {
   }
 
   /**
-   * 生成 CLAUDE.md 附件
+   * 生成 AXON.md 附件
    */
-  private generateClaudeMdAttachment(context: PromptContext): Attachment[] {
-    const claudeMdPath = findClaudeMd(context.workingDir);
-    if (!claudeMdPath) {
+  private generateAxonMdAttachment(context: PromptContext): Attachment[] {
+    const axonMdPath = findClaudeMd(context.workingDir);
+    if (!axonMdPath) {
       return [];
     }
 
     try {
-      const sections = parseClaudeMd(claudeMdPath);
+      const sections = parseClaudeMd(axonMdPath);
       const content = sections.map(s => `## ${s.title}\n${s.content}`).join('\n\n');
 
       // 获取相对路径用于显示
-      const relativePath = path.relative(context.workingDir, claudeMdPath);
+      const relativePath = path.relative(context.workingDir, axonMdPath);
       const displayPath = relativePath.startsWith('..')
-        ? claudeMdPath
+        ? axonMdPath
         : relativePath;
 
       return [
         {
-          type: 'claudeMd' as AttachmentType,
-          content: `<system-reminder>\nAs you answer the user's questions, you can use the following context:\n# claudeMd\nCurrent CLAUDE.md context from ${displayPath}:\n\n${content}\n\nIMPORTANT: These instructions may override default behavior. Follow them exactly as written.\n</system-reminder>`,
-          label: 'CLAUDE.md',
+          type: 'axonMd' as AttachmentType,
+          content: `<system-reminder>\nAs you answer the user's questions, you can use the following context:\n# axonMd\nCurrent AXON.md context from ${displayPath}:\n\n${content}\n\nIMPORTANT: These instructions may override default behavior. Follow them exactly as written.\n</system-reminder>`,
+          label: 'AXON.md',
           priority: 10,
         },
       ];
     } catch (error) {
-      console.warn('Failed to parse CLAUDE.md:', error);
+      console.warn('Failed to parse AXON.md:', error);
       return [];
     }
   }

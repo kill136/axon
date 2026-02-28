@@ -83,6 +83,8 @@ function AppContent({
     : setShowGitPanelLocal;
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
+  const codeViewRef = useRef<CodeViewRef>(null);
+  const [pendingCodeRef, setPendingCodeRef] = useState<{ filePath: string; line: number } | null>(null);
 
   const { connected, sessionId, model, setModel, send, addMessageHandler } = useWebSocket(getWebSocketUrl());
 
@@ -242,6 +244,36 @@ function AppContent({
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
   }, [setIsTranscriptMode, artifactsState.setIsPanelOpen, onToggleCodeView]);
+
+  // 处理代码引用跳转：拦截 onNavigateToCode，支持 { filePath, line } 参数
+  const handleNavigateToCode = useCallback((context?: any) => {
+    if (context?.filePath) {
+      // 有文件路径：切换到 CodeView 并记录待打开的文件
+      setPendingCodeRef({ filePath: context.filePath, line: context.line || 1 });
+      if (!codeViewActive) {
+        onToggleCodeView?.();
+      } else {
+        // 已经在 CodeView 模式，直接打开文件
+        codeViewRef.current?.openFileAtLine(context.filePath, context.line || 1);
+        setPendingCodeRef(null);
+      }
+    } else {
+      // 无文件路径：直接切换到 CodeView
+      onNavigateToCode?.(context);
+    }
+  }, [codeViewActive, onToggleCodeView, onNavigateToCode]);
+
+  // 消费 pendingCodeRef：当 CodeView 激活后打开文件
+  useEffect(() => {
+    if (codeViewActive && pendingCodeRef) {
+      // 等待 CodeView 挂载完成
+      const timer = setTimeout(() => {
+        codeViewRef.current?.openFileAtLine(pendingCodeRef.filePath, pendingCodeRef.line);
+        setPendingCodeRef(null);
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [codeViewActive, pendingCodeRef]);
 
   // 对齐官方渲染管线
   const visibleMessages = useMemo(() => {
@@ -408,6 +440,7 @@ function AppContent({
       {codeViewActive ? (
         // 代码视图模式
         <CodeView
+          ref={codeViewRef}
           messages={messages}
           status={status}
           model={model}
@@ -437,7 +470,7 @@ function AppContent({
                     message={msg}
                     onNavigateToBlueprint={onNavigateToBlueprint}
                     onNavigateToSwarm={onNavigateToSwarm}
-                    onNavigateToCode={onNavigateToCode}
+                    onNavigateToCode={handleNavigateToCode}
                     onDevAction={chatInput.handleDevAction}
                     isStreaming={currentMessageRef.current?.id === msg.id && status !== 'idle'}
                     isTranscriptMode={isTranscriptMode}

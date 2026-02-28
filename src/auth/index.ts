@@ -250,7 +250,7 @@ function hasInferenceScope(scopes?: string[]): boolean {
 export function initAuth(): AuthConfig | null {
   // 1. 检查环境变量 (最高优先级)
   // 1a. 检查 API Key
-  const envApiKey = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
+  const envApiKey = process.env.ANTHROPIC_API_KEY || process.env.AXON_API_KEY;
   if (envApiKey) {
     currentAuth = {
       type: 'api_key',
