@@ -1425,4 +1425,135 @@ router.get('/preview', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * GET /api/files/download - 下载文件（二进制流）
+ *
+ * 支持任意文件类型的下载，返回正确的 MIME 类型和 Content-Disposition 头。
+ * 可选 inline 参数控制浏览器是预览还是下载。
+ *
+ * Query 参数:
+ * - path: 文件绝对路径或相对路径
+ * - root: 项目根目录（可选）
+ * - inline: 设为 "1" 时使用 inline 预览而非下载（可选）
+ */
+router.get('/download', async (req: Request, res: Response) => {
+  try {
+    const queryPath = req.query.path as string;
+
+    if (!queryPath) {
+      res.status(400).json({ error: '缺少 path 参数' });
+      return;
+    }
+
+    // 解析文件路径：支持绝对路径和相对路径
+    let resolvedPath: string;
+    if (path.isAbsolute(queryPath)) {
+      resolvedPath = path.normalize(queryPath);
+    } else {
+      const projectRoot = getProjectRoot(req);
+      const validation = validatePath(queryPath, projectRoot);
+      if (!validation.valid) {
+        res.status(400).json({ error: validation.error || '路径无效' });
+        return;
+      }
+      resolvedPath = validation.resolvedPath;
+    }
+
+    // 检查文件是否存在
+    let stats: import('fs').Stats;
+    try {
+      stats = await fs.stat(resolvedPath);
+      if (!stats.isFile()) {
+        res.status(400).json({ error: '路径不是文件' });
+        return;
+      }
+    } catch {
+      res.status(404).json({ error: '文件不存在' });
+      return;
+    }
+
+    // MIME 类型映射
+    const MIME_TYPES: Record<string, string> = {
+      // 文档
+      '.pdf': 'application/pdf',
+      '.doc': 'application/msword',
+      '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      '.xls': 'application/vnd.ms-excel',
+      '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      '.ppt': 'application/vnd.ms-powerpoint',
+      '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      '.csv': 'text/csv',
+      // 图片
+      '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.gif': 'image/gif',
+      '.svg': 'image/svg+xml',
+      '.webp': 'image/webp',
+      '.ico': 'image/x-icon',
+      '.bmp': 'image/bmp',
+      // 视频
+      '.mp4': 'video/mp4',
+      '.webm': 'video/webm',
+      '.avi': 'video/x-msvideo',
+      '.mov': 'video/quicktime',
+      '.mkv': 'video/x-matroska',
+      // 音频
+      '.mp3': 'audio/mpeg',
+      '.wav': 'audio/wav',
+      '.ogg': 'audio/ogg',
+      '.flac': 'audio/flac',
+      '.aac': 'audio/aac',
+      // 压缩包
+      '.zip': 'application/zip',
+      '.tar': 'application/x-tar',
+      '.gz': 'application/gzip',
+      '.7z': 'application/x-7z-compressed',
+      '.rar': 'application/vnd.rar',
+      // 代码/文本
+      '.html': 'text/html',
+      '.htm': 'text/html',
+      '.css': 'text/css',
+      '.js': 'application/javascript',
+      '.ts': 'text/plain',
+      '.json': 'application/json',
+      '.xml': 'application/xml',
+      '.txt': 'text/plain',
+      '.md': 'text/markdown',
+      '.yaml': 'text/yaml',
+      '.yml': 'text/yaml',
+      '.log': 'text/plain',
+    };
+
+    const ext = path.extname(resolvedPath).toLowerCase();
+    const mimeType = MIME_TYPES[ext] || 'application/octet-stream';
+    const fileName = path.basename(resolvedPath);
+    const isInline = req.query.inline === '1';
+
+    // 设置响应头
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader('Content-Length', stats.size);
+    res.setHeader(
+      'Content-Disposition',
+      isInline
+        ? `inline; filename="${encodeURIComponent(fileName)}"`
+        : `attachment; filename="${encodeURIComponent(fileName)}"`
+    );
+
+    // 使用流式传输
+    const { createReadStream } = await import('fs');
+    const stream = createReadStream(resolvedPath);
+    stream.pipe(res);
+    stream.on('error', (err) => {
+      console.error('[File API] 下载文件流错误:', err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: '读取文件失败' });
+      }
+    });
+  } catch (error) {
+    console.error('[File API] 下载文件失败:', error);
+    res.status(500).json({ error: '下载文件失败' });
+  }
+});
+
 export default router;

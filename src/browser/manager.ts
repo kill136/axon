@@ -25,7 +25,7 @@ import type { Browser, Page } from 'playwright-core';
 import type { BrowserStartOptions } from './types.js';
 import { detectBrowserExecutable, type BrowserExecutable } from './detect.js';
 import { getProfile, ensureCleanExit, decorateProfile } from './profiles.js';
-import { ensureChromeExtensionRelayServer } from './extension-relay.js';
+import { ensureChromeExtensionRelayServer, stopChromeExtensionRelayServer } from './extension-relay.js';
 import { resolveRelayAuthToken } from './extension-relay-auth.js';
 
 const CONFIG_DIR = path.join(os.homedir(), '.claude');
@@ -253,7 +253,10 @@ async function disconnectBrowser(): Promise<void> {
   cachedConnection = null;
   connectingPromise = null;
   if (cur) {
-    await cur.browser.close().catch(() => {});
+    // Use timeout to prevent hanging if CDP connection is unresponsive
+    const closePromise = cur.browser.close().catch(() => {});
+    const timeoutPromise = new Promise<void>(r => setTimeout(r, 3000));
+    await Promise.race([closePromise, timeoutPromise]);
   }
 }
 
@@ -303,18 +306,21 @@ async function launchChrome(
     env: { ...process.env, HOME: os.homedir() },
   });
 
+  // Attach error handlers to ALL streams to prevent unhandled ECONNRESET crashes
+  proc.on('error', () => {});
+  proc.stdin?.on('error', () => {});
+  proc.stdout?.on('error', () => {});
+  proc.stderr?.on('error', () => {});
+
   // Capture Chrome stderr for debugging extension loading issues
   if (proc.stderr) {
     let stderrBuf = '';
     proc.stderr.on('data', (chunk: Buffer) => {
       stderrBuf += chunk.toString();
-      // Print lines that mention extension or service worker errors
       const lines = stderrBuf.split('\n');
       stderrBuf = lines.pop() || '';
       for (const line of lines) {
-        if (line && (line.includes('extension') || line.includes('Extension') || 
-            line.includes('service_worker') || line.includes('ServiceWorker') ||
-            line.includes('ERR_') || line.includes('error'))) {
+        if (line.trim()) {
           console.log('[Chrome stderr]', line.trim());
         }
       }
@@ -353,6 +359,10 @@ async function launchChrome(
   if ((proc as any).stdio) {
     result.cdpPipeIn = (proc as any).stdio[3] as Writable;
     result.cdpPipeOut = (proc as any).stdio[4] as Readable;
+
+    // Prevent unhandled ECONNRESET when Chrome is killed
+    result.cdpPipeIn?.on('error', () => {});
+    result.cdpPipeOut?.on('error', () => {});
 
     // Start consuming pipe data immediately to prevent buffer backpressure.
     // Without this, Chrome's pipe output can fill up and block.
@@ -528,7 +538,10 @@ export class BrowserManager {
       this.running = null;
     }
     if (this._relayServer) {
-      try { await this._relayServer.stop(); } catch { /* best effort */ }
+      try {
+        const relayUrl = this._relayServer.baseUrl;
+        await stopChromeExtensionRelayServer({ cdpUrl: relayUrl });
+      } catch { /* best effort */ }
       this._relayServer = null;
     }
 
@@ -578,22 +591,31 @@ export class BrowserManager {
     this._relayServer = await ensureChromeExtensionRelayServer({ cdpUrl: relayUrl });
     console.log('[BrowserManager] Relay server started on port', relayPort);
 
-    // --- Resolve extension path ---
+    // --- Resolve extension source path ---
     let srcDir = path.dirname(new URL(import.meta.url).pathname);
     if (process.platform === 'win32' && srcDir.startsWith('/')) {
       srcDir = srcDir.substring(1);
     }
-    let extensionPath = path.join(srcDir, 'extension');
-    if (!fs.existsSync(extensionPath)) {
+    let extensionSrcPath = path.join(srcDir, 'extension');
+    if (!fs.existsSync(extensionSrcPath)) {
       const altPath = path.resolve(srcDir, '..', '..', 'src', 'browser', 'extension');
       if (fs.existsSync(altPath)) {
-        extensionPath = altPath;
+        extensionSrcPath = altPath;
       }
     }
+
+    // --- Copy extension to a fresh temp directory ---
+    // Chrome caches extension SW by extension ID (derived from path).
+    // If the previous SW became stuck (e.g. Chrome killed mid-session),
+    // the cached SW may never re-run initialize(). Using a fresh path
+    // forces Chrome to create a new extension ID with a clean SW.
+    const authToken = resolveRelayAuthToken(relayPort);
+    const tempExtDir = path.join(os.tmpdir(), `claude-ext-${Date.now()}`);
+    fs.cpSync(extensionSrcPath, tempExtDir, { recursive: true });
+    const extensionPath = tempExtDir;
     this._extensionPath = extensionPath;
 
-    // --- Inject relay config into extension ---
-    const authToken = resolveRelayAuthToken(relayPort);
+    // --- Inject relay config into the temp copy ---
     const bgPath = path.join(extensionPath, 'background.js');
     let bgContent = fs.readFileSync(bgPath, 'utf-8');
     bgContent = bgContent.replace(
@@ -604,7 +626,7 @@ export class BrowserManager {
       `// __RELAY_CONFIG_END__`
     );
     fs.writeFileSync(bgPath, bgContent);
-    console.log('[BrowserManager] Extension config injected, path:', extensionPath);
+    console.log('[BrowserManager] Extension copied to temp dir:', extensionPath);
 
     // --- Launch Chrome ---
     const chrome = await launchChrome(exe, cdpPort, userDataDir, options);
@@ -628,21 +650,35 @@ export class BrowserManager {
     const extId = await loadExtensionViaPipe(chrome, extensionPath);
     console.log('[BrowserManager] Extension loaded, ID:', extId);
 
+    // --- Activate extension service worker ---
+    // Chrome may not immediately run the SW after loadUnpacked.
+    // Enable ServiceWorker domain and navigate the about:blank tab to
+    // trigger Chrome to start the SW.
+    try {
+      await sendCdpViaPipe(chrome, 'ServiceWorker.enable', {}, 3000);
+    } catch { /* ServiceWorker domain may not be available in all Chrome versions */ }
+
     // --- Wait for extension service worker to start and connect to relay ---
-    const maxWait = 15000;
+    // Chrome's SW may not run initialize() immediately after loadUnpacked.
+    // We periodically kill the old SW target and reload the extension to
+    // force a fresh start.
+    const maxWait = 30000;
     const pollInterval = 500;
     let waited = 0;
-    let reloadAttempted = false;
+    let reloadCount = 0;
+    const reloadIntervalMs = 5000;
 
     while (waited < maxWait) {
       if (this._relayServer.extensionConnected()) break;
       await new Promise(resolve => setTimeout(resolve, pollInterval));
       waited += pollInterval;
 
-      // At 5s mark: check if service worker is running; if not, reload extension
-      if (waited >= 5000 && !reloadAttempted) {
-        reloadAttempted = true;
+      // Every 5s: try to poke the SW via CDP Runtime.evaluate to force connectToRelay()
+      if (waited > 0 && waited % reloadIntervalMs === 0 && !this._relayServer.extensionConnected()) {
+        reloadCount++;
+        console.log(`[BrowserManager] Extension not connected after ${waited / 1000}s, poking SW (attempt ${reloadCount})...`);
         try {
+          // Find the extension's service worker target
           const targets = await sendCdpViaPipe(chrome, 'Target.getTargets') as {
             targetInfos: Array<{ targetId: string; type: string; url: string }>;
           };
@@ -650,22 +686,90 @@ export class BrowserManager {
             (t: any) => t.type === 'service_worker' && t.url?.includes(extId),
           ) || [];
 
-          if (swTargets.length === 0) {
-            console.warn('[BrowserManager] No extension SW found after 5s, reloading extension...');
+          if (swTargets.length > 0) {
+            // Attach to the SW and diagnose + call connectToRelay() directly
             try {
-              await loadExtensionViaPipe(chrome, extensionPath);
-              console.log('[BrowserManager] Extension reloaded');
-            } catch (reloadErr: any) {
-              console.warn('[BrowserManager] Extension reload failed:', reloadErr.message);
+              const swTargetId = swTargets[0].targetId;
+              const attachResult = await sendCdpViaPipe(chrome, 'Target.attachToTarget', {
+                targetId: swTargetId,
+                flatten: true,
+              }, 5000) as { sessionId: string };
+
+              if (attachResult?.sessionId) {
+                const sid = attachResult.sessionId;
+
+                // First: diagnose the SW state
+                const diagId = pipeMessageId++;
+                const diagResponse = await new Promise<any>((resolve) => {
+                  const timer = setTimeout(() => resolve(null), 3000);
+                  const onData = (chunk: Buffer) => {
+                    const str = chunk.toString();
+                    if (str.includes(`"id":${diagId}`)) {
+                      clearTimeout(timer);
+                      chrome.cdpPipeOut!.removeListener('data', onData);
+                      try {
+                        // Parse carefully — pipe may have multiple messages
+                        const msgs = str.split('\0').filter(Boolean);
+                        for (const m of msgs) {
+                          try {
+                            const parsed = JSON.parse(m);
+                            if (parsed.id === diagId) { resolve(parsed); return; }
+                          } catch {}
+                        }
+                      } catch {}
+                      resolve(null);
+                    }
+                  };
+                  chrome.cdpPipeOut!.on('data', onData);
+                  chrome.cdpPipeIn!.write(JSON.stringify({
+                    id: diagId,
+                    sessionId: sid,
+                    method: 'Runtime.evaluate',
+                    params: { expression: `JSON.stringify({ relayPort, hasWs: !!ws, wsState: ws?.readyState, isReady, reconnectAttempt, wsConstructor: typeof WebSocket })` },
+                  }) + '\0');
+                });
+                if (diagResponse?.result?.result?.value) {
+                  console.log(`[BrowserManager] SW state: ${diagResponse.result.result.value}`);
+                } else if (diagResponse?.result?.exceptionDetails) {
+                  console.log(`[BrowserManager] SW eval error: ${JSON.stringify(diagResponse.result.exceptionDetails.text || diagResponse.result.exceptionDetails)}`);
+                }
+
+                // Then: call connectToRelay()
+                const evalId = pipeMessageId++;
+                chrome.cdpPipeIn!.write(JSON.stringify({
+                  id: evalId,
+                  sessionId: sid,
+                  method: 'Runtime.evaluate',
+                  params: { expression: 'connectToRelay()', awaitPromise: true },
+                }) + '\0');
+                console.log(`[BrowserManager] Sent connectToRelay() to SW via CDP session ${sid}`);
+
+                // Wait briefly for it to take effect, then detach
+                await new Promise(r => setTimeout(r, 2000));
+                await sendCdpViaPipe(chrome, 'Target.detachFromTarget', { sessionId: sid }).catch(() => {});
+              }
+            } catch (evalErr: any) {
+              console.log(`[BrowserManager] SW poke failed: ${evalErr.message}`);
             }
           } else {
-            console.log(`[BrowserManager] SW running but not connected to relay yet (url: ${swTargets[0].url})`);
+            // No SW found — reload extension entirely
+            console.log('[BrowserManager] No SW target found, reloading extension...');
+            const bgPath = path.join(extensionPath, 'background.js');
+            let bgContent = fs.readFileSync(bgPath, 'utf-8');
+            bgContent = bgContent.replace(
+              /\/\/ __RELAY_CONFIG_START__[\s\S]*?\/\/ __RELAY_CONFIG_END__/,
+              `// __RELAY_CONFIG_START__ (do not edit - replaced by installExtension)\n` +
+              `const INJECTED_RELAY_PORT = ${relayPort};\n` +
+              `const INJECTED_GATEWAY_TOKEN = ${JSON.stringify(authToken)};\n` +
+              `// __RELAY_CONFIG_END__`
+            );
+            fs.writeFileSync(bgPath, bgContent);
+            await loadExtensionViaPipe(chrome, extensionPath);
+            console.log('[BrowserManager] Extension reloaded');
           }
-        } catch { /* ignore diagnostic errors */ }
-      }
-
-      if (waited % 5000 === 0 && waited > 0) {
-        console.log(`[BrowserManager] Waiting for extension connection... ${waited / 1000}s`);
+        } catch (reloadErr: any) {
+          console.warn('[BrowserManager] SW poke/reload failed:', reloadErr.message);
+        }
       }
     }
 
@@ -676,11 +780,11 @@ export class BrowserManager {
           targetInfos: Array<{ type: string; url: string }>;
         };
         const types = targets.targetInfos?.map((t: any) => `${t.type}:${t.url?.substring(0, 60)}`).join(' | ') || 'none';
-        console.error(`[BrowserManager] Extension connection timeout. Chrome targets: ${types}`);
+        console.error(`[BrowserManager] Extension connection timeout after ${reloadCount} reload attempts. Chrome targets: ${types}`);
       } catch { /* ignore */ }
-      throw new Error(`Extension did not connect to relay within ${maxWait / 1000}s. Extension ID: ${extId}`);
+      throw new Error(`Extension did not connect to relay within ${maxWait / 1000}s (${reloadCount} reloads). Extension ID: ${extId}`);
     }
-    console.log(`[BrowserManager] Extension connected to relay after ${waited}ms`);
+    console.log(`[BrowserManager] Extension connected to relay after ${waited}ms (${reloadCount} reloads)`);
 
     // --- Wait for at least one tab to be attached ---
     const targetMaxWait = 10000;
@@ -714,25 +818,37 @@ export class BrowserManager {
   }
 
   async stop(): Promise<void> {
-    // Disconnect Playwright CDP
-    await disconnectBrowser();
+    // IMPORTANT: Order matters! Kill Chrome first to break the extension reconnect
+    // loop, then disconnect Playwright, then stop relay.
+    // Old order (Playwright→Chrome→Relay) caused hangs because browser.close()
+    // sends CDP commands through relay to extension, but extension might be in
+    // a reconnect loop making those commands hang forever.
 
-    // Stop Chrome process if we launched it
+    // 1. Kill Chrome process first — this terminates the extension SW immediately,
+    //    breaking any reconnect loop and ensuring no more CDP traffic.
     if (this.running) {
       await stopChrome(this.running);
       this.running = null;
     }
 
-    // Stop relay server if running
+    // 2. Stop relay server — this closes all WebSocket connections cleanly.
+    //    Extension is already dead so no reconnect loop can occur.
     if (this._relayServer) {
-      await this._relayServer.stop();
+      const relayUrl = this._relayServer.baseUrl;
+      await stopChromeExtensionRelayServer({ cdpUrl: relayUrl });
       this._relayServer = null;
     }
 
-    // NOTE: We intentionally do NOT reset background.js to port=0 on stop.
-    // Chrome may cache the service worker, so leaving the last valid config
-    // prevents a stale SW from running with port=0. start() always re-injects
-    // the correct config before launching Chrome.
+    // 3. Disconnect Playwright last — at this point relay is down, so
+    //    browser.close() will fail fast rather than hang.
+    await disconnectBrowser();
+
+    // Clean up temp extension directory
+    if (this._extensionPath && this._extensionPath.includes('claude-ext-')) {
+      try {
+        fs.rmSync(this._extensionPath, { recursive: true, force: true });
+      } catch { /* best effort */ }
+    }
 
     this.cleanup();
   }

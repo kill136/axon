@@ -16,7 +16,7 @@
 <img src="demo-screenshots/demo.gif" width="720" alt="Claude Code Open Demo">
 </a>
 
-<sub><a href="https://github.com/kill136/claude-code-open/releases/download/v2.1.37/promo-video.mp4">Watch full video</a> | <a href="https://voicegpt.site">Try Live Demo</a></sub>
+<sub><a href="https://youtu.be/OQ29pIgp5AI">Watch on YouTube</a> | <a href="https://github.com/kill136/claude-code-open/releases/download/v2.1.37/promo-video.mp4">Download video</a> | <a href="https://voicegpt.site">Try Live Demo</a></sub>
 
 </div>
 

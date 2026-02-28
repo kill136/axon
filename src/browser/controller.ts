@@ -166,7 +166,11 @@ export class BrowserController {
     if (this.dedicatedPage) {
       this.manager.releasePage(this.dedicatedPage);
       if (!this.dedicatedPage.isClosed()) {
-        await this.dedicatedPage.close();
+        // Timeout protection: page.close() sends CDP command through relay to
+        // extension. If extension is disconnected or page is broken, this hangs.
+        const closePromise = this.dedicatedPage.close().catch(() => {});
+        const timeoutPromise = new Promise<void>(r => setTimeout(r, 3000));
+        await Promise.race([closePromise, timeoutPromise]);
       }
     }
     this.dedicatedPage = null;
