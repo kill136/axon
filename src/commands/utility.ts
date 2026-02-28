@@ -521,7 +521,7 @@ export const skillsCommand: SlashCommand = {
 // 支持按 r 键循环切换日期范围: Last 7 days / Last 30 days / All time
 export const statsCommand: SlashCommand = {
   name: 'stats',
-  description: 'Show your Claude Code usage statistics and activity',
+  description: 'Show your Axon usage statistics and activity',
   category: 'utility',
   execute: (ctx: CommandContext): CommandResult => {
     // v2.1.6+: 返回交互式 JSX 组件，由 App.tsx 显示为交互式对话框
@@ -545,7 +545,7 @@ export const statsCommand: SlashCommand = {
 export const thinkBackCommand: SlashCommand = {
   name: 'think-back',
   aliases: ['thinkback', 'year-review'],
-  description: 'Your 2025 Claude Code Year in Review',
+  description: 'Your 2025 Axon Year in Review',
   category: 'utility',
   execute: (ctx: CommandContext): CommandResult => {
     // 收集会话统计
@@ -601,7 +601,7 @@ export const thinkBackCommand: SlashCommand = {
 
     const thinkBackInfo = `╭─────────────────────────────────────────────────────╮
 │                                                     │
-│       🎉 Your 2025 Claude Code Year in Review       │
+│       🎉 Your 2025 Axon Year in Review       │
 │                                                     │
 ╰─────────────────────────────────────────────────────╯
 
@@ -782,7 +782,7 @@ export const mobileCommand: SlashCommand = {
     // 生成一个简单的 ASCII QR 码或者显示说明
     const mobileInfo = `Mobile Connection
 
-Claude Code mobile integration is coming soon!
+Axon mobile integration is coming soon!
 
 Current status: Beta
 

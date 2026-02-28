@@ -13,11 +13,11 @@ import * as os from 'os';
 // 获取API密钥
 function getApiKey(): string | null {
   // 优先从环境变量获取
-  const envKey = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
+  const envKey = process.env.ANTHROPIC_API_KEY || process.env.AXON_API_KEY;
   if (envKey) return envKey;
 
   // 从配置文件获取
-  const credentialsFile = path.join(os.homedir(), '.claude', 'credentials.json');
+  const credentialsFile = path.join(os.homedir(), '.axon', 'credentials.json');
   if (fs.existsSync(credentialsFile)) {
     try {
       const creds = JSON.parse(fs.readFileSync(credentialsFile, 'utf-8'));
@@ -252,7 +252,7 @@ To view detailed costs:
   /session stats       Show full session statistics
 
 To check API limits:
-  Visit https://platform.claude.com/settings/limits`;
+  Visit https://platform.axon.com/settings/limits`;
 
   ctx.ui.addMessage('assistant', usageInfo);
   return { success: true };
@@ -361,7 +361,7 @@ Common Issues:
 
 1. Invalid API Key:
    • Check that your key starts with "sk-ant-"
-   • Verify the key at https://platform.claude.com/settings/keys
+   • Verify the key at https://platform.axon.com/settings/keys
    • Try regenerating your API key
 
 2. Network Issues:
@@ -371,7 +371,7 @@ Common Issues:
 
 3. Rate Limits:
    • You may have exceeded rate limits
-   • Visit https://platform.claude.com/settings/limits
+   • Visit https://platform.axon.com/settings/limits
    • Wait a few minutes and try again
 
 To update your API key:
@@ -400,10 +400,10 @@ Token Storage Locations:
 
 1. Environment Variables (Highest Priority):
    • ANTHROPIC_API_KEY
-   • CLAUDE_API_KEY
+   • AXON_API_KEY
 
 2. Configuration File:
-   • ~/.claude/credentials.json
+   • ~/.axon/credentials.json
 
 3. Session Token:
    • Temporary tokens for current session
@@ -428,8 +428,8 @@ ${getTokenStatus()}
 
 Priority Order:
   1. ANTHROPIC_API_KEY (environment)
-  2. CLAUDE_API_KEY (environment)
-  3. ~/.claude/credentials.json (file)
+  2. AXON_API_KEY (environment)
+  3. ~/.axon/credentials.json (file)
 
 Configuration:
   • API Type: ${ctx.config.apiType || 'anthropic'}
@@ -463,7 +463,7 @@ To set a new API token, use one of these methods:
    Add to ~/.bashrc or ~/.zshrc for persistence.
 
 3. Manual File Edit:
-   Edit ~/.claude/credentials.json:
+   Edit ~/.axon/credentials.json:
    {
      "apiKey": "sk-ant-your-key-here"
    }
@@ -472,17 +472,17 @@ Security Notes:
   • Never commit API keys to git
   • Use environment variables in production
   • Rotate keys regularly
-  • Set spend limits at platform.claude.com
+  • Set spend limits at platform.axon.com
 
 Get your API key:
-  https://platform.claude.com/settings/keys`;
+  https://platform.axon.com/settings/keys`;
 
       ctx.ui.addMessage('assistant', setInfo);
       return { success: true };
     }
 
     case 'clear': {
-      const credentialsFile = path.join(os.homedir(), '.claude', 'credentials.json');
+      const credentialsFile = path.join(os.homedir(), '.axon', 'credentials.json');
 
       if (fs.existsSync(credentialsFile)) {
         try {
@@ -491,12 +491,12 @@ Get your API key:
             'assistant',
             `✅ Cleared stored API token
 
-Removed: ~/.claude/credentials.json
+Removed: ~/.axon/credentials.json
 
 Note: Environment variables are still set if you have them.
 To clear environment variables:
   unset ANTHROPIC_API_KEY
-  unset CLAUDE_API_KEY
+  unset AXON_API_KEY
 
 To set a new token:
   /setup-token
@@ -514,7 +514,7 @@ To set a new token:
 
 If you have environment variables set:
   unset ANTHROPIC_API_KEY
-  unset CLAUDE_API_KEY`
+  unset AXON_API_KEY`
         );
         return { success: true };
       }
@@ -538,15 +538,15 @@ Available subcommands:
 
 // 获取 token 状态信息
 function getTokenStatus(): string {
-  const envKey = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
-  const credentialsFile = path.join(os.homedir(), '.claude', 'credentials.json');
+  const envKey = process.env.ANTHROPIC_API_KEY || process.env.AXON_API_KEY;
+  const credentialsFile = path.join(os.homedir(), '.axon', 'credentials.json');
   const hasFileKey = fs.existsSync(credentialsFile);
 
   let status = '';
 
   if (envKey) {
     status += `✓ Environment Variable: ${envKey.substring(0, 20)}...\n`;
-    status += `  Source: ${process.env.ANTHROPIC_API_KEY ? 'ANTHROPIC_API_KEY' : 'CLAUDE_API_KEY'}\n`;
+    status += `  Source: ${process.env.ANTHROPIC_API_KEY ? 'ANTHROPIC_API_KEY' : 'AXON_API_KEY'}\n`;
   } else {
     status += `✗ Environment Variable: Not set\n`;
   }
@@ -557,7 +557,7 @@ function getTokenStatus(): string {
       const fileKey = creds.apiKey || creds.api_key;
       if (fileKey) {
         status += `✓ File Token: ${fileKey.substring(0, 20)}...\n`;
-        status += `  Location: ~/.claude/credentials.json\n`;
+        status += `  Location: ~/.axon/credentials.json\n`;
       } else {
         status += `✗ File Token: File exists but no key found\n`;
       }

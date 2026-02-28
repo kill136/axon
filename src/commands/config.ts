@@ -137,7 +137,7 @@ const CONFIG_ITEMS: ConfigItem[] = [
 export const configCommand: SlashCommand = {
   name: 'config',
   aliases: ['settings'],
-  description: 'Manage Claude Code configuration settings',
+  description: 'Manage Axon configuration settings',
   usage: '/config [get <key>|set <key> <value>|reset [key]|list]',
   category: 'config',
   execute: (ctx: CommandContext): CommandResult => {
@@ -150,7 +150,7 @@ export const configCommand: SlashCommand = {
       const configInfo = `╭─ Configuration ─────────────────────────────────────╮
 │                                                     │
 │  Settings Location:                                 │
-│    ~/.claude/settings.json                          │
+│    ~/.axon/settings.json                          │
 │                                                     │
 │  Current Settings:                                  │
 │    model             ${(config.model || 'sonnet').toString().padEnd(28)} │
@@ -448,7 +448,7 @@ Default Value: ${configItem.defaultValue}
 Description: ${configItem.description}
 
 Configuration saved to: ${configFile}
-Restart Claude Code to apply changes.`);
+Restart Axon to apply changes.`);
             ctx.ui.addActivity(`Reset config: ${key}`);
             return { success: true };
           } else {
@@ -472,7 +472,7 @@ ${CONFIG_ITEMS.map(item => `  • ${item.key.padEnd(20)} = ${item.defaultValue}`
 
 Settings file: ${configFile}
 
-Restart Claude Code to apply all changes.`);
+Restart Axon to apply all changes.`);
         ctx.ui.addActivity('Configuration reset');
         return { success: true };
       } else {
@@ -671,7 +671,7 @@ Valid modes: default, acceptEdits, bypassPermissions, plan, dontAsk`);
         ctx.ui.addMessage('assistant', `✓ Permission mode changed to: ${mode}
 
 ${mode === 'bypasspermissions' || mode === 'dontask' ? '⚠️  WARNING: This mode will execute all actions without asking!\nOnly use in trusted environments or sandboxes.\n\n' : ''}Settings saved to: ${getConfigFile()}
-Restart Claude Code to apply the new permission mode.`);
+Restart Axon to apply the new permission mode.`);
         ctx.ui.addActivity(`Changed permission mode to: ${mode}`);
         return { success: true };
       } else {
@@ -713,7 +713,7 @@ Example: /permissions allow Bash`);
 Current allowed tools: ${currentAllowed.join(', ')}
 
 Settings saved to: ${getConfigFile()}
-Restart Claude Code to apply changes.`);
+Restart Axon to apply changes.`);
           ctx.ui.addActivity(`Allowed tool: ${toolName}`);
           return { success: true };
         } else {
@@ -757,7 +757,7 @@ Example: /permissions deny WebSearch`);
 Current disallowed tools: ${currentDisallowed.join(', ')}
 
 Settings saved to: ${getConfigFile()}
-Restart Claude Code to apply changes.`);
+Restart Axon to apply changes.`);
           ctx.ui.addActivity(`Denied tool: ${toolName}`);
           return { success: true };
         } else {
@@ -784,7 +784,7 @@ Allowed tools: (all)
 Disallowed tools: (none)
 
 Settings saved to: ${getConfigFile()}
-Restart Claude Code to apply changes.`);
+Restart Axon to apply changes.`);
         ctx.ui.addActivity('Reset permission settings');
         return { success: true };
       } else {
@@ -820,8 +820,8 @@ export const memoryCommand: SlashCommand = {
 
     // Memory 文件位置
     const sessionMemoryDir = path.join(os.homedir(), '.claude', 'session-memory');
-    const claudeMdPath = path.join(config.cwd, 'CLAUDE.md');
-    const globalClaudeMd = path.join(os.homedir(), '.claude', 'CLAUDE.md');
+    const claudeMdPath = path.join(config.cwd, 'AXON.md');
+    const globalClaudeMd = path.join(os.homedir(), '.axon', 'AXON.md');
 
     const action = args[0] || 'list';
 
@@ -830,12 +830,12 @@ export const memoryCommand: SlashCommand = {
         // 列出所有 memory 文件
         const memoryFiles: string[] = [];
 
-        // 检查 CLAUDE.md 文件
+        // 检查 AXON.md 文件
         if (fs.existsSync(claudeMdPath)) {
-          memoryFiles.push(`📄 Project CLAUDE.md\n   ${claudeMdPath}`);
+          memoryFiles.push(`📄 Project AXON.md\n   ${claudeMdPath}`);
         }
         if (fs.existsSync(globalClaudeMd)) {
-          memoryFiles.push(`📄 Global CLAUDE.md\n   ${globalClaudeMd}`);
+          memoryFiles.push(`📄 Global AXON.md\n   ${globalClaudeMd}`);
         }
 
         // 检查 session-memory 目录
@@ -860,7 +860,7 @@ Locations:
   • Global:  ${globalClaudeMd}
   • Session: ${sessionMemoryDir}/
 
-Create a CLAUDE.md file with /init to get started.
+Create a AXON.md file with /init to get started.
 
 Learn more: https://code.claude.com/docs/en/memory`);
         } else {
@@ -873,7 +873,7 @@ Commands:
   /memory show <file>    - Show memory file contents
   /memory edit           - Open memory file in editor
   /memory clear          - Clear session memory
-  /init                  - Create new CLAUDE.md
+  /init                  - Create new AXON.md
 
 Learn more: https://code.claude.com/docs/en/memory`;
           ctx.ui.addMessage('assistant', listInfo);
@@ -887,11 +887,11 @@ Learn more: https://code.claude.com/docs/en/memory`;
           ctx.ui.addMessage('assistant', `Usage: /memory show <file>
 
 Available files:
-  • CLAUDE.md (project)
-  • CLAUDE.md (global)
+  • AXON.md (project)
+  • AXON.md (global)
   • <session-id>.md (session memory)
 
-Example: /memory show CLAUDE.md`);
+Example: /memory show AXON.md`);
           return { success: false };
         }
 
@@ -899,7 +899,7 @@ Example: /memory show CLAUDE.md`);
         let filePath: string | null = null;
         let content = '';
 
-        if (fileName === 'CLAUDE.md' || fileName === 'project') {
+        if (fileName === 'AXON.md' || fileName === 'project') {
           if (fs.existsSync(claudeMdPath)) {
             filePath = claudeMdPath;
           }
@@ -944,10 +944,10 @@ Use /memory list to see available files.`);
 
 To edit memory files, use your preferred text editor:
 
-Project CLAUDE.md:
+Project AXON.md:
   ${claudeMdPath}
 
-Global CLAUDE.md:
+Global AXON.md:
   ${globalClaudeMd}
 
 Using $EDITOR environment variable:
@@ -987,7 +987,7 @@ Learn more: https://code.claude.com/docs/en/memory`;
             ctx.ui.addMessage('assistant', `✓ Cleared ${cleared} session memory file(s)
 
 Session memory has been reset.
-Project and global CLAUDE.md files are preserved.`);
+Project and global AXON.md files are preserved.`);
             ctx.ui.addActivity(`Cleared ${cleared} session memory files`);
           } catch (error) {
             ctx.ui.addMessage('assistant', `Error clearing session memory: ${error}`);
@@ -1121,7 +1121,7 @@ export const hooksCommand: SlashCommand = {
       let hooksInfo = `╭─ Hooks Configuration ──────────────────────────────╮
 │                                                     │
 │  Status: ${(isDisabled ? 'Disabled' : hasHooks ? 'Configured' : 'Not configured').padEnd(42)} │
-│  Location: ~/.claude/settings.json                 │
+│  Location: ~/.axon/settings.json                 │
 │                                                     │`;
 
       if (hasHooks) {
@@ -1149,7 +1149,7 @@ export const hooksCommand: SlashCommand = {
 │    /hooks ${isDisabled ? 'enable' : 'disable'}     - ${isDisabled ? 'Enable' : 'Disable'} all hooks${' '.repeat(isDisabled ? 5 : 8)} │
 │                                                     │
 │  Configuration:                                     │
-│    Edit ~/.claude/settings.json manually            │
+│    Edit ~/.axon/settings.json manually            │
 │    See /hooks examples for sample configs           │
 │                                                     │
 ╰─────────────────────────────────────────────────────╯`;
@@ -1320,7 +1320,7 @@ Important Notes:
   • Multiple hooks run sequentially in array order
 
 Configuration Location:
-  ~/.claude/settings.json
+  ~/.axon/settings.json
 
 To disable all hooks:
   /hooks disable
@@ -1342,9 +1342,9 @@ To disable hooks temporarily:
 Configuration updated: ${getConfigFile()}
 
 To re-enable hooks:
-  1. Edit ~/.claude/settings.json
+  1. Edit ~/.axon/settings.json
   2. Remove or set "disableAllHooks": false
-  3. Restart Claude Code
+  3. Restart Axon
 
 Note: Hook configurations are preserved, just not executed.`);
         ctx.ui.addActivity('Disabled all hooks');
@@ -1364,7 +1364,7 @@ Note: Hook configurations are preserved, just not executed.`);
           ctx.ui.addMessage('assistant', `✓ Hooks enabled
 
 Configuration updated: ${getConfigFile()}
-Restart Claude Code to apply changes.`);
+Restart Axon to apply changes.`);
           ctx.ui.addActivity('Enabled hooks');
           return { success: true };
         } else {
@@ -1388,7 +1388,7 @@ Available commands:
   /hooks disable      - Disable all hooks
   /hooks enable       - Re-enable hooks
 
-Note: Hooks must be configured manually in ~/.claude/settings.json
+Note: Hooks must be configured manually in ~/.axon/settings.json
 Use /hooks examples to see sample configurations.`);
     return { success: false };
   },
@@ -1502,12 +1502,12 @@ export const modelCommand: SlashCommand = {
 // /init - 初始化项目的 Claude 配置（基于官方源码）
 export const initCommand: SlashCommand = {
   name: 'init',
-  description: 'Initialize Claude Code configuration for this project',
+  description: 'Initialize Axon configuration for this project',
   usage: '/init',
   category: 'config',
   execute: (ctx: CommandContext): CommandResult => {
     const { config } = ctx;
-    const claudeMdPath = path.join(config.cwd, 'CLAUDE.md');
+    const claudeMdPath = path.join(config.cwd, 'AXON.md');
     const claudeDir = path.join(config.cwd, '.claude');
     const commandsDir = path.join(claudeDir, 'commands');
     const gitignorePath = path.join(config.cwd, '.gitignore');
@@ -1518,22 +1518,22 @@ export const initCommand: SlashCommand = {
     if (alreadyInitialized) {
       // 如果已存在，发送改进提示
       const existingFiles: string[] = [];
-      if (fs.existsSync(claudeMdPath)) existingFiles.push('CLAUDE.md');
-      if (fs.existsSync(claudeDir)) existingFiles.push('.claude/');
+      if (fs.existsSync(claudeMdPath)) existingFiles.push('AXON.md');
+      if (fs.existsSync(claudeDir)) existingFiles.push('.axon/');
 
-      const improvementPrompt = `Please analyze this codebase and suggest improvements to the existing Claude Code configuration.
+      const improvementPrompt = `Please analyze this codebase and suggest improvements to the existing Axon configuration.
 
 Current configuration found:
 ${existingFiles.map(f => `- ${f}`).join('\n')}
 
 Please review and suggest improvements for:
-1. CLAUDE.md - Is it comprehensive? Does it include key commands and architecture?
-2. .claude/ directory - Are there useful custom commands or settings that should be added?
+1. AXON.md - Is it comprehensive? Does it include key commands and architecture?
+2. .axon/ directory - Are there useful custom commands or settings that should be added?
 3. Any missing configuration that would help future Claude instances work more effectively in this codebase.
 
 Focus on practical improvements based on the actual codebase structure and development workflow.`;
 
-      ctx.ui.addMessage('assistant', `Claude Code is already initialized in this project.
+      ctx.ui.addMessage('assistant', `Axon is already initialized in this project.
 
 Found existing configuration:
 ${existingFiles.map(f => `  • ${f}`).join('\n')}
@@ -1547,14 +1547,14 @@ I'll analyze your codebase and suggest improvements to your configuration.`);
     }
 
     // 如果未初始化，发送完整的初始化提示（基于官方源码）
-    const initPrompt = `Please analyze this codebase and create a CLAUDE.md file, which will be given to future instances of Claude Code to operate in this repository.
+    const initPrompt = `Please analyze this codebase and create a AXON.md file, which will be given to future instances of Axon to operate in this repository.
 
 What to add:
 1. Commands that will be commonly used, such as how to build, lint, and run tests. Include the necessary commands to develop in this codebase, such as how to run a single test.
 2. High-level code architecture and structure so that future instances can be productive more quickly. Focus on the "big picture" architecture that requires reading multiple files to understand.
 
 Usage notes:
-- When you make the initial CLAUDE.md, do not repeat yourself and do not include obvious instructions like "Provide helpful error messages to users", "Write unit tests for all new utilities", "Never include sensitive information (API keys, tokens) in code or commits".
+- When you make the initial AXON.md, do not repeat yourself and do not include obvious instructions like "Provide helpful error messages to users", "Write unit tests for all new utilities", "Never include sensitive information (API keys, tokens) in code or commits".
 - Avoid listing every component or file structure that can be easily discovered.
 - Don't include generic development practices.
 - If there are Cursor rules (in .cursor/rules/ or .cursorrules) or Copilot rules (in .github/copilot-instructions.md), make sure to include the important parts.
@@ -1563,31 +1563,31 @@ Usage notes:
 - Be sure to prefix the file with the following text:
 
 \`\`\`
-# CLAUDE.md
+# AXON.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Axon (claude.ai/code) when working with code in this repository.
 \`\`\`
 
-Additionally, please help set up the .claude/ directory structure:
-1. Create .claude/commands/ for custom slash commands
-2. Suggest adding .claude/ to .gitignore (but keep CLAUDE.md tracked)
+Additionally, please help set up the .axon/ directory structure:
+1. Create .axon/commands/ for custom slash commands
+2. Suggest adding .axon/ to .gitignore (but keep AXON.md tracked)
 3. If there are common project-specific workflows, suggest creating custom commands for them
 
 Please analyze the codebase now and create these files.`;
 
-    ctx.ui.addMessage('assistant', `Initializing Claude Code configuration for this project...
+    ctx.ui.addMessage('assistant', `Initializing Axon configuration for this project...
 
 I'll analyze your codebase and create:
-  • CLAUDE.md - Project documentation and guidance
-  • .claude/ - Configuration directory
-  • .claude/commands/ - Custom commands directory
+  • AXON.md - Project documentation and guidance
+  • .axon/ - Configuration directory
+  • .axon/commands/ - Custom commands directory
 
-This will help future Claude Code instances understand your project better.`);
+This will help future Axon instances understand your project better.`);
 
     // 发送初始化提示
     ctx.ui.addMessage('user', initPrompt);
 
-    ctx.ui.addActivity('Initialized Claude Code project configuration');
+    ctx.ui.addActivity('Initialized Axon project configuration');
     return { success: true };
   },
 };
@@ -1605,20 +1605,20 @@ export const privacySettingsCommand: SlashCommand = {
     const config = readConfig();
 
     // 读取环境变量配置
-    const telemetryEnabled = process.env.CLAUDE_CODE_ENABLE_TELEMETRY === '1'
-      || process.env.CLAUDE_CODE_ENABLE_TELEMETRY === 'true';
-    const telemetryDisabled = process.env.CLAUDE_CODE_DISABLE_TELEMETRY === '1'
-      || process.env.CLAUDE_CODE_DISABLE_TELEMETRY === 'true';
-    const otelTimeout = process.env.CLAUDE_CODE_OTEL_SHUTDOWN_TIMEOUT_MS || '3000';
+    const telemetryEnabled = process.env.AXON_ENABLE_TELEMETRY === '1'
+      || process.env.AXON_ENABLE_TELEMETRY === 'true';
+    const telemetryDisabled = process.env.AXON_DISABLE_TELEMETRY === '1'
+      || process.env.AXON_DISABLE_TELEMETRY === 'true';
+    const otelTimeout = process.env.AXON_OTEL_SHUTDOWN_TIMEOUT_MS || '3000';
 
     // 显示隐私设置
     if (action === 'show') {
       // 确定当前遥测状态
       let telemetryStatus = 'Disabled (default for local installations)';
       if (telemetryEnabled && !telemetryDisabled) {
-        telemetryStatus = 'Enabled (CLAUDE_CODE_ENABLE_TELEMETRY=1)';
+        telemetryStatus = 'Enabled (AXON_ENABLE_TELEMETRY=1)';
       } else if (telemetryDisabled) {
-        telemetryStatus = 'Explicitly Disabled (CLAUDE_CODE_DISABLE_TELEMETRY=1)';
+        telemetryStatus = 'Explicitly Disabled (AXON_DISABLE_TELEMETRY=1)';
       }
 
       const privacyInfo = `╭─ Privacy & Data Settings ──────────────────────────╮
@@ -1630,11 +1630,11 @@ export const privacySettingsCommand: SlashCommand = {
 │    Error Logging:    Local only                     │
 │                                                     │
 │  Data Storage Locations:                            │
-│    Sessions:         ~/.claude/sessions/            │
-│    Configuration:    ~/.claude/settings.json        │
-│    Logs:             ~/.claude/logs/ (if enabled)   │
-│    Memory Files:     ~/.claude/session-memory/      │
-│    Plugins:          ~/.claude/plugins/             │
+│    Sessions:         ~/.axon/sessions/            │
+│    Configuration:    ~/.axon/settings.json        │
+│    Logs:             ~/.axon/logs/ (if enabled)   │
+│    Memory Files:     ~/.axon/session-memory/      │
+│    Plugins:          ~/.axon/plugins/             │
 │                                                     │
 │  Data Retention:                                    │
 │    Sessions:         30 days (auto-cleanup)         │
@@ -1649,13 +1649,13 @@ export const privacySettingsCommand: SlashCommand = {
 │    Conversation:     All local, end-to-end          │
 │                                                     │
 │  Environment Variables:                             │
-│    CLAUDE_CODE_ENABLE_TELEMETRY=1                   │
+│    AXON_ENABLE_TELEMETRY=1                   │
 │      Enable OpenTelemetry (disabled by default)     │
 │                                                     │
-│    CLAUDE_CODE_DISABLE_TELEMETRY=1                  │
+│    AXON_DISABLE_TELEMETRY=1                  │
 │      Explicitly disable all telemetry               │
 │                                                     │
-│    CLAUDE_CODE_OTEL_SHUTDOWN_TIMEOUT_MS=${otelTimeout.padEnd(13)} │
+│    AXON_OTEL_SHUTDOWN_TIMEOUT_MS=${otelTimeout.padEnd(13)} │
 │      OpenTelemetry shutdown timeout (milliseconds)  │
 │                                                     │
 │  Commands:                                          │
@@ -1711,8 +1711,8 @@ This action:
   • Freed up disk space
 
 Note: This does not affect:
-  • Your configuration (~/.claude/settings.json)
-  • Custom commands (.claude/commands/)
+  • Your configuration (~/.axon/settings.json)
+  • Custom commands (.axon/commands/)
   • MCP server configurations
 
 You can no longer resume any previous sessions.`);
@@ -1736,8 +1736,8 @@ Available commands:
   /privacy-settings clear-sessions - Delete all saved sessions
 
 To control telemetry, set environment variables:
-  export CLAUDE_CODE_DISABLE_TELEMETRY=1    # Disable
-  export CLAUDE_CODE_ENABLE_TELEMETRY=1     # Enable
+  export AXON_DISABLE_TELEMETRY=1    # Disable
+  export AXON_ENABLE_TELEMETRY=1     # Enable
 
 Note: Changes to environment variables require restart.`);
     return { success: false };
@@ -1819,10 +1819,10 @@ export const themeCommand: SlashCommand = {
 // /discover - 探索功能 (官方风格)
 export const discoverCommand: SlashCommand = {
   name: 'discover',
-  description: 'Explore Claude Code features and track your progress',
+  description: 'Explore Axon features and track your progress',
   category: 'config',
   execute: (ctx: CommandContext): CommandResult => {
-    const discoverInfo = `Discover Claude Code
+    const discoverInfo = `Discover Axon
 
 Quick Wins:
   ✓ /resume - Resume past conversations
@@ -1966,7 +1966,7 @@ Note: Some changes may require restarting the conversation.`);
 export const statuslineCommand: SlashCommand = {
   name: 'statusline',
   aliases: ['status-line'],
-  description: 'Set up Claude Code\'s status line UI',
+  description: 'Set up Axon\'s status line UI',
   usage: '/statusline [custom-prompt]',
   category: 'config',
   execute: (ctx: CommandContext): CommandResult => {
@@ -2004,13 +2004,13 @@ export const statuslineCommand: SlashCommand = {
       statusLineInfo += `       }\n`;
       statusLineInfo += `     }\n\n`;
       statusLineInfo += `  3. Example with shell script:\n`;
-      statusLineInfo += `     Create ~/.claude/statusline-command.sh:\n`;
+      statusLineInfo += `     Create ~/.axon/statusline-command.sh:\n`;
       statusLineInfo += `     #!/bin/bash\n`;
       statusLineInfo += `     input=$(cat)\n`;
       statusLineInfo += `     model=$(echo "$input" | jq -r '.model.display_name')\n`;
       statusLineInfo += `     cwd=$(echo "$input" | jq -r '.workspace.current_dir')\n`;
       statusLineInfo += `     echo "$model in $cwd"\n\n`;
-      statusLineInfo += `     Then set command to: "~/.claude/statusline-command.sh"\n\n`;
+      statusLineInfo += `     Then set command to: "~/.axon/statusline-command.sh"\n\n`;
       statusLineInfo += `Usage:\n`;
       statusLineInfo += `  /statusline              - Show this help\n`;
       statusLineInfo += `  /statusline setup        - Interactive setup (import from PS1)\n`;
@@ -2028,7 +2028,7 @@ export const statuslineCommand: SlashCommand = {
       if (currentStatusLine) {
         delete config.statusLine;
         if (writeConfig(config)) {
-          ctx.ui.addMessage('assistant', `Status line disabled.\n\nConfiguration updated: ${configFile}\nRestart Claude Code to apply changes.`);
+          ctx.ui.addMessage('assistant', `Status line disabled.\n\nConfiguration updated: ${configFile}\nRestart Axon to apply changes.`);
           return { success: true };
         } else {
           ctx.ui.addMessage('assistant', 'Failed to update configuration.');
@@ -2068,7 +2068,7 @@ To proceed with automatic setup:
   1. Ask Claude: "Configure my statusLine from my shell PS1"
   2. Or manually edit ${configFile}
 
-Note: You can also create a custom script in ~/.claude/ for more control.`;
+Note: You can also create a custom script in ~/.axon/ for more control.`;
 
       ctx.ui.addMessage('assistant', setupInfo);
       ctx.ui.addActivity('Showed statusline setup info');
@@ -2190,7 +2190,7 @@ export const remoteEnvCommand: SlashCommand = {
       remoteEnvInfo += `│    • Remote workspace synchronization              │\n`;
       remoteEnvInfo += `│                                                    │\n`;
       remoteEnvInfo += `│  Configuration:                                    │\n`;
-      remoteEnvInfo += `│    Location: ~/.claude/settings.json               │\n`;
+      remoteEnvInfo += `│    Location: ~/.axon/settings.json               │\n`;
       remoteEnvInfo += `│    Key: remote.defaultEnvironmentId                │\n`;
       remoteEnvInfo += `│                                                    │\n`;
       remoteEnvInfo += `│  Web Console:                                      │\n`;
@@ -2276,7 +2276,7 @@ This environment will be used for:
   • SSH connections
   • Container-based workflows
 
-Restart Claude Code to apply changes.`);
+Restart Axon to apply changes.`);
         ctx.ui.addActivity(`Set remote environment: ${selectedEnv.name}`);
         return { success: true };
       } else {
@@ -2530,7 +2530,7 @@ export const sandboxCommand: SlashCommand = {
     const action = args[0]?.toLowerCase();
 
     // 检查当前沙箱状态
-    const sandboxEnabled = process.env.CLAUDE_CODE_ENABLE_SANDBOX === 'true';
+    const sandboxEnabled = process.env.AXON_ENABLE_SANDBOX === 'true';
     const platform = process.platform;
     const supportsSandbox = platform === 'linux'; // Bubblewrap 仅支持 Linux
 
@@ -2552,7 +2552,7 @@ export const sandboxCommand: SlashCommand = {
       sandboxInfo += `  /sandbox disable  - Disable sandbox\n\n`;
 
       sandboxInfo += `Environment Variable:\n`;
-      sandboxInfo += `  CLAUDE_CODE_ENABLE_SANDBOX=true|false\n`;
+      sandboxInfo += `  AXON_ENABLE_SANDBOX=true|false\n`;
 
       ctx.ui.addMessage('assistant', sandboxInfo);
       return { success: true };
@@ -2563,13 +2563,13 @@ export const sandboxCommand: SlashCommand = {
         ctx.ui.addMessage('assistant', `Cannot enable sandbox on ${platform}.\n\nSandbox requires Linux with Bubblewrap installed.`);
         return { success: false };
       }
-      process.env.CLAUDE_CODE_ENABLE_SANDBOX = 'true';
-      ctx.ui.addMessage('assistant', 'Sandbox enabled for this session.\n\nTo make permanent, set CLAUDE_CODE_ENABLE_SANDBOX=true in your environment.');
+      process.env.AXON_ENABLE_SANDBOX = 'true';
+      ctx.ui.addMessage('assistant', 'Sandbox enabled for this session.\n\nTo make permanent, set AXON_ENABLE_SANDBOX=true in your environment.');
       return { success: true };
     }
 
     if (action === 'disable') {
-      process.env.CLAUDE_CODE_ENABLE_SANDBOX = 'false';
+      process.env.AXON_ENABLE_SANDBOX = 'false';
       ctx.ui.addMessage('assistant', 'Sandbox disabled for this session.');
       return { success: true };
     }

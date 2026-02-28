@@ -13,7 +13,7 @@ import * as os from 'os';
 import { ResumeSession } from '../ui/components/ResumeSession.js';
 
 // 获取会话目录
-const getSessionsDir = () => path.join(os.homedir(), '.claude', 'sessions');
+const getSessionsDir = () => path.join(os.homedir(), '.axon', 'sessions');
 
 // 格式化时间差 (官方风格: "2h ago", "3d ago")
 function getTimeAgo(date: Date): string {
@@ -279,7 +279,7 @@ export const resumeCommand: SlashCommand = {
       sessionList += `  /resume <id>      - View by session ID (e.g., /resume ${displaySessions[0].id.slice(0, 8)})\n`;
       sessionList += `  /resume <search>  - Filter by keyword (e.g., /resume typescript)\n\n`;
 
-      sessionList += `To actually resume a session, restart Claude Code:\n`;
+      sessionList += `To actually resume a session, restart Axon:\n`;
       sessionList += `  claude --resume ${displaySessions[0].id.slice(0, 8)}\n`;
       sessionList += `  claude -r <session-id>`;
 
@@ -351,7 +351,7 @@ function showSessionDetail(ctx: CommandContext, session: SessionFileData): Comma
     }
   }
 
-  info += `\nTo resume this session, restart Claude Code with:\n\n`;
+  info += `\nTo resume this session, restart Axon with:\n\n`;
   info += `  claude --resume ${session.id}\n\n`;
   info += `Or use the short form:\n\n`;
   info += `  claude -r ${session.id.slice(0, 8)}\n\n`;
@@ -822,7 +822,7 @@ export const exportCommand: SlashCommand = {
       const finalPath = outputPath || path.join(ctx.config.cwd, defaultFilename);
 
       // 读取完整会话数据
-      const sessionsDir = path.join(os.homedir(), '.claude', 'sessions');
+      const sessionsDir = path.join(os.homedir(), '.axon', 'sessions');
       const sessionFile = path.join(sessionsDir, `${ctx.session.id}.json`);
 
       let sessionData: any = null;
@@ -858,7 +858,7 @@ export const exportCommand: SlashCommand = {
         // Markdown 格式：格式化输出
         const lines: string[] = [];
 
-        lines.push('# Claude Code Session Export');
+        lines.push('# Axon Session Export');
         lines.push('');
         lines.push(`**Session ID:** \`${ctx.session.id}\``);
         lines.push(`**Exported:** ${new Date().toISOString()}`);
@@ -932,7 +932,7 @@ export const exportCommand: SlashCommand = {
         }
 
         lines.push('');
-        lines.push('*Exported from Claude Code*');
+        lines.push('*Exported from Axon*');
 
         exportContent = lines.join('\n');
       }
@@ -1007,7 +1007,7 @@ export const transcriptCommand: SlashCommand = {
       const outputPath = args.length > 0 ? args.join(' ') : null;
 
       // 读取完整会话数据
-      const sessionsDir = path.join(os.homedir(), '.claude', 'sessions');
+      const sessionsDir = path.join(os.homedir(), '.axon', 'sessions');
       const sessionFile = path.join(sessionsDir, `${ctx.session.id}.json`);
 
       let sessionData: any = null;

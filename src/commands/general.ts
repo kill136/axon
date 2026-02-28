@@ -77,15 +77,15 @@ function getAutoUpdatesDisabledReason(): string | null {
   if (process.env.DISABLE_AUTOUPDATER === '1' || process.env.DISABLE_AUTOUPDATER === 'true') {
     return 'DISABLE_AUTOUPDATER set';
   }
-  if (process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC) {
-    return 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC set';
+  if (process.env.AXON_DISABLE_NONESSENTIAL_TRAFFIC) {
+    return 'AXON_DISABLE_NONESSENTIAL_TRAFFIC set';
   }
 
   // 检查配置文件
   try {
     // os, path, fs 已在文件顶部 ESM 导入
 
-    const configPath = path.join(os.homedir(), '.claude', 'settings.json');
+    const configPath = path.join(os.homedir(), '.axon', 'settings.json');
     if (fs.existsSync(configPath)) {
       const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
       if (config.autoUpdates === false) {
@@ -109,7 +109,7 @@ function getAutoUpdateChannel(): string {
   try {
     // os, path, fs 已在文件顶部 ESM 导入
 
-    const configPath = path.join(os.homedir(), '.claude', 'settings.json');
+    const configPath = path.join(os.homedir(), '.axon', 'settings.json');
     if (fs.existsSync(configPath)) {
       const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
       if (config.autoUpdatesChannel) {
@@ -181,7 +181,7 @@ export const helpCommand: SlashCommand = {
       development: 'Development',
     };
 
-    let helpText = `\nClaude Code - Available Commands\n`;
+    let helpText = `\nAxon - Available Commands\n`;
     helpText += `${'='.repeat(35)}\n\n`;
 
     // 按预定义顺序显示分类
@@ -223,7 +223,7 @@ export const helpCommand: SlashCommand = {
     helpText += `Keyboard Shortcuts\n`;
     helpText += `-----------------\n`;
     helpText += `  Ctrl+C              Cancel current operation\n`;
-    helpText += `  Ctrl+D              Exit Claude Code\n`;
+    helpText += `  Ctrl+D              Exit Axon\n`;
     helpText += `  Ctrl+L              Clear screen\n`;
     helpText += `  Ctrl+R              Search history\n`;
     helpText += `  Tab                 Autocomplete\n`;
@@ -261,7 +261,7 @@ export const clearCommand: SlashCommand = {
 export const exitCommand: SlashCommand = {
   name: 'exit',
   aliases: ['quit', 'q'],
-  description: 'Exit Claude Code',
+  description: 'Exit Axon',
   category: 'general',
   execute: (ctx: CommandContext): CommandResult => {
     ctx.ui.exit();
@@ -272,16 +272,16 @@ export const exitCommand: SlashCommand = {
 // /status - 显示会话状态 (完全基于官方实现)
 export const statusCommand: SlashCommand = {
   name: 'status',
-  description: 'Show Claude Code status including version, model, account, API connectivity, and tool statuses',
+  description: 'Show Axon status including version, model, account, API connectivity, and tool statuses';
   category: 'general',
   execute: (ctx: CommandContext): CommandResult => {
     const stats = ctx.session.getStats();
     const { config } = ctx;
 
     // 检查 API 状态
-    const apiKeySet = !!(process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY);
+    const apiKeySet = !!(process.env.ANTHROPIC_API_KEY || process.env.AXON_API_KEY);
 
-    let statusText = `Claude Code Status\n\n`;
+    let statusText = `Axon Status\n\n`;
 
     // ===== 版本信息 =====
     statusText += `Version: v${config.version}\n`;
@@ -389,19 +389,19 @@ function getShortModelName(fullModelName: string): string {
 // /doctor - 运行诊断 (官方风格，v2.1.6+ 增加 Updates 部分)
 export const doctorCommand: SlashCommand = {
   name: 'doctor',
-  description: 'Diagnose and verify your Claude Code installation and settings',
+  description: 'Diagnose and verify your Axon installation and settings';
   category: 'general',
   execute: async (ctx: CommandContext): Promise<CommandResult> => {
     const { config } = ctx;
     const memUsage = process.memoryUsage();
-    const apiKeySet = !!(process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY);
+    const apiKeySet = !!(process.env.ANTHROPIC_API_KEY || process.env.AXON_API_KEY);
 
-    let diagnostics = `Claude Code Doctor\n\n`;
+    let diagnostics = `Axon Doctor\n\n`;
     diagnostics += `Running diagnostics...\n\n`;
 
     // 安装检查
     diagnostics += `Installation\n`;
-    diagnostics += `  ✓ Claude Code v${config.version}\n`;
+    diagnostics += `  ✓ Axon v${config.version}\n`;
     diagnostics += `  ✓ Node.js ${process.version}\n`;
     diagnostics += `  ✓ Platform: ${process.platform} (${process.arch})\n\n`;
 
@@ -412,7 +412,7 @@ export const doctorCommand: SlashCommand = {
       diagnostics += `  ✓ Model: ${config.modelDisplayName}\n`;
     } else {
       diagnostics += `  ✗ API key not configured\n`;
-      diagnostics += `    Set ANTHROPIC_API_KEY or CLAUDE_API_KEY\n`;
+      diagnostics += `    Set ANTHROPIC_API_KEY or AXON_API_KEY\n`;
     }
     diagnostics += '\n';
 
@@ -458,7 +458,7 @@ export const doctorCommand: SlashCommand = {
 
     // 总结
     if (apiKeySet) {
-      diagnostics += `All checks passed! Claude Code is ready to use.`;
+      diagnostics += `All checks passed! Axon is ready to use.`;
     } else {
       diagnostics += `Some issues found. Please configure your API key.`;
     }
@@ -515,7 +515,7 @@ export const debugCommand: SlashCommand = {
     debugInfo += `  Node.js: ${process.version}\n`;
     debugInfo += `  Platform: ${process.platform} (${process.arch})\n`;
     debugInfo += `  CWD: ${process.cwd()}\n`;
-    debugInfo += `  Claude Code: v${config.version}\n`;
+    debugInfo += `  Axon: v${config.version}\n`;
     debugInfo += `  Permission mode: ${config.permissionMode || 'default'}\n\n`;
 
     // 提示 Claude 可以用这些信息帮助诊断
@@ -567,7 +567,7 @@ export const versionCommand: SlashCommand = {
   description: 'Show version information',
   category: 'general',
   execute: (ctx: CommandContext): CommandResult => {
-    ctx.ui.addMessage('assistant', `Claude Code v${ctx.config.version}`);
+    ctx.ui.addMessage('assistant', `Axon v${ctx.config.version}`);
     return { success: true };
   },
 };

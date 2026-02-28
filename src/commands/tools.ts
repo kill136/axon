@@ -208,7 +208,7 @@ Examples:
     }
   }
 
-After adding, restart Claude Code to connect.`);
+After adding, restart Axon to connect.`);
           return { success: false };
         }
 
@@ -218,7 +218,7 @@ After adding, restart Claude Code to connect.`);
 
 2. Add server configuration to "mcpServers" section
 
-3. Restart Claude Code to connect
+3. Restart Axon to connect
 
 Server types:
   - stdio: Most common, runs a local command
@@ -246,7 +246,7 @@ Available servers: ${Object.keys(allServers).join(', ') || 'none'}`);
 
 1. Edit the configuration file
 2. Remove the "${removeName}" entry from "mcpServers"
-3. Restart Claude Code
+3. Restart Axon
 
 Configuration locations to check:
   - ${userConfigFile}
@@ -331,7 +331,7 @@ Available servers: ${Object.keys(allServers).join(', ') || 'none'}`);
               statusInfo += `  ${name}: Configured\n`;
             }
             statusInfo += `\nNote: Server health checks require runtime connection.\n`;
-            statusInfo += `Restart Claude Code to connect to configured servers.\n`;
+            statusInfo += `Restart Axon to connect to configured servers.\n`;
           }
 
           ctx.ui.addMessage('assistant', statusInfo);
@@ -518,7 +518,7 @@ Available agent types:
   - general-purpose: General-purpose agent for complex tasks
   - Explore: Fast agent for exploring codebases
   - Plan: Software architect agent for planning
-  - claude-code-guide: Agent for Claude Code documentation
+  - claude-code-guide: Agent for Axon documentation
 
 Usage:
   /agents list           - List all agents
@@ -718,7 +718,7 @@ export const ideCommand: SlashCommand = {
     const ide = args[0]?.toLowerCase() || 'status';
 
     const ideInfo: Record<string, string> = {
-      status: `Claude Code IDE Integration
+      status: `Axon IDE Integration
 
 Supported IDEs:
   • VS Code family: VS Code, Cursor, Windsurf, VSCodium
@@ -727,7 +727,7 @@ Supported IDEs:
   • Any terminal (CLI)
 
 Quick Setup:
-  1. Launch Claude Code from your IDE's integrated terminal
+  1. Launch Axon from your IDE's integrated terminal
   2. The extension auto-installs for VS Code variants
   3. Or run /ide <ide-name> for specific instructions
 
@@ -758,7 +758,7 @@ Setup (One-Step):
 
 Or Install Manually:
   1. Open Extensions (Cmd+Shift+X / Ctrl+Shift+X)
-  2. Search "Claude Code"
+  2. Search "Axon"
   3. Click Install
   4. Reload VS Code
 
@@ -773,7 +773,7 @@ Features:
     - Cmd+Shift+P (Mac) / Ctrl+Shift+P (Win): Command palette
 
 Configuration:
-  • Settings > Extensions > Claude Code
+  • Settings > Extensions > Axon
   • Or edit .vscode/settings.json
 
 External Terminal Setup:
@@ -786,7 +786,7 @@ Documentation: https://docs.anthropic.com/claude-code/ide-integrations`,
 
       cursor: `Cursor Integration
 
-Cursor is a VS Code variant with built-in AI features. You can use Claude Code alongside Cursor's native AI.
+Cursor is a VS Code variant with built-in AI features. You can use Axon alongside Cursor's native AI.
 
 Setup:
   1. Open Cursor's integrated terminal
@@ -799,20 +799,20 @@ Or from Command Palette:
   3. Launch: claude
 
 Features:
-  • Use Claude Code + Cursor AI together
+  • Use Axon + Cursor AI together
   • Claude's deep reasoning + Cursor's speed
-  • Inline completions (Cursor) + multi-file context (Claude Code)
+  • Inline completions (Cursor) + multi-file context (Axon)
   • Share context between both tools
 
 Best Practices:
   • Use Cursor for quick inline edits
-  • Use Claude Code for complex refactors and reasoning
-  • Share files via @-mentions in Claude Code
+  • Use Axon for complex refactors and reasoning
+  • Share files via @-mentions in Axon
 
 External Terminal:
   If running from external terminal, type /ide to connect.
 
-Tip: Claude Code complements Cursor - you get both tools' strengths!`,
+Tip: Axon complements Cursor - you get both tools' strengths!`,
 
       windsurf: `Windsurf Integration
 
@@ -825,18 +825,18 @@ Setup (One-Step):
 
 Manual Installation:
   1. Extensions panel (Cmd+Shift+X / Ctrl+Shift+X)
-  2. Search "Claude Code"
+  2. Search "Axon"
   3. Install and reload
 
 Features:
-  • Claude Code + Cascade agent
+  • Axon + Cascade agent
   • Deep reasoning (Claude) + simple UI (Windsurf)
   • Real-time diffs in IDE
   • Context sharing with @-mentions
 
 Using Both Together:
   • Windsurf's chat/write modes for quick tasks
-  • Claude Code for complex, multi-file changes
+  • Axon for complex, multi-file changes
   • Both share the same workspace
 
 External Terminal:
@@ -861,7 +861,7 @@ Supported IDEs:
 Installation:
   1. Open: Settings/Preferences > Plugins (Cmd+, or Ctrl+Alt+S)
   2. Switch to Marketplace tab
-  3. Search: "Claude Code"
+  3. Search: "Axon"
   4. Click Install
   5. Restart IDE
 
@@ -876,10 +876,10 @@ Features:
 Usage:
   1. Open Terminal tool window (Alt+F12)
   2. Run: claude
-  3. Or: Tools > Claude Code
+  3. Or: Tools > Axon
 
 Configuration:
-  • Settings > Tools > Claude Code
+  • Settings > Tools > Axon
   • Or edit .idea/claude-code.xml
 
 External Terminal:
@@ -889,7 +889,7 @@ Documentation: https://docs.anthropic.com/claude-code/ide-integrations`,
 
       zed: `Zed Editor Integration
 
-Zed has native Claude Code support built-in.
+Zed has native Axon support built-in.
 
 Setup:
   1. Open Zed
@@ -913,13 +913,13 @@ Usage:
   • Use /ide command if needed
   • Share context with @-mentions
 
-Zed is optimized for Claude Code with minimal setup!
+Zed is optimized for Axon with minimal setup!
 
 Documentation: https://zed.dev/docs/assistant/claude-code`,
 
       vim: `Vim/Neovim Integration
 
-Claude Code works in any terminal, including vim/neovim terminals.
+Axon works in any terminal, including vim/neovim terminals.
 
 Setup:
   Use the /vim command for detailed setup instructions:
@@ -1034,7 +1034,7 @@ Documentation: https://docs.anthropic.com/claude-code/chrome`;
 export const pluginCommand: SlashCommand = {
   name: 'plugin',
   aliases: ['plugins'],
-  description: 'Manage Claude Code plugins and marketplaces',
+  description: 'Manage Axon plugins and marketplaces',
   usage: '/plugin [marketplace|install|list|validate]',
   category: 'tools',
   execute: async (ctx: CommandContext): Promise<CommandResult> => {
@@ -1119,7 +1119,7 @@ Example marketplace.json structure:
 }
 
 Note: In this educational project, marketplace functionality is simulated.
-The official Claude Code supports full marketplace integration.`);
+The official Axon supports full marketplace integration.`);
           break;
 
         case 'remove':
@@ -1144,7 +1144,7 @@ Use /plugin marketplace list to see available marketplaces.`);
 
 Warning: This action cannot be undone. Make sure you want to proceed.
 
-In the official Claude Code, use the interactive UI to manage marketplaces.`);
+In the official Axon, use the interactive UI to manage marketplaces.`);
           break;
 
         case 'list':
@@ -1152,7 +1152,7 @@ In the official Claude Code, use the interactive UI to manage marketplaces.`);
           ctx.ui.addMessage('assistant', `Plugin Marketplaces
 
 Official Marketplace:
-  • anthropics/claude-code - Official Claude Code plugins
+  • anthropics/claude-code - Official Axon plugins
     URL: https://github.com/anthropics/claude-code.git
 
 Community Marketplaces:
@@ -1200,7 +1200,7 @@ Note: Plugins are installed to:
   Global: ${pluginDir}
   Project: ${projectPluginDir}
 
-After installation, restart Claude Code to load the plugin.`);
+After installation, restart Axon to load the plugin.`);
         return { success: false };
       }
 
@@ -1212,10 +1212,10 @@ After installation, restart Claude Code to load the plugin.`);
 4. Installing to plugin directory...
 
 Note: In this educational project, actual plugin installation is simulated.
-The official Claude Code fully supports plugin installation from marketplaces.
+The official Axon fully supports plugin installation from marketplaces.
 
 After installation:
-  • Restart Claude Code to load the plugin
+  • Restart Axon to load the plugin
   • Use /plugin list to see installed plugins
   • Configure plugin settings if needed`);
       return { success: true };
@@ -1370,7 +1370,7 @@ Quick Start:
   2. Install a plugin:
      /plugin install frontend-design@claude-code-plugins
 
-  3. Restart Claude Code to load plugins
+  3. Restart Axon to load plugins
 
 Documentation: https://docs.anthropic.com/claude-code/plugins`);
 
@@ -1381,7 +1381,7 @@ Documentation: https://docs.anthropic.com/claude-code/plugins`);
 // /install - 安装工具
 export const installCommand: SlashCommand = {
   name: 'install',
-  description: 'Install Claude Code extensions or tools',
+  description: 'Install Axon extensions or tools',
   usage: '/install <tool>',
   category: 'tools',
   execute: (ctx: CommandContext): CommandResult => {
@@ -1423,7 +1423,7 @@ After installation, restart VS Code.`,
 
 Install via:
   1. IDE Settings > Plugins > Marketplace
-  2. Search "Claude Code"
+  2. Search "Axon"
   3. Install and restart IDE`,
 
       'mcp-filesystem': `MCP Filesystem Server:
@@ -1514,7 +1514,7 @@ export const installGithubAppCommand: SlashCommand = {
 │                                                     │
 │  Example Workflow (claude.yml):                     │
 │                                                     │
-│    name: Claude Code                                │
+│    name: Axon                                │
 │    on:                                              │
 │      issue_comment:                                 │
 │        types: [created]                             │
@@ -1543,7 +1543,7 @@ export const installGithubAppCommand: SlashCommand = {
 │                                                     │
 │    Create: .github/workflows/claude-review.yml      │
 │                                                     │
-│    name: Claude Code Review                         │
+│    name: Axon Review                         │
 │    on:                                              │
 │      pull_request:                                  │
 │        types: [opened, synchronize]                 │
@@ -1669,7 +1669,7 @@ export const installSlackAppCommand: SlashCommand = {
 ${slackConfigured ? `│  Webhook: ${webhookUrl.padEnd(40)}│\n` : ''}│                                                     │
 ├─────────────────────────────────────────────────────┤
 │                                                     │
-│  Get notified in Slack when Claude Code needs       │
+│  Get notified in Slack when Axon needs       │
 │  attention.                                         │
 │                                                     │
 │  Features:                                          │

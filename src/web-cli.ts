@@ -49,10 +49,10 @@ const program = new Command();
 
 program
   .name('claude-web')
-  .description('Claude Code WebUI 服务器')
+  .description('Axon WebUI 服务器')
   .version(VERSION_BASE)
   .option('-p, --port <port>', '服务器端口', process.env.PORT || '3456')
-  .option('-H, --host <host>', '服务器主机', process.env.CLAUDE_WEB_HOST || '0.0.0.0')
+  .option('-H, --host <host>', '服务器主机', process.env.AXON_WEB_HOST || '0.0.0.0')
   .option('-m, --model <model>', '默认模型 (opus/sonnet/haiku)', 'sonnet')
   .option('-d, --dir <directory>', '工作目录', process.cwd())
   .option('--ngrok', '启用 ngrok 公网隧道 (需要 NGROK_AUTHTOKEN 环境变量)', false)
@@ -145,7 +145,7 @@ async function runEvolveMode(options: any) {
         stdio: 'inherit',
         env: {
           ...process.env,
-          CLAUDE_EVOLVE_ENABLED: '1',
+          AXON_EVOLVE_ENABLED: '1',
         },
         shell: useShell,
       });
@@ -155,7 +155,7 @@ async function runEvolveMode(options: any) {
         stdio: 'inherit',
         env: {
           ...process.env,
-          CLAUDE_EVOLVE_ENABLED: '1',
+          AXON_EVOLVE_ENABLED: '1',
         },
         shell: true,
       });
@@ -204,7 +204,7 @@ function printBanner(evolve: boolean, restartCount = 0) {
     console.log(`
 ╔═══════════════════════════════════════════════════════════╗
 ║                                                           ║
-║   🧬 Claude Code WebUI  [EVOLVE MODE]                    ║
+║   🧬 Axon WebUI  [EVOLVE MODE]                    ║
 ║                                                           ║
 ║   AI can modify its own source code and auto-restart      ║
 ║   ${restartCount > 0 ? `Restart #${restartCount}                                         `.slice(0, 42) + '║' : '                                                         ║'}
@@ -214,9 +214,9 @@ function printBanner(evolve: boolean, restartCount = 0) {
     console.log(`
 ╔═══════════════════════════════════════════════════════════╗
 ║                                                           ║
-║   🤖 Claude Code WebUI                                    ║
+║   🤖 Axon WebUI                                    ║
 ║                                                           ║
-║   一个基于 Web 的 Claude Code 界面                        ║
+║   一个基于 Web 的 Axon 界面                        ║
 ║                                                           ║
 ╚═══════════════════════════════════════════════════════════╝
 `);

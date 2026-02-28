@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Claude Code CLI 入口点
+ * Axon CLI 入口点
  * 还原版本 2.1.4 - 完整功能版
  */
 
@@ -202,7 +202,7 @@ const program = new Command();
 
 program
   .name('claude')
-  .description('Claude Code - starts an interactive session by default, use -p/--print for non-interactive output')
+  .description('Axon - starts an interactive session by default, use -p/--print for non-interactive output')
   .version(VERSION_FULL, '-v, --version', 'Output the version number');
 
 // 主命令 - 交互模式
@@ -267,7 +267,7 @@ program
   .option('--add-dir <directories...>', 'Additional directories to allow tool access')
   .option('--ide', 'Auto-connect to IDE on startup')
   .option('--agents <json>', 'JSON object defining custom agents')
-  .option('--teleport <session-id>', 'Connect to remote Claude Code session')
+  .option('--teleport <session-id>', 'Connect to remote Axon session')
   .option('--include-dependencies', 'Auto-include project dependency type definitions')
   .option('--solo', 'Disable background processes and parallel execution')
   .option('--setting-sources <sources>', 'Comma-separated list of setting sources')
@@ -295,7 +295,7 @@ program
     // T504: action_handler_start - Action 处理器开始
     await emitLifecycleEvent('action_handler_start');
 
-    // v2.1.6: 设置终端标题为 "Claude Code"
+    // v2.1.6: 设置终端标题为 "Axon"
     resetTerminalTitle();
 
     // ✅ 启动时自动清理过期数据（异步，不阻塞）
@@ -357,7 +357,7 @@ program
       setAdditionalDirectories(resolvedDirs);
     }
 
-    // 模型映射（官方 Claude Code 使用的模型版本）
+    // 模型映射（官方 Axon 使用的模型版本）
     // v2.1.33: Claude Opus 4.6 is now available (2026-02)
     const modelMap: Record<string, string> = {
       'sonnet': 'claude-sonnet-4-5-20250929',
@@ -837,7 +837,7 @@ async function runTextInterface(
   const LOGO = `
 ╭─────────────────────────────────────────────────────╮
 │                                                     │
-│   ${claudeColor('Claude Code')} ${chalk.gray('v' + VERSION_FULL)}                           │
+│   ${claudeColor('Axon')} ${chalk.gray('v' + VERSION_FULL)}                           │
 │                                                     │
 │        ${claudeColor('*')}       ${claudeColor('*')}                                 │
 │      ${claudeColor('*')}  ${claudeColor(' ▐')}${claudeColor.bgBlack('▛███▜')}${claudeColor('▌')}  ${claudeColor('*')}                            │
@@ -1221,10 +1221,10 @@ async function runTextInterface(
 // MCP 子命令
 const mcpCommand = program.command('mcp').description('Configure and manage MCP servers');
 
-// serve 命令 - 启动 Claude Code MCP 服务器
+// serve 命令 - 启动 Axon MCP 服务器
 mcpCommand
   .command('serve')
-  .description('Start the Claude Code MCP server')
+  .description('Start the Axon MCP server')
   .option('-p, --port <port>', 'Port to listen on', '3000')
   .option('--stdio', 'Use stdio transport instead of HTTP')
   .action(async (options) => {
@@ -1234,7 +1234,7 @@ mcpCommand
     console.log(chalk.cyan(t('cli.mcp.transport', { transport: options.stdio ? 'stdio' : `HTTP on port ${options.port}` })));
     console.log();
     console.log(chalk.yellow(`⚠️  ${t('cli.mcp.notImplemented')}`));
-    console.log(chalk.gray('This feature allows Claude Code to act as an MCP server,'));
+    console.log(chalk.gray('This feature allows Axon to act as an MCP server,'));
     console.log(chalk.gray('exposing its tools to other MCP-compatible applications.'));
     console.log();
     console.log(chalk.gray('For now, you can:'));
@@ -1246,7 +1246,7 @@ mcpCommand
 // add 命令 - 添加 MCP 服务器（支持命令和 URL）
 mcpCommand
   .command('add <name> <commandOrUrl> [args...]')
-  .description('Add an MCP server to Claude Code')
+  .description('Add an MCP server to Axon')
   .option('-s, --scope <scope>', 'Configuration scope (local, user, project)', 'local')
   .option('-e, --env <env...>', 'Environment variables (KEY=VALUE)')
   .option('--client-id <clientId>', 'OAuth client ID for HTTP/SSE servers')
@@ -1691,12 +1691,12 @@ program
 // Doctor 命令
 program
   .command('doctor')
-  .description('Check the health of your Claude Code installation')
+  .description('Check the health of your Axon installation')
   .option('--verbose', 'Show detailed diagnostics')
   .action(async (options) => {
     const { runDiagnostics, formatDiagnosticReport } = await import('./diagnostics/index.js');
 
-    console.log(chalk.bold('\nRunning Claude Code diagnostics...\n'));
+    console.log(chalk.bold('\nRunning Axon diagnostics...\n'));
 
     try {
       const report = await runDiagnostics();
@@ -1765,7 +1765,7 @@ program
   .action(async (options) => {
     const { checkForUpdates, performUpdate, rollbackVersion, listVersions } = await import('./updater/index.js');
 
-    console.log(chalk.bold('\n📦 Claude Code Update Manager\n'));
+    console.log(chalk.bold('\n📦 Axon Update Manager\n'));
 
     try {
       // 列出可用版本
@@ -1880,26 +1880,26 @@ program
 
       if (success) {
         console.log(chalk.green('\n✓ Update completed successfully!'));
-        console.log(chalk.gray('Please restart Claude Code to use the new version.\n'));
+        console.log(chalk.gray('Please restart Axon to use the new version.\n'));
       } else {
         console.log(chalk.red('\n✗ Update failed'));
-        console.log(chalk.gray('Try running: npm install -g claude-code-open\n'));
+        console.log(chalk.gray('Try running: npm install -g axon\n'));
       }
     } catch (error) {
       console.error(chalk.red('Error during update:'), error);
       console.log(chalk.gray('\nManual update:'));
-      console.log(chalk.gray('  npm install -g claude-code-open\n'));
+      console.log(chalk.gray('  npm install -g axon\n'));
     }
   });
 
 // Install 命令
 program
   .command('install [target]')
-  .description('Install Claude Code native build')
+  .description('Install Axon native build')
   .option('--force', 'Force reinstall')
   .action((target, options) => {
     const version = target || 'stable';
-    console.log(chalk.bold(`\nInstalling Claude Code (${version})...\n`));
+    console.log(chalk.bold(`\nInstalling Axon (${version})...\n`));
     console.log(chalk.gray('For native builds, please visit:'));
     console.log(chalk.cyan('https://github.com/anthropics/claude-code\n'));
   });
@@ -1907,9 +1907,9 @@ program
 // GitHub Actions 设置命令
 program
   .command('github-setup')
-  .description('Set up Claude Code GitHub Actions workflow')
+  .description('Set up Axon GitHub Actions workflow')
   .action(async () => {
-    console.log(chalk.bold('\n🐙 Setting up Claude Code GitHub Actions...\n'));
+    console.log(chalk.bold('\n🐙 Setting up Axon GitHub Actions...\n'));
 
     const { checkGitHubCLI, setupGitHubWorkflow } = await import('./github/index.js');
 
@@ -2006,8 +2006,8 @@ program
     console.log(chalk.gray('\n  Environment variables:'));
     const envVars = [
       'ANTHROPIC_API_KEY',
-      'CLAUDE_CODE_USE_BEDROCK',
-      'CLAUDE_CODE_USE_VERTEX',
+      'AXON_USE_BEDROCK',
+      'AXON_USE_VERTEX',
       'AWS_REGION',
       'ANTHROPIC_VERTEX_PROJECT_ID',
     ];
@@ -2086,7 +2086,7 @@ program
       getAuth,
     } = await import('./auth/index.js');
 
-    console.log(chalk.bold('\n🔐 Claude Code Login\n'));
+    console.log(chalk.bold('\n🔐 Axon Login\n'));
 
     // 检查当前认证状态
     const hasApiKey = !!(process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY);
@@ -2126,7 +2126,7 @@ program
     if (options.apiKey) {
       console.log(chalk.bold('API Key Setup\n'));
       console.log('API keys provide usage-based billing and are the recommended method');
-      console.log('for developers using Claude Code.\n');
+      console.log('for developers using Axon.\n');
       console.log(chalk.bold('Steps:\n'));
       console.log('1. Get your API key:');
       console.log(chalk.cyan('   Visit: https://platform.claude.com/settings/keys'));
@@ -2954,16 +2954,16 @@ async function handleSlashCommand(input: string, loop: ConversationLoop): Promis
       console.log('  /usage             - Show plan usage limits');
       console.log('  /extra-usage       - Configure extra usage');
       console.log('  /rate-limit-options - Show rate limit options');
-      console.log('  /stickers          - Order Claude Code stickers');
+      console.log('  /stickers          - Order Axon stickers');
       console.log();
       console.log(chalk.cyan('Integration:'));
       console.log('  /mcp               - Manage MCP servers');
       console.log('  /agents            - Manage agent configurations (alias: plugins, marketplace)');
-      console.log('  /plugin            - Manage Claude Code plugins');
+      console.log('  /plugin            - Manage Axon plugins');
       console.log('  /ide               - Manage IDE integrations');
       console.log('  /chrome            - Claude in Chrome settings');
       console.log('  /mobile            - Show QR code for mobile app (alias: ios, android)');
-      console.log('  /install           - Install Claude Code native build');
+      console.log('  /install           - Install Axon native build');
       console.log('  /install-github-app - Set up Claude GitHub Actions');
       console.log('  /install-slack-app - Install the Claude Slack app');
       console.log();
@@ -2978,7 +2978,7 @@ async function handleSlashCommand(input: string, loop: ConversationLoop): Promis
       console.log('  /feedback          - Submit feedback (alias: bug)');
       console.log('  /pr-comments       - Get comments from a GitHub PR');
       console.log('  /init              - Initialize a new CLAUDE.md file');
-      console.log('  /think-back        - Your 2025 Claude Code Year in Review');
+      console.log('  /think-back        - Your 2025 Axon Year in Review');
       console.log('  /thinkback-play    - Play the thinkback animation');
       console.log('  /insights          - Generate session analysis report');
       console.log();
@@ -3042,7 +3042,7 @@ async function handleSlashCommand(input: string, loop: ConversationLoop): Promis
     }
 
     case 'release-notes': {
-      console.log(chalk.bold(`\nClaude Code ${VERSION_FULL}\n`));
+      console.log(chalk.bold(`\nAxon ${VERSION_FULL}\n`));
       console.log(chalk.gray('  Visit https://docs.anthropic.com/en/docs/claude-code for release notes.\n'));
       break;
     }
@@ -3279,7 +3279,7 @@ async function handleSlashCommand(input: string, loop: ConversationLoop): Promis
 
     case 'terminal-setup': {
       console.log(chalk.bold('\nTerminal Setup:\n'));
-      console.log(chalk.gray('  Configure your terminal for optimal Claude Code experience.\n'));
+      console.log(chalk.gray('  Configure your terminal for optimal Axon experience.\n'));
       break;
     }
 
@@ -3344,8 +3344,8 @@ async function handleSlashCommand(input: string, loop: ConversationLoop): Promis
     }
 
     case 'stickers': {
-      console.log(chalk.bold('\nClaude Code Stickers:\n'));
-      console.log(chalk.gray('  Visit https://store.anthropic.com for Claude Code stickers.\n'));
+      console.log(chalk.bold('\nAxon Stickers:\n'));
+      console.log(chalk.gray('  Visit https://store.anthropic.com for Axon stickers.\n'));
       break;
     }
 
@@ -3371,14 +3371,14 @@ async function handleSlashCommand(input: string, loop: ConversationLoop): Promis
 
     case 'plugin': {
       console.log(chalk.bold('\nPlugin Management:\n'));
-      console.log(chalk.gray('  Manage Claude Code plugins from the marketplace.\n'));
+      console.log(chalk.gray('  Manage Axon plugins from the marketplace.\n'));
       break;
     }
 
     case 'ide': {
       console.log(chalk.bold('\nIDE Integration:\n'));
-      console.log('  VS Code: Install the Claude Code extension');
-      console.log('  JetBrains: Use the Claude Code plugin');
+      console.log('  VS Code: Install the Axon extension');
+      console.log('  JetBrains: Use the Axon plugin');
       console.log(chalk.gray('\n  IDE integration connects Claude to your editor.\n'));
       break;
     }
@@ -3400,8 +3400,8 @@ async function handleSlashCommand(input: string, loop: ConversationLoop): Promis
     }
 
     case 'install': {
-      console.log(chalk.bold('\nInstall Claude Code:\n'));
-      console.log(chalk.gray('  Install Claude Code native build for your platform.\n'));
+      console.log(chalk.bold('\nInstall Axon:\n'));
+      console.log(chalk.gray('  Install Axon native build for your platform.\n'));
       break;
     }
 
@@ -3449,7 +3449,7 @@ async function handleSlashCommand(input: string, loop: ConversationLoop): Promis
 
     case 'passes': {
       console.log(chalk.bold('\nPasses:\n'));
-      console.log(chalk.gray('  Manage your Claude Code passes.\n'));
+      console.log(chalk.gray('  Manage your Axon passes.\n'));
       break;
     }
 
@@ -3487,7 +3487,7 @@ async function handleSlashCommand(input: string, loop: ConversationLoop): Promis
     }
 
     case 'think-back': {
-      console.log(chalk.bold('\nYour 2025 Claude Code Year in Review:\n'));
+      console.log(chalk.bold('\nYour 2025 Axon Year in Review:\n'));
       console.log(chalk.gray('  Year in review is available in the interactive UI.\n'));
       break;
     }
@@ -3515,7 +3515,7 @@ async function handleSlashCommand(input: string, loop: ConversationLoop): Promis
 
 program
   .command('onboard')
-  .description('Run the onboarding wizard to configure Claude Code')
+  .description('Run the onboarding wizard to configure Axon')
   .action(async () => {
     const { runOnboardingWizard } = await import('./wizard/onboarding.js');
     await runOnboardingWizard();
@@ -3543,10 +3543,10 @@ process.on('unhandledRejection', (reason: any) => {
  * 对应官方的 ZV7 函数和 tK7 函数
  */
 async function main(): Promise<void> {
-  // 设置 CLAUDE_CODE_ENTRYPOINT 环境变量（如果未设置）
-  // 官方 Claude Code 使用此变量标识启动入口点
-  if (!process.env.CLAUDE_CODE_ENTRYPOINT) {
-    process.env.CLAUDE_CODE_ENTRYPOINT = 'cli';
+  // 设置 AXON_ENTRYPOINT 环境变量（如果未设置）
+  // 官方 Axon 使用此变量标识启动入口点
+  if (!process.env.AXON_ENTRYPOINT) {
+    process.env.AXON_ENTRYPOINT = 'cli';
   }
 
   // CLI 级别生命周期事件

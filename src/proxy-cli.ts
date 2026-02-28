@@ -3,7 +3,7 @@
  * Anthropic API 透传代理 CLI
  *
  * 自动检测本地认证方式（订阅 OAuth / API Key），启动代理服务器。
- * 让其他电脑上的 Claude Code 通过设置环境变量即可使用你的模型额度。
+ * 让其他电脑上的 Axon 通过设置环境变量即可使用你的模型额度。
  *
  * 用法：
  *   # 自动检测本地认证（推荐）
@@ -52,9 +52,9 @@ import { VERSION_BASE } from './version.js';
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 
-/** 官方 Claude Code 的 OAuth 凭据文件（未加密） */
+/** 官方 Axon 的 OAuth 凭据文件（未加密） */
 const OFFICIAL_CREDENTIALS_FILE = path.join(CLAUDE_DIR, '.credentials.json');
-/** 官方 Claude Code 的配置文件（存储 primaryApiKey） */
+/** 官方 Axon 的配置文件（存储 primaryApiKey） */
 const CONFIG_FILE = path.join(CLAUDE_DIR, 'config.json');
 
 interface DetectedAuth {
@@ -106,7 +106,7 @@ function detectLocalAuth(): DetectedAuth | null {
     };
   }
 
-  // 3. 官方 Claude Code 的 .credentials.json（OAuth，未加密）
+  // 3. 官方 Axon 的 .credentials.json（OAuth，未加密）
   // 文件结构：{ claudeAiOauth: { accessToken, ... }, oauthAccount: { accountUuid, ... } }
   if (fs.existsSync(OFFICIAL_CREDENTIALS_FILE)) {
     try {
@@ -138,7 +138,7 @@ function detectLocalAuth(): DetectedAuth | null {
     }
   }
 
-  // 4. 官方 Claude Code 的 config.json（API Key）
+  // 4. 官方 Axon 的 config.json（API Key）
   if (fs.existsSync(CONFIG_FILE)) {
     try {
       const config = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));

@@ -53,7 +53,7 @@ export const feedbackCommand: SlashCommand = {
     const { args, config } = ctx;
 
     // 官方 GitHub issues URL 和反馈 API
-    const ISSUES_URL = 'https://github.com/anthropics/claude-code/issues';
+    const ISSUES_URL = 'https://github.com/anthropics/axon/issues';
     const FEEDBACK_API = 'https://api.anthropic.com/api/claude_cli_feedback';
 
     if (args.length > 0) {
@@ -97,7 +97,7 @@ ${feedbackMessage}
 - Date: ${environmentInfo.datetime}
 
 **Source**
-Submitted via /feedback command in Claude Code CLI
+Submitted via /feedback command in Axon CLI
 
 ---
 *This issue was auto-generated from the /feedback command*`;
@@ -118,7 +118,7 @@ ${truncatedMessage}
 - Date: ${environmentInfo.datetime}
 
 **Source**
-Submitted via /feedback command in Claude Code CLI
+Submitted via /feedback command in Axon CLI
 
 ---
 *This issue was auto-generated from the /feedback command*
@@ -140,7 +140,7 @@ Submitted via /feedback command in Claude Code CLI
 
 "${feedbackMessage.slice(0, 200)}${feedbackMessage.length > 200 ? '...' : ''}"
 
-Your feedback helps improve Claude Code.
+Your feedback helps improve Axon.
 
 **Next Steps:**
 
@@ -173,7 +173,7 @@ If you prefer, you can also:
     // 无参数时显示使用说明
     const feedbackInfo = `Submit Feedback / Bug Report
 
-Based on official Claude Code v2.0.59 implementation.
+Based on official Axon v2.0.59 implementation.
 
 **Usage:**
   /feedback <your message>
@@ -186,7 +186,7 @@ Based on official Claude Code v2.0.59 implementation.
 **What gets included:**
   ✓ Your feedback message
   ✓ Environment info (platform, Node version, terminal)
-  ✓ Claude Code version
+  ✓ Axon version
   ✓ Timestamp
 
 **Types of feedback welcome:**
@@ -207,7 +207,7 @@ Based on official Claude Code v2.0.59 implementation.
   • Feedback API: ${FEEDBACK_API}
   • Community: https://discord.gg/anthropic
 
-We read all feedback and use it to improve Claude Code!`;
+We read all feedback and use it to improve Axon!`;
 
     ctx.ui.addMessage('assistant', feedbackInfo);
     return { success: true };
@@ -263,7 +263,7 @@ gh pr create --title "the pr title" --body "$(cat <<'EOF'
 - [ ] Run existing tests
 - [ ] Manual testing steps if applicable
 
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
+🤖 Generated with [Axon](https://claude.com/axon)
 EOF
 )"
 \`\`\`
@@ -545,7 +545,7 @@ Your final reply must contain the markdown report and nothing else.`;
 export const releaseNotesCommand: SlashCommand = {
   name: 'release-notes',
   aliases: ['changelog', 'whats-new'],
-  description: 'View release notes for Claude Code',
+  description: 'View release notes for Axon',
   category: 'development',
   execute: async (ctx: CommandContext): Promise<CommandResult> => {
     try {
@@ -560,25 +560,25 @@ export const releaseNotesCommand: SlashCommand = {
       }
 
       // 如果没有解析到版本信息，显示基本信息
-      const fallbackInfo = `Claude Code Release Notes
+      const fallbackInfo = `Axon Release Notes
 
 Version: ${ctx.config.version}
 
 Recent updates and features have been added.
 
 See the full changelog at:
-https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md`;
+https://github.com/anthropics/axon/blob/main/CHANGELOG.md`;
 
       ctx.ui.addMessage('assistant', fallbackInfo);
       return { success: true };
     } catch (error) {
       // 错误处理：显示备用信息
-      const errorInfo = `Claude Code - Version ${ctx.config.version}
+      const errorInfo = `Axon - Version ${ctx.config.version}
 
 Unable to fetch latest release notes at this time.
 
 See the full changelog at:
-https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md`;
+https://github.com/anthropics/axon/blob/main/CHANGELOG.md`;
 
       ctx.ui.addMessage('assistant', errorInfo);
       return { success: true };
@@ -598,12 +598,12 @@ async function fetchChangelog(): Promise<string> {
 
   try {
     const CHANGELOG_URL =
-      'https://raw.githubusercontent.com/anthropics/claude-code/refs/heads/main/CHANGELOG.md';
+      'https://raw.githubusercontent.com/anthropics/axon/refs/heads/main/CHANGELOG.md';
 
     // 使用 fetch API 获取 changelog
     const response = await fetch(CHANGELOG_URL, {
       headers: {
-        'User-Agent': 'claude-code-cli',
+        'User-Agent': 'axon-cli',
       },
     });
 
@@ -695,12 +695,12 @@ function formatReleaseNotes(versions: Array<[string, string[]]>): string {
     return `${versionHeader}\n${updateList}`;
   });
 
-  return `Claude Code Release Notes
+  return `Axon Release Notes
 
 ${formatted.join('\n\n')}
 
 See the full changelog at:
-https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md`;
+https://github.com/anthropics/axon/blob/main/CHANGELOG.md`;
 }
 
 // /vim - Vim 模式切换 (基于官方 v2.0.59 源码实现)

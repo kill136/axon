@@ -20,7 +20,7 @@ export const discoverCommand: SlashCommand = {
 │  🔍 Discover MCP Servers                            │
 │                                                     │
 │  Browse the MCP server marketplace to find          │
-│  tools and integrations for Claude Code.            │
+│  tools and integrations for Axon.            │
 │                                                     │
 ╰─────────────────────────────────────────────────────╯
 
@@ -56,21 +56,21 @@ Learn more: https://modelcontextprotocol.io/servers`;
   },
 };
 
-// /upgrade - 升级 Claude Code
+// /upgrade - 升级 Axon
 export const upgradeCommand: SlashCommand = {
   name: 'upgrade',
-  description: 'Upgrade Claude Code to the latest version',
+  description: 'Upgrade Axon to the latest version',
   category: 'settings',
   execute: (ctx: CommandContext): CommandResult => {
     const currentVersion = VERSION_BASE;
 
-    const upgradeInfo = `╭─ Claude Code Upgrade ────────────────────────────────╮
+    const upgradeInfo = `╭─ Axon Upgrade ────────────────────────────────╮
 │                                                     │
 │  📦 Current Version: v${currentVersion.padEnd(30)}│
 │                                                     │
 ╰─────────────────────────────────────────────────────╯
 
-To upgrade Claude Code, run one of these commands:
+To upgrade Axon, run one of these commands:
 
   npm:
     npm update -g @anthropic-ai/claude-code
@@ -83,7 +83,7 @@ To upgrade Claude Code, run one of these commands:
 
 Changelog: https://github.com/anthropics/claude-code/releases
 
-After upgrading, restart Claude Code to use the new version.
+After upgrading, restart Axon to use the new version.
 
 Tip: You can check for updates at any time with:
   claude --version`;
@@ -220,7 +220,7 @@ Rate Limit Handling:
 
 When Rate Limited:
 
-  1. Claude Code will automatically wait and retry
+  1. Axon will automatically wait and retry
   2. Long-running tasks will pause and resume
   3. You'll see a notification when limits are hit
 
@@ -254,7 +254,7 @@ export const remoteEnvCommand: SlashCommand = {
 │                                                     │
 ╰─────────────────────────────────────────────────────╯
 
-Remote environments allow Claude Code to connect to
+Remote environments allow Axon to connect to
 remote machines for development tasks.
 
 Status: Not configured
@@ -345,16 +345,16 @@ Contact Support:
 export const installGithubAppCommand: SlashCommand = {
   name: 'install-github-app',
   aliases: ['github-app'],
-  description: 'Install the Claude Code GitHub App for CI/CD integration',
+  description: 'Install the Axon GitHub App for CI/CD integration',
   category: 'settings',
   execute: (ctx: CommandContext): CommandResult => {
     const githubAppInfo = `╭─ GitHub App Integration ─────────────────────────────╮
 │                                                     │
-│  🐙 Connect Claude Code to GitHub                   │
+│  🐙 Connect Axon to GitHub                   │
 │                                                     │
 ╰─────────────────────────────────────────────────────╯
 
-The Claude Code GitHub App enables:
+The Axon GitHub App enables:
 
   ✓ Automated code reviews on PRs
   ✓ CI/CD pipeline integration
@@ -399,16 +399,16 @@ Required scopes: repo, read:org, write:discussion`;
 export const installSlackAppCommand: SlashCommand = {
   name: 'install-slack-app',
   aliases: ['slack-app'],
-  description: 'Install the Claude Code Slack App for notifications',
+  description: 'Install the Axon Slack App for notifications',
   category: 'settings',
   execute: (ctx: CommandContext): CommandResult => {
     const slackAppInfo = `╭─ Slack App Integration ──────────────────────────────╮
 │                                                     │
-│  💬 Get Claude Code notifications in Slack          │
+│  💬 Get Axon notifications in Slack          │
 │                                                     │
 ╰─────────────────────────────────────────────────────╯
 
-The Claude Code Slack App enables:
+The Axon Slack App enables:
 
   ✓ Task completion notifications
   ✓ Error alerts

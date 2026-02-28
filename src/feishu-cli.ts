@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Claude Code 飞书 Bot CLI 入口
+ * Axon 飞书 Bot CLI 入口
  *
  * 使用方式:
  *   npx tsx src/feishu-cli.ts            # 独立模式
@@ -28,8 +28,8 @@
  *   FEISHU_WEBUI_SESSION      - WebUI 模式下使用的会话 ID（默认: feishu-bot）
  *
  * WebUI 桥接模式专用环境变量:
- *   CLAUDE_WEB_PORT           - WebUI 端口（默认: 3456）
- *   CLAUDE_WEB_HOST           - WebUI 主机（默认: 127.0.0.1）
+ *   AXON_WEB_PORT           - WebUI 端口（默认: 3456）
+ *   AXON_WEB_HOST           - WebUI 主机（默认: 127.0.0.1）
  */
 
 import chalk from 'chalk';
@@ -41,7 +41,7 @@ const isWebUIMode = process.argv.includes('--webui');
 
 async function main() {
   console.log(chalk.cyan('╔══════════════════════════════════════════╗'));
-  console.log(chalk.cyan('║      Claude Code × 飞书 Bot             ║'));
+  console.log(chalk.cyan('║      Axon × 飞书 Bot             ║'));
   console.log(chalk.cyan('║      Feishu (Lark) Integration          ║'));
   console.log(chalk.cyan('╚══════════════════════════════════════════╝'));
 
