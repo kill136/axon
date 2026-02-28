@@ -13,10 +13,10 @@
  * 7. 前端 WebSocket 自动重连，session 自动恢复
  *
  * 安全机制：
- * - 仅在 CLAUDE_EVOLVE_ENABLED=1 时可用（--evolve 标志设置）
+ * - 仅在 AXON_EVOLVE_ENABLED=1 时可用（--evolve 标志设置）
  * - tsc 编译检查通过才允许重启
  * - dryRun 模式只检查不重启
- * - 重启日志追加到 ~/.claude/evolve-log.jsonl
+ * - 重启日志追加到 ~/.axon/evolve-log.jsonl
  */
 
 import { BaseTool } from './base.js';
@@ -47,7 +47,7 @@ interface EvolveLogEntry {
 
 export class SelfEvolveTool extends BaseTool<SelfEvolveInput, ToolResult> {
   name = 'SelfEvolve';
-  description = 'Trigger a controlled process restart after modifying source code. Only available when running with --evolve flag (CLAUDE_EVOLVE_ENABLED=1). Runs TypeScript compilation check before restarting to prevent broken restarts.';
+  description = 'Trigger a controlled process restart after modifying source code. Only available when running with --evolve flag (AXON_EVOLVE_ENABLED=1). Runs TypeScript compilation check before restarting to prevent broken restarts.';
 
   getInputSchema(): ToolDefinition['inputSchema'] {
     return {
@@ -238,7 +238,7 @@ export class SelfEvolveTool extends BaseTool<SelfEvolveInput, ToolResult> {
    */
   private appendLog(entry: EvolveLogEntry): void {
     try {
-      const logDir = path.join(os.homedir(), '.claude');
+      const logDir = path.join(os.homedir(), '.axon');
       if (!fs.existsSync(logDir)) {
         fs.mkdirSync(logDir, { recursive: true });
       }
@@ -266,7 +266,7 @@ export class SelfEvolveTool extends BaseTool<SelfEvolveInput, ToolResult> {
       if (fs.existsSync(pkgPath)) {
         try {
           const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
-          if (pkg.name === 'claude-code-open') {
+          if (pkg.name === 'axon-code-open') {
             return dir;
           }
         } catch {

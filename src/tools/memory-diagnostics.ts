@@ -45,7 +45,7 @@ export class MemoryDiagnosticsTool extends BaseTool<MemoryDiagnosticsInput, Tool
   }
 
   async execute(_input: MemoryDiagnosticsInput): Promise<ToolResult> {
-    const claudeDir = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
+    const axonDir = process.env.AXON_CONFIG_DIR || path.join(os.homedir(), '.axon');
     const projectDir = process.cwd();
     const rows: string[] = [];
 
@@ -66,7 +66,7 @@ export class MemoryDiagnosticsTool extends BaseTool<MemoryDiagnosticsInput, Tool
     // 2. LongTermStore
     try {
       const projectHash = hashProjectPath(projectDir);
-      const dbPath = path.join(claudeDir, 'memory', 'projects', projectHash, 'ltm.sqlite');
+      const dbPath = path.join(axonDir, 'memory', 'projects', projectHash, 'ltm.sqlite');
       if (fsModule.existsSync(dbPath)) {
         const store = await LongTermStore.create(dbPath);
         const stats = store.getStats();
@@ -81,8 +81,8 @@ export class MemoryDiagnosticsTool extends BaseTool<MemoryDiagnosticsInput, Tool
 
     // 3. Session Memory
     try {
-      const sessionId = process.env.CLAUDE_CODE_SESSION_ID || 'unknown';
-      const memBaseDir = path.join(claudeDir, 'projects');
+      const sessionId = process.env.AXON_SESSION_ID || 'unknown';
+      const memBaseDir = path.join(axonDir, 'projects');
       let found = false;
       if (fsModule.existsSync(memBaseDir)) {
         const pDirs = fsModule.readdirSync(memBaseDir);
@@ -109,7 +109,7 @@ export class MemoryDiagnosticsTool extends BaseTool<MemoryDiagnosticsInput, Tool
       '## Memory System Diagnostics',
       '',
       '**Project:** `' + projectDir + '`',
-      '**Session:** `' + (process.env.CLAUDE_CODE_SESSION_ID || 'unknown') + '`',
+      '**Session:** `' + (process.env.AXON_SESSION_ID || 'unknown') + '`',
       '',
       '| System | Status | Details | Size/Path |',
       '|--------|--------|---------|-----------|',

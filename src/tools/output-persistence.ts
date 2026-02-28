@@ -56,7 +56,7 @@ const MAX_FILE_AGE_DAYS = 7; // 文件最大保留天数
  */
 export function getOutputDir(): string {
   const homeDir = process.env.HOME || process.env.USERPROFILE || '/tmp';
-  const outputDir = path.join(homeDir, '.claude', OUTPUT_DIR_NAME);
+  const outputDir = path.join(homeDir, '.axon', OUTPUT_DIR_NAME);
 
   // 确保目录存在
   if (!fs.existsSync(outputDir)) {

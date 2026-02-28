@@ -1,6 +1,6 @@
 /**
  * Skill 工具 - 完全对齐官网实现
- * 基于官网源码 node_modules/@anthropic-ai/claude-code/cli.js 反编译
+ * 基于官网源码 node_modules/@anthropic-ai/axon/cli.js 反编译
  *
  * 2.1.3 修复：ExFAT inode 去重
  * - 使用 64 位精度（BigInt）处理 inode 值
@@ -257,8 +257,8 @@ interface SkillFrontmatter {
 /**
  * Skill 来源类型（对齐官网 v2.1.20+）
  * - policySettings: 企业策略配置的 skills
- * - userSettings: 用户级 skills (~/.claude/skills)
- * - projectSettings: 项目级 skills (.claude/skills)
+ * - userSettings: 用户级 skills (~/.axon/skills)
+ * - projectSettings: 项目级 skills (.axon/skills)
  * - plugin: 插件提供的 skills
  */
 type SkillSource = 'policySettings' | 'userSettings' | 'projectSettings' | 'plugin';
@@ -747,9 +747,9 @@ async function loadSkillsFromDirectory(
 }
 
 /**
- * 发现嵌套的 .claude/skills 目录 (v2.1.6+)
+ * 发现嵌套的 .axon/skills 目录 (v2.1.6+)
  *
- * 搜索当前工作目录下所有子目录中的 .claude/skills 目录
+ * 搜索当前工作目录下所有子目录中的 .axon/skills 目录
  * 用于支持 monorepo 等场景
  */
 function discoverNestedSkillsDirectories(rootDir: string, maxDepth: number = 3): string[] {
@@ -764,8 +764,8 @@ function discoverNestedSkillsDirectories(rootDir: string, maxDepth: number = 3):
       for (const entry of entries) {
         if (!entry.isDirectory()) continue;
 
-        // 跳过隐藏目录（除了 .claude）
-        if (entry.name.startsWith('.') && entry.name !== '.claude') continue;
+        // 跳过隐藏目录（除了 .axon）
+        if (entry.name.startsWith('.') && entry.name !== '.axon') continue;
 
         // 跳过常见的不需要扫描的目录
         if (['node_modules', 'vendor', 'dist', 'build', 'out', '.git', '__pycache__', '.venv', 'venv'].includes(entry.name)) {
@@ -774,8 +774,8 @@ function discoverNestedSkillsDirectories(rootDir: string, maxDepth: number = 3):
 
         const subDirPath = path.join(dir, entry.name);
 
-        // 检查是否有 .claude/skills 目录
-        if (entry.name === '.claude') {
+        // 检查是否有 .axon/skills 目录
+        if (entry.name === '.axon') {
           const skillsDir = path.join(subDirPath, 'skills');
           if (fs.existsSync(skillsDir) && fs.statSync(skillsDir).isDirectory()) {
             result.push(skillsDir);
@@ -803,7 +803,7 @@ function discoverNestedSkillsDirectories(rootDir: string, maxDepth: number = 3):
 function getEnabledPlugins(): Set<string> {
   const enabledPlugins = new Set<string>();
   const homeDir = process.env.HOME || process.env.USERPROFILE || '';
-  const settingsPath = path.join(homeDir, '.claude', 'settings.json');
+  const settingsPath = path.join(homeDir, '.axon', 'settings.json');
 
   try {
     if (fs.existsSync(settingsPath)) {
@@ -831,13 +831,13 @@ function getEnabledPlugins(): Set<string> {
  * 官网实现：
  * - 先通过 u7() 获取已启用的插件列表
  * - 只加载已启用插件的 skills
- * - 插件 skills 存储在 ~/.claude/plugins/cache/{marketplace}/{plugin}/{version}/skills/{skill-name}/SKILL.md
+ * - 插件 skills 存储在 ~/.axon/plugins/cache/{marketplace}/{plugin}/{version}/skills/{skill-name}/SKILL.md
  * - 命名空间格式：{plugin-name}:{skill-name}
  */
 async function loadSkillsFromPluginCache(): Promise<SkillDefinition[]> {
   const results: SkillDefinition[] = [];
   const homeDir = process.env.HOME || process.env.USERPROFILE || '';
-  const pluginsCacheDir = path.join(homeDir, '.claude', 'plugins', 'cache');
+  const pluginsCacheDir = path.join(homeDir, '.axon', 'plugins', 'cache');
 
   // 获取已启用的插件列表（对齐官网 u7 函数）
   const enabledPlugins = getEnabledPlugins();
@@ -974,8 +974,8 @@ export async function initializeSkills(): Promise<void> {
     allSkillsWithPath.push({ skill, filePath: skill.filePath });
   }
 
-  // 4. v2.1.6+: 发现并加载嵌套的 .claude/skills 目录
-  // 搜索当前工作目录下子目录中的 .claude/skills 目录
+  // 4. v2.1.6+: 发现并加载嵌套的 .axon/skills 目录
+  // 搜索当前工作目录下子目录中的 .axon/skills 目录
   const nestedSkillsDirs = discoverNestedSkillsDirectories(cwd);
   for (const nestedDir of nestedSkillsDirs) {
     // 避免重复加载根目录的 skills
@@ -985,7 +985,7 @@ export async function initializeSkills(): Promise<void> {
     for (const skill of nestedSkills) {
       // 添加子目录路径前缀以区分来源
       const relativePath = path.relative(cwd, nestedDir);
-      const parentDir = path.dirname(path.dirname(relativePath)); // 获取 .claude 的父目录
+      const parentDir = path.dirname(path.dirname(relativePath)); // 获取 .axon 的父目录
       const prefixedSkillName = parentDir ? `${skill.skillName}@${parentDir}` : skill.skillName;
 
       // 重新设置 skillName 以包含路径前缀
@@ -998,11 +998,11 @@ export async function initializeSkills(): Promise<void> {
     }
   }
 
-  // 5. v2.1.32: 加载 --add-dir 目录下的 .claude/skills/
-  // 官方更新：Skills defined in .claude/skills/ within additional directories (--add-dir) are now loaded automatically.
+  // 5. v2.1.32: 加载 --add-dir 目录下的 .axon/skills/
+  // 官方更新：Skills defined in .axon/skills/ within additional directories (--add-dir) are now loaded automatically.
   const addDirPaths = getAdditionalDirectories();
   for (const addDir of addDirPaths) {
-    const addDirSkillsPath = path.join(addDir, '.claude', 'skills');
+    const addDirSkillsPath = path.join(addDir, '.axon', 'skills');
     if (fs.existsSync(addDirSkillsPath)) {
       const addDirSkills = await loadSkillsFromDirectory(addDirSkillsPath, 'projectSettings');
       for (const skill of addDirSkills) {
@@ -1306,7 +1306,7 @@ Important:
 
     // v2.1.9: 替换 ${CLAUDE_SESSION_ID} 占位符
     // 官网实现：M = M.replace(/\$\{CLAUDE_SESSION_ID\}/g, H0())
-    const sessionId = process.env.CLAUDE_CODE_SESSION_ID || '';
+    const sessionId = process.env.AXON_SESSION_ID || '';
     skillContent = skillContent.replace(/\$\{CLAUDE_SESSION_ID\}/g, sessionId);
 
     // 记录已调用的 skill（对齐官网 KP0）
@@ -1394,7 +1394,7 @@ Important:
  */
 export function enableSkillHotReload(): void {
   // 热重载功能的占位实现
-  // 完整实现需要监听 ~/.claude/skills 和 .claude/skills 目录
+  // 完整实现需要监听 ~/.axon/skills 和 .axon/skills 目录
   console.log('[Skill] Hot reload feature is available');
 }
 

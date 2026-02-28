@@ -1,7 +1,7 @@
 /**
  * CreateTool - 创建自定义 Skill
  *
- * 通过在 ~/.claude/skills/<name>/SKILL.md 写入 skill 文件来扩展能力。
+ * 通过在 ~/.axon/skills/<name>/SKILL.md 写入 skill 文件来扩展能力。
  * 利用现有 Skill 系统：
  * - system-reminder 中只占一行描述（低上下文开销）
  * - 通过 Skill 工具按需调用（加载完整内容）
@@ -38,7 +38,7 @@ export interface CreateToolInput {
  * 获取用户级 skills 目录
  */
 function getUserSkillsDir(): string {
-  return path.join(os.homedir(), '.claude', 'skills');
+  return path.join(os.homedir(), '.axon', 'skills');
 }
 
 /**
@@ -46,7 +46,7 @@ function getUserSkillsDir(): string {
  */
 export class CreateToolTool extends BaseTool<CreateToolInput, ToolResult> {
   name = 'CreateTool';
-  description = `Create, cancel, or list custom tools at runtime. Custom tools are persisted to ~/.claude/custom-tools/ and auto-loaded on startup.
+  description = `Create, cancel, or list custom tools at runtime. Custom tools are persisted to ~/.axon/custom-tools/ and auto-loaded on startup.
 
 Use this to create new tools that extend your capabilities:
 - Shell command wrappers

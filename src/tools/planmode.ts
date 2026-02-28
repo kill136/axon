@@ -249,7 +249,7 @@ Your role is EXCLUSIVELY to explore the codebase and design implementation plans
 No plan file exists yet. You should create your plan at ${planPath} using the Write tool.
 You should build your plan incrementally by writing to or editing this file. NOTE that this is the only file you are allowed to edit - other than this you are only allowed to take READ-ONLY actions.
 
-The plan will be automatically saved to the persistent storage (~/.claude/plans/${planId}.json) when you exit plan mode.
+The plan will be automatically saved to the persistent storage (~/.axon/plans/${planId}.json) when you exit plan mode.
 
 In plan mode, you should:
 1. Thoroughly explore the codebase to understand existing patterns
@@ -358,7 +358,7 @@ Before using this tool, ensure your plan is clear and unambiguous. If there are 
           plan.metadata.status = 'pending';
           const saved = await PlanPersistenceManager.savePlan(plan);
           if (saved) {
-            savedPlanPath = `~/.claude/plans/${planId}.json`;
+            savedPlanPath = `~/.axon/plans/${planId}.json`;
           }
         } catch (error) {
           console.error('Failed to save plan to persistence:', error);

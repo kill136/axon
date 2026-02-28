@@ -3,7 +3,7 @@
  * 导出所有工具
  *
  * 工具分为两类：
- * 1. 核心工具 (registerCoreTools) - 对齐官方 Claude Code v2.1.34，CLI/Web 都加载
+ * 1. 核心工具 (registerCoreTools) - 对齐官方 Axon v2.1.34，CLI/Web 都加载
  * 2. 蓝图工具 (registerBlueprintTools) - Blueprint 多 Agent 系统专用，仅 Web 模式按需加载
  */
 
@@ -71,7 +71,7 @@ let coreToolsRegistered = false;
 let blueprintToolsRegistered = false;
 
 /**
- * 注册核心工具 - 对齐官方 Claude Code v2.1.34
+ * 注册核心工具 - 对齐官方 Axon v2.1.34
  * CLI 和 Web 模式都会加载，模块导入时自动调用
  */
 export function registerCoreTools(): void {
@@ -112,7 +112,7 @@ export function registerCoreTools(): void {
   toolRegistry.register(new TaskTool());
   toolRegistry.register(new TaskOutputTool());
 
-  // Task v2 系统 (条件注册，需 CLAUDE_CODE_ENABLE_TASKS=true)
+  // Task v2 系统 (条件注册，需 AXON_ENABLE_TASKS=true)
   if (isTasksEnabled()) {
     toolRegistry.register(new TaskCreateTool());
     toolRegistry.register(new TaskGetTool());
@@ -144,7 +144,7 @@ export function registerCoreTools(): void {
   // 13. Daemon 定时任务工具
   toolRegistry.register(new ScheduleTaskTool());
 
-  // 14. Self-Evolve 自我进化工具（需要 CLAUDE_EVOLVE_ENABLED=1）
+  // 14. Self-Evolve 自我进化工具（需要 AXON_EVOLVE_ENABLED=1）
   toolRegistry.register(new SelfEvolveTool());
 
   // 15. Browser 浏览器控制工具
@@ -153,7 +153,7 @@ export function registerCoreTools(): void {
   // 16. MemorySearch 长期记忆搜索工具
   toolRegistry.register(new MemorySearchTool());
 
-  // 17. CreateTool 自定义 Skill 创建（写入 ~/.claude/skills/，利用 Skill 系统）
+  // 17. CreateTool 自定义 Skill 创建（写入 ~/.axon/skills/，利用 Skill 系统）
   toolRegistry.register(new CreateToolTool());
 
   // 20. Database 开发工具

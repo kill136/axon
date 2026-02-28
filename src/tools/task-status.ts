@@ -27,7 +27,7 @@ export interface TaskProgress {
  * 获取状态文件路径
  */
 function getStatusFilePath(projectPath: string, taskId: string): string {
-  const dir = path.join(projectPath, '.claude', 'progress');
+  const dir = path.join(projectPath, '.axon', 'progress');
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }

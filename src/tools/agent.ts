@@ -1,6 +1,6 @@
 /**
  * Agent 工具 (Task)
- * 子代理管理 - 参照官方 Claude Code CLI v2.1.4 实现
+ * 子代理管理 - 参照官方 Axon CLI v2.1.4 实现
  */
 
 import { BaseTool } from './base.js';
@@ -201,7 +201,7 @@ export const BUILT_IN_AGENT_TYPES: AgentTypeDefinition[] = [
   },
   {
     agentType: 'claude-code-guide',
-    whenToUse: 'Agent for Claude Code documentation and API questions',
+    whenToUse: 'Agent for Axon documentation and API questions',
     tools: ['Glob', 'Grep', 'Read', 'WebFetch', 'WebSearch'],
     forkContext: false,
     source: 'built-in',
@@ -499,7 +499,7 @@ function loadAgentsFromDirectory(
 function loadAgentsFromPluginCache(): AgentTypeDefinition[] {
   const results: AgentTypeDefinition[] = [];
   const homeDir = process.env.HOME || process.env.USERPROFILE || '';
-  const pluginsCacheDir = path.join(homeDir, '.claude', 'plugins', 'cache');
+  const pluginsCacheDir = path.join(homeDir, '.axon', 'plugins', 'cache');
 
   // 获取已启用的插件列表
   const enabledPlugins = getEnabledPluginsForAgents();
@@ -551,7 +551,7 @@ function loadAgentsFromPluginCache(): AgentTypeDefinition[] {
 function getEnabledPluginsForAgents(): Set<string> {
   const enabledPlugins = new Set<string>();
   const homeDir = process.env.HOME || process.env.USERPROFILE || '';
-  const settingsPath = path.join(homeDir, '.claude', 'settings.json');
+  const settingsPath = path.join(homeDir, '.axon', 'settings.json');
 
   try {
     if (fs.existsSync(settingsPath)) {
@@ -590,8 +590,8 @@ function deduplicateAgents(agents: AgentTypeDefinition[]): AgentTypeDefinition[]
  * 初始化加载所有自定义 agents
  * 加载顺序（对齐官方 oc7）：
  * 1. 插件 agents（最低优先级）
- * 2. 用户级 agents（~/.claude/agents/）
- * 3. 项目级 agents（.claude/agents/）（最高优先级）
+ * 2. 用户级 agents（~/.axon/agents/）
+ * 3. 项目级 agents（.axon/agents/）（最高优先级）
  */
 export function initializeCustomAgents(): void {
   const homeDir = process.env.HOME || process.env.USERPROFILE || '';
@@ -605,8 +605,8 @@ export function initializeCustomAgents(): void {
     // 静默
   }
 
-  // 2. 用户级 agents (~/.claude/agents/)
-  const userAgentsDir = path.join(homeDir, '.claude', 'agents');
+  // 2. 用户级 agents (~/.axon/agents/)
+  const userAgentsDir = path.join(homeDir, '.axon', 'agents');
   if (fs.existsSync(userAgentsDir)) {
     const userAgents = loadAgentsFromDirectory(userAgentsDir, 'userSettings');
     allCustom.push(...userAgents);
@@ -719,7 +719,7 @@ function ensureAgentCleanupTimer(): void {
 
 // 代理持久化目录
 const getAgentsDir = (): string => {
-  const agentsDir = path.join(os.homedir(), '.claude', 'agents');
+  const agentsDir = path.join(os.homedir(), '.axon', 'agents');
   if (!fs.existsSync(agentsDir)) {
     fs.mkdirSync(agentsDir, { recursive: true });
   }
@@ -900,7 +900,7 @@ loadAllAgents();
 
 /**
  * 生成后台任务相关提示文本（条件性）
- * 根据 CLAUDE_CODE_DISABLE_BACKGROUND_TASKS 环境变量决定是否显示
+ * 根据 AXON_DISABLE_BACKGROUND_TASKS 环境变量决定是否显示
  */
 function getAgentBackgroundTasksPrompt(): string {
   if (isBackgroundTasksDisabled()) {
@@ -1067,7 +1067,7 @@ Note: The "Agent Teams" feature (TeammateTool, SendMessage, spawnTeam) is not av
         },
         team_name: {
           type: 'string',
-          description: 'Team name for Agent Teams collaboration (requires CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1).',
+          description: 'Team name for Agent Teams collaboration (requires AXON_EXPERIMENTAL_AGENT_TEAMS=1).',
         },
         mode: {
           type: 'string',

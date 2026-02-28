@@ -2,7 +2,7 @@
  * Agent Teams 工具 - TeammateTool
  *
  * 管理团队和协调代理（对齐官方 cli.js 实现）
- * 需要 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 环境变量
+ * 需要 AXON_EXPERIMENTAL_AGENT_TEAMS=1 环境变量
  *
  * 注意：SendMessage 功能已统一到 tools/team.ts 的 TeamSendMessageTool
  * 此文件仅保留 TeammateTool（官方 23 次引用的主要工具）

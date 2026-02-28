@@ -122,12 +122,12 @@ function findGitRoot(gitExePath: string): string | null {
 /**
  * 查找 Windows 上的 git-bash 路径
  * 官方逻辑：
- * 1. 检查 CLAUDE_CODE_GIT_BASH_PATH 环境变量
+ * 1. 检查 AXON_GIT_BASH_PATH 环境变量
  * 2. 通过 git 命令路径推断 bash.exe 位置
  */
 function findGitBash(): string | null {
   // 1. 检查环境变量
-  const envPath = process.env.CLAUDE_CODE_GIT_BASH_PATH;
+  const envPath = process.env.AXON_GIT_BASH_PATH;
   if (envPath) {
     if (fs.existsSync(envPath)) {
       return envPath;
@@ -196,9 +196,9 @@ function getPlatformShell(): ShellConfig {
 
     // git-bash 未找到，按官方行为直接退出
     console.error(
-      'Claude Code on Windows requires git-bash (https://git-scm.com/downloads/win). ' +
+      'Axon on Windows requires git-bash (https://git-scm.com/downloads/win). ' +
       'If installed but not in PATH, set environment variable pointing to your bash.exe, similar to: ' +
-      'CLAUDE_CODE_GIT_BASH_PATH=C:\\Program Files\\Git\\bin\\bash.exe'
+      'AXON_GIT_BASH_PATH=C:\\Program Files\\Git\\bin\\bash.exe'
     );
     process.exit(1);
   }
@@ -729,7 +729,7 @@ function isBackgroundable(command: string): boolean {
 
 /**
  * 生成后台任务相关提示文本（条件性）
- * 根据 CLAUDE_CODE_DISABLE_BACKGROUND_TASKS 环境变量决定是否显示
+ * 根据 AXON_DISABLE_BACKGROUND_TASKS 环境变量决定是否显示
  */
 function getBackgroundTasksPrompt(): string {
   if (isBackgroundTasksDisabled()) {
@@ -831,12 +831,12 @@ Important notes:
 git commit -m "$(cat <<'EOF'
    Commit message here.
 
-   🤖 Generated with Claude Code (https://claude.com/claude-code)
+   🤖 Generated with Axon (https://claude.com/claude-code)
    Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
    EOF
    )"
 </example>
-- The attribution (Co-Authored-By trailer) is configurable via the "attribution.commit" setting in ~/.claude/settings.json
+- The attribution (Co-Authored-By trailer) is configurable via the "attribution.commit" setting in ~/.axon/settings.json
 - Users can disable attribution by setting "attribution.commit" to an empty string or "includeCoAuthoredBy" to false
 
 # Creating pull requests

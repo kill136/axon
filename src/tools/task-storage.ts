@@ -4,7 +4,7 @@
  *
  * 基于官方实现：
  * - 每个任务存储为独立 JSON 文件
- * - 存储路径：~/.claude/tasks/{listId}/{taskId}.json
+ * - 存储路径：~/.axon/tasks/{listId}/{taskId}.json
  * - 支持依赖追踪：blocks / blockedBy
  */
 
@@ -143,7 +143,7 @@ const idCounters = new Map<string, number>();
  * 获取任务存储根目录
  */
 function getTasksDir(): string {
-  return join(homedir(), '.claude', 'tasks');
+  return join(homedir(), '.axon', 'tasks');
 }
 
 /**
@@ -303,8 +303,8 @@ function validateTask(data: unknown): TaskV2 | null {
  */
 export function getCurrentListId(): string {
   // 优先使用环境变量
-  if (process.env.CLAUDE_CODE_TASK_LIST_ID) {
-    return process.env.CLAUDE_CODE_TASK_LIST_ID;
+  if (process.env.AXON_TASK_LIST_ID) {
+    return process.env.AXON_TASK_LIST_ID;
   }
   // 使用默认列表 ID
   return 'default';
@@ -462,7 +462,7 @@ function isTruthy(value: string | undefined): boolean {
  */
 function isNonInteractiveMode(): boolean {
   // 检查是否是 SDK 模式
-  if (process.env.CLAUDE_CODE_SDK_MODE === '1' || process.env.CLAUDE_CODE_SDK_MODE === 'true') {
+  if (process.env.AXON_SDK_MODE === '1' || process.env.AXON_SDK_MODE === 'true') {
     return true;
   }
   // 检查是否没有 TTY（非交互式终端）
@@ -477,13 +477,13 @@ function isNonInteractiveMode(): boolean {
  * 官方 ew() 函数
  *
  * 逻辑（官方 2.1.19）:
- * 1. 如果 CLAUDE_CODE_ENABLE_TASKS 显式设为 false -> 返回 false
- * 2. 如果 CLAUDE_CODE_ENABLE_TASKS 显式设为 true -> 返回 true
+ * 1. 如果 AXON_ENABLE_TASKS 显式设为 false -> 返回 false
+ * 2. 如果 AXON_ENABLE_TASKS 显式设为 true -> 返回 true
  * 3. 如果是非交互（SDK）模式 -> 返回 false（兼容性）
  * 4. 否则返回 true（默认启用）
  */
 export function isTasksEnabled(): boolean {
-  const envValue = process.env.CLAUDE_CODE_ENABLE_TASKS;
+  const envValue = process.env.AXON_ENABLE_TASKS;
 
   // 显式禁用
   if (isFalsy(envValue)) {
