@@ -285,7 +285,7 @@ describe('环境变量解析', () => {
     const config = manager.getAll();
 
     // 无效值应该被忽略，使用默认值
-    expect(config.maxTokens).toBe(8192); // 默认值
+    expect(config.maxTokens).toBe(32000); // 默认值
     expect(config.enableTelemetry).toBe(false); // 默认值
   });
 });
@@ -323,7 +323,7 @@ This is a test project.
     const injected = parser.injectIntoSystemPrompt(basePrompt);
 
     expect(injected).toContain(basePrompt);
-    expect(injected).toContain('# claudeMd');
+    expect(injected).toContain('# axonMd');
     expect(injected).toContain(content);
     expect(injected).toContain('IMPORTANT: this context may or may not be relevant');
   });

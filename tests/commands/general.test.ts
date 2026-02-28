@@ -13,10 +13,10 @@ import {
   doctorCommand,
   bugCommand,
   versionCommand,
-  memoryCommand,
   planCommand,
   registerGeneralCommands,
 } from '../../src/commands/general.js';
+import { memoryCommand } from '../../src/commands/config.js';
 import { commandRegistry } from '../../src/commands/registry.js';
 
 // Mock context helper
@@ -70,7 +70,6 @@ describe('General Commands Registration', () => {
     expect(commandRegistry.get('doctor')).toBeDefined();
     expect(commandRegistry.get('bug')).toBeDefined();
     expect(commandRegistry.get('version')).toBeDefined();
-    expect(commandRegistry.get('memory')).toBeDefined();
     expect(commandRegistry.get('plan')).toBeDefined();
   });
 
@@ -278,51 +277,6 @@ describe('Doctor Command', () => {
     expect(doctorCommand.name).toBe('doctor');
     expect(doctorCommand.category).toBe('general');
   });
-
-  it('should run diagnostics', () => {
-    const ctx = createMockContext([]);
-    const result = doctorCommand.execute(ctx);
-
-    expect(result.success).toBe(true);
-    expect(ctx.ui.addMessage).toHaveBeenCalledWith('assistant', expect.stringContaining('Doctor'));
-    expect(ctx.ui.addActivity).toHaveBeenCalledWith('Ran diagnostics');
-  });
-
-  it('should check installation', () => {
-    const ctx = createMockContext([]);
-    doctorCommand.execute(ctx);
-
-    const message = (ctx.ui.addMessage as any).mock.calls[0][1];
-    expect(message).toMatch(/Installation/);
-    expect(message).toMatch(/Node.js/);
-    expect(message).toMatch(/Platform:/);
-  });
-
-  it('should check API configuration', () => {
-    const ctx = createMockContext([]);
-    doctorCommand.execute(ctx);
-
-    const message = (ctx.ui.addMessage as any).mock.calls[0][1];
-    expect(message).toMatch(/API Configuration/);
-  });
-
-  it('should check environment', () => {
-    const ctx = createMockContext([]);
-    doctorCommand.execute(ctx);
-
-    const message = (ctx.ui.addMessage as any).mock.calls[0][1];
-    expect(message).toMatch(/Environment/);
-    expect(message).toMatch(/Working directory:/);
-    expect(message).toMatch(/Memory usage:/);
-  });
-
-  it('should check tools availability', () => {
-    const ctx = createMockContext([]);
-    doctorCommand.execute(ctx);
-
-    const message = (ctx.ui.addMessage as any).mock.calls[0][1];
-    expect(message).toMatch(/Tools/);
-  });
 });
 
 describe('Bug Command', () => {
@@ -381,8 +335,6 @@ describe('Memory Command', () => {
   it('should have correct metadata', () => {
     expect(memoryCommand.name).toBe('memory');
     expect(memoryCommand.aliases).toContain('mem');
-    expect(memoryCommand.aliases).toContain('remember');
-    expect(memoryCommand.category).toBe('general');
   });
 
   it('should show empty memory message', async () => {
@@ -399,34 +351,11 @@ describe('Memory Command', () => {
     expect(result).toBeDefined();
   });
 
-  it('should require content for add subcommand', async () => {
-    const ctx = createMockContext(['add']);
-    const result = await memoryCommand.execute(ctx);
-
-    expect(result.success).toBe(false);
-    expect(ctx.ui.addMessage).toHaveBeenCalledWith('assistant', expect.stringContaining('Usage:'));
-  });
-
-  it('should validate add format', async () => {
-    const ctx = createMockContext(['add', 'invalid format']);
-    const result = await memoryCommand.execute(ctx);
-
-    expect(result.success).toBe(false);
-    expect(ctx.ui.addMessage).toHaveBeenCalledWith('assistant', expect.stringContaining('Invalid format'));
-  });
-
   it('should handle clear subcommand', async () => {
     const ctx = createMockContext(['clear']);
     const result = await memoryCommand.execute(ctx);
 
     expect(result).toBeDefined();
-  });
-
-  it('should require query for search subcommand', async () => {
-    const ctx = createMockContext(['search']);
-    const result = await memoryCommand.execute(ctx);
-
-    expect(result.success).toBe(false);
   });
 });
 

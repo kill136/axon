@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { WebFetchTool, WebSearchTool, getWebCacheStats, clearWebCaches } from '../../src/tools/web.js';
+import { WebFetchTool, getWebCacheStats, clearWebCaches } from '../../src/tools/web.js';
 import axios from 'axios';
 
 // Mock axios
@@ -376,8 +376,8 @@ describe('WebFetchTool', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(result.output).toContain('[content truncated]');
-      // Output includes URL, prompt, headers, so total length > 100k but content is truncated
+      // Large content is persisted to disk via persistLargeOutputSync
+      expect(result.output).toContain('Output saved to disk');
       expect(result.output!.length).toBeLessThan(150000);
     });
 
@@ -415,13 +415,11 @@ describe('WebFetchTool', () => {
     it('should handle timeout errors', async () => {
       vi.mocked(axios.get).mockRejectedValue(new Error('timeout of 30000ms exceeded'));
 
-      const result = await webFetchTool.execute({
+      // Timeout errors are retryable, so after retries exhausted they throw
+      await expect(webFetchTool.execute({
         url: 'https://example.com',
         prompt: 'Test'
-      });
-
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('timeout');
+      })).rejects.toThrow(/timeout/i);
     });
 
     it('should handle DNS resolution errors', async () => {
@@ -520,261 +518,8 @@ describe('WebFetchTool', () => {
   });
 });
 
-describe('WebSearchTool', () => {
-  let webSearchTool: WebSearchTool;
-
-  beforeEach(() => {
-    webSearchTool = new WebSearchTool();
-    vi.clearAllMocks();
-    clearWebCaches();
-  });
-
-  afterEach(() => {
-    clearWebCaches();
-  });
-
-  describe('Input Schema Validation', () => {
-    it('should have correct schema definition', () => {
-      const schema = webSearchTool.getInputSchema();
-      expect(schema.type).toBe('object');
-      expect(schema.properties).toHaveProperty('query');
-      expect(schema.properties).toHaveProperty('allowed_domains');
-      expect(schema.properties).toHaveProperty('blocked_domains');
-      expect(schema.required).toEqual(['query']);
-    });
-
-    it('should require query with minimum length of 2', () => {
-      const schema = webSearchTool.getInputSchema();
-      expect(schema.properties.query.minLength).toBe(2);
-      expect(schema.properties.query.type).toBe('string');
-    });
-
-    it('should define domain filters as string arrays', () => {
-      const schema = webSearchTool.getInputSchema();
-      expect(schema.properties.allowed_domains.type).toBe('array');
-      expect(schema.properties.allowed_domains.items.type).toBe('string');
-      expect(schema.properties.blocked_domains.type).toBe('array');
-      expect(schema.properties.blocked_domains.items.type).toBe('string');
-    });
-  });
-
-  describe('Search Execution', () => {
-    it('should execute basic search query', async () => {
-      const result = await webSearchTool.execute({
-        query: 'test query'
-      });
-
-      expect(result.success).toBe(true);
-      expect(result.output).toContain('test query');
-    });
-
-    it('should handle multi-word queries', async () => {
-      const result = await webSearchTool.execute({
-        query: 'multiple word search query'
-      });
-
-      expect(result.success).toBe(true);
-      expect(result.output).toContain('multiple word search query');
-    });
-
-    it('should handle queries with special characters', async () => {
-      const result = await webSearchTool.execute({
-        query: 'C++ programming "best practices"'
-      });
-
-      expect(result.success).toBe(true);
-      expect(result.output).toBeDefined();
-    });
-  });
-
-  describe('Domain Filtering', () => {
-    it('should accept allowed_domains parameter', async () => {
-      const result = await webSearchTool.execute({
-        query: 'test',
-        allowed_domains: ['example.com', 'test.com']
-      });
-
-      expect(result.success).toBe(true);
-      expect(result.output).toBeDefined();
-    });
-
-    it('should accept blocked_domains parameter', async () => {
-      const result = await webSearchTool.execute({
-        query: 'test',
-        blocked_domains: ['spam.com', 'ads.com']
-      });
-
-      expect(result.success).toBe(true);
-      expect(result.output).toBeDefined();
-    });
-
-    it('should handle both allowed and blocked domains', async () => {
-      const result = await webSearchTool.execute({
-        query: 'test',
-        allowed_domains: ['example.com'],
-        blocked_domains: ['spam.com']
-      });
-
-      expect(result.success).toBe(true);
-      expect(result.output).toBeDefined();
-    });
-
-    it('should handle empty domain lists', async () => {
-      const result = await webSearchTool.execute({
-        query: 'test',
-        allowed_domains: [],
-        blocked_domains: []
-      });
-
-      expect(result.success).toBe(true);
-    });
-
-    it('should report when all results filtered out', async () => {
-      // This test depends on actual search results
-      // With very restrictive allowed_domains, results might be filtered out
-      const result = await webSearchTool.execute({
-        query: 'test',
-        allowed_domains: ['nonexistent-domain-12345.com']
-      });
-
-      expect(result.success).toBe(true);
-      // Output should indicate filtering or no results
-      expect(result.output).toBeDefined();
-    });
-  });
-
-  describe('Search Result Formatting', () => {
-    it('should format results as Markdown links', async () => {
-      const result = await webSearchTool.execute({
-        query: 'typescript tutorial'
-      });
-
-      expect(result.success).toBe(true);
-      // Results should include markdown links or indicate search provider
-      expect(result.output).toBeDefined();
-    });
-
-    it('should include Sources section', async () => {
-      const result = await webSearchTool.execute({
-        query: 'test'
-      });
-
-      expect(result.success).toBe(true);
-      // If there are results, should have Sources section
-      if (result.output?.includes('http')) {
-        expect(result.output).toContain('Sources:');
-      }
-    });
-
-    it('should handle no results gracefully', async () => {
-      const result = await webSearchTool.execute({
-        query: 'xyzabc123nonexistent456'
-      });
-
-      expect(result.success).toBe(true);
-      expect(result.output).toBeDefined();
-    });
-  });
-
-  describe('Caching Mechanism (1 hour)', () => {
-    it('should cache search results', async () => {
-      // First search
-      const result1 = await webSearchTool.execute({
-        query: 'cached test query'
-      });
-
-      // Second search - should use cache
-      const result2 = await webSearchTool.execute({
-        query: 'cached test query'
-      });
-
-      expect(result1.success).toBe(true);
-      expect(result2.success).toBe(true);
-
-      // Second result should indicate it's cached
-      if (result2.output) {
-        expect(result2.output).toContain('Cached');
-      }
-    });
-
-    it('should cache different queries separately', async () => {
-      const result1 = await webSearchTool.execute({
-        query: 'query one'
-      });
-
-      const result2 = await webSearchTool.execute({
-        query: 'query two'
-      });
-
-      expect(result1.success).toBe(true);
-      expect(result2.success).toBe(true);
-      // Results might be different
-    });
-
-    it('should respect domain filters in cache key', async () => {
-      // Same query but different filters should be cached separately
-      await webSearchTool.execute({
-        query: 'test',
-        allowed_domains: ['example.com']
-      });
-
-      await webSearchTool.execute({
-        query: 'test',
-        allowed_domains: ['other.com']
-      });
-
-      const stats = getWebCacheStats();
-      // Should have cached both queries separately
-      expect(stats.search.itemCount).toBeGreaterThan(0);
-    });
-
-    it('should update cache statistics', async () => {
-      await webSearchTool.execute({
-        query: 'test query'
-      });
-
-      const stats = getWebCacheStats();
-      expect(stats.search.itemCount).toBeGreaterThan(0);
-    });
-
-    it('should have correct cache configuration', () => {
-      const stats = getWebCacheStats();
-      expect(stats.search.max).toBe(500); // 500 queries max
-      expect(stats.search.ttl).toBe(60 * 60 * 1000); // 1 hour
-    });
-  });
-
-  describe('Error Handling', () => {
-    it('should handle search API errors gracefully', async () => {
-      // DuckDuckGo API might fail, should fallback gracefully
-      const result = await webSearchTool.execute({
-        query: 'test'
-      });
-
-      // Should not throw, should return a result
-      expect(result).toBeDefined();
-      expect(result.success).toBeDefined();
-    });
-  });
-
-  describe('Multiple Search Providers', () => {
-    it('should indicate current search provider', async () => {
-      const result = await webSearchTool.execute({
-        query: 'test'
-      });
-
-      expect(result.success).toBe(true);
-      // Should mention DuckDuckGo or search provider
-      if (result.output) {
-        expect(
-          result.output.includes('DuckDuckGo') ||
-          result.output.includes('search') ||
-          result.output.includes('results')
-        ).toBe(true);
-      }
-    });
-  });
-});
+// Note: WebSearchTool has been migrated to Anthropic API Server Tool
+// and is no longer available as a client-side tool class
 
 describe('Web Cache Management', () => {
   beforeEach(() => {
@@ -797,15 +542,7 @@ describe('Web Cache Management', () => {
       expect(stats.fetch.itemCount).toBeDefined();
     });
 
-    it('should provide search cache statistics', () => {
-      const stats = getWebCacheStats();
-
-      expect(stats.search).toBeDefined();
-      expect(stats.search.size).toBeDefined();
-      expect(stats.search.max).toBe(500);
-      expect(stats.search.ttl).toBe(60 * 60 * 1000);
-      expect(stats.search.itemCount).toBeDefined();
-    });
+    // Note: search cache statistics removed - WebSearch migrated to API Server Tool
 
     it('should track item counts correctly', async () => {
       const webFetch = new WebFetchTool();
@@ -828,7 +565,6 @@ describe('Web Cache Management', () => {
   describe('Cache Clearing', () => {
     it('should clear all caches', async () => {
       const webFetch = new WebFetchTool();
-      const webSearch = new WebSearchTool();
 
       vi.mocked(axios.get).mockResolvedValue({
         data: 'content',
@@ -841,16 +577,12 @@ describe('Web Cache Management', () => {
         url: 'https://example.com',
         prompt: 'Test'
       });
-      await webSearch.execute({
-        query: 'test'
-      });
 
       // Clear caches
       clearWebCaches();
 
       const stats = getWebCacheStats();
       expect(stats.fetch.itemCount).toBe(0);
-      expect(stats.search.itemCount).toBe(0);
     });
   });
 });
@@ -865,9 +597,8 @@ describe('Integration Tests', () => {
     clearWebCaches();
   });
 
-  it('should work with both tools independently', async () => {
+  it('should work with WebFetchTool independently', async () => {
     const fetchTool = new WebFetchTool();
-    const searchTool = new WebSearchTool();
 
     vi.mocked(axios.get).mockResolvedValue({
       data: '<html><body>Content</body></html>',
@@ -880,17 +611,11 @@ describe('Integration Tests', () => {
       prompt: 'Test'
     });
 
-    const searchResult = await searchTool.execute({
-      query: 'test'
-    });
-
     expect(fetchResult.success).toBe(true);
-    expect(searchResult.success).toBe(true);
   });
 
-  it('should maintain separate caches for fetch and search', async () => {
+  it('should track fetch cache after execution', async () => {
     const fetchTool = new WebFetchTool();
-    const searchTool = new WebSearchTool();
 
     vi.mocked(axios.get).mockResolvedValue({
       data: 'content',
@@ -903,12 +628,7 @@ describe('Integration Tests', () => {
       prompt: 'Test'
     });
 
-    await searchTool.execute({
-      query: 'test'
-    });
-
     const stats = getWebCacheStats();
     expect(stats.fetch.itemCount).toBeGreaterThan(0);
-    expect(stats.search.itemCount).toBeGreaterThan(0);
   });
 });

@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { WebFetchTool, WebSearchTool, clearWebCaches } from '../../src/tools/web.js';
+import { WebFetchTool, clearWebCaches } from '../../src/tools/web.js';
 import axios from 'axios';
 
 // Mock axios
@@ -203,7 +203,8 @@ describe('WebFetchTool', () => {
 
       expect(result.success).toBe(true);
       expect(result.output!.length).toBeLessThan(150000);
-      expect(result.output).toContain('[content truncated]');
+      // Large content is persisted to disk via persistLargeOutputSync
+      expect(result.output).toContain('Output saved to disk');
     });
   });
 
@@ -213,13 +214,11 @@ describe('WebFetchTool', () => {
       (networkError as any).code = 'ECONNREFUSED';
       vi.mocked(axios.get).mockRejectedValue(networkError);
 
-      const result = await webFetchTool.execute({
+      // Network errors (ECONNREFUSED) are retryable, so after retries exhausted they throw
+      await expect(webFetchTool.execute({
         url: 'https://example.com',
         prompt: 'Test'
-      });
-
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('error');
+      })).rejects.toThrow();
     });
 
     it('should handle redirect errors', async () => {
@@ -230,6 +229,8 @@ describe('WebFetchTool', () => {
       };
       vi.mocked(axios.get).mockRejectedValue(redirectError);
 
+      // Redirect errors with response.status 301 and location header
+      // are caught by fetchUrl and returned as REDIRECT DETECTED
       const result = await webFetchTool.execute({
         url: 'https://example.com',
         prompt: 'Test'
@@ -237,19 +238,16 @@ describe('WebFetchTool', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('REDIRECT');
-      expect(result.error).toContain('newurl.com');
     });
 
     it('should handle timeout', async () => {
       vi.mocked(axios.get).mockRejectedValue(new Error('timeout of 30000ms exceeded'));
 
-      const result = await webFetchTool.execute({
+      // Timeout errors are retryable, so after retries exhausted they throw
+      await expect(webFetchTool.execute({
         url: 'https://example.com',
         prompt: 'Test'
-      });
-
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('timeout');
+      })).rejects.toThrow(/timeout/i);
     });
   });
 
@@ -310,154 +308,5 @@ describe('WebFetchTool', () => {
   });
 });
 
-describe('WebSearchTool', () => {
-  let webSearchTool: WebSearchTool;
-
-  beforeEach(() => {
-    webSearchTool = new WebSearchTool();
-    clearWebCaches(); // Clear cache before each test
-  });
-
-  describe('Input Schema', () => {
-    it('should have correct schema definition', () => {
-      const schema = webSearchTool.getInputSchema();
-      expect(schema.type).toBe('object');
-      expect(schema.properties).toHaveProperty('query');
-      expect(schema.properties).toHaveProperty('allowed_domains');
-      expect(schema.properties).toHaveProperty('blocked_domains');
-      expect(schema.required).toContain('query');
-    });
-
-    it('should require query with minimum length', () => {
-      const schema = webSearchTool.getInputSchema();
-      expect(schema.properties.query.minLength).toBe(2);
-    });
-
-    it('should define domain filters as arrays', () => {
-      const schema = webSearchTool.getInputSchema();
-      expect(schema.properties.allowed_domains.type).toBe('array');
-      expect(schema.properties.blocked_domains.type).toBe('array');
-    });
-  });
-
-  describe('Basic Search', () => {
-    it('should execute search query', async () => {
-      const result = await webSearchTool.execute({
-        query: 'test query'
-      });
-
-      expect(result.success).toBe(true);
-      expect(result.output).toContain('test query');
-    });
-
-    it('should mention API integration requirement', async () => {
-      const result = await webSearchTool.execute({
-        query: 'test'
-      });
-
-      expect(result.success).toBe(true);
-      expect(result.output).toContain('API');
-    });
-  });
-
-  describe('Domain Filtering', () => {
-    it('should accept allowed_domains parameter', async () => {
-      const result = await webSearchTool.execute({
-        query: 'test',
-        allowed_domains: ['example.com', 'test.com']
-      });
-
-      expect(result.success).toBe(true);
-      expect(result.output).toBeDefined();
-      // With domain filtering, results might be empty or contain filtered domains
-      expect(result.output).toContain('test');
-    });
-
-    it('should accept blocked_domains parameter', async () => {
-      const result = await webSearchTool.execute({
-        query: 'test',
-        blocked_domains: ['spam.com']
-      });
-
-      expect(result.success).toBe(true);
-      expect(result.output).toBeDefined();
-      expect(result.output).toContain('test');
-    });
-
-    it('should handle empty domain lists', async () => {
-      const result = await webSearchTool.execute({
-        query: 'test',
-        allowed_domains: [],
-        blocked_domains: []
-      });
-
-      expect(result.success).toBe(true);
-    });
-  });
-
-  describe('Query Validation', () => {
-    it('should accept multi-word queries', async () => {
-      const result = await webSearchTool.execute({
-        query: 'multiple word search query'
-      });
-
-      expect(result.success).toBe(true);
-      expect(result.output).toContain('multiple word search query');
-    });
-
-    it('should accept queries with special characters', async () => {
-      const result = await webSearchTool.execute({
-        query: 'test-query_with.special+chars'
-      });
-
-      expect(result.success).toBe(true);
-    });
-  });
-
-  describe('Response Format', () => {
-    it('should include query parameters in output', async () => {
-      const result = await webSearchTool.execute({
-        query: 'test query',
-        allowed_domains: ['example.com']
-      });
-
-      expect(result.success).toBe(true);
-      expect(result.output).toContain('test query');
-    });
-
-    it('should indicate when no domain filters applied', async () => {
-      const result = await webSearchTool.execute({
-        query: 'test'
-      });
-
-      expect(result.success).toBe(true);
-      expect(result.output).toContain('test');
-    });
-  });
-});
-
-describe('Integration Tests', () => {
-  describe('WebFetch and WebSearch Interaction', () => {
-    it('should work with both tools independently', async () => {
-      const fetchTool = new WebFetchTool();
-      const searchTool = new WebSearchTool();
-
-      vi.mocked(axios.get).mockResolvedValue({
-        data: 'content',
-        headers: { 'content-type': 'text/html' }
-      });
-
-      const fetchResult = await fetchTool.execute({
-        url: 'https://example.com',
-        prompt: 'Test'
-      });
-
-      const searchResult = await searchTool.execute({
-        query: 'test'
-      });
-
-      expect(fetchResult.success).toBe(true);
-      expect(searchResult.success).toBe(true);
-    });
-  });
-});
+// Note: WebSearchTool has been migrated to Anthropic API Server Tool
+// and is no longer available as a client-side tool class

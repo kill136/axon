@@ -288,7 +288,7 @@ describe('GrepTool', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(result.output).toContain('No matches found');
+      expect(result.output).toContain('No files found');
     });
   });
 
@@ -457,7 +457,7 @@ describe('GrepTool', () => {
       });
 
       expect(result.success).toBe(true);
-      if (result.output && result.output !== 'No matches found.') {
+      if (result.output && !result.output.includes('No files found')) {
         expect(result.output).not.toContain('.js');
       }
     });
@@ -484,8 +484,9 @@ describe('GrepTool', () => {
       });
 
       expect(result.success).toBe(true);
-      if (result.output && result.output !== 'No matches found.') {
-        const lines = result.output.split('\n').filter(l => l.length > 0);
+      if (result.output && !result.output.includes('No matches found')) {
+        // head_limit limits the data lines; output may also contain pagination info
+        const lines = result.output.split('\n').filter(l => l.length > 0 && !l.startsWith('['));
         expect(lines.length).toBeLessThanOrEqual(2);
       }
     });
@@ -499,8 +500,9 @@ describe('GrepTool', () => {
       });
 
       expect(result.success).toBe(true);
-      if (result.output && result.output !== 'No matches found.') {
-        const lines = result.output.split('\n').filter(l => l.length > 0);
+      if (result.output && !result.output.includes('No files found')) {
+        // files_with_matches output includes a "Found N files" header line
+        const lines = result.output.split('\n').filter(l => l.length > 0 && !l.startsWith('Found'));
         expect(lines.length).toBeLessThanOrEqual(1);
       }
     });
@@ -539,7 +541,7 @@ describe('GrepTool', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(result.output).toBe('No matches found.');
+      expect(result.output).toContain('No matches found');
     });
   });
 
@@ -639,7 +641,7 @@ describe('GrepTool', () => {
       });
 
       expect(result.success).toBe(true);
-      if (result.output && result.output !== 'No matches found.') {
+      if (result.output && !result.output.includes('No matches found')) {
         // Count mode should show filename:count
         expect(result.output).toMatch(/:\d+/);
       }
@@ -654,8 +656,10 @@ describe('GrepTool', () => {
       });
 
       expect(result.success).toBe(true);
-      if (result.output && result.output !== 'No matches found.') {
-        const lines = result.output.split('\n').filter(l => l.length > 0);
+      if (result.output && !result.output.includes('No matches found')) {
+        // count mode includes a summary line ("Found N total occurrences...")
+        // head_limit limits the file:count entries, not the summary
+        const lines = result.output.split('\n').filter(l => l.length > 0 && !l.startsWith('Found'));
         expect(lines.length).toBeLessThanOrEqual(1);
       }
     });
@@ -712,7 +716,7 @@ describe('GrepTool', () => {
 
       expect(result.success).toBe(true);
       // Should not search in .git directory
-      if (result.output && result.output !== 'No matches found.') {
+      if (result.output && !result.output.includes('No files found')) {
         expect(result.output).not.toContain('.git');
       }
     });

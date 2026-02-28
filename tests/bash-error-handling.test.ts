@@ -20,8 +20,8 @@ describe('Bash Tool - 友好错误处理（修复 2.1.3）', () => {
       });
 
       expect(result1.success).toBe(false);
-      expect(result1.error).toContain('🛡️ 安全防护');
-      expect(result1.error).toContain('Git commit 已被阻止');
+      expect(result1.error).toContain('🛡️ Security Protection');
+      expect(result1.error).toContain('Git commit blocked');
       expect(result1.error).toContain('Command injection detected');
       expect(result1.blocked).toBe(true);
     });
@@ -37,7 +37,7 @@ describe('Bash Tool - 友好错误处理（修复 2.1.3）', () => {
       });
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('🛡️ 安全防护');
+      expect(result.error).toContain('🛡️ Security Protection');
       expect(result.error).toContain('variable substitution ${}');
       expect(result.blocked).toBe(true);
     });
@@ -53,7 +53,7 @@ describe('Bash Tool - 友好错误处理（修复 2.1.3）', () => {
       });
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('🛡️ 安全防护');
+      expect(result.error).toContain('🛡️ Security Protection');
       expect(result.error).toContain('backtick');
       expect(result.blocked).toBe(true);
     });
@@ -69,7 +69,7 @@ describe('Bash Tool - 友好错误处理（修复 2.1.3）', () => {
       });
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('🛡️ 安全防护');
+      expect(result.error).toContain('🛡️ Security Protection');
       expect(result.error).toContain('semicolon');
       expect(result.blocked).toBe(true);
     });
@@ -85,7 +85,7 @@ describe('Bash Tool - 友好错误处理（修复 2.1.3）', () => {
       });
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('🛡️ 安全防护');
+      expect(result.error).toContain('🛡️ Security Protection');
       expect(result.error).toContain('pipe');
       expect(result.blocked).toBe(true);
     });
@@ -102,7 +102,7 @@ describe('Bash Tool - 友好错误处理（修复 2.1.3）', () => {
       });
 
       expect(result1.success).toBe(false);
-      expect(result1.error).toContain('🛡️ 安全防护');
+      expect(result1.error).toContain('🛡️ Security Protection');
       expect(result1.error).toContain('logical AND');
       expect(result1.blocked).toBe(true);
 
@@ -113,7 +113,7 @@ describe('Bash Tool - 友好错误处理（修复 2.1.3）', () => {
       });
 
       expect(result2.success).toBe(false);
-      expect(result2.error).toContain('🛡️ 安全防护');
+      expect(result2.error).toContain('🛡️ Security Protection');
       expect(result2.error).toContain('logical OR');
       expect(result2.blocked).toBe(true);
     });
@@ -130,7 +130,7 @@ describe('Bash Tool - 友好错误处理（修复 2.1.3）', () => {
       });
 
       expect(result1.success).toBe(false);
-      expect(result1.error).toContain('🛡️ 安全防护');
+      expect(result1.error).toContain('🛡️ Security Protection');
       expect(result1.blocked).toBe(true);
 
       // 测试输入重定向 <
@@ -140,7 +140,7 @@ describe('Bash Tool - 友好错误处理（修复 2.1.3）', () => {
       });
 
       expect(result2.success).toBe(false);
-      expect(result2.error).toContain('🛡️ 安全防护');
+      expect(result2.error).toContain('🛡️ Security Protection');
       expect(result2.blocked).toBe(true);
     });
   });
@@ -163,14 +163,14 @@ describe('Bash Tool - 友好错误处理（修复 2.1.3）', () => {
 
       // 验证包含的元素
       expect(result.error).toContain('🛡️'); // 安全图标
-      expect(result.error).toContain('安全防护'); // 友好标题
-      expect(result.error).toContain('Git commit 已被阻止'); // 清晰说明
-      expect(result.error).toContain('原因'); // 原因说明
+      expect(result.error).toContain('Security Protection'); // 友好标题
+      expect(result.error).toContain('Git commit blocked'); // 清晰说明
+      expect(result.error).toContain('Reason'); // 原因说明
       expect(result.error).toContain('Command injection detected'); // 技术细节
-      expect(result.error).toContain('保护您的系统安全'); // 安全说明
+      expect(result.error).toContain('protect your system security'); // 安全说明
 
       // 验证提供了解决方案提示
-      expect(result.error).toMatch(/避免包含.*特殊字符/);
+      expect(result.error).toMatch(/safe commit messages.*special characters/);
     });
   });
 });

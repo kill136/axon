@@ -1,11 +1,11 @@
 /**
  * Web 工具增强功能测试
  * T-011: Turndown 集成优化测试
- * T-012: WebSearch 缓存测试
+ * Note: WebSearch has been migrated to Anthropic API Server Tool
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { WebFetchTool, WebSearchTool, getWebCacheStats, clearWebCaches } from '../../src/tools/web.js';
+import { WebFetchTool, getWebCacheStats, clearWebCaches } from '../../src/tools/web.js';
 
 describe('T-011: Turndown Integration Optimization', () => {
   let webFetch: WebFetchTool;
@@ -27,53 +27,14 @@ describe('T-011: Turndown Integration Optimization', () => {
   });
 });
 
-describe('T-012: WebSearch Cache Implementation', () => {
-  let webSearch: WebSearchTool;
-
-  beforeEach(() => {
-    webSearch = new WebSearchTool();
-    clearWebCaches();
-  });
-
-  it('should have cache statistics functions', () => {
-    const stats = getWebCacheStats();
-
-    expect(stats).toBeDefined();
-    expect(stats.fetch).toBeDefined();
-    expect(stats.search).toBeDefined();
-
-    // WebFetch cache config
-    expect(stats.fetch.maxSize).toBe(50 * 1024 * 1024); // 50MB
-    expect(stats.fetch.ttl).toBe(15 * 60 * 1000); // 15 minutes
-
-    // WebSearch cache config
-    expect(stats.search.max).toBe(500); // 500 queries
-    expect(stats.search.ttl).toBe(60 * 60 * 1000); // 1 hour
-  });
-
-  it('should clear caches', () => {
-    clearWebCaches();
-    const stats = getWebCacheStats();
-
-    expect(stats.fetch.itemCount).toBe(0);
-    expect(stats.search.itemCount).toBe(0);
-  });
-
-  it('should have DuckDuckGo search capability', () => {
-    expect(webSearch.name).toBe('WebSearch');
-    expect(webSearch.description).toContain('search the web');
-  });
-});
-
 describe('Web Cache Integration', () => {
   beforeEach(() => {
     clearWebCaches();
   });
 
-  it('should track cache statistics', () => {
+  it('should track fetch cache statistics', () => {
     const initialStats = getWebCacheStats();
 
     expect(initialStats.fetch.itemCount).toBe(0);
-    expect(initialStats.search.itemCount).toBe(0);
   });
 });

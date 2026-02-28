@@ -80,8 +80,7 @@ describe('TodoWriteTool', () => {
       const result = await todoTool.execute(input);
 
       expect(result.success).toBe(true);
-      expect(result.output).toContain('Write unit tests');
-      expect(result.output).toContain('[○]'); // pending icon
+      expect(result.output).toContain('Todos have been modified successfully');
       expect(getTodos()).toHaveLength(1);
       expect(getTodos()[0]).toEqual(input.todos[0]);
     });
@@ -100,8 +99,7 @@ describe('TodoWriteTool', () => {
       const result = await todoTool.execute(input);
 
       expect(result.success).toBe(true);
-      expect(result.output).toContain('Running tests');
-      expect(result.output).toContain('[●]'); // in_progress icon
+      expect(result.output).toContain('Todos have been modified successfully');
       expect(getTodos()).toHaveLength(1);
     });
 
@@ -119,9 +117,9 @@ describe('TodoWriteTool', () => {
       const result = await todoTool.execute(input);
 
       expect(result.success).toBe(true);
-      expect(result.output).toContain('Tests completed');
-      expect(result.output).toContain('[✓]'); // completed icon
-      expect(getTodos()).toHaveLength(1);
+      expect(result.output).toContain('Todos have been modified successfully');
+      // All completed tasks are auto-cleared by the implementation
+      expect(getTodos()).toHaveLength(0);
     });
   });
 
@@ -138,9 +136,7 @@ describe('TodoWriteTool', () => {
       const result = await todoTool.execute(input);
 
       expect(result.success).toBe(true);
-      expect(result.output).toContain('Task 1');
-      expect(result.output).toContain('Task 2');
-      expect(result.output).toContain('Task 3');
+      expect(result.output).toContain('Todos have been modified successfully');
       expect(getTodos()).toHaveLength(3);
     });
 
@@ -156,9 +152,7 @@ describe('TodoWriteTool', () => {
       const result = await todoTool.execute(input);
 
       expect(result.success).toBe(true);
-      expect(result.output).toMatch(/1\./);
-      expect(result.output).toMatch(/2\./);
-      expect(result.output).toMatch(/3\./);
+      expect(result.output).toContain('Todos have been modified successfully');
     });
 
     it('should create all pending tasks', async () => {
@@ -214,7 +208,8 @@ describe('TodoWriteTool', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(getTodos()[0].status).toBe('completed');
+      // All completed → auto-cleared
+      expect(getTodos()).toHaveLength(0);
     });
 
     it('should handle workflow: pending -> in_progress -> completed', async () => {
@@ -235,11 +230,11 @@ describe('TodoWriteTool', () => {
       });
       expect(getTodos()[0].status).toBe('in_progress');
 
-      // Complete
+      // Complete - all completed → auto-cleared
       await todoTool.execute({
         todos: [{ ...taskInput, status: 'completed' as const }]
       });
-      expect(getTodos()[0].status).toBe('completed');
+      expect(getTodos()).toHaveLength(0);
     });
 
     it('should update multiple tasks simultaneously', async () => {
@@ -271,7 +266,7 @@ describe('TodoWriteTool', () => {
 
       expect(result.success).toBe(true);
       expect(getTodos()).toHaveLength(0);
-      expect(result.output).toContain('Todos updated:');
+      expect(result.output).toContain('Todos have been modified successfully');
     });
 
     it('should clear existing todos when given empty array', async () => {
@@ -506,7 +501,7 @@ describe('TodoWriteTool', () => {
         ]
       });
 
-      expect(result.output).toMatch(/Todos updated:/);
+      expect(result.output).toContain('Todos have been modified successfully');
     });
 
     it('should show all three status icons correctly', async () => {
@@ -518,9 +513,8 @@ describe('TodoWriteTool', () => {
         ]
       });
 
-      expect(result.output).toContain('[○]'); // pending
-      expect(result.output).toContain('[●]'); // in_progress
-      expect(result.output).toContain('[✓]'); // completed
+      // Output is a fixed success message, status icons are rendered in UI
+      expect(result.output).toContain('Todos have been modified successfully');
     });
 
     it('should format output with line breaks between tasks', async () => {
@@ -531,8 +525,8 @@ describe('TodoWriteTool', () => {
         ]
       });
 
-      const lines = result.output!.split('\n');
-      expect(lines.length).toBeGreaterThan(2); // Header + at least 2 tasks
+      // Output is a fixed success message
+      expect(result.output).toContain('Todos have been modified successfully');
     });
   });
 

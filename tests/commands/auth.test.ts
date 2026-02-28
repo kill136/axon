@@ -162,7 +162,7 @@ describe('Login Command', () => {
     expect(ctx.ui.addActivity).toHaveBeenCalledWith('Showed API key setup guide');
 
     const message = (ctx.ui.addMessage as any).mock.calls[0][1];
-    expect(message).toMatch(/console\.anthropic\.com/);
+    expect(message).toMatch(/platform\.axon\.com/);
     expect(message).toMatch(/ANTHROPIC_API_KEY/);
     expect(message).toMatch(/sk-ant-/);
   });

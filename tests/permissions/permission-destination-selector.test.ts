@@ -28,11 +28,12 @@ describe('PermissionDestinationSelector', () => {
     });
 
     afterEach(() => {
+      // Must chdir out of tempDir before deleting it (Windows EBUSY)
+      process.chdir(originalCwd);
       // 清理临时目录
       if (fs.existsSync(tempDir)) {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
-      process.chdir(originalCwd);
     });
 
     it('should not save permission when destination is session', async () => {

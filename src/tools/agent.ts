@@ -1453,7 +1453,7 @@ Note: The "Agent Teams" feature (TeammateTool, SendMessage, spawnTeam) is not av
       // 保存结果
       agent.result = {
         success: true,
-        output: response,
+        output: response || `Task completed (${agent.progress?.toolUseCount || 0} tool calls, no text output)`,
       };
 
       // 保存对话历史以支持恢复

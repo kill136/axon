@@ -15,7 +15,7 @@ describe('AskUserQuestion Enhanced Features', () => {
   describe('基本功能', () => {
     it('应该正确初始化工具', () => {
       expect(tool.name).toBe('AskUserQuestion');
-      expect(tool.description).toContain('Ask the user a question');
+      expect(tool.description).toContain('ask the user questions');
     });
 
     it('应该有正确的 schema', () => {
@@ -161,7 +161,7 @@ describe('AskUserQuestion Enhanced Features', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(result.output).toContain('User Responses');
+      expect(result.output).toContain('User has answered your questions');
       expect(result.output).toContain('Test');
       expect(result.output).toContain('Yes');
     });

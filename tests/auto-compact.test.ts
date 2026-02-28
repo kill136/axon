@@ -35,8 +35,7 @@ describe('Auto Compact Framework', () => {
     it('should respect DISABLE_COMPACT', () => {
       process.env.DISABLE_COMPACT = '1';
       const messages: Message[] = [
-        { role: 'user', content: 'a'.repeat(500000) },
-        { role: 'assistant', content: 'a'.repeat(500000) },
+        { role: 'user', content: 'a'.repeat(700000) },
       ];
       const model = 'claude-sonnet-4-5-20250929';
 
@@ -69,7 +68,7 @@ describe('Auto Compact Framework', () => {
     it('should handle truthy values for DISABLE_COMPACT', () => {
       const truthyValues = ['1', 'true', 'True', 'TRUE', 'yes', 'YES', 'on', 'ON'];
       const messages: Message[] = [
-        { role: 'user', content: 'a'.repeat(500000) },
+        { role: 'user', content: 'a'.repeat(700000) },
       ];
       const model = 'claude-sonnet-4-5-20250929';
 
@@ -82,7 +81,7 @@ describe('Auto Compact Framework', () => {
     it('should not disable compact for falsy values', () => {
       const falsyValues = ['0', 'false', 'False', 'no', ''];
       const messages: Message[] = [
-        { role: 'user', content: 'a'.repeat(500000) },
+        { role: 'user', content: 'a'.repeat(700000) },
       ];
       const model = 'claude-sonnet-4-5-20250929';
 
@@ -163,16 +162,16 @@ describe('Auto Compact Framework', () => {
       const model = 'claude-sonnet-4-5-20250929';
       const availableInput = calculateAvailableInput(model);
 
-      // 200000 (context) - 64000 (output) = 136000
-      expect(availableInput).toBe(136000);
+      // 200000 (context) - min(64000, 20000) = 180000 (官方 _QY=20000 cap)
+      expect(availableInput).toBe(180000);
     });
 
     it('should calculate available input tokens for 1M model', () => {
       const model = 'claude-opus-4-5-20251101[1m]';
       const availableInput = calculateAvailableInput(model);
 
-      // 1000000 (context) - 64000 (output) = 936000
-      expect(availableInput).toBe(936000);
+      // 1000000 (context) - min(64000, 20000) = 980000 (官方 _QY=20000 cap)
+      expect(availableInput).toBe(980000);
     });
   });
 
@@ -181,16 +180,16 @@ describe('Auto Compact Framework', () => {
       const model = 'claude-sonnet-4-5-20250929';
       const threshold = calculateAutoCompactThreshold(model);
 
-      // 200000 - 64000 - 13000 = 123000
-      expect(threshold).toBe(123000);
+      // 200000 - 20000 - 13000 = 167000
+      expect(threshold).toBe(167000);
     });
 
     it('should calculate auto compact threshold for 1M model', () => {
       const model = 'claude-opus-4-5-20251101[1m]';
       const threshold = calculateAutoCompactThreshold(model);
 
-      // 1000000 - 64000 - 13000 = 923000
-      expect(threshold).toBe(923000);
+      // 1000000 - 20000 - 13000 = 967000
+      expect(threshold).toBe(967000);
     });
 
     it('should respect percentage override', () => {
@@ -200,9 +199,9 @@ describe('Auto Compact Framework', () => {
       const threshold = calculateAutoCompactThreshold(model);
       const availableInput = calculateAvailableInput(model);
 
-      // (200000 - 64000) * 0.8 = 108800
+      // (200000 - 20000) * 0.8 = 144000
       expect(threshold).toBe(Math.floor(availableInput * 0.8));
-      expect(threshold).toBe(108800);
+      expect(threshold).toBe(144000);
     });
 
     it('should clamp percentage override to original threshold', () => {
@@ -211,8 +210,8 @@ describe('Auto Compact Framework', () => {
 
       const threshold = calculateAutoCompactThreshold(model);
 
-      // 应该限制为原始阈值 123000
-      expect(threshold).toBe(123000);
+      // 应该限制为原始阈值 167000
+      expect(threshold).toBe(167000);
     });
 
     it('should handle 50% override', () => {
@@ -222,7 +221,7 @@ describe('Auto Compact Framework', () => {
       const threshold = calculateAutoCompactThreshold(model);
       const availableInput = calculateAvailableInput(model);
 
-      // (200000 - 64000) * 0.5 = 68000
+      // (200000 - 20000) * 0.5 = 90000
       expect(threshold).toBe(Math.floor(availableInput * 0.5));
     });
 
@@ -233,7 +232,7 @@ describe('Auto Compact Framework', () => {
       const threshold = calculateAutoCompactThreshold(model);
 
       // 应该使用默认阈值
-      expect(threshold).toBe(123000);
+      expect(threshold).toBe(167000);
     });
 
     it('should ignore negative percentage values', () => {
@@ -243,7 +242,7 @@ describe('Auto Compact Framework', () => {
       const threshold = calculateAutoCompactThreshold(model);
 
       // 应该使用默认阈值
-      expect(threshold).toBe(123000);
+      expect(threshold).toBe(167000);
     });
 
     it('should ignore zero percentage', () => {
@@ -253,7 +252,7 @@ describe('Auto Compact Framework', () => {
       const threshold = calculateAutoCompactThreshold(model);
 
       // 应该使用默认阈值
-      expect(threshold).toBe(123000);
+      expect(threshold).toBe(167000);
     });
   });
 
@@ -271,11 +270,10 @@ describe('Auto Compact Framework', () => {
 
     it('should return true when above threshold', () => {
       // 创建大量消息以超过阈值
-      // 阈值是 123000 tokens，字符数约 492000（123000 * 4）
-      const largeContent = 'a'.repeat(500000); // ~125K tokens
+      // 阈值是 167000 tokens，字符数约 668000（167000 * 4）
+      const largeContent = 'a'.repeat(700000); // ~175K tokens
       const messages: Message[] = [
         { role: 'user', content: largeContent },
-        { role: 'assistant', content: largeContent },
       ];
       const model = 'claude-sonnet-4-5-20250929';
 
@@ -300,11 +298,11 @@ describe('Auto Compact Framework', () => {
 
     it('should handle complex message structure', () => {
       const messages: Message[] = [
-        { role: 'user', content: 'a'.repeat(100000) },
+        { role: 'user', content: 'a'.repeat(200000) },
         {
           role: 'assistant',
           content: [
-            { type: 'text', text: 'b'.repeat(100000) },
+            { type: 'text', text: 'b'.repeat(200000) },
             { type: 'tool_use', id: '1', name: 'test', input: {} },
           ],
         },
@@ -318,7 +316,7 @@ describe('Auto Compact Framework', () => {
       const model = 'claude-sonnet-4-5-20250929';
 
       const result = isAboveAutoCompactThreshold(messages, model);
-      // 总共约 500000 字符 = 125000 tokens > 123000 阈值
+      // 总共约 700000 字符 = 175000 tokens > 167000 阈值
       expect(result).toBe(true);
     });
 
@@ -334,10 +332,9 @@ describe('Auto Compact Framework', () => {
   describe('Auto Compact Decision', () => {
     it('should not compact when DISABLE_COMPACT is set', () => {
       process.env.DISABLE_COMPACT = '1';
-      const largeContent = 'a'.repeat(500000);
+      const largeContent = 'a'.repeat(700000);
       const messages: Message[] = [
         { role: 'user', content: largeContent },
-        { role: 'assistant', content: largeContent },
       ];
       const model = 'claude-sonnet-4-5-20250929';
 
@@ -357,10 +354,9 @@ describe('Auto Compact Framework', () => {
     });
 
     it('should compact when above threshold and not disabled', () => {
-      const largeContent = 'a'.repeat(500000);
+      const largeContent = 'a'.repeat(700000);
       const messages: Message[] = [
         { role: 'user', content: largeContent },
-        { role: 'assistant', content: largeContent },
       ];
       const model = 'claude-sonnet-4-5-20250929';
 
@@ -370,7 +366,7 @@ describe('Auto Compact Framework', () => {
 
     it('should respect both DISABLE_COMPACT and threshold', () => {
       const messages: Message[] = [
-        { role: 'user', content: 'a'.repeat(500000) },
+        { role: 'user', content: 'a'.repeat(700000) },
       ];
       const model = 'claude-sonnet-4-5-20250929';
 
@@ -384,7 +380,7 @@ describe('Auto Compact Framework', () => {
 
     it('should work with different models', () => {
       const messages: Message[] = [
-        { role: 'user', content: 'a'.repeat(500000) },
+        { role: 'user', content: 'a'.repeat(700000) },
       ];
 
       // Sonnet 模型
@@ -398,13 +394,13 @@ describe('Auto Compact Framework', () => {
     });
 
     it('should handle 1M model with higher threshold', () => {
-      // 1M 模型的阈值是 923000 tokens = 3692000 字符
+      // 1M 模型的阈值是 967000 tokens = 3868000 字符
       const messages: Message[] = [
-        { role: 'user', content: 'a'.repeat(500000) },
+        { role: 'user', content: 'a'.repeat(700000) },
       ];
       const model = 'claude-opus-4-5-20251101[1m]';
 
-      // 500000 字符约 125000 tokens，远低于 923000 阈值
+      // 700000 字符约 175000 tokens，远低于 967000 阈值
       expect(shouldAutoCompact(messages, model)).toBe(false);
     });
   });
@@ -468,9 +464,9 @@ describe('Auto Compact Framework', () => {
     });
 
     it('should handle many small messages', () => {
-      // 创建 1000 个小消息
+      // 创建 1400 个小消息
       const messages: Message[] = [];
-      for (let i = 0; i < 1000; i++) {
+      for (let i = 0; i < 1400; i++) {
         messages.push(
           { role: 'user', content: 'a'.repeat(250) },
           { role: 'assistant', content: 'b'.repeat(250) }
@@ -478,7 +474,7 @@ describe('Auto Compact Framework', () => {
       }
       const model = 'claude-sonnet-4-5-20250929';
 
-      // 总共 500000 字符 = 125000 tokens > 123000 阈值
+      // 总共 700000 字符 = 175000 tokens > 167000 阈值
       const result = isAboveAutoCompactThreshold(messages, model);
       expect(result).toBe(true);
     });
@@ -509,11 +505,11 @@ describe('Auto Compact Framework', () => {
     it('should simulate typical conversation growth', () => {
       const model = 'claude-sonnet-4-5-20250929';
       const messages: Message[] = [];
-      const threshold = calculateAutoCompactThreshold(model); // 123000 tokens
+      const threshold = calculateAutoCompactThreshold(model); // 167000 tokens
 
       // 模拟逐渐增长的对话
       // 每轮增加 100000 字符（50000 * 2）= 25000 tokens
-      // 需要 5 轮才能达到 125000 tokens（超过 123000 阈值）
+      // 需要 7 轮才能达到 175000 tokens（超过 167000 阈值）
       for (let i = 0; i < 10; i++) {
         messages.push(
           { role: 'user', content: 'a'.repeat(50000) },
@@ -523,12 +519,12 @@ describe('Auto Compact Framework', () => {
         const shouldCompact = shouldAutoCompact(messages, model);
         const currentTokens = (i + 1) * 25000;
 
-        // 前 4 轮（< 123000 tokens）不应该压缩
-        if (i < 4) {
-          // 第 4 轮：100000 tokens < 123000
+        // 前 6 轮（<= 150000 tokens）不应该压缩
+        if (i < 6) {
+          // 第 6 轮：150000 tokens < 167000
           expect(shouldCompact).toBe(false);
         } else {
-          // 第 5 轮及之后（>= 125000 tokens）应该压缩
+          // 第 7 轮及之后（>= 175000 tokens）应该压缩
           expect(shouldCompact).toBe(true);
         }
       }
@@ -537,11 +533,11 @@ describe('Auto Compact Framework', () => {
     it('should handle conversation with tool calls', () => {
       const model = 'claude-sonnet-4-5-20250929';
       const messages: Message[] = [
-        { role: 'user', content: 'a'.repeat(100000) },
+        { role: 'user', content: 'a'.repeat(200000) },
         {
           role: 'assistant',
           content: [
-            { type: 'text', text: 'b'.repeat(50000) },
+            { type: 'text', text: 'b'.repeat(100000) },
             { type: 'tool_use', id: '1', name: 'bash', input: { command: 'ls' } },
           ],
         },
@@ -553,11 +549,11 @@ describe('Auto Compact Framework', () => {
         },
         {
           role: 'assistant',
-          content: 'd'.repeat(50000),
+          content: 'd'.repeat(100000),
         },
       ];
 
-      // 总共约 500000 字符 = 125000 tokens > 123000
+      // 总共约 700000 字符 = 175000 tokens > 167000
       expect(shouldAutoCompact(messages, model)).toBe(true);
     });
 
@@ -565,19 +561,19 @@ describe('Auto Compact Framework', () => {
       process.env.AXON_AUTOCOMPACT_PCT_OVERRIDE = '60';
       const model = 'claude-sonnet-4-5-20250929';
 
-      // 60% 阈值 = (200000 - 64000) * 0.6 = 81600 tokens = 326400 字符
+      // 60% 阈值 = (200000 - 20000) * 0.6 = 108000 tokens = 432000 字符
       const messages: Message[] = [
-        { role: 'user', content: 'a'.repeat(330000) },
+        { role: 'user', content: 'a'.repeat(440000) },
       ];
 
-      // 330000 字符 = 82500 tokens > 81600 阈值
+      // 440000 字符 = 110000 tokens > 108000 阈值
       expect(shouldAutoCompact(messages, model)).toBe(true);
 
       // 较小的消息不应该触发
       const smallMessages: Message[] = [
-        { role: 'user', content: 'a'.repeat(300000) },
+        { role: 'user', content: 'a'.repeat(400000) },
       ];
-      // 300000 字符 = 75000 tokens < 81600 阈值
+      // 400000 字符 = 100000 tokens < 108000 阈值
       expect(shouldAutoCompact(smallMessages, model)).toBe(false);
     });
   });
@@ -610,15 +606,15 @@ describe('Integration Test Scenarios', () => {
     messages.push({
       role: 'user',
       content: [
-        { type: 'tool_result', tool_use_id: 'tool_1', content: 'a'.repeat(400000) }, // 大文件内容
+        { type: 'tool_result', tool_use_id: 'tool_1', content: 'a'.repeat(500000) }, // 大文件内容
       ],
     });
     messages.push({
       role: 'assistant',
-      content: 'Based on the file content... ' + 'b'.repeat(100000),
+      content: 'Based on the file content... ' + 'b'.repeat(200000),
     });
 
-    // 总共约 500000 字符，应该触发压缩
+    // 总共约 700000 字符 = 175000 tokens > 167000，应该触发压缩
     expect(shouldAutoCompact(messages, model)).toBe(true);
   });
 
@@ -642,28 +638,28 @@ describe('Integration Test Scenarios', () => {
   });
 
   it('should handle session consistency across different thresholds', () => {
-    // 400000 字符 = 100000 tokens < 123000 阈值（不触发）
+    // 600000 字符 = 150000 tokens < 167000 阈值（不触发）
     const smallMessages: Message[] = [
-      { role: 'user', content: 'a'.repeat(400000) },
+      { role: 'user', content: 'a'.repeat(600000) },
     ];
 
     // 标准模型不应该触发压缩（因为低于阈值）
     const result1 = shouldAutoCompact(smallMessages, 'claude-sonnet-4-5-20250929');
-    expect(result1).toBe(false); // 100000 tokens < 123000
+    expect(result1).toBe(false); // 150000 tokens < 167000
 
     // 使用更大的消息来触发压缩
     const largeMessages: Message[] = [
-      { role: 'user', content: 'a'.repeat(500000) }, // 125000 tokens
+      { role: 'user', content: 'a'.repeat(700000) }, // 175000 tokens
     ];
     expect(shouldAutoCompact(largeMessages, 'claude-sonnet-4-5-20250929')).toBe(true);
 
-    // 1M 模型需要更多内容才能触发（阈值 923000 tokens）
+    // 1M 模型需要更多内容才能触发（阈值 967000 tokens）
     expect(shouldAutoCompact(largeMessages, 'claude-opus-4-5-20251101[1m]')).toBe(false);
   });
 
   it('should validate environment variable interactions', () => {
     const messages: Message[] = [
-      { role: 'user', content: 'a'.repeat(500000) },
+      { role: 'user', content: 'a'.repeat(700000) },
     ];
     const model = 'claude-sonnet-4-5-20250929';
 
