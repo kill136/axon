@@ -11,7 +11,7 @@
 📦 生成的文件
 
 1. 测试文件 (主要成果)
-   📄 /home/user/claude-code-open/tests/commands/cli-args.test.ts
+   📄 /home/user/axon/tests/commands/cli-args.test.ts
    - 71 个单元测试
    - 覆盖 40+ 个 CLI 参数
    - 22 KB 文件大小
@@ -168,14 +168,14 @@ npm test -- tests/commands/cli-args.test.ts --reporter=verbose
 📚 相关文件
 
 测试代码:
-  /home/user/claude-code-open/tests/commands/cli-args.test.ts
+  /home/user/axon/tests/commands/cli-args.test.ts
 
 文档:
-  /home/user/claude-code-open/tests/commands/CLI_ARGS_TEST_SUMMARY.md
-  /home/user/claude-code-open/tests/commands/CLI_ARGS_QUICK_REFERENCE.md
+  /home/user/axon/tests/commands/CLI_ARGS_TEST_SUMMARY.md
+  /home/user/axon/tests/commands/CLI_ARGS_QUICK_REFERENCE.md
 
 参考:
-  /home/user/claude-code-open/FEATURE_TESTING_CHECKLIST.md
-  /home/user/claude-code-open/src/cli.ts
+  /home/user/axon/FEATURE_TESTING_CHECKLIST.md
+  /home/user/axon/src/cli.ts
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

@@ -1,5 +1,5 @@
 /**
- * Background utilities for Claude Code Browser Bridge
+ * Background utilities for Axon Browser Bridge
  * Adapted from OpenClaw (MIT License)
  */
 

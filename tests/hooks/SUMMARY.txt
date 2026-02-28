@@ -2,7 +2,7 @@
    HOOKS SYSTEM TEST SUITE - COMPLETION SUMMARY
 ═══════════════════════════════════════════════════════════════════
 
-PROJECT: Claude Code Open - Hooks System Unit Tests
+PROJECT: Axon - Hooks System Unit Tests
 DATE: 2025-12-28
 FRAMEWORK: Vitest 4.0.16
 
@@ -19,7 +19,7 @@ FRAMEWORK: Vitest 4.0.16
   FILES CREATED
 ───────────────────────────────────────────────────────────────────
 
-📁 /home/user/claude-code-open/tests/hooks/
+📁 /home/user/axon/tests/hooks/
   ├── hooks.test.ts          (30KB)  - Main test suite with 55 tests
   ├── README.md              (5.1KB) - Test documentation
   ├── TEST_REPORT.md         (9.6KB) - Detailed test report

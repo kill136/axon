@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Claude Code Open — Professional Promo Video Generator
+Axon — Professional Promo Video Generator
 Generates a 60s MP4 (1920x1080, 30fps) from screenshots + Pillow graphics.
 """
 
@@ -118,7 +118,7 @@ def scene_opening(frame_idx, total_frames):
     title_color = tuple(int(c * alpha) for c in WHITE)
 
     # main title
-    center_text(draw, 320, "Claude Code Open", FONT_HUGE, fill=title_color)
+    center_text(draw, 320, "Axon", FONT_HUGE, fill=title_color)
 
     # version tag
     if t > 0.3:
@@ -130,7 +130,7 @@ def scene_opening(frame_idx, total_frames):
     if t > 0.5:
         sub_alpha = min((t - 0.5) * 3, 1.0)
         sub_color = tuple(int(c * sub_alpha) for c in GRAY)
-        center_text(draw, 490, "The Open-Source Claude Code CLI Reimplementation", FONT_MED, fill=sub_color)
+        center_text(draw, 490, "The Open-Source AI Coding Platform", FONT_MED, fill=sub_color)
 
     # GitHub stats
     if t > 0.7:
@@ -204,7 +204,7 @@ def scene_features(frame_idx, total_frames):
     t = frame_idx / total_frames
 
     # title
-    center_text(draw, 60, "Why Claude Code Open?", FONT_BIG, fill=WHITE)
+    center_text(draw, 60, "Why Axon?", FONT_BIG, fill=WHITE)
     draw_gradient_bar(draw, 120, 300, 3, ACCENT, ACCENT2)
 
     features = [
@@ -346,7 +346,7 @@ def scene_closing(frame_idx, total_frames):
     center_text(draw, 280, "Get Started Today", FONT_HUGE, fill=tc)
 
     # GitHub URL
-    center_text(draw, 400, "github.com/kill136/claude-code-open", FONT_BIG, fill=ac)
+    center_text(draw, 400, "github.com/kill136/axon", FONT_BIG, fill=ac)
 
     # features summary
     center_text(draw, 500, "MIT License  |  Free & Open Source  |  Community Driven", FONT_MED, fill=gc)

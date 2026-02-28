@@ -7,7 +7,7 @@ const {chromium} = require('playwright-core');
   const ctx = await b.newContext({ viewport: { width: 1200, height: 675 } });
   const p = await ctx.newPage();
   await p.goto('http://127.0.0.1:9876/twitter-promo.html', { waitUntil: 'networkidle' });
-  await p.screenshot({ path: String.raw`F:\claude-code-open\demo-screenshots\twitter-card.png`, type: 'png' });
+  await p.screenshot({ path: String.raw`F:\axon\demo-screenshots\twitter-card.png`, type: 'png' });
   await b.close();
   console.log('DONE');
 })();

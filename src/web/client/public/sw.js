@@ -1,5 +1,5 @@
 /**
- * Claude Code PWA Service Worker
+ * Axon PWA Service Worker
  * 缓存静态资源，支持离线访问 UI shell
  * API 和 WebSocket 请求不缓存，始终走网络
  */

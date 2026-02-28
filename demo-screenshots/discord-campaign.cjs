@@ -10,7 +10,7 @@ const { chromium } = require('playwright-core');
 const path = require('path');
 const fs = require('fs');
 
-const CHROME_USER_DATA = 'C:\\Users\\wangbj\\.claude\\browser\\default\\user-data';
+const CHROME_USER_DATA = 'C:\\Users\\wangbj\\.axon\\browser\\default\\user-data';
 const PROMO_IMAGE = path.join(__dirname, 'discord-promo.png');
 const DEMO_GIF = path.join(__dirname, 'demo.gif');
 
@@ -25,9 +25,9 @@ const TARGETS = [
     serverText: 'Anthropic',         // text to find server icon in sidebar
     channelText: 'share-projects',   // channel name to click
     attachImage: true,
-    message: `**Claude Code Open — Open-Source Claude Code Reimplementation with Web IDE**
+    message: `**Axon — Open-Source AI Coding Platform with Web IDE**
 
-Hi Anthropic community! I built an open-source educational reimplementation of Claude Code that extends the CLI into a full platform:
+Hi Anthropic community! I built an open-source AI coding platform that extends the CLI into a full platform:
 
 **What makes it different from the official CLI:**
 - **Full Web UI IDE** — Monaco editor, file tree, AI-enhanced code editing, live streaming
@@ -40,7 +40,7 @@ Hi Anthropic community! I built an open-source educational reimplementation of C
 37+ built-in tools, MIT licensed, 129 stars.
 One-click install for Windows/macOS/Linux.
 
-**GitHub:** https://github.com/kill136/claude-code-open
+**GitHub:** https://github.com/kill136/axon
 **Live Demo:** http://voicegpt.site:3456/
 **Discord:** https://discord.gg/bNyJKk6PVZ
 
@@ -68,7 +68,7 @@ Instead of a desktop app, it runs as a **Web IDE** accessible from any browser �
 Works with Anthropic API, AWS Bedrock, and Google Vertex AI.
 
 **Try it:** http://voicegpt.site:3456/
-**GitHub:** https://github.com/kill136/claude-code-open
+**GitHub:** https://github.com/kill136/axon
 **Discord:** https://discord.gg/bNyJKk6PVZ`
   },
   {
@@ -77,7 +77,7 @@ Works with Anthropic API, AWS Bedrock, and Google Vertex AI.
     serverText: 'Windsurf',
     channelText: 'showcase',
     attachImage: true,
-    message: `**Claude Code Open — Open Source AI IDE with Multi-Agent & Self-Evolution**
+    message: `**Axon — Open Source AI IDE with Multi-Agent & Self-Evolution**
 
 Sharing my open-source project: a full AI coding platform with Web IDE and multi-agent orchestration.
 
@@ -91,7 +91,7 @@ Sharing my open-source project: a full AI coding platform with Web IDE and multi
 Fully MIT licensed, 129 stars, actively maintained.
 
 **Live Demo:** http://voicegpt.site:3456/
-**GitHub:** https://github.com/kill136/claude-code-open
+**GitHub:** https://github.com/kill136/axon
 **Our Discord:** https://discord.gg/bNyJKk6PVZ
 
 Feedback welcome!`
@@ -115,7 +115,7 @@ Hey Continue community! Built something you might find interesting — an open-s
 
 Built with TypeScript, React, Express, WebSocket. 129⭐ 50 forks.
 
-**GitHub:** https://github.com/kill136/claude-code-open
+**GitHub:** https://github.com/kill136/axon
 **Try it:** http://voicegpt.site:3456/`
   },
   {
@@ -125,7 +125,7 @@ Built with TypeScript, React, Express, WebSocket. 129⭐ 50 forks.
     channelText: 'show-and-tell',
     channelFallback: 'general',
     attachImage: true,
-    message: `**Claude Code Open — Multi-Agent AI Coding Platform (Open Source)**
+    message: `**Axon — Multi-Agent AI Coding Platform (Open Source)**
 
 Built an open-source AI coding platform featuring a multi-agent system for complex task orchestration:
 
@@ -139,7 +139,7 @@ Built an open-source AI coding platform featuring a multi-agent system for compl
 Web IDE with Monaco editor, multi-provider (Anthropic/Bedrock/Vertex), MIT licensed.
 129 stars, actively developed.
 
-**GitHub:** https://github.com/kill136/claude-code-open
+**GitHub:** https://github.com/kill136/axon
 **Live Demo:** http://voicegpt.site:3456/`
   },
   {
@@ -161,7 +161,7 @@ Built an open-source AI platform that includes a powerful automation layer:
 Think of it as an AI coding assistant with n8n-like automation capabilities built in.
 MIT licensed, 129⭐ on GitHub.
 
-**GitHub:** https://github.com/kill136/claude-code-open
+**GitHub:** https://github.com/kill136/axon
 **Demo:** http://voicegpt.site:3456/`
   },
 ];

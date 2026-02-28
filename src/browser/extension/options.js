@@ -1,5 +1,5 @@
 /**
- * Options page logic for Claude Code Browser Bridge
+ * Options page logic for Axon Browser Bridge
  */
 
 const DEFAULT_RELAY_PORT = 18792;

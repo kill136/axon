@@ -6,7 +6,7 @@ OUT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Screenshots in order, with captions
 frames_config = [
-    ('01-main.png', 'Claude Code Open - Web IDE'),
+    ('01-main.png', 'Axon - Web IDE'),
     ('05-typing.png', 'AI-Powered Coding Assistant'),
     ('02-blueprint.png', 'Blueprint Multi-Agent System'),
     ('03-swarm.png', 'Swarm Console - Agent Monitoring'),
@@ -36,7 +36,7 @@ def add_overlays(img, caption, is_first=False):
         caption_font = ImageFont.load_default()
     
     # Title text
-    title = "github.com/kill136/claude-code-open  |  126 Stars  |  MIT License"
+    title = "github.com/kill136/axon  |  126 Stars  |  MIT License"
     bbox = draw.textbbox((0, 0), title, font=title_font)
     text_w = bbox[2] - bbox[0]
     draw.text(

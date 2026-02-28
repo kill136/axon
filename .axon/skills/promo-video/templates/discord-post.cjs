@@ -4,7 +4,7 @@
  */
 const { chromium } = require('playwright-core');
 
-const CHROME_USER_DATA = 'C:\\Users\\wangbj\\.claude\\browser\\default\\user-data';
+const CHROME_USER_DATA = 'C:\\Users\\wangbj\\.axon\\browser\\default\\user-data';
 
 // Channels to post to (server_id/channel_id)
 const TARGETS = [
@@ -15,9 +15,9 @@ const TARGETS = [
   },
 ];
 
-const MESSAGE = `**Claude Code Open — Open Source AI Coding Platform with Web IDE & Multi-Agent System**
+const MESSAGE = `**Axon — Open Source AI Coding Platform with Web IDE & Multi-Agent System**
 
-Built an open-source reimplementation of Claude Code that goes beyond just CLI:
+Built an open-source AI coding platform that goes beyond just CLI:
 
 **Key Features:**
 - **Web UI IDE** — Full browser IDE with Monaco editor, file tree, AI-enhanced code editing
@@ -29,7 +29,7 @@ Built an open-source reimplementation of Claude Code that goes beyond just CLI:
 
 126 stars on GitHub, actively maintained.
 
-GitHub: https://github.com/kill136/claude-code-open
+GitHub: https://github.com/kill136/axon
 Live Demo: http://voicegpt.site:3456/
 Discord: https://discord.gg/bNyJKk6PVZ
 
@@ -96,7 +96,7 @@ async function typeInDiscord(page, text) {
   await page.waitForTimeout(2000);
   
   // Take screenshot before posting
-  await page.screenshot({ path: 'F:/claude-code-open/demo-screenshots/pre-post-windsurf.png' });
+  await page.screenshot({ path: 'F:/axon/demo-screenshots/pre-post-windsurf.png' });
   
   // Type the message
   console.log('Typing message...');
@@ -104,7 +104,7 @@ async function typeInDiscord(page, text) {
   await page.waitForTimeout(1000);
   
   // Take screenshot of typed message
-  await page.screenshot({ path: 'F:/claude-code-open/demo-screenshots/typed-windsurf.png' });
+  await page.screenshot({ path: 'F:/axon/demo-screenshots/typed-windsurf.png' });
   
   console.log('Message typed! Press Enter to send or check the screenshot.');
   console.log('Sending in 3 seconds...');
@@ -115,7 +115,7 @@ async function typeInDiscord(page, text) {
   await page.waitForTimeout(3000);
   
   // Take screenshot after posting
-  await page.screenshot({ path: 'F:/claude-code-open/demo-screenshots/posted-windsurf.png' });
+  await page.screenshot({ path: 'F:/axon/demo-screenshots/posted-windsurf.png' });
   console.log('Posted to Windsurf #showcase!');
   
   // Now go to Continue server
@@ -139,7 +139,7 @@ async function typeInDiscord(page, text) {
   await page.waitForTimeout(1000);
   await page.keyboard.press('Enter');
   await page.waitForTimeout(3000);
-  await page.screenshot({ path: 'F:/claude-code-open/demo-screenshots/posted-continue.png' });
+  await page.screenshot({ path: 'F:/axon/demo-screenshots/posted-continue.png' });
   console.log('Posted to Continue #general!');
   
   console.log('\nDone! Closing browser...');

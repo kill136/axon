@@ -38,15 +38,15 @@ async function postToTwitter(browser) {
   await textbox.click();
   await sleep(500);
   
-  const tweetText = `Open-sourced: Claude Code Open
+  const tweetText = `Open-sourced: Axon
 
 Full AI coding platform with Web IDE + Multi-Agent + 37+ Tools
 
 MIT licensed. Runs locally.
 
-github.com/kill136/claude-code-open
+github.com/kill136/axon
 
-#OpenSource #AI #ClaudeCode`;
+#OpenSource #AI #Axon`;
   
   await page.keyboard.type(tweetText, { delay: 15 });
   await sleep(2000);

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * postinstall script for claude-code-open
+ * postinstall script for axon
  * Creates desktop shortcut on Windows / .desktop entry on Linux
  * Only runs during `npm install -g` (global install)
  */
@@ -50,7 +50,7 @@ function createWindowsShortcut() {
       '@echo off',
       'chcp 65001 >nul 2>&1',
       'echo.',
-      'echo   Starting Claude Code WebUI...',
+      'echo   Starting Axon WebUI...',
       'echo.',
       'claude-web -H 0.0.0.0',
       'pause',
@@ -58,12 +58,12 @@ function createWindowsShortcut() {
     ].join('\r\n'), 'ascii');
 
     // Create .lnk via PowerShell
-    const shortcutPath = join(desktop, 'Claude Code WebUI.lnk');
+    const shortcutPath = join(desktop, 'Axon WebUI.lnk');
     const esc = s => s.replace(/'/g, "''");
     const psScript = [
       `$s = (New-Object -ComObject WScript.Shell).CreateShortcut('${esc(shortcutPath)}')`,
       `$s.TargetPath = '${esc(launcherPath)}'`,
-      `$s.Description = 'Launch Claude Code Web Interface'`,
+      `$s.Description = 'Launch Axon Web Interface'`,
       `$s.WorkingDirectory = $env:USERPROFILE`,
       `$s.Save()`
     ].join('; ');
@@ -80,8 +80,8 @@ function createLinuxDesktopEntry() {
     const home = process.env.HOME || '';
     const entry = [
       '[Desktop Entry]',
-      'Name=Claude Code WebUI',
-      'Comment=Launch Claude Code Web Interface',
+      'Name=Axon WebUI',
+      'Comment=Launch Axon Web Interface',
       'Exec=claude-web -H 0.0.0.0',
       'Terminal=true',
       'Type=Application',

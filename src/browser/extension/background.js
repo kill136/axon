@@ -1,5 +1,5 @@
 /**
- * Claude Code Browser Bridge - Background Service Worker
+ * Axon Browser Bridge - Background Service Worker
  * 
  * Complete CDP relay bridge implementation adapted from OpenClaw (MIT License).
  * Supports per-tab debugger attach/detach, session management, state persistence,
