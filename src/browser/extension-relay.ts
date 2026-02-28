@@ -226,6 +226,9 @@ async function createRelayServer(
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-claude-relay-token');
 
+    // Log all incoming requests for debugging
+    console.log(`[Relay] HTTP ${req.method} ${pathname} from ${req.socket.remoteAddress}`);
+
     if (req.method === 'OPTIONS') {
       res.writeHead(204);
       res.end();
@@ -324,6 +327,13 @@ async function createRelayServer(
     }
   });
 
+  // Attach error handler to every incoming socket to prevent ECONNRESET crash
+  httpServer.on('connection', (socket) => {
+    socket.on('error', (err) => {
+      console.warn('[Relay] Socket error (ignored):', err.message);
+    });
+  });
+
   // ======================================================================
   // WebSocket Servers
   // ======================================================================
@@ -339,8 +349,17 @@ async function createRelayServer(
 
     // Only allow one extension connection
     if (extensionSocket) {
-      console.log('[Relay] Closing previous extension connection');
-      extensionSocket.close();
+      if (extensionSocket.readyState === WebSocket.OPEN) {
+        // Previous connection is still alive — reject the NEW connection.
+        // This prevents the reconnect loop: if we close the old one, its onclose
+        // in the extension triggers scheduleReconnect → new connection → repeat.
+        console.log('[Relay] Previous extension still connected, rejecting new connection');
+        ws.close(4001, 'already-connected');
+        return;
+      }
+      // Previous connection is closing/closed — safe to replace
+      console.log('[Relay] Replacing dead extension connection');
+      try { extensionSocket.close(); } catch {}
     }
     extensionSocket = ws;
 

@@ -300,16 +300,17 @@ function EditToolContent({ input, result }: { input: any; result?: any }) {
  * 渲染 Write 工具内容 - 支持 Click to expand
  */
 function WriteToolContent({ input }: { input: any }) {
+  const filePath = input?.file_path || '';
+  const ext = filePath.split('.').pop()?.toLowerCase() || '';
+  const isHtml = ext === 'html' || ext === 'htm';
+
   const [expanded, setExpanded] = useState(false);
-  const [previewing, setPreviewing] = useState(false);
+  const [previewing, setPreviewing] = useState(isHtml);
   const { t } = useLanguage();
   const content = input?.content || '';
   const allLines = content.split('\n');
   const totalLines = allLines.length;
   const maxLines = DEFAULT_MAX_LINES;
-  const filePath = input?.file_path || '';
-  const ext = filePath.split('.').pop()?.toLowerCase() || '';
-  const isHtml = ext === 'html' || ext === 'htm';
 
   const displayLines = expanded ? allLines : allLines.slice(0, maxLines);
 

@@ -4581,10 +4581,10 @@ Guidelines:
             }
           } else {
             // 普通 MCP 服务器：需要连接并获取工具
-            const mcpServerConfigs = configManager.getMcpServers();
+            const mcpServerConfigs = this.mcpConfigManager.getServers();
             const config = mcpServerConfigs[name];
             if (config) {
-              registerMcpServer(name, config);
+              registerMcpServer(name, config as any);
               const connected = await connectMcpServer(name);
               if (connected) {
                 const tools = await createMcpTools(name);

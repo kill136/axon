@@ -173,7 +173,10 @@ async function persistTabState() {
 // ========================================================================
 
 /**
- * Connect to relay server with preflight check
+ * Connect to relay server directly via WebSocket (no preflight).
+ * Preflight fetch() is unreliable in Chrome extension SW when loaded via
+ * Extensions.loadUnpacked — Chrome's network stack may not be ready yet,
+ * causing silent failures that prevent reconnection.
  */
 async function connectToRelay() {
   if (!relayPort || !gatewayToken) {
@@ -185,33 +188,15 @@ async function connectToRelay() {
 
   setBadgeText('…');
 
-  // Preflight check: HEAD request to relay
-  try {
-    const preflightUrl = `http://${RELAY_HOST}:${relayPort}/extension/status`;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), PREFLIGHT_TIMEOUT_MS);
-    
-    const response = await fetch(preflightUrl, {
-      method: 'HEAD',
-      signal: controller.signal,
-      headers: { 'x-claude-relay-token': gatewayToken }
-    });
-    clearTimeout(timeout);
-
-    if (!response.ok) {
-      console.warn('[Bridge] Relay preflight failed:', response.status);
-      scheduleReconnect();
-      return;
-    }
-  } catch (error) {
-    console.warn('[Bridge] Relay preflight error:', error.message);
-    if (isRetryableReconnectError(error)) {
-      scheduleReconnect();
-    }
-    return;
+  // Close any existing connection before creating a new one.
+  // This prevents orphan connections that confuse the relay.
+  if (ws) {
+    const oldWs = ws;
+    ws = null;
+    try { oldWs.close(); } catch {}
   }
 
-  // Establish WebSocket connection
+  // Connect directly via WebSocket — no preflight needed
   try {
     const wsUrl = buildRelayWsUrl(relayPort, gatewayToken);
     console.log('[Bridge] Connecting to relay:', wsUrl);
@@ -275,12 +260,29 @@ async function connectToRelay() {
       console.error('[Bridge] WebSocket error:', error);
     };
 
+    // Capture reference to THIS specific WebSocket instance for the onclose handler.
+    // Without this, onclose may fire after a newer ws has been assigned to the global
+    // `ws` variable, causing it to null-out the new connection and trigger a spurious
+    // reconnect loop.
+    const thisWs = ws;
     ws.onclose = (event) => {
       clearTimeout(wsTimeout);
-      console.log('[Bridge] Disconnected from relay server, code:', event.code);
+      console.log('[Bridge] Disconnected from relay server, code:', event.code, 'reason:', event.reason);
+      // Only clean up and reconnect if this is still the current connection.
+      // If ws !== thisWs, a newer connection has already replaced us — do nothing.
+      if (ws !== thisWs) {
+        console.log('[Bridge] Stale connection closed, newer connection already active — ignoring');
+        return;
+      }
       ws = null;
       stopPing();
       setBadgeText('');
+      // Code 4000 = "replaced by a newer connection" — do NOT reconnect.
+      // Code 4001 = "already connected" — relay rejected us because old conn is alive.
+      if (event.code === 4000 || event.code === 4001) {
+        console.log('[Bridge] Server rejected connection (code', event.code, '), not reconnecting');
+        return;
+      }
       scheduleReconnect();
     };
   } catch (error) {

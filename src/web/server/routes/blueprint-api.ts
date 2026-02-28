@@ -17,8 +17,13 @@ import * as fsPromises from 'fs/promises';
 import * as crypto from 'crypto';
 import * as os from 'os';
 import { spawn, execSync } from 'child_process';
+import { fileURLToPath } from 'url';
 import { LRUCache } from 'lru-cache';
 import { geminiImageService } from '../services/gemini-image-service.js';
+
+// 源码根目录（无论 process.cwd() 是什么，始终指向安装目录）
+const __blueprint_dirname = path.dirname(fileURLToPath(import.meta.url));
+const SOURCE_ROOT = path.resolve(__blueprint_dirname, '../../../..');
 
 // ============================================================================
 // 新架构 v2.0 导入
@@ -4805,7 +4810,8 @@ router.delete('/projects/:id', (req: Request, res: Response) => {
  */
 router.get('/projects/current', (req: Request, res: Response) => {
   try {
-    const currentPath = process.cwd();
+    // 使用源码安装目录而非 process.cwd()，确保 Docker 等环境下也指向正确路径
+    const currentPath = SOURCE_ROOT;
     const projects = loadRecentProjects();
     const currentProject = projects.find(p => p.path === currentPath);
 

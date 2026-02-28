@@ -5,7 +5,9 @@ import DOMPurify from 'dompurify';
  * Strips dangerous tags/attributes while preserving safe formatting
  */
 export function sanitizeHtml(html: string): string {
-  return DOMPurify.sanitize(html);
+  return DOMPurify.sanitize(html, {
+    ADD_ATTR: ['download', 'target', 'data-code-ref', 'data-file-path', 'data-line'],
+  });
 }
 
 /**
