@@ -16,8 +16,7 @@
     "http://localhost/*"
   ],
   "background": {
-    "service_worker": "background.js",
-    "type": "module"
+    "service_worker": "background.js"
   },
   "action": {
     "default_title": "Claude Code Browser Bridge (click to attach/detach)"

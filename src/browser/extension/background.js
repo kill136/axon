@@ -14,7 +14,28 @@
  * - Playwright connects to relay, controls tabs through extension (anti-detection)
  */
 
-import { reconnectDelayMs, buildRelayWsUrl, isRetryableReconnectError } from './background-utils.js';
+// Inlined from background-utils.js to avoid ES module import issues in some Chrome versions
+function reconnectDelayMs(attempt, opts = {}) {
+  const { baseMs = 1000, maxMs = 30000, factor = 2 } = opts;
+  const delay = baseMs * Math.pow(factor, attempt);
+  return Math.min(delay, maxMs);
+}
+
+function buildRelayWsUrl(port, gatewayToken) {
+  const host = '127.0.0.1';
+  const encodedToken = encodeURIComponent(gatewayToken);
+  return `ws://${host}:${port}/extension?token=${encodedToken}`;
+}
+
+function isRetryableReconnectError(err) {
+  const errMsg = typeof err === 'string' ? err : (err?.message || '');
+  const retryablePatterns = [
+    /ECONNREFUSED/i, /ECONNRESET/i, /ETIMEDOUT/i, /EHOSTUNREACH/i,
+    /socket hang up/i, /network error/i, /Failed to fetch/i,
+    /ERR_CONNECTION_REFUSED/i, /ERR_CONNECTION_RESET/i, /AbortError/i,
+  ];
+  return retryablePatterns.some(pattern => pattern.test(errMsg));
+}
 
 // ========================================================================
 // Configuration & State

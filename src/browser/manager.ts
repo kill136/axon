@@ -303,6 +303,24 @@ async function launchChrome(
     env: { ...process.env, HOME: os.homedir() },
   });
 
+  // Capture Chrome stderr for debugging extension loading issues
+  if (proc.stderr) {
+    let stderrBuf = '';
+    proc.stderr.on('data', (chunk: Buffer) => {
+      stderrBuf += chunk.toString();
+      // Print lines that mention extension or service worker errors
+      const lines = stderrBuf.split('\n');
+      stderrBuf = lines.pop() || '';
+      for (const line of lines) {
+        if (line && (line.includes('extension') || line.includes('Extension') || 
+            line.includes('service_worker') || line.includes('ServiceWorker') ||
+            line.includes('ERR_') || line.includes('error'))) {
+          console.log('[Chrome stderr]', line.trim());
+        }
+      }
+    });
+  }
+
   const cdpUrl = `http://127.0.0.1:${cdpPort}`;
 
   // Wait for CDP HTTP endpoint to come up
