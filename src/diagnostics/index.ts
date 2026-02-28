@@ -573,11 +573,11 @@ async function checkNetworkConnectivity(): Promise<DiagnosticCheck> {
 async function checkEnvironmentVariables(): Promise<DiagnosticCheck> {
   const relevantVars = [
     'ANTHROPIC_API_KEY',
-    'CLAUDE_API_KEY',
+    'AXON_API_KEY',
     'ANTHROPIC_MODEL',
-    'CLAUDE_CODE_USE_BEDROCK',
-    'CLAUDE_CODE_USE_VERTEX',
-    'CLAUDE_CONFIG_DIR',
+    'AXON_USE_BEDROCK',
+    'AXON_USE_VERTEX',
+    'AXON_CONFIG_DIR',
   ];
 
   const set = relevantVars.filter((v) => process.env[v]);
@@ -592,7 +592,7 @@ async function checkEnvironmentVariables(): Promise<DiagnosticCheck> {
   return {
     name: 'Environment',
     status: 'pass',
-    message: set.length > 0 ? `${set.length} Claude vars set` : 'Using defaults',
+    message: set.length > 0 ? `${set.length} Axon vars set` : 'Using defaults',
     details: masked.length > 0 ? masked.join(', ') : undefined,
   };
 }
