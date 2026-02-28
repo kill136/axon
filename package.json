@@ -1,6 +1,6 @@
 {
   "name": "claude-code-open",
-  "version": "2.1.36",
+  "version": "2.1.37",
   "description": "Free & open source Claude Code alternative with Web IDE, multi-agent system, and self-evolution",
   "type": "module",
   "bin": {
