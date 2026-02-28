@@ -1,9 +1,9 @@
 /**
- * Claude Code Tool Input Type Definitions
+ * Axon Tool Input Type Definitions
  * Based on official SDK types from docs/official-sdk-tools.d.ts
  *
  * This file contains TypeScript type definitions for all tool inputs
- * used in the Claude Code CLI application.
+ * used in the Axon CLI application.
  */
 
 // ============================================================================

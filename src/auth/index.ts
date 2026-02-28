@@ -295,7 +295,7 @@ export function initAuth(): AuthConfig | null {
   //
   // 重要发现（通过抓包和测试发现）：
   // - OAuth subscription token 需要特殊的 system prompt 格式才能使用 sonnet/opus 模型
-  // - system prompt 的第一个 block 必须以 "You are Claude Code, Anthropic's official CLI for Claude." 开头
+  // - system prompt 的第一个 block 必须以 "You are Axon, an AI-powered coding assistant." 开头
   // - 配合 axon-20250219 beta header 可以解锁所有模型
   //
   if (fs.existsSync(OFFICIAL_CREDENTIALS_FILE)) {

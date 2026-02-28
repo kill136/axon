@@ -1,9 +1,9 @@
 /**
  * Tool Output Type Definitions
- * Complete type definitions for all Claude Code tool results
+ * Complete type definitions for all Axon tool results
  *
  * This file provides TypeScript type definitions for the output/result
- * types of all tools in the Claude Code CLI toolkit.
+ * types of all tools in the Axon CLI toolkit.
  */
 
 // ============================================================================

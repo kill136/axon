@@ -513,7 +513,7 @@ export class PluginManager extends EventEmitter {
       }
     }
 
-    // 检查 Claude Code 版本
+    // 检查 Axon 版本
     if (metadata.engines['claude-code']) {
       if (!VersionChecker.satisfies(this.claudeCodeVersion, metadata.engines['claude-code'])) {
         return false;
@@ -2172,11 +2172,11 @@ export const pluginHelper: PluginHelper = {
 
   createTemplate(name: string, options = {}): string {
     const author = options.author || 'Your Name';
-    const description = options.description || 'A Claude Code plugin';
+    const description = options.description || 'An Axon plugin';
     const version = options.version || '1.0.0';
 
     return `
-// ${name} - Claude Code Plugin
+// ${name} - Axon Plugin
 
 export default {
   metadata: {

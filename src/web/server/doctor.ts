@@ -715,7 +715,7 @@ export function formatDoctorReport(report: DoctorReport, verbose: boolean = fals
   const lines: string[] = [];
 
   lines.push('╭─────────────────────────────────────────────╮');
-  lines.push('│      Claude Code WebUI 诊断报告            │');
+  lines.push('│      Axon WebUI 诊断报告                   │');
   lines.push('╰─────────────────────────────────────────────╯');
   lines.push('');
 

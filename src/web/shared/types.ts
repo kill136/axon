@@ -2735,7 +2735,7 @@ export interface AttributionSettings {
   /**
    * Pull Request 描述的归属文本。
    * 空字符串隐藏归属。
-   * 默认包含 Claude Code 链接。
+   * 默认包含 Axon 链接。
    */
   pr?: string;
 }
@@ -2787,7 +2787,7 @@ export interface AdvancedSettings {
 // ============ 主配置类型 ============
 
 /**
- * 完整的 Claude Code 配置
+ * 完整的 Axon 配置
  *
  * 这是组合所有设置的主配置对象。
  * 可以从 settings.json 文件和环境变量加载。

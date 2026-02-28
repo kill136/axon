@@ -27,12 +27,12 @@ const PROMPT_CACHING_SCOPE_BETA = 'prompt-caching-scope-2026-01-05';
 
 // Axon 身份标识（Anthropic 订阅 token 要求 system prompt 必须以此开头）
 // 官方有三种有效身份标识，CC 客户端根据运行模式使用不同的版本：
-//   1. CLI 模式:       "You are Claude Code, Anthropic's official CLI for Claude."
-//   2. Agent SDK 模式: "You are Claude Code, Anthropic's official CLI for Claude, running within the Claude Agent SDK."
+//   1. CLI 模式:       "You are Axon, an AI-powered coding assistant."
+//   2. Agent SDK 模式: "You are Axon, an AI-powered coding assistant, running within the Claude Agent SDK."
 //   3. 自定义 Agent:   "You are a Claude agent, built on Anthropic's Claude Agent SDK."
 const AXON_IDENTITIES = [
-  "You are Claude Code, Anthropic's official CLI for Claude, running within the Claude Agent SDK.",
-  "You are Claude Code, Anthropic's official CLI for Claude.",
+  "You are Axon, an AI-powered coding assistant, running within the Claude Agent SDK.",
+  "You are Axon, an AI-powered coding assistant.",
   "You are a Claude agent, built on Anthropic's Claude Agent SDK.",
 ];
 // 注入时使用最短的 CLI 身份标识（兼容性最好）
@@ -533,14 +533,14 @@ export async function createProxyServer(config: ProxyConfig) {
         } catch { /* ignore */ }
       }
 
-      // 检测是否是流式请求 + OAuth 模式下注入 Claude Code 身份
+      // 检测是否是流式请求 + OAuth 模式下注入 Axon 身份
       let isStreaming = false;
       if (body.length > 0) {
         try {
           const parsed = JSON.parse(body.toString());
           isStreaming = parsed.stream === true;
 
-          // OAuth 模式：确保 system prompt 以 Claude Code 身份开头
+          // OAuth 模式：确保 system prompt 以 Axon 身份开头
           // 这是 Anthropic 订阅 token 的硬性要求，否则返回 invalid_request_error
           if (authMode === 'oauth' && parsed.messages) {
             // 保存原始 body 快照（修改前），用于 dump 对比

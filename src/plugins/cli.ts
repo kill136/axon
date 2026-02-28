@@ -25,7 +25,7 @@ export function createPluginCommand(): Command {
   // claude plugin marketplace - 官方命令，管理市场
   pluginCommand
     .command('marketplace')
-    .description('Manage Claude Code marketplaces')
+    .description('Manage Axon marketplaces')
     .action(async () => {
       await manageMarketplace();
     });
@@ -878,7 +878,7 @@ async function showPluginInfo(pluginName: string): Promise<void> {
       console.log(`  Node.js:    ${metadata.engines.node}`);
     }
     if (metadata.engines['claude-code']) {
-      console.log(`  Claude Code: ${metadata.engines['claude-code']}`);
+      console.log(`  Axon: ${metadata.engines['claude-code']}`);
     }
   }
 
@@ -937,7 +937,7 @@ async function showPluginInfo(pluginName: string): Promise<void> {
  * 管理市场（Marketplace）
  */
 async function manageMarketplace(): Promise<void> {
-  console.log('\n📦 Claude Code Plugin Marketplace\n');
+  console.log('\n📦 Axon Plugin Marketplace\n');
   console.log('The plugin marketplace allows you to discover and install plugins from');
   console.log('official and community sources.\n');
   console.log('Available commands:\n');

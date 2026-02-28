@@ -41,7 +41,7 @@ function showWelcome(): void {
   console.clear();
   console.log(chalk.cyan.bold('\n╔══════════════════════════════════════════════╗'));
   console.log(chalk.cyan.bold('║                                              ║'));
-  console.log(chalk.cyan.bold('║       Welcome to Claude Code Open!           ║'));
+  console.log(chalk.cyan.bold('║       Welcome to Axon!                       ║'));
   console.log(chalk.cyan.bold('║                                              ║'));
   console.log(chalk.cyan.bold('╚══════════════════════════════════════════════╝\n'));
   console.log(chalk.gray('Let\'s set up your environment...\n'));
@@ -167,7 +167,7 @@ function showCompletion(config: { apiKey: string | null; model: string }): void 
   console.log(chalk.white('\nNext Steps:'));
   console.log(chalk.cyan('  • Type /help to see available commands'));
   console.log(chalk.cyan('  • Type /skill to manage skills'));
-  console.log(chalk.cyan('  • Start chatting to use Claude Code!\n'));
+  console.log(chalk.cyan('  • Start chatting to use Axon!\n'));
   console.log(chalk.gray('Configuration saved to: ~/.axon/settings.json\n'));
 }
 

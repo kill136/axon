@@ -1,6 +1,6 @@
 /**
  * Axon 类型定义入口文件
- * Type definitions entry point for Claude Code
+ * Type definitions entry point for Axon
  *
  * 这个文件是类型系统的统一入口，从各个模块化类型文件重新导出
  * This file is the unified entry point for the type system, re-exporting from modular type files

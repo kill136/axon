@@ -611,7 +611,7 @@ export function loadSession(sessionId: string): SessionData | null {
 
     let session: SessionData;
 
-    // 兼容官方 Claude Code 格式
+    // 兼容官方 Axon 格式
     if (isOfficialFormat(data)) {
       session = convertOfficialToSessionData(data);
     } else {
@@ -746,7 +746,7 @@ export function listSessions(options: SessionListOptions = {}): SessionMetadata[
 
       let metadata: SessionMetadata | null = null;
 
-      // 兼容官方 Claude Code 格式和内部格式
+      // 兼容官方 Axon 格式和内部格式
       if (isOfficialFormat(data)) {
         metadata = convertOfficialToMetadata(data);
       } else if (data?.metadata?.id) {
@@ -1409,7 +1409,7 @@ export function getSessionStatistics(): SessionStatistics {
       const content = fs.readFileSync(path.join(getSessionDir(), file), 'utf-8');
       const data = JSON.parse(content);
 
-      // 兼容官方 Claude Code 格式和内部格式
+      // 兼容官方 Axon 格式和内部格式
       if (isOfficialFormat(data)) {
         sessions.push(convertOfficialToMetadata(data));
       } else if (data?.metadata?.id) {

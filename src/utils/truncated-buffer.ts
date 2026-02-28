@@ -1,7 +1,7 @@
 /**
  * TruncatedBuffer - 截断缓冲区
  *
- * 与官方 Claude Code CLI 实现保持一致
+ * 与官方 Axon CLI 实现保持一致
  * 用于管理命令输出，当输出超过限制时自动截断并记录被删除的内容大小
  */
 

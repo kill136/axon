@@ -116,7 +116,7 @@ function getAgentMetadata(): AgentMetadata[] {
 
       case 'claude-code-guide':
         metadata.examples = [
-          'Claude Code CLI 功能说明',
+          'Axon CLI 功能说明',
           'Anthropic API 使用方法',
           'MCP 服务器配置',
         ];
@@ -138,7 +138,7 @@ function getAgentMetadata(): AgentMetadata[] {
 function formatDisplayName(agentType: string): string {
   // Explore -> Explore Agent
   // general-purpose -> General Purpose Agent
-  // claude-code-guide -> Claude Code Guide
+  // claude-code-guide -> Axon Guide
 
   if (agentType === 'Explore' || agentType === 'Plan') {
     return `${agentType} Agent`;

@@ -384,7 +384,7 @@ const result = await executeAgent({
 });`;
 
     case 'claude-code-guide':
-      return `// 使用 Claude Code Guide 查询文档
+      return `// 使用 Axon Guide 查询文档
 const result = await executeAgent({
   subagent_type: "claude-code-guide",
   description: "查询文档",

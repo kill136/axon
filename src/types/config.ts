@@ -2,7 +2,7 @@
  * Configuration Type Definitions for Axon CLI
  *
  * This file provides comprehensive type definitions for all configuration
- * aspects of the Claude Code CLI, including API settings, permissions,
+ * aspects of the Axon CLI, including API settings, permissions,
  * hooks, MCP servers, plugins, UI preferences, and more.
  *
  * @module types/config
@@ -983,7 +983,7 @@ export interface AttributionSettings {
   /**
    * Attribution text for pull request descriptions.
    * Empty string hides attribution.
-   * Default includes link to Claude Code.
+   * Default includes link to Axon.
    */
   pr?: string;
 }
@@ -1056,7 +1056,7 @@ export interface AdvancedSettings {
 // ============================================================================
 
 /**
- * Complete Claude Code configuration
+ * Complete Axon configuration
  *
  * This is the main configuration object that combines all settings.
  * It can be loaded from settings.json files and environment variables.

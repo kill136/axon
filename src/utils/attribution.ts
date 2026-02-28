@@ -2,7 +2,7 @@
  * Attribution utilities for git commits and pull requests
  *
  * Provides Co-Authored-By signatures for commits and attribution links for PRs,
- * matching the official Claude Code implementation.
+ * matching the official Axon implementation.
  */
 
 import { configManager } from '../config/index.js';

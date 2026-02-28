@@ -243,7 +243,7 @@ class McpResourceContextProvider implements ContextProvider {
 
 /**
  * MCP 适配器
- * 负责将 MCP 服务器的能力适配到 Claude Code 系统
+ * 负责将 MCP 服务器的能力适配到 Axon 系统
  */
 export class McpAdapter extends EventEmitter {
   private toolAdapters: Map<string, McpToolAdapter[]> = new Map();

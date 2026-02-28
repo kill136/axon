@@ -59,7 +59,7 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
   logger.setErrorWatcher((entry) => errorWatcher.onError(entry));
 
   // 设置 AXON_ENTRYPOINT 环境变量（如果未设置）
-  // 官方 Claude Code 使用此变量标识启动入口点
+  // 官方 Axon 使用此变量标识启动入口点
   // WebUI 模式使用 'claude-vscode' 以匹配官方的 VSCode 扩展入口
   if (!process.env.AXON_ENTRYPOINT) {
     process.env.AXON_ENTRYPOINT = 'claude-vscode';
@@ -297,7 +297,7 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
     server.listen(port, host, async () => {
       const displayHost = host === '0.0.0.0' ? 'localhost' : host;
       const url = `http://${displayHost}:${port}`;
-      console.log(`\n🌐 Claude Code WebUI 已启动`);
+      console.log(`\n🌐 Axon WebUI 已启动`);
       console.log(`   地址: ${url}`);
       console.log(`   WebSocket: ws://${displayHost}:${port}/ws`);
       console.log(`   工作目录: ${cwd}`);
@@ -458,7 +458,7 @@ function setupStaticFiles(app: express.Application, clientDistPath: string) {
       }
       res.status(503).send(`
         <html>
-          <head><title>Claude Code WebUI</title></head>
+          <head><title>Axon WebUI</title></head>
           <body style="font-family: sans-serif; padding: 40px; text-align: center;">
             <h1>🚧 前端未构建</h1>
             <p>请先构建前端：</p>

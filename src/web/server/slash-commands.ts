@@ -192,7 +192,7 @@ const statusCommand: SlashCommand = {
     const history = ctx.conversationManager.getHistory(ctx.sessionId);
     const apiKeySet = !!(process.env.ANTHROPIC_API_KEY || process.env.AXON_API_KEY);
 
-    let message = 'Claude Code WebUI 状态\n\n';
+    let message = 'Axon WebUI 状态\n\n';
     message += '会话信息:\n';
     message += `  会话 ID: ${ctx.sessionId.slice(0, 8)}\n`;
     message += `  消息数: ${history.length}\n`;
@@ -625,7 +625,7 @@ const mcpCommand: SlashCommand = {
 const pluginCommand: SlashCommand = {
   name: 'plugin',
   aliases: ['plugins'],
-  description: '管理 Claude Code 插件',
+  description: '管理 Axon 插件',
   usage: '/plugin [list|info|enable|disable|uninstall] [参数]',
   category: 'config',
   execute: async (ctx: ExtendedCommandContext): Promise<CommandResult> => {
