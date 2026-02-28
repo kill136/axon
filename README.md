@@ -8,11 +8,11 @@
 [![Node](https://img.shields.io/badge/Node.js-%3E%3D18.0.0-brightgreen?style=flat-square)](https://nodejs.org)
 [![Discord](https://img.shields.io/discord/1454020463486566432?style=flat-square&label=Discord&color=5865F2)](https://discord.gg/bNyJKk6PVZ)
 
-[Website](https://www.chatbi.site) | [Live Demo](https://claude-code-open-production.up.railway.app) | [User Guide](https://www.chatbi.site/zh/user-guide.html) | [Discord](https://discord.gg/bNyJKk6PVZ) | [中文](README.zh-CN.md)
+[Website](https://www.chatbi.site) | [Live Demo](https://voicegpt.site) | [User Guide](https://www.chatbi.site/zh/user-guide.html) | [Discord](https://discord.gg/bNyJKk6PVZ) | [中文](README.zh-CN.md)
 
 <div align="center">
 
-<a href="https://claude-code-open-production.up.railway.app">
+<a href="https://voicegpt.site">
 <img src="demo-screenshots/01-main.png" width="720" alt="Claude Code Open - Web IDE">
 </a>
 
