@@ -8,8 +8,6 @@ type ActiveSection = 'skills' | 'connectors';
 
 interface CustomizePageProps {
   onNavigateBack?: () => void;
-  onSendMessage?: (message: any) => void;
-  addMessageHandler?: (handler: (msg: any) => void) => () => void;
 }
 
 // SVG Icons
@@ -42,8 +40,6 @@ const ConnectorsIcon = () => (
  */
 export default function CustomizePage({
   onNavigateBack,
-  onSendMessage,
-  addMessageHandler,
 }: CustomizePageProps) {
   const { t } = useLanguage();
   const [activeSection, setActiveSection] = useState<ActiveSection>('connectors');
@@ -89,10 +85,7 @@ export default function CustomizePage({
       {/* 右侧内容区（中栏 + 右栏由子组件渲染） */}
       <div className={styles.contentArea}>
         {activeSection === 'connectors' && (
-          <ConnectorsPanel
-            onSendMessage={onSendMessage}
-            addMessageHandler={addMessageHandler}
-          />
+          <ConnectorsPanel />
         )}
         {activeSection === 'skills' && (
           <SkillsPanel />

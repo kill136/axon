@@ -9,7 +9,7 @@ import { runWithCwd } from '../../core/cwd-context.js';
 import { runWithSessionId } from '../../core/session-context.js';
 import { shouldAutoCompact, calculateAutoCompactThreshold, getContextWindowSize, generateSummaryPrompt, formatCompactSummaryContent, validateToolResults } from '../../core/loop.js';
 import { toolRegistry, registerBlueprintTools } from '../../tools/index.js';
-import { systemPromptBuilder, type PromptContext } from '../../prompt/index.js';
+import { systemPromptBuilder, type PromptContext, type PromptBlock } from '../../prompt/index.js';
 import { modelConfig } from '../../models/index.js';
 import { configManager } from '../../config/index.js';
 import { getAuth, createOAuthApiKey } from '../../auth/index.js';
@@ -677,6 +677,34 @@ export class ConversationManager {
     if (connectedCount > 0 || failedCount > 0) {
       console.log(`[ConversationManager] MCP: ${connectedCount} connected, ${failedCount} failed`);
     }
+
+    // 自动激活已连接的 Connector MCP Servers
+    // 避免重复注册：检查 serverName 是否已在上面的 mcpServerConfigs 中
+    try {
+      const { connectorManager } = await import('../connectors/index.js');
+      const connectors = connectorManager.listConnectors();
+      
+      for (const connector of connectors) {
+        // 只处理已连接且有 MCP server 配置的 connectors
+        if (connector.status === 'connected' && connector.mcpServerName) {
+          // 检查是否已经在 mcpServerConfigs 中注册（避免重复）
+          if (serverNames.includes(connector.mcpServerName)) {
+            console.log(`[ConversationManager] Connector ${connector.id} MCP server already loaded from settings`);
+            continue;
+          }
+
+          // 自动激活
+          try {
+            await this.activateConnectorMcp(connector.id);
+            console.log(`[ConversationManager] Auto-activated connector MCP: ${connector.mcpServerName}`);
+          } catch (err) {
+            console.warn(`[ConversationManager] Failed to auto-activate connector ${connector.id}:`, err);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[ConversationManager] Failed to auto-activate connector MCPs:', err);
+    }
   }
 
   /**
@@ -717,6 +745,107 @@ export class ConversationManager {
   private syncDisabledServersToSearchTool(): void {
     const disabledServers = this.getDisabledMcpServers();
     MCPSearchTool.disabledServers = disabledServers;
+  }
+
+  /**
+   * 激活 Connector 的 MCP Server
+   * 用于 OAuth 连接成功后自动启动对应的 MCP Server
+   */
+  async activateConnectorMcp(connectorId: string): Promise<{ success: boolean; tools: string[] }> {
+    const { connectorManager } = await import('../connectors/index.js');
+
+    try {
+      // 刷新 token（如果需要）
+      await connectorManager.refreshTokenIfNeeded(connectorId).catch(() => {});
+
+      // 获取 MCP server 配置
+      const mcpConfig = connectorManager.getMcpServerConfig(connectorId);
+      if (!mcpConfig) {
+        return { success: false, tools: [] };
+      }
+
+      const { name, config } = mcpConfig;
+
+      // 如果已经有该 server 的工具，先清理
+      this.mcpTools = this.mcpTools.filter((tool) => !tool.name.startsWith(`mcp__${name}__`));
+
+      // 注册并连接 MCP server
+      registerMcpServer(name, config);
+      const connected = await connectMcpServer(name);
+
+      if (connected) {
+        // 创建工具并加入 mcpTools
+        const tools = await createMcpTools(name);
+        const toolNames: string[] = [];
+        for (const tool of tools) {
+          this.mcpTools.push({
+            name: tool.name,
+            description: tool.description,
+            inputSchema: tool.getInputSchema(),
+            isMcp: true,
+          });
+          toolNames.push(tool.name);
+        }
+        console.log(`[ConversationManager] Connector MCP activated: ${name} (${toolNames.length} tools)`);
+        return { success: true, tools: toolNames };
+      }
+
+      return { success: false, tools: [] };
+    } catch (error) {
+      console.error(`[ConversationManager] Failed to activate connector MCP:`, error);
+      return { success: false, tools: [] };
+    }
+  }
+
+  /**
+   * 停用 Connector 的 MCP Server
+   * 用于断开连接时清理对应的 MCP Server
+   */
+  async deactivateConnectorMcp(connectorId: string): Promise<void> {
+    const { connectorManager } = await import('../connectors/index.js');
+
+    try {
+      const mcpConfig = connectorManager.getMcpServerConfig(connectorId);
+      if (!mcpConfig) return;
+
+      const { name } = mcpConfig;
+
+      // 从 mcpTools 中移除该 server 的工具
+      this.mcpTools = this.mcpTools.filter((tool) => !tool.name.startsWith(`mcp__${name}__`));
+
+      // 断开并注销 MCP server
+      await disconnectMcpServer(name);
+      unregisterMcpServer(name);
+
+      // 从 settings.json 中移除
+      connectorManager.unregisterMcpFromSettings(connectorId);
+
+      console.log(`[ConversationManager] Connector MCP deactivated: ${name}`);
+    } catch (error) {
+      console.error(`[ConversationManager] Failed to deactivate connector MCP:`, error);
+    }
+  }
+
+  /**
+   * 获取 Connector 的 MCP 工具列表
+   * 用于前端显示工具数量等信息
+   */
+  getMcpToolsForConnector(connectorId: string): string[] {
+    const { connectorManager } = require('../connectors/index.js');
+
+    try {
+      const mcpConfig = connectorManager.getMcpServerConfig(connectorId);
+      if (!mcpConfig) return [];
+
+      const { name } = mcpConfig;
+      const prefix = `mcp__${name}__`;
+
+      return this.mcpTools
+        .filter((tool) => tool.name.startsWith(prefix))
+        .map((tool) => tool.name);
+    } catch {
+      return [];
+    }
   }
 
   /**
@@ -1322,6 +1451,8 @@ export class ConversationManager {
     let continueLoop = true;
     let totalInputTokens = 0;
     let totalOutputTokens = 0;
+    let totalCacheReadTokens = 0;
+    let totalCacheCreationTokens = 0;
     let networkRetryCount = 0;
     /** 是否刚执行过因 "prompt too long" 而触发的强制压缩（防止无限循环） */
     let justForceCompacted = false;
@@ -1571,11 +1702,12 @@ export class ConversationManager {
         const stream = state.client.createMessageStream(
           cleanedMessages,
           tools,
-          systemPrompt,
+          systemPrompt.content,
           {
             enableThinking: true,
             thinkingBudget: 10000,
             signal: state.currentAbortController?.signal,
+            promptBlocks: systemPrompt.blocks,
           }
         );
 
@@ -1685,13 +1817,16 @@ export class ConversationManager {
 
             case 'usage':
               if (event.usage) {
-                // 对齐官方：context 使用量 = inputTokens + cacheReadTokens + cacheCreationTokens
-                // 开启 prompt caching 后，大部分 tokens 走缓存，inputTokens 可能极小（如 1）
-                // 必须将 cache tokens 也计入，才能反映真实的上下文窗口占用
+                // 对齐官方 ce3/xpA：分项记录 cache tokens，用于精确成本计算
+                // context 使用量 = inputTokens + cacheReadTokens + cacheCreationTokens
                 const cacheRead = event.usage.cacheReadTokens || 0;
                 const cacheCreation = event.usage.cacheCreationTokens || 0;
-                totalInputTokens = (event.usage.inputTokens || 0) + cacheRead + cacheCreation;
+                const pureInput = event.usage.inputTokens || 0;
+                totalInputTokens = pureInput + cacheRead + cacheCreation;
                 totalOutputTokens = event.usage.outputTokens || 0;
+                totalCacheReadTokens = cacheRead;
+                totalCacheCreationTokens = cacheCreation;
+                console.log(`[Cache] input=${pureInput} cache_creation=${cacheCreation} cache_read=${cacheRead} (${cacheRead > 0 ? 'HIT' : cacheCreation > 0 ? 'WRITE' : 'MISS'})`);
                 // 记录实际 inputTokens 供下次循环迭代的自动压缩判断使用
                 state.lastActualInputTokens = totalInputTokens;
                 // 记录当前 messages 长度，供混合 token 估算使用
@@ -2050,23 +2185,25 @@ export class ConversationManager {
       state.messages = validateToolResults(state.messages);
     }
 
-    // 更新使用统计（与 CLI 完全一致）
+    // 更新使用统计（对齐官方 ce3 成本公式：分项计费 input/cacheRead/cacheCreation）
     if (totalInputTokens > 0 || totalOutputTokens > 0) {
       const resolvedModel = modelConfig.resolveAlias(state.model);
+      // 纯 input tokens = 总量 - cache tokens（cache tokens 有独立价格）
+      const pureInputForCost = totalInputTokens - totalCacheReadTokens - totalCacheCreationTokens;
       state.session.updateUsage(
         resolvedModel,
         {
-          inputTokens: totalInputTokens,
+          inputTokens: pureInputForCost,
           outputTokens: totalOutputTokens,
-          cacheReadInputTokens: 0,
-          cacheCreationInputTokens: 0,
+          cacheReadInputTokens: totalCacheReadTokens,
+          cacheCreationInputTokens: totalCacheCreationTokens,
           webSearchRequests: 0,
         },
         modelConfig.calculateCost(resolvedModel, {
-          inputTokens: totalInputTokens,
+          inputTokens: pureInputForCost,
           outputTokens: totalOutputTokens,
-          cacheReadTokens: 0,
-          cacheCreationTokens: 0,
+          cacheReadTokens: totalCacheReadTokens,
+          cacheCreationTokens: totalCacheCreationTokens,
           thinkingTokens: 0,
         }),
         0,
@@ -3586,15 +3723,16 @@ Respond ONLY with valid JSON, no other text.`;
   /**
    * 构建系统提示（与 CLI 完全一致，仅在末尾追加记忆单元）
    */
-  private async buildSystemPrompt(state: SessionState): Promise<string> {
+  private async buildSystemPrompt(state: SessionState): Promise<{ content: string; blocks: PromptBlock[] }> {
     const config = state.systemPromptConfig;
 
-    // 如果使用自定义提示（完全替换）
+    // 如果使用自定义提示（完全替换，无分块缓存）
     if (!config.useDefault && config.customPrompt) {
-      return config.customPrompt;
+      return { content: config.customPrompt, blocks: [] };
     }
 
     let prompt: string;
+    let blocks: PromptBlock[] = [];
 
     // 使用与 CLI 完全相同的系统提示构建逻辑
     try {
@@ -3625,33 +3763,8 @@ Respond ONLY with valid JSON, no other text.`;
         });
       }
 
-      // 获取上下文使用率（动态注入，不影响缓存）
-      // Web 模式：混合估算 = API 真实值 + 新增消息的估算值（消除一轮延迟）
-      let contextUsage: PromptContext['contextUsage'];
-      const resolvedModelForUsage = this.getModelId(state.model);
-      const ctxWindowSize = getContextWindowSize(resolvedModelForUsage);
-      let usedTokens = 0;
-      if (state.lastActualInputTokens > 0 && state.messagesLenAtLastApiCall > 0) {
-        // 混合：上次 API 真实值 + 新增消息估算
-        const newMessages = state.messages.slice(state.messagesLenAtLastApiCall);
-        usedTokens = state.lastActualInputTokens + this.estimateMessageTokens(newMessages);
-      } else if (state.messages.length > 0) {
-        // 回退：纯估算
-        usedTokens = this.estimateMessageTokens(state.messages);
-      }
-      if (usedTokens > 0) {
-        const percentage = Math.min(100, (usedTokens / ctxWindowSize) * 100);
-        contextUsage = {
-          used: usedTokens,
-          available: ctxWindowSize - usedTokens,
-          total: ctxWindowSize,
-          percentage,
-          compressionCount: 0,
-          savedTokens: 0,
-        };
-      }
-
       // 构建提示上下文（与 CLI loop.ts 保持一致）
+      // 注意：不注入 contextUsage，保持 system prompt 稳定可缓存
       const promptContext: PromptContext = {
         workingDir: state.session.cwd,
         model: this.getModelId(state.model),
@@ -3665,17 +3778,19 @@ Respond ONLY with valid JSON, no other text.`;
         debug: false,
         // v2.1.0+: 语言配置 - 与 CLI 保持一致
         language: configManager.get('language'),
+        // 是否使用官方订阅认证（有 oauthToken 或 oauthAccount 说明通过 Claude.ai 登录）
+        isOfficialAuth: !!(configManager.get('oauthToken') || configManager.get('oauthAccount')),
         // Agent 笔记本内容
         notebookSummary,
         // MCP 服务器信息（用于系统提示中的 MCP 指令）
         mcpServers: mcpServerInfos.length > 0 ? mcpServerInfos : undefined,
-        // 上下文使用率
-        contextUsage,
       };
 
       // 使用官方的 SystemPromptBuilder
       const buildResult = await systemPromptBuilder.build(promptContext);
       prompt = buildResult.content;
+      // 保留 blocks 分块信息（static block 可缓存，dynamic block 不缓存）
+      blocks = buildResult.blocks || [];
 
       if (this.options?.verbose) {
         console.log(`[SystemPrompt] Built in ${buildResult.buildTimeMs}ms, ${buildResult.hashInfo.estimatedTokens} tokens`);
@@ -3686,27 +3801,32 @@ Respond ONLY with valid JSON, no other text.`;
       prompt = this.getDefaultSystemPrompt();
     }
 
+    // WebUI 专属追加内容，放入独立 block（不影响 builder 静态块的缓存）
+    const extraParts: string[] = [];
+
     // 【与 CLI cli.ts:397-398 一致】如果 Chrome 集成已启用且未被禁用，前置 Chrome 系统提示
     // 通过检查 mcpTools 中是否有 chrome MCP 工具来判断是否启用
     if (this.chromeSystemPrompt && this.mcpTools.some(t => t.name.startsWith('mcp__claude-in-chrome__'))) {
       prompt = `${this.chromeSystemPrompt}\n\n${prompt}`;
+      // Chrome prompt 前置到 static block 之前（作为独立 block）
+      blocks = [{ text: this.chromeSystemPrompt, cacheScope: null }, ...blocks];
     }
 
     // 如果有追加提示，添加到默认提示后
     if (config.useDefault && config.appendPrompt) {
-      prompt += '\n\n' + config.appendPrompt;
+      extraParts.push(config.appendPrompt);
     }
 
     // 注入 WebUI 专属工具引导（GenerateImage 等）
     const webuiToolGuidance = this.buildWebuiToolGuidance();
     if (webuiToolGuidance) {
-      prompt += '\n\n' + webuiToolGuidance;
+      extraParts.push(webuiToolGuidance);
     }
 
     // 注入项目全景（codebase 蓝图）—— 让主 Agent 了解项目模块结构
     const codebaseContext = this.buildCodebaseContext(state.session.cwd);
     if (codebaseContext) {
-      prompt += '\n\n' + codebaseContext;
+      extraParts.push(codebaseContext);
     }
 
     // 注入用户自定义提示词片段（~/.axon/prompt-snippets/）
@@ -3714,15 +3834,36 @@ Respond ONLY with valid JSON, no other text.`;
       const { prepend, append } = promptSnippetsManager.getInjectionTexts();
       if (prepend) {
         prompt = prepend + '\n\n' + prompt;
+        blocks = [{ text: prepend, cacheScope: null }, ...blocks];
       }
       if (append) {
-        prompt += '\n\n' + append;
+        extraParts.push(append);
       }
     } catch {
       // 片段加载失败不影响主流程
     }
 
-    return prompt;
+    // 将所有额外动态内容合并到 prompt 和 blocks 的动态部分
+    if (extraParts.length > 0) {
+      const extraText = extraParts.join('\n\n');
+      prompt += '\n\n' + extraText;
+
+      // 追加到已有的 null 块，或新建
+      let lastDynamicIdx = -1;
+      for (let i = blocks.length - 1; i >= 0; i--) {
+        if (blocks[i].cacheScope === null) {
+          lastDynamicIdx = i;
+          break;
+        }
+      }
+      if (lastDynamicIdx !== -1) {
+        blocks[lastDynamicIdx] = { ...blocks[lastDynamicIdx], text: blocks[lastDynamicIdx].text + '\n\n' + extraText };
+      } else {
+        blocks.push({ text: extraText, cacheScope: null });
+      }
+    }
+
+    return { content: prompt, blocks };
   }
 
   /**
@@ -4654,7 +4795,7 @@ Guidelines:
     const currentPrompt = await this.buildSystemPrompt(state);
 
     return {
-      current: currentPrompt,
+      current: currentPrompt.content,
       config: state.systemPromptConfig,
     };
   }
@@ -4675,13 +4816,13 @@ Guidelines:
     }
 
     // 构建当前完整的系统提示
-    const systemPrompt = await this.buildSystemPrompt(state);
+    const systemPromptResult = await this.buildSystemPrompt(state);
 
     // 获取工具定义列表
     const tools = this.getFilteredTools(sessionId);
 
     return {
-      systemPrompt,
+      systemPrompt: systemPromptResult.content,
       messages: state.messages,
       tools,
       model: state.model,

@@ -16,6 +16,13 @@ export interface ConnectorProvider {
     responseType?: string;  // 默认 'code'
     grantType?: string;     // 默认 'authorization_code'
   };
+  mcpServer?: {
+    serverName: string;  // MCP server 注册名，如 'connector-github'
+    command: string;     // 'npx'
+    args: string[];      // ['-y', '@modelcontextprotocol/server-github']
+    envMapping: Record<string, 'accessToken' | 'refreshToken'>;
+    // key = 环境变量名, value = 从 ConnectorTokenData 中取哪个字段
+  };
 }
 
 // ConnectorTokenData: 存储在 settings.json 中的 token 数据
@@ -46,6 +53,9 @@ export interface ConnectorStatus {
   configureHint?: string;  // 未配置时的引导文案
   connectedAt?: number;
   userInfo?: Record<string, any>;
+  mcpServerName?: string;   // 关联的 MCP server name
+  mcpConnected?: boolean;   // MCP server 是否已连接
+  mcpToolCount?: number;    // 可用工具数量
 }
 
 // OAuthState: 临时存储的 OAuth 状态（防 CSRF）

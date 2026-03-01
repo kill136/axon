@@ -141,6 +141,9 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
     next();
   });
 
+  // 设置 app.locals，供各路由使用
+  app.locals.conversationManager = conversationManager;
+
   // API 路由
   setupApiRoutes(app, conversationManager);
 

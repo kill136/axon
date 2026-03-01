@@ -42,6 +42,14 @@ router.get('/callback', async (req, res) => {
 
     console.log('[Connectors] OAuth callback successful:', connectorId);
 
+    // OAuth 成功后，尝试自动激活 MCP（异步，不阻塞重定向）
+    const manager = req.app.locals.conversationManager;
+    if (manager) {
+      manager.activateConnectorMcp(connectorId).catch((err: any) => {
+        console.warn(`[Connectors] Failed to auto-activate MCP for ${connectorId}:`, err);
+      });
+    }
+
     // 重定向回前端 Customize 页面，并传递 connected 参数
     res.redirect(`/?page=customize&connected=${connectorId}`);
   } catch (err: any) {
@@ -56,6 +64,19 @@ router.get('/callback', async (req, res) => {
 router.get('/', async (req, res) => {
   try {
     const connectors = connectorManager.listConnectors();
+    
+    // 填充 MCP 运行时状态（工具数量、连接状态）
+    const manager = req.app.locals.conversationManager;
+    if (manager) {
+      for (const connector of connectors) {
+        if (connector.mcpServerName) {
+          const tools = manager.getMcpToolsForConnector(connector.id);
+          connector.mcpConnected = tools.length > 0;
+          connector.mcpToolCount = tools.length;
+        }
+      }
+    }
+
     res.json({ connectors });
   } catch (err: any) {
     console.error('[Connectors] Failed to list connectors:', err);
@@ -72,6 +93,15 @@ router.get('/:id', async (req, res) => {
     if (!connector) {
       return res.status(404).json({ error: 'Connector not found' });
     }
+
+    // 填充 MCP 运行时状态
+    const manager = req.app.locals.conversationManager;
+    if (manager && connector.mcpServerName) {
+      const tools = manager.getMcpToolsForConnector(connector.id);
+      connector.mcpConnected = tools.length > 0;
+      connector.mcpToolCount = tools.length;
+    }
+
     res.json(connector);
   } catch (err: any) {
     console.error('[Connectors] Failed to get connector:', err);
@@ -102,6 +132,14 @@ router.post('/:id/connect', async (req, res) => {
 // ========================================
 router.post('/:id/disconnect', async (req, res) => {
   try {
+    // 先停用 MCP（在断开连接之前）
+    const manager = req.app.locals.conversationManager;
+    if (manager) {
+      await manager.deactivateConnectorMcp(req.params.id).catch((err: any) => {
+        console.warn(`[Connectors] Failed to deactivate MCP for ${req.params.id}:`, err);
+      });
+    }
+
     connectorManager.disconnect(req.params.id);
     res.json({ success: true });
   } catch (err: any) {
@@ -127,6 +165,62 @@ router.post('/:id/config', async (req, res) => {
   } catch (err: any) {
     console.error('[Connectors] Failed to save config:', err);
     res.status(400).json({ error: err.message });
+  }
+});
+
+// ========================================
+// POST /api/connectors/:id/activate-mcp - 激活 MCP Server
+// ========================================
+router.post('/:id/activate-mcp', async (req, res) => {
+  try {
+    const manager = req.app.locals.conversationManager;
+    if (!manager) {
+      return res.status(500).json({ error: 'ConversationManager not available' });
+    }
+
+    const result = await manager.activateConnectorMcp(req.params.id);
+    res.json(result);
+  } catch (err: any) {
+    console.error('[Connectors] Failed to activate MCP:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ========================================
+// POST /api/connectors/:id/deactivate-mcp - 停用 MCP Server
+// ========================================
+router.post('/:id/deactivate-mcp', async (req, res) => {
+  try {
+    const manager = req.app.locals.conversationManager;
+    if (!manager) {
+      return res.status(500).json({ error: 'ConversationManager not available' });
+    }
+
+    await manager.deactivateConnectorMcp(req.params.id);
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error('[Connectors] Failed to deactivate MCP:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ========================================
+// POST /api/connectors/:id/refresh - 刷新 Token
+// ========================================
+router.post('/:id/refresh', async (req, res) => {
+  try {
+    const success = await connectorManager.refreshTokenIfNeeded(req.params.id);
+    
+    if (success) {
+      // 返回更新后的 connector 状态
+      const connector = connectorManager.getConnector(req.params.id);
+      res.json({ success: true, connector });
+    } else {
+      res.status(400).json({ error: 'Token refresh failed' });
+    }
+  } catch (err: any) {
+    console.error('[Connectors] Failed to refresh token:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 

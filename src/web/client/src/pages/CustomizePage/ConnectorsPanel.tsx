@@ -13,16 +13,19 @@ interface ConnectorStatus {
   configureHint?: string;
   connectedAt?: number;
   userInfo?: Record<string, any>;
+  mcpServerName?: string;
+  mcpConnected?: boolean;
+  mcpToolCount?: number;
 }
 
 // ========================================
-// Connector 图标映射
+// Connector 彩色品牌图标
 // ========================================
 
-function getConnectorIcon(icon: string, size: number = 32): JSX.Element {
+function getConnectorIcon(icon: string, size: number = 24): JSX.Element {
   const iconName = icon.toLowerCase();
 
-  // GitHub
+  // GitHub - 黑/白色 Octocat
   if (iconName === 'github') {
     return (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
@@ -31,33 +34,44 @@ function getConnectorIcon(icon: string, size: number = 32): JSX.Element {
     );
   }
 
-  // Gmail
+  // Gmail - 彩色 M logo
   if (iconName === 'gmail') {
     return (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="2" y="4" width="20" height="16" rx="2" />
-        <path d="M22 7l-10 7L2 7" />
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+        <path d="M2 6a2 2 0 012-2h16a2 2 0 012 2v12a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" fill="#EA4335"/>
+        <path d="M2 6l10 7 10-7" stroke="#fff" strokeWidth="1.5" fill="none"/>
+        <path d="M2 6v12h2V8l8 5.5L20 8v10h2V6l-10 7L2 6z" fill="#C5221F" opacity="0.3"/>
       </svg>
     );
   }
 
-  // Google Calendar
+  // Google Calendar - 蓝色日历
   if (iconName === 'google-calendar') {
     return (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-        <line x1="16" y1="2" x2="16" y2="6" />
-        <line x1="8" y1="2" x2="8" y2="6" />
-        <line x1="3" y1="10" x2="21" y2="10" />
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+        <rect x="3" y="4" width="18" height="18" rx="2" fill="#4285F4"/>
+        <rect x="3" y="4" width="18" height="5" rx="2" fill="#1967D2"/>
+        <line x1="8" y1="2" x2="8" y2="6" stroke="#1967D2" strokeWidth="1.5" strokeLinecap="round"/>
+        <line x1="16" y1="2" x2="16" y2="6" stroke="#1967D2" strokeWidth="1.5" strokeLinecap="round"/>
+        <rect x="6" y="12" width="3" height="2.5" rx="0.5" fill="#fff"/>
+        <rect x="10.5" y="12" width="3" height="2.5" rx="0.5" fill="#fff"/>
+        <rect x="15" y="12" width="3" height="2.5" rx="0.5" fill="#fff"/>
+        <rect x="6" y="16" width="3" height="2.5" rx="0.5" fill="#fff"/>
+        <rect x="10.5" y="16" width="3" height="2.5" rx="0.5" fill="#fff"/>
       </svg>
     );
   }
 
-  // Google Drive
+  // Google Drive - 彩色三角
   if (iconName === 'google-drive') {
     return (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
-        <path d="M7.71 3.5L1.15 15l2.86 4.96L10.57 8.45 7.71 3.5zM8.8 3.5h6.4l6.65 11.5H15.2L8.8 3.5zm7.1 12.5H2.6l3.2 5.5h13.6l3.2-5.5H15.9z" />
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+        <path d="M8.3 3.5L1.7 15h5.1l6.6-11.5H8.3z" fill="#0066DA"/>
+        <path d="M13.4 3.5L6.8 15l2.6 4.5 6.6-11.5h-2.6z" fill="#00AC47"/>
+        <path d="M6.8 15h13.2l2.6 4.5H9.4L6.8 15z" fill="#EA4335"/>
+        <path d="M15.7 3.5h-2.3l6.6 11.5h2.3L15.7 3.5z" fill="#00832D"/>
+        <path d="M22.3 15h-2.3L17.4 19.5h2.3L22.3 15z" fill="#2684FC"/>
+        <path d="M8.3 3.5L6.8 15l2.6 4.5L13.4 3.5H8.3z" fill="#FFBA00" opacity="0.8"/>
       </svg>
     );
   }
@@ -66,6 +80,28 @@ function getConnectorIcon(icon: string, size: number = 32): JSX.Element {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M20 16V7a2 2 0 00-2-2h-3c0-1.66-1.34-3-3-3S9 3.34 9 5H6a2 2 0 00-2 2v4c1.66 0 3 1.34 3 3s-1.34 3-3 3v3a2 2 0 002 2h4c0-1.66 1.34-3 3-3s3 1.34 3 3h4a2 2 0 002-2z" />
+    </svg>
+  );
+}
+
+// 折叠箭头
+function ChevronIcon({ collapsed }: { collapsed: boolean }) {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 12 12"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={{
+        transform: collapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
+        transition: 'transform 0.15s ease',
+      }}
+    >
+      <path d="M3 4.5L6 7.5L9 4.5" />
     </svg>
   );
 }
@@ -79,14 +115,18 @@ export default function ConnectorsPanel() {
   const [connectors, setConnectors] = useState<ConnectorStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedConnector, setSelectedConnector] = useState<ConnectorStatus | null>(null);
-  
-  // 配置表单状态
+
+  // 配置表单状态（View details 模式下使用）
+  const [showConfig, setShowConfig] = useState(false);
   const [configClientId, setConfigClientId] = useState('');
   const [configClientSecret, setConfigClientSecret] = useState('');
   const [configSaving, setConfigSaving] = useState(false);
 
   // OAuth 连接状态
   const [connecting, setConnecting] = useState(false);
+
+  // 分组折叠状态
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
 
   // 通过 HTTP API 获取连接器列表
   const fetchConnectors = useCallback(async () => {
@@ -112,19 +152,36 @@ export default function ConnectorsPanel() {
     const params = new URLSearchParams(window.location.search);
     const connectedId = params.get('connected');
     if (connectedId) {
-      // 清除 URL 参数
       const newUrl = window.location.pathname + '?page=customize';
       window.history.replaceState({}, '', newUrl);
-      
-      // 刷新列表并自动选中
-      fetchConnectors().then(() => {
+      fetchConnectors().then(async () => {
         const connector = connectors.find((c) => c.id === connectedId);
         if (connector) {
           setSelectedConnector(connector);
+          // 自动激活 MCP
+          if (connector.mcpServerName && !connector.mcpConnected) {
+            try {
+              await fetch(`/api/connectors/${connectedId}/activate-mcp`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+              });
+              // 再次刷新列表以显示最新状态
+              await fetchConnectors();
+            } catch (err) {
+              console.error('Failed to auto-activate MCP:', err);
+            }
+          }
         }
       });
     }
   }, []);
+
+  // 当选中连接器变化时，重置配置面板状态
+  useEffect(() => {
+    setShowConfig(false);
+    setConfigClientId('');
+    setConfigClientSecret('');
+  }, [selectedConnector?.id]);
 
   // 保存配置
   const handleSaveConfig = async (connector: ConnectorStatus) => {
@@ -145,16 +202,10 @@ export default function ConnectorsPanel() {
       });
 
       if (res.ok) {
-        // 清空表单
         setConfigClientId('');
         setConfigClientSecret('');
-        // 刷新列表
+        setShowConfig(false);
         await fetchConnectors();
-        // 更新选中的连接器
-        const updated = connectors.find((c) => c.id === connector.id);
-        if (updated) {
-          setSelectedConnector(updated);
-        }
       } else {
         const error = await res.json();
         alert(`Failed to save config: ${error.error}`);
@@ -169,6 +220,12 @@ export default function ConnectorsPanel() {
 
   // 连接操作
   const handleConnect = async (connector: ConnectorStatus) => {
+    if (!connector.configured) {
+      // 未配置时跳到配置表单
+      setShowConfig(true);
+      return;
+    }
+
     setConnecting(true);
     try {
       const res = await fetch(`/api/connectors/${connector.id}/connect`, {
@@ -178,7 +235,6 @@ export default function ConnectorsPanel() {
 
       if (res.ok) {
         const data = await res.json();
-        // 打开 OAuth 授权窗口
         window.open(data.authUrl, '_blank', 'width=600,height=800');
       } else {
         const error = await res.json();
@@ -195,19 +251,22 @@ export default function ConnectorsPanel() {
   // 断开连接
   const handleDisconnect = async (connector: ConnectorStatus) => {
     try {
+      // 先停用 MCP（后端已经在 disconnect API 中自动调用，这里保留以确保顺序）
+      if (connector.mcpConnected) {
+        await fetch(`/api/connectors/${connector.id}/deactivate-mcp`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
       const res = await fetch(`/api/connectors/${connector.id}/disconnect`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       });
 
       if (res.ok) {
-        // 刷新列表
         await fetchConnectors();
-        // 更新选中的连接器
-        const updated = connectors.find((c) => c.id === connector.id);
-        if (updated) {
-          setSelectedConnector(updated);
-        }
+        setSelectedConnector(null);
       } else {
         const error = await res.json();
         alert(`Failed to disconnect: ${error.error}`);
@@ -218,14 +277,49 @@ export default function ConnectorsPanel() {
     }
   };
 
-  // 分组：按 category
-  const groupedConnectors = connectors.reduce((acc, connector) => {
-    if (!acc[connector.category]) {
-      acc[connector.category] = [];
+  // 激活 MCP
+  const handleActivateMcp = async (connector: ConnectorStatus) => {
+    try {
+      const res = await fetch(`/api/connectors/${connector.id}/activate-mcp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        console.log(`MCP activated for ${connector.name}, tools:`, data.tools);
+        await fetchConnectors();
+      } else {
+        const error = await res.json();
+        alert(`Failed to activate MCP: ${error.error}`);
+      }
+    } catch (err) {
+      console.error('Failed to activate MCP:', err);
+      alert('Failed to activate MCP');
     }
-    acc[connector.category].push(connector);
-    return acc;
-  }, {} as Record<string, ConnectorStatus[]>);
+  };
+
+  // 切换分组折叠
+  const toggleGroup = (groupKey: string) => {
+    setCollapsedGroups((prev) => ({
+      ...prev,
+      [groupKey]: !prev[groupKey],
+    }));
+  };
+
+  // 按连接状态分组（对齐官方：已连接的按 category 分组，未连接的单独一组）
+  const connectedByCategory: Record<string, ConnectorStatus[]> = {};
+  const notConnected: ConnectorStatus[] = [];
+
+  connectors.forEach((c) => {
+    if (c.status === 'connected') {
+      const cat = c.category || 'web';
+      if (!connectedByCategory[cat]) connectedByCategory[cat] = [];
+      connectedByCategory[cat].push(c);
+    } else {
+      notConnected.push(c);
+    }
+  });
 
   // 分组标题映射
   const getCategoryTitle = (category: string): string => {
@@ -234,6 +328,11 @@ export default function ConnectorsPanel() {
     return category;
   };
 
+  // 当前选中的最新数据
+  const currentSelected = selectedConnector
+    ? connectors.find((c) => c.id === selectedConnector.id) || selectedConnector
+    : null;
+
   return (
     <div className={styles.connectorsPanel}>
       {/* 中栏：列表 */}
@@ -241,10 +340,15 @@ export default function ConnectorsPanel() {
         <div className={styles.middleHeader}>
           <h2 className={styles.middleTitle}>{t('customize.connectors')}</h2>
           <div className={styles.middleActions}>
-            <button className={styles.searchButton} title={t('customize.search')}>
+            <button className={styles.iconButton} title={t('customize.search')}>
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="7" cy="7" r="4.5" />
                 <path d="M10.5 10.5L14 14" />
+              </svg>
+            </button>
+            <button className={styles.iconButton} title={t('customize.addConnector')}>
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M8 3v10M3 8h10" />
               </svg>
             </button>
           </div>
@@ -257,28 +361,66 @@ export default function ConnectorsPanel() {
             <div className={styles.emptyState}>{t('customize.noConnectors')}</div>
           ) : (
             <>
-              {Object.entries(groupedConnectors).map(([category, categoryConnectors]) => (
+              {/* 已连接的，按 category 分组 */}
+              {Object.entries(connectedByCategory).map(([category, items]) => (
                 <div key={category} className={styles.group}>
-                  <div className={styles.groupHeader}>{getCategoryTitle(category)}</div>
-                  <div className={styles.connectorList}>
-                    {categoryConnectors.map((connector) => (
-                      <button
-                        key={connector.id}
-                        className={`${styles.connectorItem} ${selectedConnector?.id === connector.id ? styles.active : ''}`}
-                        onClick={() => setSelectedConnector(connector)}
-                      >
-                        <span className={styles.connectorIcon}>{getConnectorIcon(connector.icon)}</span>
-                        <div className={styles.connectorInfo}>
+                  <button
+                    className={styles.groupHeader}
+                    onClick={() => toggleGroup(category)}
+                  >
+                    <ChevronIcon collapsed={!!collapsedGroups[category]} />
+                    <span>{getCategoryTitle(category)}</span>
+                  </button>
+                  {!collapsedGroups[category] && (
+                    <div className={styles.connectorList}>
+                      {items.map((connector) => (
+                        <button
+                          key={connector.id}
+                          className={`${styles.connectorItem} ${currentSelected?.id === connector.id ? styles.active : ''}`}
+                          onClick={() => setSelectedConnector(connector)}
+                        >
+                          <span className={styles.connectorIcon}>{getConnectorIcon(connector.icon)}</span>
                           <span className={styles.connectorName}>{connector.name}</span>
-                          {connector.status === 'connected' && (
-                            <span className={styles.connectedBadge}>{t('customize.connected')}</span>
+                          {connector.mcpConnected && connector.mcpToolCount && connector.mcpToolCount > 0 && (
+                            <span className={styles.mcpBadgeGreen}>{connector.mcpToolCount} tools</span>
                           )}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
+                          {!connector.mcpConnected && connector.mcpServerName && (
+                            <span className={styles.mcpBadgeGray}>MCP not connected</span>
+                          )}
+                        </button>
+                      ))}
+                      {items.length > 0 && <div className={styles.groupDivider} />}
+                    </div>
+                  )}
                 </div>
               ))}
+
+              {/* 未连接的 */}
+              {notConnected.length > 0 && (
+                <div className={styles.group}>
+                  <button
+                    className={styles.groupHeader}
+                    onClick={() => toggleGroup('not-connected')}
+                  >
+                    <ChevronIcon collapsed={!!collapsedGroups['not-connected']} />
+                    <span>{t('customize.notConnected')}</span>
+                  </button>
+                  {!collapsedGroups['not-connected'] && (
+                    <div className={styles.connectorList}>
+                      {notConnected.map((connector) => (
+                        <button
+                          key={connector.id}
+                          className={`${styles.connectorItem} ${currentSelected?.id === connector.id ? styles.active : ''}`}
+                          onClick={() => setSelectedConnector(connector)}
+                        >
+                          <span className={styles.connectorIcon}>{getConnectorIcon(connector.icon)}</span>
+                          <span className={styles.connectorName}>{connector.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </>
           )}
         </div>
@@ -286,26 +428,49 @@ export default function ConnectorsPanel() {
 
       {/* 右栏：详情 */}
       <div className={styles.rightColumn}>
-        {!selectedConnector ? (
+        {!currentSelected ? (
           <div className={styles.emptyDetail}>
             <p>{connectors.length === 0 ? t('customize.noConnectors') : t('customize.selectConnector')}</p>
           </div>
         ) : (
           <div className={styles.detailContent}>
             {/* 大图标 */}
-            <div className={styles.detailIcon}>{getConnectorIcon(selectedConnector.icon, 64)}</div>
+            <div className={styles.detailIcon}>
+              {getConnectorIcon(currentSelected.icon, 48)}
+            </div>
 
-            {/* 名称 */}
-            <h3 className={styles.detailName}>{selectedConnector.name}</h3>
+            {/* 未连接状态 */}
+            {currentSelected.status !== 'connected' && !showConfig && (
+              <>
+                <p className={styles.detailMessage}>
+                  {t('customize.notConnectedYet', { name: currentSelected.name })}
+                </p>
+                <div className={styles.detailActions}>
+                  <button
+                    className={styles.connectButton}
+                    onClick={() => handleConnect(currentSelected)}
+                    disabled={connecting}
+                  >
+                    {connecting ? t('customize.connecting') : t('customize.connect')}
+                  </button>
+                  <button
+                    className={styles.viewDetailsButton}
+                    onClick={() => setShowConfig(true)}
+                  >
+                    {t('customize.viewDetails')}
+                  </button>
+                </div>
+                {connecting && (
+                  <p className={styles.oauthHint}>{t('customize.oauthPopupHint')}</p>
+                )}
+              </>
+            )}
 
-            {/* 描述 */}
-            <p className={styles.connectorDescription}>{selectedConnector.description}</p>
-
-            {/* 未配置时显示配置表单 */}
-            {!selectedConnector.configured && (
+            {/* 配置表单（View details 展开） */}
+            {currentSelected.status !== 'connected' && showConfig && (
               <div className={styles.configForm}>
                 <p className={styles.configHint}>
-                  {t('customize.configHint', { name: selectedConnector.name })}
+                  {t('customize.configHint', { name: currentSelected.name })}
                 </p>
                 <div className={styles.configField}>
                   <label className={styles.configLabel}>{t('customize.clientId')}</label>
@@ -327,62 +492,90 @@ export default function ConnectorsPanel() {
                     placeholder="Enter Client Secret"
                   />
                 </div>
-                <button
-                  className={styles.primaryButton}
-                  onClick={() => handleSaveConfig(selectedConnector)}
-                  disabled={configSaving || !configClientId || !configClientSecret}
-                >
-                  {configSaving ? t('customize.configSaved') : t('customize.saveConfig')}
-                </button>
+                <div className={styles.configActions}>
+                  <button
+                    className={styles.connectButton}
+                    onClick={() => handleSaveConfig(currentSelected)}
+                    disabled={configSaving || !configClientId || !configClientSecret}
+                  >
+                    {configSaving ? t('customize.configSaved') : t('customize.saveConfig')}
+                  </button>
+                  <button
+                    className={styles.viewDetailsButton}
+                    onClick={() => setShowConfig(false)}
+                  >
+                    {t('nav.chat') === '聊天' ? '返回' : 'Back'}
+                  </button>
+                </div>
               </div>
             )}
 
-            {/* 已配置但未连接 */}
-            {selectedConnector.configured && selectedConnector.status === 'not_connected' && (
-              <div className={styles.detailActions}>
-                <button
-                  className={styles.primaryButton}
-                  onClick={() => handleConnect(selectedConnector)}
-                  disabled={connecting}
-                >
-                  {connecting ? t('customize.connecting') : t('customize.connect')}
-                </button>
-                {connecting && (
-                  <p className={styles.oauthHint}>{t('customize.oauthPopupHint')}</p>
+            {/* 已连接状态 */}
+            {currentSelected.status === 'connected' && (
+              <div className={styles.connectedInfo}>
+                <p className={styles.connectedMessage}>
+                  {t('customize.connectedTo', { name: currentSelected.name })}
+                </p>
+                {currentSelected.userInfo && (
+                  <div className={styles.userInfo}>
+                    {currentSelected.userInfo.login && (
+                      <p className={styles.infoRow}>
+                        <span className={styles.infoLabel}>User:</span>
+                        <span>{currentSelected.userInfo.login}</span>
+                      </p>
+                    )}
+                    {currentSelected.userInfo.email && (
+                      <p className={styles.infoRow}>
+                        <span className={styles.infoLabel}>Email:</span>
+                        <span>{currentSelected.userInfo.email}</span>
+                      </p>
+                    )}
+                  </div>
                 )}
-              </div>
-            )}
+                {currentSelected.connectedAt && (
+                  <p className={styles.connectedSince}>
+                    {t('customize.connectedSince', {
+                      date: new Date(currentSelected.connectedAt).toLocaleDateString(),
+                    })}
+                  </p>
+                )}
 
-            {/* 已连接 */}
-            {selectedConnector.status === 'connected' && (
-              <div className={styles.detailInfo}>
-                {selectedConnector.connectedAt && (
-                  <div className={styles.userInfoSection}>
-                    <p className={styles.infoRow}>
-                      {t('customize.connectedSince', {
-                        date: new Date(selectedConnector.connectedAt).toLocaleString(),
-                      })}
-                    </p>
-                    {selectedConnector.userInfo && (
-                      <div className={styles.userInfo}>
-                        {selectedConnector.userInfo.login && (
-                          <p className={styles.infoRow}>User: {selectedConnector.userInfo.login}</p>
-                        )}
-                        {selectedConnector.userInfo.email && (
-                          <p className={styles.infoRow}>Email: {selectedConnector.userInfo.email}</p>
-                        )}
+                {/* MCP 状态 */}
+                {currentSelected.mcpServerName && (
+                  <div className={styles.mcpStatus}>
+                    {currentSelected.mcpConnected && currentSelected.mcpToolCount && currentSelected.mcpToolCount > 0 ? (
+                      <div className={styles.mcpConnectedBadge}>
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                          <circle cx="8" cy="8" r="6" fill="#10b981" />
+                          <path d="M5 8l2 2 4-4" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                        <span>MCP Connected: {currentSelected.mcpToolCount} tools available</span>
+                      </div>
+                    ) : (
+                      <div className={styles.mcpNotConnected}>
+                        <div className={styles.mcpNotConnectedBadge}>
+                          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                            <circle cx="8" cy="8" r="6" fill="#6b7280" />
+                          </svg>
+                          <span>MCP not connected</span>
+                        </div>
+                        <button
+                          className={styles.activateMcpButton}
+                          onClick={() => handleActivateMcp(currentSelected)}
+                        >
+                          Activate MCP
+                        </button>
                       </div>
                     )}
                   </div>
                 )}
-                <div className={styles.secondaryActions}>
-                  <button
-                    className={styles.dangerButton}
-                    onClick={() => handleDisconnect(selectedConnector)}
-                  >
-                    {t('customize.disconnect')}
-                  </button>
-                </div>
+
+                <button
+                  className={styles.disconnectButton}
+                  onClick={() => handleDisconnect(currentSelected)}
+                >
+                  {t('customize.disconnect')}
+                </button>
               </div>
             )}
           </div>

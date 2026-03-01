@@ -19,6 +19,7 @@ import { BUILTIN_PROVIDERS } from './providers.js';
 interface SettingsData {
   connectors?: Record<string, ConnectorTokenData>;
   connectorClients?: Record<string, ConnectorClientConfig>;
+  mcpServers?: Record<string, any>;
   [key: string]: any;
 }
 
@@ -105,6 +106,11 @@ export class ConnectorManager {
       if (tokenData) {
         status.connectedAt = tokenData.connectedAt;
         status.userInfo = tokenData.userInfo;
+      }
+
+      // 填充 MCP server name（如果配置了）
+      if (provider.mcpServer) {
+        status.mcpServerName = provider.mcpServer.serverName;
       }
 
       return status;
@@ -239,6 +245,9 @@ export class ConnectorManager {
     };
     this.writeSettings(settings);
 
+    // 注册 MCP Server 到 settings.json（如果 provider 配置了 mcpServer）
+    this.registerMcpInSettings(connectorId);
+
     return connectorId;
   }
 
@@ -346,10 +355,156 @@ export class ConnectorManager {
    * 断开连接
    */
   disconnect(id: string): void {
+    // 先注销 MCP Server
+    this.unregisterMcpFromSettings(id);
+
     const settings = this.readSettings();
     if (settings.connectors && settings.connectors[id]) {
       delete settings.connectors[id];
       this.writeSettings(settings);
+    }
+  }
+
+  /**
+   * 刷新 Token（如果需要）
+   * GitHub OAuth token 无过期时间，直接返回 true
+   * Google OAuth token 距过期 < 5 分钟时用 refreshToken 刷新
+   */
+  async refreshTokenIfNeeded(connectorId: string): Promise<boolean> {
+    const settings = this.readSettings();
+    const tokenData = settings.connectors?.[connectorId];
+    if (!tokenData) return false;
+
+    // GitHub token 无过期时间
+    if (!tokenData.expiresAt) return true;
+
+    // 检查是否需要刷新（距过期 < 5 分钟）
+    const now = Date.now();
+    const fiveMinutes = 5 * 60 * 1000;
+    if (tokenData.expiresAt - now > fiveMinutes) {
+      return true; // 不需要刷新
+    }
+
+    // 需要刷新
+    if (!tokenData.refreshToken) {
+      console.error(`[ConnectorManager] No refresh token for ${connectorId}`);
+      return false;
+    }
+
+    const provider = BUILTIN_PROVIDERS.find((p) => p.id === connectorId);
+    if (!provider) return false;
+
+    const clientConfig = this.getClientConfig(connectorId);
+    if (!clientConfig) return false;
+
+    try {
+      // 用 refreshToken 换取新 token
+      const params: Record<string, string> = {
+        client_id: clientConfig.clientId,
+        client_secret: clientConfig.clientSecret,
+        refresh_token: tokenData.refreshToken,
+        grant_type: 'refresh_token',
+      };
+
+      const headers = {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      };
+      const body = new URLSearchParams(params).toString();
+
+      const response = await fetch(provider.oauth.tokenEndpoint, {
+        method: 'POST',
+        headers,
+        body,
+      });
+
+      if (!response.ok) {
+        console.error(`[ConnectorManager] Token refresh failed for ${connectorId}:`, response.statusText);
+        return false;
+      }
+
+      const data: any = await response.json();
+
+      // 更新 token
+      settings.connectors![connectorId] = {
+        ...tokenData,
+        accessToken: data.access_token,
+        expiresAt: data.expires_in ? now + data.expires_in * 1000 : tokenData.expiresAt,
+        refreshToken: data.refresh_token || tokenData.refreshToken,
+      };
+      this.writeSettings(settings);
+
+      console.log(`[ConnectorManager] Token refreshed for ${connectorId}`);
+      return true;
+    } catch (error) {
+      console.error(`[ConnectorManager] Token refresh error for ${connectorId}:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * 获取 MCP Server 配置（用于注册 MCP Server）
+   */
+  getMcpServerConfig(connectorId: string): { name: string; config: any } | null {
+    const provider = BUILTIN_PROVIDERS.find((p) => p.id === connectorId);
+    if (!provider || !provider.mcpServer) return null;
+
+    const settings = this.readSettings();
+    const tokenData = settings.connectors?.[connectorId];
+    if (!tokenData) return null;
+
+    // 构建环境变量
+    const env: Record<string, string> = {};
+    for (const [envKey, tokenField] of Object.entries(provider.mcpServer.envMapping)) {
+      const value = tokenData[tokenField];
+      if (value) {
+        env[envKey] = value;
+      }
+    }
+
+    const config = {
+      type: 'stdio' as const,
+      command: provider.mcpServer.command,
+      args: provider.mcpServer.args,
+      env,
+    };
+
+    return {
+      name: provider.mcpServer.serverName,
+      config,
+    };
+  }
+
+  /**
+   * 注册 MCP Server 到 settings.json
+   * 在 handleCallback 成功后调用
+   */
+  registerMcpInSettings(connectorId: string): void {
+    const mcpConfig = this.getMcpServerConfig(connectorId);
+    if (!mcpConfig) return;
+
+    const settings = this.readSettings();
+    if (!settings.mcpServers) {
+      settings.mcpServers = {};
+    }
+    settings.mcpServers[mcpConfig.name] = mcpConfig.config;
+    this.writeSettings(settings);
+
+    console.log(`[ConnectorManager] Registered MCP Server: ${mcpConfig.name}`);
+  }
+
+  /**
+   * 从 settings.json 中注销 MCP Server
+   * 在 disconnect 时调用
+   */
+  unregisterMcpFromSettings(connectorId: string): void {
+    const provider = BUILTIN_PROVIDERS.find((p) => p.id === connectorId);
+    if (!provider || !provider.mcpServer) return;
+
+    const settings = this.readSettings();
+    if (settings.mcpServers && settings.mcpServers[provider.mcpServer.serverName]) {
+      delete settings.mcpServers[provider.mcpServer.serverName];
+      this.writeSettings(settings);
+      console.log(`[ConnectorManager] Unregistered MCP Server: ${provider.mcpServer.serverName}`);
     }
   }
 }

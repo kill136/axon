@@ -26,6 +26,7 @@ export {
 export { PromptCache, promptCache } from './cache.js';
 export type {
   PromptContext,
+  PromptBlock,
   Attachment,
   AttachmentType,
   SystemPromptOptions,

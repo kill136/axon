@@ -16,6 +16,14 @@ export const BUILTIN_PROVIDERS: ConnectorProvider[] = [
       tokenEndpoint: 'https://github.com/login/oauth/access_token',
       scopes: ['repo', 'read:user'],
     },
+    mcpServer: {
+      serverName: 'connector-github',
+      command: 'npx',
+      args: ['-y', '@modelcontextprotocol/server-github'],
+      envMapping: {
+        'GITHUB_PERSONAL_ACCESS_TOKEN': 'accessToken',
+      },
+    },
   },
   {
     id: 'gmail',

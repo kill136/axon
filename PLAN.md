@@ -1,106 +1,128 @@
-# Customize 页面（Connectors + Skills）
+# 连接器系统完整投产计划
 
 ## 目标
-新增独立的 Customize 页面，类似 Claude.ai 的 `/customize/connectors`，包含两个子页面：
-- **Skills**: 展示已安装的 Skills，支持启用/禁用
-- **Connectors**: 展示 MCP 服务器连接状态，支持连接/断开/管理
+将连接器从"空壳 OAuth UI"升级为**真正可投产的完整系统**：连接成功后自动启动 MCP Server，AI 能实际调用 GitHub API / Google API。
 
-## UI 设计（参考 Claude.ai 截图）
+## MCP Server 选型
 
+| Connector | MCP Server Package | 环境变量 | 备注 |
+|-----------|-------------------|----------|------|
+| GitHub | `@modelcontextprotocol/server-github` | `GITHUB_PERSONAL_ACCESS_TOKEN` ← accessToken | OAuth token 直接当 PAT 用 |
+| Google Workspace (Gmail+Calendar+Drive) | `@anthropic-ai/google-workspace-mcp` 或 `@presto-ai/google-workspace-mcp` | 需要写 credentials 文件 | Google 系合并为一个 |
+
+**关键设计决策**：
+- GitHub 最简单：OAuth access_token 直接作为 `GITHUB_PERSONAL_ACCESS_TOKEN` 环境变量注入
+- Google 系列复杂：社区 MCP server 都自带 OAuth 流程，需要 `gcp-oauth.keys.json` + 首次认证。我们的方案：**把我们已获取的 token 写入 MCP server 期望的 credentials 文件**，跳过它的内置认证
+- 三个 Google connector（Gmail/Calendar/Drive）**合并为一个 MCP server 实例**（`google-workspace`），因为一个包就能覆盖全部
+
+## 改动清单（6 个文件）
+
+### 1. `src/web/server/connectors/types.ts`
+
+新增 `mcpServer` 字段到 `ConnectorProvider`：
+```typescript
+mcpServer?: {
+  serverName: string;       // MCP server 注册名，如 "connector-github"
+  command: string;          // "npx"
+  args: string[];           // ["-y", "@modelcontextprotocol/server-github"]
+  envMapping: Record<string, 'accessToken' | 'refreshToken'>;
+  // key = 环境变量名, value = 从 ConnectorTokenData 中取哪个字段
+};
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│  TopNavBar: [Chat] [Blueprint] [Swarm] [Schedule] [Customize]  │
-├────────────┬────────────────────┬───────────────────────────────┤
-│ ← Customize│   Connectors       │                               │
-│            │ ┌──────────────────┐│                               │
-│  Skills    │ │ ▽ Not connected  ││    [GitHub Logo]              │
-│  Connectors│ │   GitHub      ◎  ││                               │
-│            │ │   Google Drive ◎  ││ You are not connected to     │
-│            │ │                  ││ GitHub yet.                   │
-│            │ │ ▽ Connected      ││                               │
-│            │ │   Slack       ✓  ││    [Connect]                  │
-│            │ │   Notion      ✓  ││                               │
-│            │ └──────────────────┘│                               │
-├────────────┴────────────────────┴───────────────────────────────┤
+
+新增到 `ConnectorStatus`：
+```typescript
+mcpServerName?: string;    // 关联的 MCP server name
+mcpConnected?: boolean;    // MCP server 是否已连接
+mcpToolCount?: number;     // 可用工具数量
 ```
 
-### 三栏布局
-1. **左栏（导航）**: 220px 宽，"← Customize" 标题 + Skills/Connectors 菜单项
-2. **中栏（列表）**: 400px 宽，连接器列表，按 "Not connected" / "Connected" 分组
-3. **右栏（详情）**: flex-1，选中某个 Connector 后显示其状态和操作按钮
+### 2. `src/web/server/connectors/providers.ts`
 
-## 涉及文件
+为 GitHub 添加 mcpServer 配置：
+```typescript
+{
+  id: 'github',
+  // ...existing
+  mcpServer: {
+    serverName: 'connector-github',
+    command: 'npx',
+    args: ['-y', '@modelcontextprotocol/server-github'],
+    envMapping: {
+      'GITHUB_PERSONAL_ACCESS_TOKEN': 'accessToken',
+    },
+  },
+}
+```
 
-### 新增文件
-1. `src/web/client/src/pages/CustomizePage/index.tsx` — Customize 页面主组件
-2. `src/web/client/src/pages/CustomizePage/CustomizePage.module.css` — 页面样式
-3. `src/web/client/src/pages/CustomizePage/ConnectorsPanel.tsx` — Connectors 子面板
-4. `src/web/client/src/pages/CustomizePage/SkillsPanel.tsx` — Skills 子面板
+Gmail/Calendar/Drive 暂不配置 mcpServer（Google MCP 生态还不够成熟，各个社区包的 token 注入方式不统一）。先把 GitHub 做通，Google 系列后续补。
 
-### 修改文件
-5. `src/web/client/src/Root.tsx` — 添加 'customize' 到 Page 类型 + 挂载 CustomizePage
-6. `src/web/client/src/components/swarm/TopNavBar/index.tsx` — 添加 Customize tab
-7. `src/web/client/src/i18n/en.json` — 英文翻译
-8. `src/web/client/src/i18n/zh.json` — 中文翻译
+### 3. `src/web/server/connectors/index.ts` — 核心增强
 
-## 实现步骤
+#### 3a. Token 刷新
+```typescript
+async refreshTokenIfNeeded(connectorId: string): Promise<boolean>
+```
+- 检查 `expiresAt`，距过期 < 5 分钟时用 `refreshToken` 刷新
+- 更新 settings.json 中的 accessToken/expiresAt
+- 仅 Google 类需要（GitHub OAuth token 不过期）
 
-### Step 1: 创建 CustomizePage 页面组件
-- 三栏布局：左侧导航 + 中间列表 + 右侧详情
-- 左侧导航有"Skills"和"Connectors"两个菜单项
-- 默认显示 Connectors
-- 顶部"← Customize"标题，点击"←"可返回 Chat 页面
+#### 3b. 获取 MCP 配置
+```typescript
+getMcpServerConfig(connectorId: string): { name: string; config: McpServerConfig } | null
+```
+- 根据 provider.mcpServer 配置 + token data 构建完整 MCP server 配置
+- 将 token 映射为 env 环境变量
 
-### Step 2: 创建 ConnectorsPanel 组件
-- 复用现有 McpPanel 的数据获取逻辑（WebSocket 通信获取 MCP 服务器列表）
-- 将服务器分为 "Connected" 和 "Not connected" 两组显示
-- 每个 Connector 显示：图标 + 名称 + 状态指示器
-- 选中 Connector 后，右侧显示详情：
-  - 大图标
-  - 连接状态文字
-  - Connect/Disconnect 按钮
-  - 查看工具、重连、删除等操作
+#### 3c. handleCallback 后写入 MCP 配置
+OAuth 成功后，如果 provider 有 mcpServer，自动写入 `settings.json` 的 `mcpServers` 字段。
 
-### Step 3: 创建 SkillsPanel 组件
-- 从后端获取已安装的 Skills 列表
-- 展示 Skill 名称、描述、状态
-- 支持启用/禁用
+#### 3d. disconnect 时清理 MCP 配置
+从 `settings.json` 的 `mcpServers` 中删除 `connector-{id}`。
 
-### Step 4: 修改 Root.tsx 添加路由
-- `type Page` 增加 `'customize'`
-- 添加 `<CustomizePage>` 组件挂载
-- 传递必要的 props（onSendMessage, addMessageHandler）
+#### 3e. listConnectors 增强
+填充 `mcpServerName`、`mcpConnected`、`mcpToolCount`。
 
-### Step 5: 修改 TopNavBar 添加 tab
-- 在页面 Tab 列表中增加 "Customize" tab
-- 使用拼图/自定义图标
+### 4. `src/web/server/routes/connectors-api.ts`
 
-### Step 6: 添加国际化文本
-- en.json / zh.json 中添加 customize.* 相关 key
+#### 新增 POST `/api/connectors/:id/activate-mcp`
+通知 ConversationManager 激活该 connector 的 MCP server。
 
-## Connectors 数据来源
+#### 新增 POST `/api/connectors/:id/refresh`
+手动刷新 Token。
 
-Connectors 本质就是 MCP 服务器。数据来源：
-- WebSocket 消息 `mcp_list` / `mcp_list_response`（已有实现）
-- 操作：`mcp_toggle`（启用/禁用），`mcp_add`（添加），`mcp_remove`（删除）
+#### 修改 callback 路由
+成功后自动触发 MCP 激活。
 
-不同于现有 McpPanel 的 CLI 风格界面，Connectors 使用 Claude.ai 风格的现代 UI：
-- 分组显示（Connected / Not connected）
-- 大图标 + 简洁状态
-- 详情面板 + Connect 按钮
+### 5. `src/web/server/conversation.ts`
 
-## 预置 Connector 图标
+#### 新增 `activateConnectorMcp(connectorId: string)`
+- 从 ConnectorManager 获取 MCP 配置
+- 必要时刷新 token
+- `registerMcpServer()` → `connectMcpServer()` → `createMcpTools()`
+- 加入 `this.mcpTools`
 
-为常见 MCP 服务器提供品牌图标：
-- GitHub (Octocat)
-- Google Drive
-- Slack
-- Notion
-- PostgreSQL/MySQL (数据库)
-- 其他使用通用拼图图标
+#### 新增 `deactivateConnectorMcp(connectorId: string)`
+- 断开 MCP server、清理 mcpTools、注销
+
+#### 增强 `initializeAllMcpServers()`
+启动时检查已连接的 connectors，自动激活有 mcpServer 配置的。
+
+### 6. `ConnectorsPanel.tsx` — 前端增强
+- 已连接 connector 显示 MCP 工具数量 "X tools available"
+- Connect 成功后自动调用 activate-mcp
+- 显示 MCP 连接状态（connected/connecting/failed）
+
+## 实施顺序
+1. types.ts — 扩展类型
+2. providers.ts — GitHub MCP 映射
+3. connectors/index.ts — Token 刷新 + MCP 配置生成 + 注册/清理
+4. connectors-api.ts — 新 API + callback 联动
+5. conversation.ts — MCP 激活/停用
+6. ConnectorsPanel.tsx — 前端状态
 
 ## 注意事项
-- 页面使用 CSS Modules，保持与现有组件一致
-- 颜色使用 CSS 变量（`var(--bg-primary)` 等），不硬编码
-- 页面挂载后保持 display:none 策略（与其他页面一致，避免丢失 WebSocket 状态）
-- Skills 面板可先做简版，展示列表 + 描述即可
+- MCP server name 用 `connector-` 前缀避免冲突
+- GitHub OAuth token 等价于 PAT，可以直接用
+- Google 系列先标记为"需手动配置 MCP"，后续补全
+- Token 刷新失败 → 标记 disconnected → 前端提示重新授权
