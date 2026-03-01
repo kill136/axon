@@ -184,6 +184,10 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
   const scheduleRouter = await import('./routes/schedule-api.js');
   app.use('/api/schedule', scheduleRouter.default);
 
+  // Connectors API 路由（OAuth 连接器管理）
+  const connectorsRouter = await import('./routes/connectors-api.js');
+  app.use('/api/connectors', connectorsRouter.default);
+
   // 端口转发路由（反向代理用户应用）
   const portForwardRouter = await import('./routes/port-forward.js');
   app.use('/proxy', portForwardRouter.default);
