@@ -142,7 +142,7 @@ export class StartLeadAgentTool extends BaseTool<StartLeadAgentInput, ToolResult
    */
   static cancelActiveExecution(): void {
     if (StartLeadAgentTool.activeExecutionId && StartLeadAgentTool.context) {
-      console.log(`[StartLeadAgent] Chat Tab 中断，取消蜂群执行: ${StartLeadAgentTool.activeExecutionId}`);
+      console.log(`[StartLeadAgent] Chat Tab interrupted, canceling swarm execution: ${StartLeadAgentTool.activeExecutionId}`);
       StartLeadAgentTool.context.cancelExecution(StartLeadAgentTool.activeExecutionId);
       StartLeadAgentTool.activeExecutionId = null;
     }
@@ -249,7 +249,7 @@ export class StartLeadAgentTool extends BaseTool<StartLeadAgentInput, ToolResult
           createdAt: new Date(),
         };
 
-        console.log(`[StartLeadAgent] TaskPlan 模式: 创建临时蓝图 ${planId} (目标: ${input.taskPlan.goal}, 任务数: ${input.taskPlan.tasks.length})`);
+        console.log(`[StartLeadAgent] TaskPlan mode: Creating temporary blueprint ${planId} (goal: ${input.taskPlan.goal}, tasks: ${input.taskPlan.tasks.length})`);
       } else {
         return { success: false, error: '请提供 blueprintId 或 taskPlan' };
       }
@@ -263,7 +263,7 @@ export class StartLeadAgentTool extends BaseTool<StartLeadAgentInput, ToolResult
       // 通知前端导航到 SwarmConsole 查看实时进度
       ctx.navigateToSwarm?.(blueprintId, session.id);
 
-      console.log(`[StartLeadAgent] 阻塞等待 LeadAgent 执行完成... (id: ${blueprintId})`);
+      console.log(`[StartLeadAgent] Blocking wait for LeadAgent execution... (id: ${blueprintId})`);
 
       // 阻塞等待 LeadAgent 执行完成
       const result = await ctx.waitForCompletion(session.id);
@@ -271,7 +271,7 @@ export class StartLeadAgentTool extends BaseTool<StartLeadAgentInput, ToolResult
       // 执行完成，清除活跃 ID
       StartLeadAgentTool.activeExecutionId = null;
 
-      console.log(`[StartLeadAgent] LeadAgent 执行完成 (success: ${result.success})`);
+      console.log(`[StartLeadAgent] LeadAgent execution completed (success: ${result.success})`);
 
       if (result.success) {
         // 成功：返回截断后的输出 + 统计
@@ -307,7 +307,7 @@ export class StartLeadAgentTool extends BaseTool<StartLeadAgentInput, ToolResult
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error(`[StartLeadAgent] 执行失败:`, errorMessage);
+      console.error(`[StartLeadAgent] Execution failed:`, errorMessage);
       return { success: false, error: errorMessage };
     }
   }

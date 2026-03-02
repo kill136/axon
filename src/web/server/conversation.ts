@@ -502,7 +502,7 @@ export class ConversationManager {
     // 初始化插件市场管理器
     const { pluginManager } = await import('../../plugins/index.js');
     this.marketplaceManager = new MarketplaceManager(pluginManager);
-    console.log('[ConversationManager] 插件市场管理器已初始化');
+    console.log('[ConversationManager] Plugin marketplace manager initialized');
 
     // 注册默认 marketplace（等待完成，确保 Discover 面板可用）
     await this.marketplaceManager.ensureDefaultMarketplace();
@@ -552,9 +552,9 @@ export class ConversationManager {
     // 检查认证状态（WebUI 使用 webAuth 作为唯一认证入口）
     const authStatus = webAuth.getStatus();
     if (authStatus.authenticated) {
-      console.log(`[ConversationManager] 认证类型: ${authStatus.type} (${authStatus.provider})`);
+      console.log(`[ConversationManager] Auth type: ${authStatus.type} (${authStatus.provider})`);
     } else {
-      console.log('[ConversationManager] 未配置认证，等待用户在设置页面配置 API Key 或登录 OAuth');
+      console.log('[ConversationManager] No authentication configured, waiting for user to configure API Key or login with OAuth in settings');
     }
 
     // 设置 ExecutionManager 的认证配置，供蜂群子 agent 使用
@@ -587,7 +587,7 @@ export class ConversationManager {
           }
           // 如果服务器已禁用，跳过注册和工具加载
           if (disabledServers.includes(name)) {
-            console.log(`[ConversationManager] Chrome MCP 服务器 ${name} 已禁用，跳过工具加载`);
+            console.log(`[ConversationManager] Chrome MCP server ${name} disabled, skipping tool loading`);
             continue;
           }
           // 注册到 MCP 服务器映射（预加载工具定义，使执行时可用）
@@ -603,17 +603,17 @@ export class ConversationManager {
           }
         }
         this.chromeSystemPrompt = chromeConfig.systemPrompt;
-        console.log(`[ConversationManager] Chrome MCP 工具已加载 (${this.mcpTools.length} tools)`);
+        console.log(`[ConversationManager] Chrome MCP tools loaded (${this.mcpTools.length} tools)`);
       }
     } catch (error) {
-      console.warn('[ConversationManager] Chrome 集成加载失败:', error);
+      console.warn('[ConversationManager] Failed to load Chrome integration:', error);
     }
 
     // 【与 CLI cli.ts:382-391 一致】自动加载并连接所有配置的 MCP 服务器
     try {
       await this.initializeAllMcpServers();
     } catch (error) {
-      console.warn('[ConversationManager] MCP 服务器初始化失败:', error);
+      console.warn('[ConversationManager] Failed to initialize MCP server:', error);
     }
 
     // 同步禁用服务器列表到 MCPSearchTool，使搜索无结果时能提示可启用的服务器
@@ -624,13 +624,13 @@ export class ConversationManager {
       const crypto = await import('crypto');
       const projectHash = crypto.createHash('md5').update(this.cwd).digest('hex').slice(0, 12);
       await initMemorySearchManager(this.cwd, projectHash);
-      console.log(`[ConversationManager] 初始化 MemorySearchManager: ${this.cwd}`);
+      console.log(`[ConversationManager] Initializing MemorySearchManager: ${this.cwd}`);
     } catch (error) {
-      console.warn('[ConversationManager] 初始化 MemorySearchManager 失败:', error);
+      console.warn('[ConversationManager] Failed to initialize MemorySearchManager:', error);
     }
 
     // 确保工具已注册
-    console.log(`[ConversationManager] 已注册 ${toolRegistry.getAll().length} 个工具`);
+    console.log(`[ConversationManager] Registered ${toolRegistry.getAll().length} tools`);
   }
 
   /**
@@ -885,7 +885,7 @@ export class ConversationManager {
   private ensureClientCredentialsFresh(state: SessionState): void {
     const currentFingerprint = this.getCredentialsFingerprint();
     if (state.credentialsFingerprint && state.credentialsFingerprint !== currentFingerprint) {
-      console.log('[ConversationManager] 检测到认证凭据变更，重建客户端');
+      console.log('[ConversationManager] Detected auth credentials change, rebuilding client');
       const newConfig = this.buildClientConfig(state.model);
       state.client = new ClaudeClient({ ...newConfig });
       state.credentialsFingerprint = currentFingerprint;
@@ -937,20 +937,20 @@ export class ConversationManager {
     // 这处理了历史遗留 token（org:create_api_key scope 但从未调过 createOAuthApiKey 的情况）
     const hasInferenceScope = oauthConfig.scopes?.includes('user:inference');
     if (!hasInferenceScope && !oauthConfig.oauthApiKey && oauthConfig.accessToken) {
-      console.log('[ConversationManager] OAuth token 缺少 user:inference scope，尝试自动创建 API Key...');
+      console.log('[ConversationManager] OAuth token missing user:inference scope, attempting to auto-create API Key...');
       try {
         const apiKey = await createOAuthApiKey(oauthConfig.accessToken);
         if (apiKey) {
           await oauthManager.saveOAuthConfig({ oauthApiKey: apiKey });
-          console.log('[ConversationManager] OAuth API Key 已自动创建，重新构建客户端');
+          console.log('[ConversationManager] OAuth API Key auto-created, rebuilding client');
           const newConfig = this.buildClientConfig(state.model);
           state.client = new ClaudeClient({ ...newConfig });
           state.credentialsFingerprint = this.getCredentialsFingerprint();
         } else {
-          console.warn('[ConversationManager] createOAuthApiKey 返回 null，推理可能失败');
+          console.warn('[ConversationManager] createOAuthApiKey returned null, inference may fail');
         }
       } catch (e: any) {
-        console.error('[ConversationManager] 自动创建 API Key 失败:', e.message);
+        console.error('[ConversationManager] Failed to auto-create API Key:', e.message);
       }
     }
 
@@ -969,7 +969,7 @@ export class ConversationManager {
       const newConfig = this.buildClientConfig(state.model);
       state.client = new ClaudeClient({ ...newConfig });
       state.credentialsFingerprint = this.getCredentialsFingerprint();
-      console.log('[ConversationManager] 客户端已使用刷新后的 OAuth 凭证');
+      console.log('[ConversationManager] Client now using refreshed OAuth credentials');
     }
   }
 
@@ -983,7 +983,7 @@ export class ConversationManager {
     if (state) {
       // 会话已存在，检查是否需要更新工作目录
       if (projectPath && state.session.cwd !== projectPath) {
-        console.log(`[ConversationManager] 更新会话 ${sessionId} 工作目录: ${state.session.cwd} -> ${projectPath}`);
+        console.log(`[ConversationManager] Updated session ${sessionId} working directory: ${state.session.cwd} -> ${projectPath}`);
         state.session.setWorkingDirectory(projectPath);
         await state.session.initializeGitInfo();
       }
@@ -996,7 +996,7 @@ export class ConversationManager {
 
     // 创建新会话
     const workingDir = projectPath || this.cwd;
-    console.log(`[ConversationManager] 创建新会话 ${sessionId}, workingDir: ${workingDir}, permissionMode: ${permissionMode || 'default'}`);
+    console.log(`[ConversationManager] Creating new session ${sessionId}, workingDir: ${workingDir}, permissionMode: ${permissionMode || 'default'}`);
 
     const session = new Session(workingDir);
     await session.initializeGitInfo();
@@ -1051,9 +1051,9 @@ export class ConversationManager {
     if (isSessionMemoryEnabled()) {
       try {
         initSessionMemory(workingDir, sessionId);
-        console.log(`[ConversationManager] 初始化 session memory: ${sessionId}, workingDir: ${workingDir}`);
+        console.log(`[ConversationManager] Initializing session memory: ${sessionId}, workingDir: ${workingDir}`);
       } catch (error) {
-        console.warn('[ConversationManager] 初始化 session memory 失败:', error);
+        console.warn('[ConversationManager] Failed to initialize session memory:', error);
       }
     }
 

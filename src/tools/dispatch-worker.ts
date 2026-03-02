@@ -163,7 +163,7 @@ Worker 执行的完整结果，包括：
 
     // 转发 Worker 流式事件（格式需与 websocket.ts 的 worker:stream handler 匹配）
     // v9.3: 添加调试日志
-    console.log(`[DispatchWorker] 🔗 设置 Worker 流式事件监听器, taskId=${taskId}, workerId=${worker.workerId}`);
+    console.log(`[DispatchWorker] 🔗 Setting up Worker streaming event listener, taskId=${taskId}, workerId=${worker.workerId}`);
     worker.on('stream:thinking', (data: any) => {
       ctx.onTaskEvent({ type: 'worker:stream', data: {
         workerId: data.workerId,

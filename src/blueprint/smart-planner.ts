@@ -2388,7 +2388,7 @@ ${explorationContext ? `\n## 代码库探索结果\n${explorationContext}` : ''}
       const filePath = path.join(blueprintDir, `${planId}.json`);
       if (fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
-        console.log(`[SmartPlanner] 执行计划已删除: ${planId}`);
+        console.log(`[SmartPlanner] Execution plan deleted: ${planId}`);
       }
     } catch (error) {
       console.error('[SmartPlanner] Failed to delete execution plan:', error);
@@ -2513,26 +2513,26 @@ export class StreamingBlueprintGenerator extends EventEmitter {
     state: DialogState,
     projectPath: string
   ): AsyncGenerator<StreamingEvent> {
-    console.log('[StreamingBlueprintGenerator] 开始流式生成蓝图...');
+    console.log('[StreamingBlueprintGenerator] Starting streaming blueprint generation...');
 
     if (!state.isComplete) {
-      console.log('[StreamingBlueprintGenerator] 错误：对话未完成');
+      console.log('[StreamingBlueprintGenerator] Error: dialog not completed');
       yield { type: 'error', error: '对话未完成，无法生成蓝图' };
       return;
     }
 
     // Step 1: 发送开始信号
-    console.log('[StreamingBlueprintGenerator] Step 1: 发送开始信号');
+    console.log('[StreamingBlueprintGenerator] Step 1: Sending start signal');
     yield { type: 'progress', step: 1, total: 5, message: '正在分析需求...' };
     yield { type: 'text', text: '🔍 **开始分析需求...**\n\n' };
 
     // 构建蓝图生成的提示词
-    console.log('[StreamingBlueprintGenerator] 构建提示词...');
+    console.log('[StreamingBlueprintGenerator] Building prompt...');
     const prompt = this.buildBlueprintPrompt(state);
-    console.log('[StreamingBlueprintGenerator] 提示词长度:', prompt.length);
+    console.log('[StreamingBlueprintGenerator] Prompt length:', prompt.length);
 
     // Step 2: 流式调用 AI
-    console.log('[StreamingBlueprintGenerator] Step 2: 开始调用 AI API...');
+    console.log('[StreamingBlueprintGenerator] Step 2: Starting AI API call...');
     yield { type: 'progress', step: 2, total: 5, message: 'AI 正在设计项目结构...' };
 
     let fullResponse = '';
@@ -2540,7 +2540,7 @@ export class StreamingBlueprintGenerator extends EventEmitter {
 
     try {
       // 使用流式 API
-      console.log('[StreamingBlueprintGenerator] 调用 createMessageStream...');
+      console.log('[StreamingBlueprintGenerator] Calling createMessageStream...');
       for await (const event of this.client.createMessageStream(
         [{ role: 'user', content: prompt }],
         [],
@@ -2550,20 +2550,20 @@ export class StreamingBlueprintGenerator extends EventEmitter {
         if (event.type === 'text' && event.text) {
           fullResponse += event.text;
           // 流式发送文本片段
-          console.log('[StreamingBlueprintGenerator] 收到 AI 文本片段，长度:', event.text.length);
+          console.log('[StreamingBlueprintGenerator] Received AI text fragment, length:', event.text.length);
           yield { type: 'text', text: event.text };
         } else if (event.type === 'thinking' && event.thinking) {
-          console.log('[StreamingBlueprintGenerator] 收到 AI 思考内容');
+          console.log('[StreamingBlueprintGenerator] Received AI thinking content');
           yield { type: 'thinking', thinking: event.thinking };
         } else if (event.type === 'error') {
-          console.error('[StreamingBlueprintGenerator] AI 返回错误:', event.error);
+          console.error('[StreamingBlueprintGenerator] AI returned error:', event.error);
           yield { type: 'error', error: event.error };
           return;
         } else if (event.type === 'stop') {
-          console.log('[StreamingBlueprintGenerator] AI 流结束，原因:', event.stopReason);
+          console.log('[StreamingBlueprintGenerator] AI stream ended, reason:', event.stopReason);
         }
       }
-      console.log('[StreamingBlueprintGenerator] AI 响应完成，总长度:', fullResponse.length);
+      console.log('[StreamingBlueprintGenerator] AI response completed, total length:', fullResponse.length);
 
       // Step 3: 解析 JSON
       yield { type: 'progress', step: 3, total: 5, message: '正在构建蓝图结构...' };

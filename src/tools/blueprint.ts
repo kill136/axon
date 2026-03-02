@@ -557,9 +557,9 @@ export class BlueprintTool extends BaseTool<BlueprintToolInput, ToolResult> {
     // 异步启动执行
     coordinator.start(plan).then((result) => {
       // 执行完成后的回调（可以添加日志或通知）
-      console.log(`[Blueprint] 执行完成: success=${result.success}, completed=${result.completedCount}, failed=${result.failedCount}`);
+      console.log(`[Blueprint] Execution completed: success=${result.success}, completed=${result.completedCount}, failed=${result.failedCount}`);
     }).catch((error) => {
-      console.error(`[Blueprint] 执行出错: ${error.message}`);
+      console.error(`[Blueprint] Execution error: ${error.message}`);
     });
 
     return {

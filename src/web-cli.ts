@@ -95,7 +95,7 @@ async function runNormalMode(options: any) {
       open: options.open,
     });
   } catch (error) {
-    console.error('启动失败:', error);
+    console.error('Failed to start:', error);
     process.exit(1);
   }
 }
