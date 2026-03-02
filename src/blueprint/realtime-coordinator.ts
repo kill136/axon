@@ -905,7 +905,7 @@ export class RealtimeCoordinator extends EventEmitter {
       return false;
     }
 
-    console.log(`[RealtimeCoordinator] Skipping task: ${task.name} (${taskId})`;
+    console.log(`[RealtimeCoordinator] Skipping task: ${task.name} (${taskId})`);
 
     // 更新任务状态
     task.status = 'skipped';
