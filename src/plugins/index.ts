@@ -1315,6 +1315,9 @@ export class PluginManager extends EventEmitter {
       await this.unload(name, { force: true });
     }
 
+    // 清理该插件注册的 MCP servers（plugin:{name}:* 前缀）
+    this.cleanupPluginMcpServers(name);
+
     // 删除文件
     if (fs.existsSync(state.path)) {
       fs.rmSync(state.path, { recursive: true });
@@ -1327,6 +1330,36 @@ export class PluginManager extends EventEmitter {
     this.pluginStates.delete(name);
     this.emit('plugin:uninstalled', name);
     return true;
+  }
+
+  /**
+   * 清理插件注册的 MCP servers（plugin:{name}:* 前缀）
+   */
+  private cleanupPluginMcpServers(pluginName: string): void {
+    const prefix = `plugin:${pluginName}:`;
+    const settingsPath = path.join(os.homedir(), '.axon', 'settings.json');
+
+    try {
+      if (!fs.existsSync(settingsPath)) return;
+
+      const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+      if (!settings.mcpServers) return;
+
+      let removed = 0;
+      for (const key of Object.keys(settings.mcpServers)) {
+        if (key.startsWith(prefix)) {
+          delete settings.mcpServers[key];
+          removed++;
+        }
+      }
+
+      if (removed > 0) {
+        fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+        console.log(`[PluginManager] Cleaned up ${removed} MCP server(s) for plugin ${pluginName}`);
+      }
+    } catch (err) {
+      console.warn(`[PluginManager] Failed to cleanup MCP servers for ${pluginName}:`, err);
+    }
   }
 
   /**

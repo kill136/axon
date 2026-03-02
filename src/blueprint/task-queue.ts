@@ -209,7 +209,7 @@ export class TaskQueue extends EventEmitter {
       });
     } catch (error: any) {
       // 提交失败不影响任务结果，只记录警告
-      console.warn(`[TaskQueue] Git 提交失败: ${error.message}`);
+      console.warn(`[TaskQueue] Git commit failed: ${error.message}`);
     }
   }
 

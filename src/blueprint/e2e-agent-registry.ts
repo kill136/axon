@@ -17,7 +17,7 @@ const activeE2EAgents = new Map<string, any>();
  */
 export function registerE2EAgent(blueprintId: string, agent: any): void {
   activeE2EAgents.set(blueprintId, agent);
-  console.log(`[E2E Registry] 注册 E2E Agent: ${blueprintId}`);
+  console.log(`[E2E Registry] Registered E2E Agent: ${blueprintId}`);
 }
 
 /**
@@ -25,7 +25,7 @@ export function registerE2EAgent(blueprintId: string, agent: any): void {
  */
 export function unregisterE2EAgent(blueprintId: string): void {
   activeE2EAgents.delete(blueprintId);
-  console.log(`[E2E Registry] 注销 E2E Agent: ${blueprintId}`);
+  console.log(`[E2E Registry] Unregistered E2E Agent: ${blueprintId}`);
 }
 
 /**

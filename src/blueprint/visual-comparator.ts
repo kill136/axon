@@ -318,7 +318,7 @@ ${context ? `**上下文**: ${context}\n\n` : ''}**分析维度**：
 
     } catch (error) {
       // JSON 解析失败，尝试从文本中提取信息
-      console.error('JSON 解析失败，尝试从文本提取:', error);
+      console.error('JSON parsing failed, attempting to extract from text:', error);
 
       // 尝试提取分数
       const scoreMatch = rawAnalysis.match(/similarityScore[:\s]+(\d+)/i) ||

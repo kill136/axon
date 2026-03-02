@@ -642,6 +642,15 @@ export class MarketplaceManager {
       // 4. 确保有 package.json
       this.ensurePackageJson(versionedDir, pluginEntry.name, marketplaceName, version);
 
+      // 4.5 处理 .mcp.json — 自动注册 MCP server 到 settings.json
+      this.registerMcpServers(versionedDir, pluginEntry.name);
+
+      // 4.6 处理 marketplace entry 中的 lspServers（仅记录日志，暂无 LSP 子系统）
+      if ((pluginEntry as any).lspServers) {
+        const serverNames = Object.keys((pluginEntry as any).lspServers);
+        console.log(`[Marketplace] Plugin ${pluginEntry.name} declares LSP servers: ${serverNames.join(', ')} (not auto-started, install the language server binary manually)`);
+      }
+
       // 5. 用 PluginManager 安装
       const state = await this.pluginManager.install(versionedDir, {
         autoLoad: true,
@@ -698,6 +707,66 @@ export class MarketplaceManager {
   async deactivate() {},
 };
 `);
+    }
+  }
+
+  /**
+   * 读取插件目录中的 .mcp.json，自动注册 MCP server 到 settings.json
+   * 对应官方 _M8 / OM8 / eE9 函数
+   *
+   * .mcp.json 格式示例 (context7 插件):
+   *   { "context7": { "command": "npx", "args": ["-y", "@upstash/context7-mcp"] } }
+   */
+  private registerMcpServers(pluginDir: string, pluginName: string): void {
+    const mcpJsonPath = path.join(pluginDir, '.mcp.json');
+    if (!fs.existsSync(mcpJsonPath)) return;
+
+    try {
+      const raw = JSON.parse(fs.readFileSync(mcpJsonPath, 'utf-8'));
+      // .mcp.json 可以是 { serverName: config } 或 { mcpServers: { serverName: config } }
+      const servers: Record<string, any> = raw.mcpServers || raw;
+
+      const settingsPath = path.join(os.homedir(), '.axon', 'settings.json');
+      let settings: any = {};
+      if (fs.existsSync(settingsPath)) {
+        settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+      }
+      if (!settings.mcpServers) settings.mcpServers = {};
+
+      let registered = 0;
+      for (const [serverName, config] of Object.entries(servers)) {
+        if (!config || typeof config !== 'object') continue;
+
+        // 命名空间：plugin:{pluginName}:{serverName}（对应官方 eE9 函数）
+        const key = `plugin:${pluginName}:${serverName}`;
+
+        // 如果已经存在同名 server（不含 plugin: 前缀的原始名也检查），跳过
+        if (settings.mcpServers[key] || settings.mcpServers[serverName]) {
+          console.log(`[Marketplace] MCP server ${key} already registered, skipping`);
+          continue;
+        }
+
+        // 构建 stdio 类型的 MCP server 配置
+        const mcpConfig: any = {
+          type: config.type || 'stdio',
+          ...(config.command && { command: config.command }),
+          ...(config.args && { args: config.args }),
+          ...(config.env && { env: config.env }),
+          ...(config.url && { url: config.url }),
+          enabled: true,
+        };
+
+        settings.mcpServers[key] = mcpConfig;
+        registered++;
+        console.log(`[Marketplace] Registered MCP server: ${key}`);
+      }
+
+      if (registered > 0) {
+        fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+        console.log(`[Marketplace] Registered ${registered} MCP server(s) from plugin ${pluginName}`);
+      }
+    } catch (err) {
+      console.warn(`[Marketplace] Failed to register MCP servers from ${pluginName}:`, err);
     }
   }
 
