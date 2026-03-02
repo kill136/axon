@@ -89,6 +89,10 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
     ? createHttpsServer({ cert: fs.readFileSync(certPath), key: fs.readFileSync(keyPath) }, app)
     : createServer(app);
 
+  // 暴露协议信息，供 ConversationManager 构建系统提示词时使用
+  process.env.AXON_WEB_PROTO = useHttps ? 'https' : 'http';
+  process.env.AXON_WEB_PORT = String(port);
+
   // 创建 WebSocket 服务器（使用 noServer 模式，手动处理 upgrade 事件）
   // 这样可以避免与 Vite HMR WebSocket 冲突
   const wss = new WebSocketServer({ noServer: true });

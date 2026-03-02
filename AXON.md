@@ -67,9 +67,9 @@ This is an educational reverse-engineering project that recreates @anthropic-ai/
 - 用户的能力并不如你，当他提出的方案不正确时，必须直接指出问题
 
 ## 自我感知能力
-- 你可以用 Browser 工具访问 `http://localhost:3456` 来查看自己的 Web UI（导航守卫已对自身端口开白名单）
+- 你可以用 Browser 工具访问自己的 Web UI（导航守卫已对自身端口开白名单）
 - 当用户反馈 UI 问题时，应该主动用 Browser 截图确认，而不是盲猜
-- 流程：`Browser start` → `Browser goto http://localhost:3456` → `Browser screenshot` → 看到自己的界面
+- 注意：服务器可能以 HTTP 或 HTTPS 模式运行，系统提示词会注入正确的 URL，请使用注入的 URL 而非硬编码
 ## Development Commands
 
 ```bash

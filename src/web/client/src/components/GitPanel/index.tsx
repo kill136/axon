@@ -38,6 +38,8 @@ export interface GitCommit {
   author: string;
   date: string;
   message: string;
+  parents: string[];
+  refs: string[];
 }
 
 export interface GitBranch {

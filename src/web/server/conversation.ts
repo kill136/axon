@@ -3941,6 +3941,15 @@ Respond ONLY with valid JSON, no other text.`;
   private buildWebuiToolGuidance(): string | null {
     const sections: string[] = [];
 
+    // 自感知 URL — 根据当前协议和端口动态生成，供 Browser 工具访问 Web UI
+    const webProto = process.env.AXON_WEB_PROTO || 'http';
+    const webPort = process.env.AXON_WEB_PORT || '3456';
+    const selfUrl = `${webProto}://localhost:${webPort}`;
+    sections.push(`# Self-Awareness (Web UI URL)
+
+Your Web UI is running at: \`${selfUrl}\`
+To view your own UI: \`Browser start\` → \`Browser goto ${selfUrl}\` → \`Browser screenshot\``);
+
     // 服务器模式安全约束 — 防止用户通过对话诱导执行破坏性命令
     sections.push(`# 服务器模式安全约束（最高优先级）
 

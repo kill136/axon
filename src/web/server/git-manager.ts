@@ -43,6 +43,8 @@ export interface GitCommit {
   author: string;
   date: string;
   message: string;
+  parents: string[];
+  refs: string[];
 }
 
 /**
@@ -215,7 +217,8 @@ export class GitManager {
    */
   getLog(limit: number = 50): GitResult<GitCommit[]> {
     try {
-      const format = '%H%n%h%n%an%n%ai%n%s%n--END--';
+      // 格式：hash, parents, shortHash, author, date, message, refs
+      const format = '%H%n%P%n%h%n%an%n%ai%n%s%n%D%n--END--';
       const output = this.execGit(`log -${limit} --format="${format}"`);
 
       const commits: GitCommit[] = [];
@@ -223,13 +226,21 @@ export class GitManager {
 
       for (const entry of entries) {
         const lines = entry.trim().split('\n');
-        if (lines.length >= 5) {
+        if (lines.length >= 7) {
+          // 解析 parents（空格分隔的 hash 列表）
+          const parents = lines[1].trim() ? lines[1].trim().split(' ') : [];
+          // 解析 refs（逗号分隔，可能为空）
+          const refsStr = lines[6].trim();
+          const refs = refsStr ? refsStr.split(',').map(r => r.trim()) : [];
+          
           commits.push({
             hash: lines[0],
-            shortHash: lines[1],
-            author: lines[2],
-            date: lines[3],
-            message: lines[4],
+            shortHash: lines[2],
+            author: lines[3],
+            date: lines[4],
+            message: lines[5],
+            parents,
+            refs,
           });
         }
       }
@@ -1083,7 +1094,7 @@ export class GitManager {
     try {
       const { query, author, since, until, limit = 50 } = filter;
       
-      let cmd = `log -${limit} --format="%H%n%h%n%an%n%ai%n%s%n--END--"`;
+      let cmd = `log -${limit} --format="%H%n%P%n%h%n%an%n%ai%n%s%n%D%n--END--"`;
       
       if (query) {
         cmd += ` --grep="${query}"`;
@@ -1109,13 +1120,21 @@ export class GitManager {
 
       for (const entry of entries) {
         const lines = entry.trim().split('\n');
-        if (lines.length >= 5) {
+        if (lines.length >= 7) {
+          // 解析 parents（空格分隔的 hash 列表）
+          const parents = lines[1].trim() ? lines[1].trim().split(' ') : [];
+          // 解析 refs（逗号分隔，可能为空）
+          const refsStr = lines[6].trim();
+          const refs = refsStr ? refsStr.split(',').map(r => r.trim()) : [];
+          
           commits.push({
             hash: lines[0],
-            shortHash: lines[1],
-            author: lines[2],
-            date: lines[3],
-            message: lines[4],
+            shortHash: lines[2],
+            author: lines[3],
+            date: lines[4],
+            message: lines[5],
+            parents,
+            refs,
           });
         }
       }
