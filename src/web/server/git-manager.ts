@@ -662,17 +662,22 @@ export class GitManager {
         };
       }
 
-      // 获取 commit 信息
-      const format = '%H%n%h%n%an%n%ai%n%s';
+      // 获取 commit 信息（包含 parents 和 refs）
+      const format = '%H%n%P%n%h%n%an%n%ai%n%s%n%D';
       const infoOutput = this.execGit(`show -s --format="${format}" "${hash}"`);
       const lines = infoOutput.split('\n');
 
-      if (lines.length < 5) {
+      if (lines.length < 7) {
         return {
           success: false,
           error: '无法获取 commit 信息',
         };
       }
+
+      // 解析 parents 和 refs
+      const parents = lines[1].trim() ? lines[1].trim().split(' ') : [];
+      const refsStr = lines[6].trim();
+      const refs = refsStr ? refsStr.split(',').map(r => r.trim()) : [];
 
       // 获取 diff
       const diff = this.execGit(`show "${hash}"`);
@@ -681,10 +686,12 @@ export class GitManager {
         success: true,
         data: {
           hash: lines[0],
-          shortHash: lines[1],
-          author: lines[2],
-          date: lines[3],
-          message: lines[4],
+          shortHash: lines[2],
+          author: lines[3],
+          date: lines[4],
+          message: lines[5],
+          parents,
+          refs,
           diff,
         },
       };
@@ -1160,7 +1167,7 @@ export class GitManager {
         };
       }
 
-      const format = '%H%n%h%n%an%n%ai%n%s%n--END--';
+      const format = '%H%n%P%n%h%n%an%n%ai%n%s%n%D%n--END--';
       const output = this.execGit(`log -${limit} --follow --format="${format}" -- "${file}"`);
 
       if (!output) {
@@ -1172,8 +1179,13 @@ export class GitManager {
 
       for (const entry of entries) {
         const lines = entry.trim().split('\n');
-        if (lines.length >= 5) {
+        if (lines.length >= 7) {
           const hash = lines[0];
+          
+          // 解析 parents 和 refs
+          const parents = lines[1].trim() ? lines[1].trim().split(' ') : [];
+          const refsStr = lines[6].trim();
+          const refs = refsStr ? refsStr.split(',').map(r => r.trim()) : [];
           
           // 获取该 commit 中文件的 diff
           let diff = '';
@@ -1185,10 +1197,12 @@ export class GitManager {
 
           commits.push({
             hash,
-            shortHash: lines[1],
-            author: lines[2],
-            date: lines[3],
-            message: lines[4],
+            shortHash: lines[2],
+            author: lines[3],
+            date: lines[4],
+            message: lines[5],
+            parents,
+            refs,
             diff,
           });
         }

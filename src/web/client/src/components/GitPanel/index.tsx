@@ -1,5 +1,5 @@
 /**
- * GitPanel - Git 智能面板主组件
+ * GitPanel - Git 智能面板主组件（三栏布局）
  * 提供可视化的 Git 操作界面和 AI 增强功能
  */
 
@@ -14,6 +14,7 @@ import { RemotesView, GitRemote } from './RemotesView';
 import { DiffView } from './DiffView';
 import { FileHistoryView } from './FileHistoryView';
 import { BlameView } from './BlameView';
+import { CommitDetail } from './CommitDetail';
 import { MarkdownContent } from '../MarkdownContent';
 import './GitPanel.css';
 
@@ -81,7 +82,7 @@ interface GitPanelProps {
 
 export function GitPanel({ isOpen, onClose, send, addMessageHandler, projectPath }: GitPanelProps) {
   const { t } = useLanguage();
-  const [activeTab, setActiveTab] = useState<TabType>('status');
+  const [activeTab, setActiveTab] = useState<TabType>('log');  // 默认显示 log 视图
   
   // Git 数据状态
   const [gitStatus, setGitStatus] = useState<GitStatus | null>(null);
@@ -92,6 +93,10 @@ export function GitPanel({ isOpen, onClose, send, addMessageHandler, projectPath
   const [remotes, setRemotes] = useState<GitRemote[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 三栏布局相关状态
+  const [selectedCommitHash, setSelectedCommitHash] = useState<string | null>(null);
+  const [filterBranch, setFilterBranch] = useState<string | null>(null);
 
   // Diff 查看状态
   const [diffContent, setDiffContent] = useState<string | null>(null);
@@ -246,10 +251,10 @@ export function GitPanel({ isOpen, onClose, send, addMessageHandler, projectPath
       payload: { projectPath },
     });
 
-    // 请求 git log
+    // 请求 git log（增加到 200 条）
     send({
       type: 'git:get_log',
-      payload: { projectPath, limit: 50 },
+      payload: { projectPath, limit: 200 },
     });
 
     // 始终请求 branches 和 stashes
@@ -336,7 +341,20 @@ export function GitPanel({ isOpen, onClose, send, addMessageHandler, projectPath
     });
   }, [projectPath, send]);
 
+  // 分支选择回调
+  const handleBranchSelect = useCallback((branch: string | null) => {
+    setFilterBranch(branch);
+  }, []);
+
+  // Commit 选择回调
+  const handleSelectCommit = useCallback((hash: string) => {
+    setSelectedCommitHash(hash);
+  }, []);
+
   if (!isOpen) return null;
+
+  // 获取选中的 commit 对象
+  const selectedCommit = selectedCommitHash ? commits.find(c => c.hash === selectedCommitHash) || null : null;
 
   return (
     <div className="git-panel">
@@ -356,48 +374,30 @@ export function GitPanel({ isOpen, onClose, send, addMessageHandler, projectPath
           )}
         </div>
         <div className="git-panel-header-actions">
+          {/* AI 按钮移到头部 */}
+          <button
+            className="git-ai-button git-ai-button--compact"
+            onClick={handleSmartCommit}
+            disabled={isGeneratingCommit || !(gitStatus?.staged.length || gitStatus?.unstaged.length || gitStatus?.untracked.length)}
+            title={t('git.smartCommit')}
+          >
+            {isGeneratingCommit ? '⚡' : '🤖'}
+          </button>
+          <button
+            className="git-ai-button git-ai-button--compact"
+            onClick={handleSmartReview}
+            disabled={isReviewing}
+            title={t('git.smartReview')}
+          >
+            {isReviewing ? '⚡' : '🔍'}
+          </button>
           <button className="git-panel-close" onClick={onClose} title={t('git.closeShortcut')}>
             ✕
           </button>
         </div>
       </div>
 
-      {/* 工具栏：AI 按钮 + 自动 Fetch */}
-      <div className="git-panel-toolbar">
-        <button
-          className="git-ai-button"
-          onClick={handleSmartCommit}
-          disabled={isGeneratingCommit || !(gitStatus?.staged.length || gitStatus?.unstaged.length || gitStatus?.untracked.length)}
-          title={t('git.smartCommit')}
-        >
-          {isGeneratingCommit ? '⚡' : '🤖'} {t('git.smartCommit')}
-        </button>
-        <button
-          className="git-ai-button"
-          onClick={handleSmartReview}
-          disabled={isReviewing}
-          title={t('git.smartReview')}
-        >
-          {isReviewing ? '⚡' : '🔍'} {t('git.smartReview')}
-        </button>
-        <div className="git-toolbar-spacer" />
-        <div className="git-auto-fetch-toggle" title={t('git.autoFetchTooltip')}>
-          <label className="git-toggle-label">
-            <input
-              type="checkbox"
-              checked={autoFetchEnabled}
-              onChange={(e) => setAutoFetchEnabled(e.target.checked)}
-              className="git-toggle-checkbox"
-            />
-            <span className="git-toggle-slider"></span>
-          </label>
-          <span className="git-toggle-text">
-            {t('git.autoFetch')}
-          </span>
-        </div>
-      </div>
-
-      {/* 标签页导航 */}
+      {/* 标签页导航（简化版）*/}
       <div className="git-panel-tabs">
         <button
           className={`git-tab ${activeTab === 'status' ? 'active' : ''}`}
@@ -410,12 +410,6 @@ export function GitPanel({ isOpen, onClose, send, addMessageHandler, projectPath
           onClick={() => setActiveTab('log')}
         >
           {t('git.tab.log')}
-        </button>
-        <button
-          className={`git-tab ${activeTab === 'branches' ? 'active' : ''}`}
-          onClick={() => setActiveTab('branches')}
-        >
-          {t('git.tab.branches')}
         </button>
         <button
           className={`git-tab ${activeTab === 'stash' ? 'active' : ''}`}
@@ -437,8 +431,8 @@ export function GitPanel({ isOpen, onClose, send, addMessageHandler, projectPath
         </button>
       </div>
 
-      {/* 内容区 */}
-      <div className="git-panel-content">
+      {/* 内容区 - 三栏布局或单视图 */}
+      <div className="git-panel-body">
         {error && (
           <div className="git-error-banner">
             <span>⚠️ {error}</span>
@@ -455,8 +449,9 @@ export function GitPanel({ isOpen, onClose, send, addMessageHandler, projectPath
 
         {!loading && (
           <>
+            {/* Status 视图（单栏）*/}
             {activeTab === 'status' && (
-              <div className="git-tab-content">
+              <div className="git-panel-content">
                 <StatusView
                   gitStatus={gitStatus}
                   send={send}
@@ -465,29 +460,47 @@ export function GitPanel({ isOpen, onClose, send, addMessageHandler, projectPath
               </div>
             )}
 
+            {/* Log 视图（三栏布局）*/}
             {activeTab === 'log' && (
-              <div className="git-tab-content">
-                <LogView
-                  commits={commits}
-                  send={send}
-                  addMessageHandler={addMessageHandler}
-                  projectPath={projectPath}
-                />
-              </div>
+              <>
+                {/* 左侧栏：分支树 */}
+                <div className="git-panel-sidebar">
+                  <BranchesView
+                    branches={branches}
+                    send={send}
+                    projectPath={projectPath}
+                    onBranchSelect={handleBranchSelect}
+                  />
+                </div>
+
+                {/* 中间栏：Graph + Commit 列表 */}
+                <div className="git-panel-main">
+                  <LogView
+                    commits={commits}
+                    send={send}
+                    addMessageHandler={addMessageHandler}
+                    projectPath={projectPath}
+                    selectedHash={selectedCommitHash}
+                    onSelectCommit={handleSelectCommit}
+                    filterBranch={filterBranch}
+                  />
+                </div>
+
+                {/* 右侧栏：Commit 详情 */}
+                <div className="git-panel-detail">
+                  <CommitDetail
+                    commit={selectedCommit}
+                    send={send}
+                    addMessageHandler={addMessageHandler}
+                    projectPath={projectPath}
+                  />
+                </div>
+              </>
             )}
 
-            {activeTab === 'branches' && (
-              <div className="git-tab-content">
-                <BranchesView
-                  branches={branches}
-                  send={send}
-                  projectPath={projectPath}
-                />
-              </div>
-            )}
-
+            {/* 其他标签页（单栏）*/}
             {activeTab === 'stash' && (
-              <div className="git-tab-content">
+              <div className="git-panel-content">
                 <StashView
                   stashes={stashes}
                   send={send}
@@ -498,7 +511,7 @@ export function GitPanel({ isOpen, onClose, send, addMessageHandler, projectPath
             )}
 
             {activeTab === 'tags' && (
-              <div className="git-tab-content">
+              <div className="git-panel-content">
                 <TagsView
                   tags={tags}
                   send={send}
@@ -508,7 +521,7 @@ export function GitPanel({ isOpen, onClose, send, addMessageHandler, projectPath
             )}
 
             {activeTab === 'remotes' && (
-              <div className="git-tab-content">
+              <div className="git-panel-content">
                 <RemotesView
                   remotes={remotes}
                   send={send}

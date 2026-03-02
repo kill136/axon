@@ -1,18 +1,22 @@
 /**
- * LogView - Git Commit 历史视图
- * 显示最近 50 条 commit，支持展开查看详情和 AI 解释
- * 新增：搜索/过滤、Revert、Cherry-pick 功能
+ * LogView - Git Commit 历史视图（集成 Graph）
+ * 显示 commit graph + commit 列表，支持搜索/过滤、ref 标签显示
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useLanguage } from '../../i18n';
 import { GitCommit } from './index';
+import { CommitGraph } from './CommitGraph';
+import { computeGraphLayout, GRAPH_COLORS } from './graph-utils';
 
 interface LogViewProps {
   commits: GitCommit[];
   send: (msg: any) => void;
   addMessageHandler: (handler: (msg: any) => void) => () => void;
   projectPath?: string;
+  selectedHash: string | null;
+  onSelectCommit: (hash: string) => void;
+  filterBranch?: string | null;  // 从分支树选择的筛选分支
 }
 
 /**
@@ -33,17 +37,29 @@ function formatRelativeTime(dateStr: string): string {
   return date.toLocaleDateString();
 }
 
-interface CommitFile {
-  status: string;
-  file: string;
+/**
+ * 解析 ref 标签
+ */
+function parseRef(ref: string): { type: 'branch' | 'tag' | 'remote' | 'head'; name: string } {
+  const trimmed = ref.trim();
+  
+  if (trimmed.startsWith('HEAD ->')) {
+    return { type: 'head', name: trimmed.replace('HEAD ->', '').trim() };
+  }
+  if (trimmed === 'HEAD') {
+    return { type: 'head', name: 'HEAD' };
+  }
+  if (trimmed.startsWith('tag:')) {
+    return { type: 'tag', name: trimmed.replace('tag:', '').trim() };
+  }
+  if (trimmed.includes('/')) {
+    return { type: 'remote', name: trimmed };
+  }
+  return { type: 'branch', name: trimmed };
 }
 
-export function LogView({ commits, send, addMessageHandler, projectPath }: LogViewProps) {
+export function LogView({ commits, send, addMessageHandler, projectPath, selectedHash, onSelectCommit, filterBranch }: LogViewProps) {
   const { t } = useLanguage();
-  const [expandedHash, setExpandedHash] = useState<string | null>(null);
-  const [explainingHash, setExplainingHash] = useState<string | null>(null);
-  const [commitFiles, setCommitFiles] = useState<Record<string, CommitFile[]>>({});
-  const [loadingFiles, setLoadingFiles] = useState<string | null>(null);
   
   // 搜索/过滤状态
   const [query, setQuery] = useState('');
@@ -51,51 +67,16 @@ export function LogView({ commits, send, addMessageHandler, projectPath }: LogVi
   const [since, setSince] = useState('');
   const [until, setUntil] = useState('');
 
-  // 监听 commit_detail_response
-  useEffect(() => {
-    const unsub = addMessageHandler((msg: any) => {
-      if (msg?.type === 'git:commit_detail_response' && msg.payload?.success && msg.payload.data) {
-        const { hash, files } = msg.payload.data;
-        if (hash && files) {
-          setCommitFiles(prev => ({ ...prev, [hash]: files }));
-          setLoadingFiles(null);
-        }
-      }
-    });
-    return () => unsub();
-  }, [addMessageHandler]);
-
-  // 切换 commit 展开/折叠
-  const toggleCommit = (hash: string) => {
-    if (expandedHash === hash) {
-      setExpandedHash(null);
-    } else {
-      setExpandedHash(hash);
-      // 请求文件列表（如果还没缓存）
-      if (projectPath && !commitFiles[hash]) {
-        setLoadingFiles(hash);
-        send({
-          type: 'git:get_commit_detail',
-          payload: { projectPath, hash },
-        });
-      }
-    }
-  };
-
-  // AI 解释 commit
-  const handleExplainCommit = (hash: string) => {
-    if (!projectPath) return;
-    setExplainingHash(hash);
-    send({
-      type: 'git:explain_commit',
-      payload: { projectPath, hash },
-    });
-  };
+  // 计算 graph layout
+  const layout = useMemo(() => {
+    if (commits.length === 0) return null;
+    return computeGraphLayout(commits.map(c => ({ hash: c.hash, parents: c.parents || [] })));
+  }, [commits]);
 
   // 搜索 commits
   const handleSearch = () => {
     if (!projectPath) return;
-    const filter: any = { projectPath, limit: 50 };
+    const filter: any = { projectPath, limit: 200 };
     if (query.trim()) filter.query = query.trim();
     if (author.trim()) filter.author = author.trim();
     if (since) filter.since = since;
@@ -117,38 +98,29 @@ export function LogView({ commits, send, addMessageHandler, projectPath }: LogVi
     if (projectPath) {
       send({
         type: 'git:get_log',
-        payload: { projectPath },
+        payload: { projectPath, limit: 200 },
       });
     }
   };
 
-  // Revert commit
-  const handleRevertCommit = (hash: string, shortHash: string) => {
+  // 当 filterBranch 改变时，请求筛选的 log
+  useEffect(() => {
     if (!projectPath) return;
-    const confirmed = window.confirm(
-      t('git.confirmRevert', { hash: shortHash })
-    );
-    if (!confirmed) return;
     
-    send({
-      type: 'git:revert_commit',
-      payload: { projectPath, hash },
-    });
-  };
-
-  // Cherry-pick commit
-  const handleCherryPick = (hash: string, shortHash: string) => {
-    if (!projectPath) return;
-    const confirmed = window.confirm(
-      t('git.confirmCherryPick', { hash: shortHash })
-    );
-    if (!confirmed) return;
-    
-    send({
-      type: 'git:cherry_pick',
-      payload: { projectPath, hash },
-    });
-  };
+    if (filterBranch) {
+      // 请求特定分支的 log
+      send({
+        type: 'git:get_log',
+        payload: { projectPath, limit: 200, branch: filterBranch },
+      });
+    } else {
+      // 请求所有分支的 log
+      send({
+        type: 'git:get_log',
+        payload: { projectPath, limit: 200 },
+      });
+    }
+  }, [filterBranch, projectPath, send]);
 
   // 无 commits 提示
   if (commits.length === 0) {
@@ -161,180 +133,118 @@ export function LogView({ commits, send, addMessageHandler, projectPath }: LogVi
     );
   }
 
+  const rowHeight = 36;
+
   return (
     <div className="git-log-view">
-      {/* 搜索/过滤器区域 */}
-      <div className="git-log-filters">
-        <div className="git-log-filter-row">
+      {/* 筛选栏 */}
+      <div className="git-filter-bar">
+        <input
+          type="text"
+          className="git-filter-input"
+          placeholder={t('git.searchPlaceholder')}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+        />
+        <input
+          type="text"
+          className="git-filter-input git-filter-input--small"
+          placeholder={t('git.filterAuthor')}
+          value={author}
+          onChange={(e) => setAuthor(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+        />
+        <div className="git-filter-date-group">
           <input
-            type="text"
-            className="git-input-dialog-input"
-            placeholder={t('git.searchPlaceholder')}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+            type="date"
+            className="git-filter-input git-filter-input--date"
+            placeholder={t('git.since')}
+            value={since}
+            onChange={(e) => setSince(e.target.value)}
+            title={t('git.since')}
+          />
+          <input
+            type="date"
+            className="git-filter-input git-filter-input--date"
+            placeholder={t('git.until')}
+            value={until}
+            onChange={(e) => setUntil(e.target.value)}
+            title={t('git.until')}
           />
         </div>
-        
-        <div className="git-log-filter-row">
-          <input
-            type="text"
-            className="git-input-dialog-input"
-            placeholder={t('git.filterAuthor')}
-            value={author}
-            onChange={(e) => setAuthor(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-          />
-        </div>
-        
-        <div className="git-log-filter-row git-log-date-filters">
-          <div className="git-log-date-input">
-            <label>{t('git.since')}</label>
-            <input
-              type="date"
-              className="git-input-dialog-input"
-              value={since}
-              onChange={(e) => setSince(e.target.value)}
-            />
+        <button className="git-filter-button" onClick={handleSearch}>
+          {t('git.search')}
+        </button>
+        <button className="git-filter-button git-filter-button--secondary" onClick={handleClear}>
+          {t('git.clear')}
+        </button>
+        {filterBranch && (
+          <div className="git-filter-badge">
+            Branch: {filterBranch}
           </div>
-          <div className="git-log-date-input">
-            <label>{t('git.until')}</label>
-            <input
-              type="date"
-              className="git-input-dialog-input"
-              value={until}
-              onChange={(e) => setUntil(e.target.value)}
-            />
-          </div>
-        </div>
-        
-        <div className="git-log-filter-actions">
-          <button
-            className="git-stash-save-button"
-            onClick={handleSearch}
-          >
-            {t('git.search')}
-          </button>
-          <button
-            className="git-input-dialog-cancel"
-            onClick={handleClear}
-          >
-            {t('git.clear')}
-          </button>
-        </div>
+        )}
       </div>
 
-      {/* Commits 列表 */}
-      {commits.map((commit) => {
-        const isExpanded = expandedHash === commit.hash;
-        const isExplaining = explainingHash === commit.hash;
-
-        return (
-          <div
-            key={commit.hash}
-            className={`git-commit-item ${isExpanded ? 'git-commit-item--expanded' : ''}`}
-          >
-            {/* Commit 头部 - 可点击展开 */}
-            <div
-              className="git-commit-header"
-              onClick={() => toggleCommit(commit.hash)}
-            >
-              <span className="git-commit-hash">{commit.shortHash}</span>
-              <span className="git-commit-message">{commit.message}</span>
-            </div>
-
-            {/* Commit 元信息 */}
-            <div className="git-commit-meta">
-              <span className="git-commit-author">{commit.author}</span>
-              <span className="git-commit-time">
-                {formatRelativeTime(commit.date)}
-              </span>
-            </div>
-
-            {/* 展开后显示文件列表和操作按钮 */}
-            {isExpanded && (
-              <div className="git-commit-detail">
-                {/* 文件列表 */}
-                <div className="git-commit-files">
-                  {loadingFiles === commit.hash && (
-                    <div className="git-commit-files-loading">{t('common.loading')}</div>
-                  )}
-                  {commitFiles[commit.hash]?.map((f, idx) => (
-                    <div key={idx} className="git-commit-file-item">
-                      <span className={`git-file-status git-file-status--${f.status}`}>
-                        {f.status}
+      {/* Commit 列表（集成 Graph）*/}
+      <div className="git-log-content">
+        {layout && (
+          <div className="git-log-graph-container" style={{ width: (layout.maxLane + 1) * 20 + 20 }}>
+            <CommitGraph
+              layout={layout}
+              commits={commits}
+              selectedHash={selectedHash}
+              rowHeight={rowHeight}
+              onCommitClick={onSelectCommit}
+            />
+          </div>
+        )}
+        <div className="git-log-commits">
+          {commits.map((commit, idx) => {
+            const isSelected = selectedHash === commit.hash;
+            
+            return (
+              <div
+                key={commit.hash}
+                className={`git-commit-row ${isSelected ? 'git-commit-row--selected' : ''}`}
+                style={{ height: rowHeight }}
+                onClick={() => onSelectCommit(commit.hash)}
+              >
+                <div className="git-commit-row-main">
+                  <span className="git-commit-hash">{commit.shortHash}</span>
+                  <span className="git-commit-message">
+                    {commit.message}
+                    {/* Ref 标签 */}
+                    {commit.refs && commit.refs.length > 0 && (
+                      <span className="git-ref-tags">
+                        {commit.refs.map((ref, refIdx) => {
+                          const parsed = parseRef(ref);
+                          const node = layout?.nodes.get(commit.hash);
+                          const color = node ? GRAPH_COLORS[node.color % GRAPH_COLORS.length] : '#6366f1';
+                          
+                          return (
+                            <span
+                              key={refIdx}
+                              className={`git-ref-tag git-ref-tag--${parsed.type}`}
+                              style={parsed.type === 'branch' ? { backgroundColor: color } : {}}
+                            >
+                              {parsed.name}
+                            </span>
+                          );
+                        })}
                       </span>
-                      <span
-                        className="git-commit-file-name git-commit-file-name--clickable"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (!projectPath) return;
-                          send({
-                            type: 'git:get_commit_file_diff',
-                            payload: { projectPath, hash: commit.hash, file: f.file },
-                          });
-                        }}
-                        title={`View diff: ${f.file}`}
-                      >
-                        {f.file}
-                      </span>
-                      <button
-                        className="git-commit-file-diff-btn"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (!projectPath) return;
-                          send({
-                            type: 'git:get_commit_file_diff',
-                            payload: { projectPath, hash: commit.hash, file: f.file },
-                          });
-                        }}
-                        title={t('git.viewDiff')}
-                      >
-                        Diff
-                      </button>
-                    </div>
-                  ))}
-                  {!loadingFiles && commitFiles[commit.hash]?.length === 0 && (
-                    <div className="git-commit-files-empty">{t('git.noChanges')}</div>
-                  )}
+                    )}
+                  </span>
                 </div>
-
-                {/* 操作按钮 */}
-                <div className="git-commit-actions">
-                  <button
-                    className="git-explain-button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleExplainCommit(commit.hash);
-                    }}
-                    disabled={isExplaining}
-                  >
-                    {isExplaining ? t('git.explaining') : t('git.explainCommit')}
-                  </button>
-                  <button
-                    className="git-revert-button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleRevertCommit(commit.hash, commit.shortHash);
-                    }}
-                  >
-                    {t('git.revert')}
-                  </button>
-                  <button
-                    className="git-cherry-pick-button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleCherryPick(commit.hash, commit.shortHash);
-                    }}
-                  >
-                    {t('git.cherryPick')}
-                  </button>
+                <div className="git-commit-row-meta">
+                  <span className="git-commit-author">{commit.author}</span>
+                  <span className="git-commit-time">{formatRelativeTime(commit.date)}</span>
                 </div>
               </div>
-            )}
-          </div>
-        );
-      })}
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }

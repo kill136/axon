@@ -3186,3 +3186,478 @@ pre.git-ai-result-content {
   border-color: #22c55e;
   transform: translateY(-1px);
 }
+
+/* ============================================
+   三栏布局重构样式
+   ============================================ */
+
+/* 主面板布局 - 从固定宽度改为全屏 */
+.git-panel {
+  width: 100%;
+  max-width: 100vw;
+}
+
+/* 面板主体 - 三栏布局容器 */
+.git-panel-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* 左侧栏 - 分支树 */
+.git-panel-sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border-color);
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: var(--bg-secondary);
+}
+
+/* 中间栏 - Graph + Commit 列表 */
+.git-panel-main {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* 右侧栏 - Commit 详情 */
+.git-panel-detail {
+  width: 320px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--border-color);
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: var(--bg-secondary);
+}
+
+/* 单栏内容区（status/stash/tags/remotes）*/
+.git-panel-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* AI 按钮紧凑版（头部）*/
+.git-ai-button--compact {
+  padding: 6px 10px;
+  font-size: 14px;
+  min-width: unset;
+}
+
+/* ============================================
+   分支树样式
+   ============================================ */
+
+.git-branch-tree {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 8px 0;
+}
+
+.git-branch-tree-header {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.git-clear-filter-button {
+  padding: 4px 8px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+  font-size: 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.git-clear-filter-button:hover {
+  background: #ef4444;
+  color: white;
+}
+
+.git-branch-tree-section {
+  margin-top: 8px;
+}
+
+.git-branch-tree-section-title {
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.git-branch-tree-section-title:hover {
+  background: var(--bg-tertiary);
+}
+
+.git-branch-tree-section-content {
+  padding-left: 8px;
+}
+
+.git-branch-tree-toggle {
+  display: inline-block;
+  width: 12px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.git-branch-tree-node {
+  padding: 4px 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+}
+
+.git-branch-tree-node:hover {
+  background: var(--bg-tertiary);
+}
+
+.git-branch-tree-directory {
+  margin-left: 8px;
+}
+
+.git-branch-tree-children {
+  margin-left: 12px;
+  border-left: 1px solid var(--border-color);
+  padding-left: 4px;
+}
+
+.git-branch-tree-leaf {
+  padding: 4px 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.15s;
+  position: relative;
+}
+
+.git-branch-tree-leaf:hover {
+  background: var(--bg-tertiary);
+}
+
+.git-branch-tree-leaf:hover .git-branch-tree-actions {
+  opacity: 1;
+}
+
+.git-branch-tree-current {
+  background: rgba(99, 102, 241, 0.15);
+  border-left: 3px solid var(--accent-primary);
+  padding-left: 9px;
+}
+
+.git-branch-tree-selected {
+  background: rgba(99, 102, 241, 0.25);
+}
+
+.git-branch-tree-icon {
+  font-size: 10px;
+  color: var(--text-muted);
+  width: 12px;
+  text-align: center;
+}
+
+.git-branch-tree-current .git-branch-tree-icon {
+  color: var(--accent-primary);
+}
+
+.git-branch-tree-name {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-branch-tree-badge {
+  margin-left: 4px;
+  color: #f59e0b;
+  font-size: 12px;
+}
+
+.git-branch-tree-actions {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.git-branch-tree-actions button {
+  padding: 2px 6px;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  font-size: 11px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.git-branch-tree-actions button:hover {
+  background: var(--accent-primary);
+  color: white;
+  border-color: var(--accent-primary);
+}
+
+/* ============================================
+   Commit Graph + 列表样式
+   ============================================ */
+
+.git-log-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* 筛选栏 - 水平排列 */
+.git-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.git-filter-input {
+  flex: 1;
+  min-width: 150px;
+  padding: 6px 10px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 13px;
+  transition: border-color 0.2s;
+}
+
+.git-filter-input:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
+.git-filter-input--small {
+  flex: 0.5;
+  min-width: 100px;
+}
+
+.git-filter-input--date {
+  flex: 0;
+  min-width: 120px;
+}
+
+.git-filter-date-group {
+  display: flex;
+  gap: 8px;
+}
+
+.git-filter-button {
+  padding: 6px 14px;
+  background: var(--accent-primary);
+  border: none;
+  border-radius: 4px;
+  color: white;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.git-filter-button:hover {
+  background: #5558e3;
+  transform: translateY(-1px);
+}
+
+.git-filter-button--secondary {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+}
+
+.git-filter-button--secondary:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  transform: translateY(-1px);
+}
+
+.git-filter-badge {
+  padding: 4px 10px;
+  background: rgba(99, 102, 241, 0.15);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  border-radius: 12px;
+  font-size: 12px;
+  color: var(--accent-primary);
+  white-space: nowrap;
+}
+
+/* Graph + Commit 列表容器 */
+.git-log-content {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  position: relative;
+}
+
+.git-log-graph-container {
+  flex-shrink: 0;
+  overflow: hidden;
+  background: var(--bg-primary);
+  border-right: 1px solid var(--border-color);
+}
+
+.git-graph-svg {
+  display: block;
+}
+
+.git-log-commits {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Commit 行样式 */
+.git-commit-row {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border-color);
+  cursor: pointer;
+  transition: background 0.15s;
+  user-select: none;
+}
+
+.git-commit-row:hover {
+  background: var(--bg-tertiary);
+}
+
+.git-commit-row--selected {
+  background: rgba(99, 102, 241, 0.15);
+  border-left: 3px solid var(--accent-primary);
+  padding-left: 13px;
+}
+
+.git-commit-row-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.git-commit-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+  padding-left: 72px;
+}
+
+.git-commit-hash {
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 12px;
+  color: var(--text-muted);
+  min-width: 60px;
+}
+
+.git-commit-message {
+  flex: 1;
+  font-size: 14px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Ref 标签样式 */
+.git-ref-tags {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.git-ref-tag {
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+
+.git-ref-tag--branch {
+  /* 动态背景色通过 style 设置 */
+  color: white;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.git-ref-tag--tag {
+  background: #f59e0b;
+  color: white;
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
+.git-ref-tag--remote {
+  background: rgba(14, 165, 233, 0.15);
+  color: #0ea5e9;
+  border-color: rgba(14, 165, 233, 0.3);
+}
+
+.git-ref-tag--head {
+  background: rgba(236, 72, 153, 0.15);
+  color: #ec4899;
+  border-color: rgba(236, 72, 153, 0.3);
+  font-weight: 600;
+}
+
+/* ============================================
+   响应式调整
+   ============================================ */
+
+@media (max-width: 1400px) {
+  .git-panel-sidebar {
+    width: 180px;
+  }
+  
+  .git-panel-detail {
+    width: 280px;
+  }
+}
+
+@media (max-width: 1200px) {
+  .git-filter-bar {
+    flex-wrap: wrap;
+  }
+  
+  .git-filter-input {
+    min-width: 120px;
+  }
+}
