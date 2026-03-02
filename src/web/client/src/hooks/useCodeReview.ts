@@ -101,7 +101,7 @@ export function useCodeReview(options: UseCodeReviewOptions): UseCodeReviewRetur
       const filename = currentFilePath.split('/').pop() || 'file.txt';
       const lang = getMonacoLanguage(filename);
 
-      console.log(`[AI Code Review] 开始分析: ${currentFilePath}, 语言: ${lang}`);
+      console.log(`[AI Code Review] Starting analysis: ${currentFilePath}, language: ${lang}`);
 
       const result = await aiCodeReviewApi.analyze({
         filePath: currentFilePath,
@@ -110,17 +110,17 @@ export function useCodeReview(options: UseCodeReviewOptions): UseCodeReviewRetur
       });
 
       if (result.success) {
-        console.log(`[AI Code Review] 分析完成，发现 ${result.issues.length} 个问题${result.fromCache ? ' (缓存)' : ''}`);
+        console.log(`[AI Code Review] Analysis complete, found ${result.issues.length} issues${result.fromCache ? ' (cached)' : ''}`);
         setIssues(result.issues);
         setSummary(result.summary || null);
         setEnabled(true);
       } else {
-        console.error('[AI Code Review] 分析失败:', result.error);
+        console.error('[AI Code Review] Analysis failed:', result.error);
         setIssues([]);
         setSummary(null);
       }
     } catch (error: any) {
-      console.error('[AI Code Review] 分析异常:', error);
+      console.error('[AI Code Review] Analysis error:', error);
       setIssues([]);
       setSummary(null);
     } finally {

@@ -222,7 +222,7 @@ export class TaskReviewer {
       };
     } catch (error) {
       // 根据项目规则：禁止降级方案，直接抛出错误
-      console.error('[TaskReviewer] 审查失败:', error);
+      console.error('[TaskReviewer] Review failed:', error);
       throw new Error(`Reviewer 审查过程出错: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
@@ -521,7 +521,7 @@ SubmitReview({
     let hasSeenReadTool = false;  // v5.0: 追踪是否已开始读取文件
     let hasCalledSubmitReview = false;  // v6.0: 追踪是否已调用 SubmitReview
 
-    console.log(`[TaskReviewer] 开始调用模型: ${this.config.model}`);
+    console.log(`[TaskReviewer] Starting model call: ${this.config.model}`);
 
     // 收集响应
     try {
@@ -529,7 +529,7 @@ SubmitReview({
         // v5.0: 根据工具调用发送进度反馈
         if (event.type === 'tool_start') {
           const toolName = (event as any).toolName;
-          console.log(`[TaskReviewer] 使用工具: ${toolName}`);
+          console.log(`[TaskReviewer] Using tool: ${toolName}`);
 
           // 发送不同的进度
           if (toolName === 'Bash' && !hasSeenBashTool) {
@@ -557,7 +557,7 @@ SubmitReview({
         }
       }
     } catch (streamError) {
-      console.error('[TaskReviewer] 流处理异常:', streamError);
+      console.error('[TaskReviewer] Stream processing error:', streamError);
       throw streamError;  // 重新抛出，让上层处理
     }
 
@@ -565,7 +565,7 @@ SubmitReview({
     const toolResult = SubmitReviewTool.getLastReviewResult();
 
     if (toolResult) {
-      console.log(`[TaskReviewer] 从 SubmitReview 工具获取结果: ${toolResult.verdict}`);
+      console.log(`[TaskReviewer] Retrieved result from SubmitReview tool: ${toolResult.verdict}`);
       return {
         verdict: toolResult.verdict,
         confidence: toolResult.confidence,
@@ -577,7 +577,7 @@ SubmitReview({
     }
 
     // 如果没有调用 SubmitReview 工具，直接抛出异常（禁止降级）
-    console.error('[TaskReviewer] Reviewer 未调用 SubmitReview 工具');
+    console.error('[TaskReviewer] Reviewer did not call SubmitReview tool');
     throw new Error('Reviewer 未调用 SubmitReview 工具，无法完成审查');
   }
 
@@ -600,7 +600,7 @@ SubmitReview({
             const parsed = JSON.parse(match[1]);
             // 验证必须有 verdict 字段
             if (parsed.verdict) {
-              console.log(`[TaskReviewer] 解析成功，使用第 ${i + 1}/${jsonMatches.length} 个 JSON 块`);
+              console.log(`[TaskReviewer] Parse successful, using JSON block ${i + 1}/${jsonMatches.length}`);
               return {
                 verdict: this.normalizeVerdict(parsed.verdict),
                 confidence: parsed.confidence || 'medium',
@@ -640,7 +640,7 @@ SubmitReview({
       try {
         const parsed = JSON.parse(bareJsonMatch[0]);
         if (parsed.verdict) {
-          console.log('[TaskReviewer] 解析成功，使用裸 JSON 对象');
+          console.log('[TaskReviewer] Parse successful, using bare JSON object');
           return {
             verdict: this.normalizeVerdict(parsed.verdict),
             confidence: parsed.confidence || 'medium',
@@ -657,7 +657,7 @@ SubmitReview({
 
     // v5.0: 无法解析 JSON 时，使用 AI 重新理解响应内容
     // 不再使用脆弱的关键词匹配（如 includes('passed')），而是让 AI 真正理解文本含义
-    console.log('[TaskReviewer] JSON 解析失败，使用 AI 重新解析响应...');
+    console.log('[TaskReviewer] JSON parsing failed, using AI to re-parse response...');
 
     try {
       const agentDecision = getAgentDecisionMaker();
@@ -665,7 +665,7 @@ SubmitReview({
       const parseResult = await agentDecision.askAgentForVerdict(text);
 
       if (parseResult) {
-        console.log('[TaskReviewer] AI 重新解析成功:', parseResult.verdict);
+        console.log('[TaskReviewer] AI re-parsing successful:', parseResult.verdict);
         return {
           verdict: parseResult.verdict,
           confidence: parseResult.confidence,
@@ -675,7 +675,7 @@ SubmitReview({
         };
       }
     } catch (aiError) {
-      console.error('[TaskReviewer] AI 重新解析失败:', aiError);
+      console.error('[TaskReviewer] AI re-parsing failed:', aiError);
     }
 
     // v5.7: AI 也无法解析时，抛出异常让上层降级为信任 Worker

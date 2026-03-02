@@ -135,7 +135,7 @@ export function useMonacoDecorations(options: UseMonacoDecorationsOptions): UseM
       const filename = filePath.split('/').pop() || 'file.txt';
       const language = getMonacoLanguage(filename);
 
-      console.log(`[AI Heatmap] 开始分析复杂度: ${filePath}, 语言: ${language}`);
+      console.log(`[AI Heatmap] Starting complexity analysis: ${filePath}, language: ${language}`);
 
       const result = await aiHeatmapApi.analyze({
         filePath,
@@ -149,12 +149,12 @@ export function useMonacoDecorations(options: UseMonacoDecorationsOptions): UseM
         reason: h.reason,
       }));
 
-      console.log(`[AI Heatmap] 分析完成，标记 ${heatmap.length} 个复杂行${result.fromCache ? ' (缓存)' : ''}`);
+      console.log(`[AI Heatmap] Analysis complete, marked ${heatmap.length} complex lines${result.fromCache ? ' (cached)' : ''}`);
 
       setHeatmapData(heatmap);
       setHeatmapEnabled(true);
     } catch (err) {
-      console.error('分析热力图失败:', err);
+      console.error('Failed to analyze heatmap:', err);
       setHeatmapData([]);
     } finally {
       setHeatmapLoading(false);
@@ -172,7 +172,7 @@ export function useMonacoDecorations(options: UseMonacoDecorationsOptions): UseM
       const filename = filePath.split('/').pop() || 'file.txt';
       const language = getMonacoLanguage(filename);
 
-      console.log(`[AI Refactor] 开始分析重构建议: ${filePath}, 语言: ${language}`);
+      console.log(`[AI Refactor] Starting refactor suggestions analysis: ${filePath}, language: ${language}`);
 
       const result = await aiRefactorApi.analyze({
         filePath,
@@ -188,12 +188,12 @@ export function useMonacoDecorations(options: UseMonacoDecorationsOptions): UseM
         priority: s.priority,
       }));
 
-      console.log(`[AI Refactor] 分析完成，生成 ${suggestions.length} 个建议${result.fromCache ? ' (缓存)' : ''}`);
+      console.log(`[AI Refactor] Analysis complete, generated ${suggestions.length} suggestions${result.fromCache ? ' (cached)' : ''}`);
 
       setRefactorSuggestions(suggestions);
       setRefactorEnabled(true);
     } catch (err) {
-      console.error('分析重构建议失败:', err);
+      console.error('Failed to analyze refactor suggestions:', err);
       setRefactorSuggestions([]);
     } finally {
       setRefactorLoading(false);
@@ -211,7 +211,7 @@ export function useMonacoDecorations(options: UseMonacoDecorationsOptions): UseM
       const filename = filePath.split('/').pop() || 'file.txt';
       const language = getMonacoLanguage(filename);
 
-      console.log(`[AI Bubbles] 开始生成气泡: ${filePath}, 语言: ${language}`);
+      console.log(`[AI Bubbles] Starting bubble generation: ${filePath}, language: ${language}`);
 
       const result = await aiBubblesApi.generate({
         filePath,
@@ -226,12 +226,12 @@ export function useMonacoDecorations(options: UseMonacoDecorationsOptions): UseM
         type: b.type,
       }));
 
-      console.log(`[AI Bubbles] 生成 ${bubbles.length} 个气泡${result.fromCache ? ' (来自缓存)' : ''}`);
+      console.log(`[AI Bubbles] Generated ${bubbles.length} bubbles${result.fromCache ? ' (cached)' : ''}`);
 
       setAiBubbles(bubbles);
       setBubblesEnabled(true);
     } catch (err) {
-      console.error('生成AI气泡失败:', err);
+      console.error('Failed to generate AI bubbles:', err);
       setAiBubbles([]);
     } finally {
       setBubblesLoading(false);

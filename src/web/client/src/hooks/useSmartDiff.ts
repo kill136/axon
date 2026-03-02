@@ -73,7 +73,7 @@ export function useSmartDiff(options: UseSmartDiffOptions): UseSmartDiffReturn {
 
     // 如果文件未修改，不做任何事
     if (!isModified || !currentFilePath) {
-      console.log('[useSmartDiff] 文件未修改或文件路径为空，跳过分析');
+      console.log('[useSmartDiff] File not modified or path empty, skipping analysis');
       return;
     }
 
@@ -90,15 +90,15 @@ export function useSmartDiff(options: UseSmartDiffOptions): UseSmartDiffReturn {
       });
 
       if (response.success && response.analysis) {
-        console.log(`[useSmartDiff] 分析完成，影响等级: ${response.analysis.impact}${response.fromCache ? ' (缓存)' : ''}`);
+        console.log(`[useSmartDiff] Analysis complete, impact level: ${response.analysis.impact}${response.fromCache ? ' (cached)' : ''}`);
         setAnalysis(response.analysis);
       } else {
-        console.error('[useSmartDiff] 分析失败:', response.error);
+        console.error('[useSmartDiff] Analysis failed:', response.error);
         alert(`语义 Diff 分析失败: ${response.error || '未知错误'}`);
         setVisible(false);
       }
     } catch (error: any) {
-      console.error('[useSmartDiff] 分析异常:', error);
+      console.error('[useSmartDiff] Analysis error:', error);
       alert(`语义 Diff 分析异常: ${error.message || '未知错误'}`);
       setVisible(false);
     } finally {

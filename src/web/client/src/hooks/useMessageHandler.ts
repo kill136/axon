@@ -173,7 +173,7 @@ export function useMessageHandler({
         if (interruptPendingRef.current) {
           return;
         }
-        console.warn('[App] 收到孤立流式事件，自动创建消息上下文:', msg.type);
+        console.warn('[App] Received orphaned stream event, auto-creating message context:', msg.type);
         currentMessageRef.current = {
           id: (payload.messageId as string) || `resume-${Date.now()}`,
           role: 'assistant',
@@ -400,7 +400,7 @@ export function useMessageHandler({
           // YOLO 模式下自动批准，不弹出对话框
           if (permissionModeRef.current === 'bypassPermissions') {
             const req = payload as unknown as PermissionRequest;
-            console.warn(`[YOLO] 自动批准权限请求: ${req.tool} (服务端不应发送此请求)`);
+            console.warn(`[YOLO] Auto-approving permission request: ${req.tool} (server should not send this request)`);
             send({
               type: 'permission_response',
               payload: {
@@ -415,7 +415,7 @@ export function useMessageHandler({
             // acceptEdits 模式下自动批准编辑工具
             const req = payload as unknown as PermissionRequest;
             if (['Write', 'Edit', 'MultiEdit'].includes(req.tool)) {
-              console.warn(`[acceptEdits] 自动批准编辑权限: ${req.tool}`);
+              console.warn(`[acceptEdits] Auto-approving edit permission: ${req.tool}`);
               send({
                 type: 'permission_response',
                 payload: {
@@ -495,7 +495,7 @@ export function useMessageHandler({
           break;
 
         case 'session_new_ready':
-          console.log('[App] 临时会话已就绪:', payload.sessionId);
+          console.log('[App] Temporary session ready:', payload.sessionId);
           // 立即同步更新 sessionIdRef，与 session_switched 同理
           if (payload.sessionId) {
             sessionIdRef.current = payload.sessionId as string;

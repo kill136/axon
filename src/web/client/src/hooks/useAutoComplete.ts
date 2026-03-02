@@ -233,7 +233,7 @@ export function useAutoComplete(options: UseAutoCompleteOptions): UseAutoComplet
                 });
               }
             } catch (error) {
-              console.error('[AutoComplete] 路径补全失败:', error);
+              console.error('[AutoComplete] Path completion failed:', error);
             }
 
             return { suggestions };
@@ -422,7 +422,7 @@ export function useAutoComplete(options: UseAutoCompleteOptions): UseAutoComplet
               }
             }
           } catch (error) {
-            console.error('[AutoComplete] AI inline 补全失败:', error);
+            console.error('[AutoComplete] AI inline completion failed:', error);
           }
 
           return { items: [] };

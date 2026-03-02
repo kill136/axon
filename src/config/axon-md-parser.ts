@@ -336,7 +336,7 @@ export class AxonMdParser {
         additionalAxonMdPaths: additionalPaths.length > 0 ? additionalPaths : undefined,
       };
     } catch (error) {
-      console.warn(`读取 AXON.md 失败: ${error}`);
+      console.warn(`Failed to read AXON.md: ${error}`);
       return {
         content: additionalContent || '',
         path: this.axonMdPath,
@@ -391,7 +391,7 @@ ${info.content}
    */
   watch(callback: (content: string) => void): void {
     if (!this.exists()) {
-      console.warn(`AXON.md 不存在，无法监听: ${this.axonMdPath}`);
+      console.warn(`AXON.md does not exist, cannot watch: ${this.axonMdPath}`);
       return;
     }
 
@@ -465,7 +465,7 @@ ${projectName} is a ${projectType || 'software'} project.
    */
   create(content?: string): boolean {
     if (this.exists()) {
-      console.warn('AXON.md 已存在');
+      console.warn('AXON.md already exists');
       return false;
     }
 
@@ -476,7 +476,7 @@ ${projectName} is a ${projectType || 'software'} project.
       fs.writeFileSync(this.axonMdPath, template, 'utf-8');
       return true;
     } catch (error) {
-      console.error(`创建 AXON.md 失败: ${error}`);
+      console.error(`Failed to create AXON.md: ${error}`);
       return false;
     }
   }
@@ -489,7 +489,7 @@ ${projectName} is a ${projectType || 'software'} project.
       fs.writeFileSync(this.axonMdPath, content, 'utf-8');
       return true;
     } catch (error) {
-      console.error(`更新 AXON.md 失败: ${error}`);
+      console.error(`Failed to update AXON.md: ${error}`);
       return false;
     }
   }
@@ -504,21 +504,21 @@ ${projectName} is a ${projectType || 'software'} project.
     const warnings: string[] = [];
 
     if (!info.exists) {
-      return { valid: false, warnings: ['AXON.md 文件不存在'] };
+      return { valid: false, warnings: ['AXON.md file does not exist'] };
     }
 
     if (!info.content.trim()) {
-      warnings.push('AXON.md 文件为空');
+      warnings.push('AXON.md file is empty');
     }
 
     // 检查是否包含标题
     if (!info.content.includes('#')) {
-      warnings.push('建议使用 Markdown 标题组织内容');
+      warnings.push('Recommend using Markdown headings to organize content');
     }
 
     // 检查文件大小（过大可能影响性能）
     if (info.content.length > 50000) {
-      warnings.push('AXON.md 文件过大（>50KB），可能影响性能');
+      warnings.push('AXON.md file is too large (>50KB), may impact performance');
     }
 
     return { valid: true, warnings };

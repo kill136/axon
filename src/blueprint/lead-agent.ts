@@ -700,7 +700,7 @@ ${taskSummary}
     while (true) {
       // 检查是否已被外部调用 stop() 取消
       if (this.stopped) {
-        console.log('[LeadAgent] 检测到 stop() 调用，退出执行循环');
+        console.log('[LeadAgent] Detected stop() call, exiting execution loop');
         break;
       }
 
@@ -709,7 +709,7 @@ ${taskSummary}
         ? this.buildResumePrompt()
         : this.buildInitialPrompt();
       if (!this.loop) {
-        console.log('[LeadAgent] Loop 已被销毁（stop 调用），退出执行循环');
+        console.log('[LeadAgent] Loop has been destroyed (stop call), exiting execution loop');
         break;
       }
       const messageStream = this.loop.processMessageStream(prompt);
@@ -781,7 +781,7 @@ ${taskSummary}
         const errorMsg = error instanceof Error ? error.message : String(error);
         loopDiedFromError = true;
         lastErrorMsg = errorMsg;
-        console.error(`[LeadAgent] Loop 异常退出: ${errorMsg}`);
+        console.error(`[LeadAgent] Loop exited with error: ${errorMsg}`);
 
         this.emit('lead:stream', {
           type: 'text',
@@ -802,7 +802,7 @@ ${taskSummary}
       );
 
       if (isFatalError) {
-        console.error('[LeadAgent] 致命认证错误，终止执行（不自愈）');
+        console.error('[LeadAgent] Fatal authentication error, terminating execution (no self-healing)');
         fatalError = true;
         this.emit('lead:stream', {
           type: 'text',
@@ -815,7 +815,7 @@ ${taskSummary}
         selfHealAttempts++;
         const delay = 2000 * Math.pow(2, selfHealAttempts - 1); // 2s, 4s, 8s
         const reason = loopDiedFromError ? '异常退出' : 'Loop 正常结束但仍有未完成任务';
-        console.log(`[LeadAgent] 自愈重启 (${selfHealAttempts}/${maxSelfHealRetries}): ${reason}，${delay}ms 后以 resume 模式重启...`);
+        console.log(`[LeadAgent] Self-healing restart (${selfHealAttempts}/${maxSelfHealRetries}): ${reason}, restarting in resume mode after ${delay}ms...`);
 
         this.emit('lead:stream', {
           type: 'text',
@@ -861,7 +861,7 @@ ${taskSummary}
           t => t.status === 'pending' || t.status === 'running'
         );
         if (stillHasPending) {
-          console.error(`[LeadAgent] 自愈重试耗尽 (${maxSelfHealRetries} 次)，放弃重启`);
+          console.error(`[LeadAgent] Self-healing retries exhausted (${maxSelfHealRetries} attempts), giving up`);
           this.emit('lead:stream', {
             type: 'text',
             content: `\n❌ [LeadAgent] 自愈重试耗尽，无法继续执行\n`,
@@ -955,7 +955,7 @@ ${taskSummary}
    */
   interject(message: string): boolean {
     if (!this.loop) {
-      console.warn('[LeadAgent] 插嘴失败：当前没有正在执行的 Loop');
+      console.warn('[LeadAgent] Interjection failed: no active Loop');
       return false;
     }
 
@@ -966,7 +966,7 @@ ${taskSummary}
         content: `[用户插嘴] ${message}`,
       });
 
-      console.log(`[LeadAgent] 用户插嘴: ${message.substring(0, 50)}${message.length > 50 ? '...' : ''}`);
+      console.log(`[LeadAgent] User interjection: ${message.substring(0, 50)}${message.length > 50 ? '...' : ''}`);
 
       // 发射流式事件通知前端显示插嘴消息
       this.emit('lead:stream', {
@@ -977,7 +977,7 @@ ${taskSummary}
 
       return true;
     } catch (err) {
-      console.error('[LeadAgent] 插嘴失败:', err);
+      console.error('[LeadAgent] Interjection failed:', err);
       return false;
     }
   }

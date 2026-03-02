@@ -190,7 +190,7 @@ export function useAIHover(options: UseAIHoverOptions): UseAIHoverReturn {
                   loading: false,
                 });
               } catch (error) {
-                console.warn('[AI Line Analysis] 调用失败:', error);
+                console.warn('[AI Line Analysis] API call failed:', error);
                 lineAnalysisCacheRef.current.set(cacheKey, {
                   lineContent,
                   keywords: keywords,

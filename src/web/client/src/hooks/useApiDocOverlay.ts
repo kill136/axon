@@ -69,7 +69,7 @@ export function useApiDocOverlay(options: UseApiDocOverlayOptions): UseApiDocOve
 
     const languageId = model.getLanguageId();
 
-    console.log(`[API Doc Overlay] 注册 HoverProvider，语言: ${languageId}`);
+    console.log(`[API Doc Overlay] Registering HoverProvider, language: ${languageId}`);
 
     // 注册 Hover Provider
     hoverProviderRef.current = monaco.languages.registerHoverProvider(languageId, {
@@ -121,7 +121,7 @@ export function useApiDocOverlay(options: UseApiDocOverlayOptions): UseApiDocOve
                 endColumn: model.getLineMaxColumn(endLine),
               });
 
-              console.log(`[API Doc Overlay] 查询 API 文档: ${symbolName}`);
+              console.log(`[API Doc Overlay] Querying API doc: ${symbolName}`);
 
               const result = await aiApiDocApi.lookup({
                 symbolName,
@@ -196,11 +196,11 @@ export function useApiDocOverlay(options: UseApiDocOverlayOptions): UseApiDocOve
               // 缓存结果
               docCacheRef.current.set(cacheKey, hoverResult);
 
-              console.log(`[API Doc Overlay] 文档查询成功: ${symbolName}${result.fromCache ? ' (缓存)' : ''}`);
+              console.log(`[API Doc Overlay] Doc query success: ${symbolName}${result.fromCache ? ' (cached)' : ''}`);
 
               resolve(hoverResult);
             } catch (error: any) {
-              console.error('[API Doc Overlay] 文档查询失败:', error);
+              console.error('[API Doc Overlay] Doc query failed:', error);
               docCacheRef.current.set(cacheKey, null);
               resolve(null);
             }

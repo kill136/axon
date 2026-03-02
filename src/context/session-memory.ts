@@ -248,10 +248,10 @@ export function initSessionMemory(projectPath: string, sessionId: string): boole
     // 写入模板
     fs.writeFileSync(summaryPath, template, { encoding: 'utf-8', mode: 0o600 });
 
-    console.log(`[SessionMemory] 初始化 session memory: ${summaryPath}`);
+    console.log(`[SessionMemory] Initialized session memory: ${summaryPath}`);
     return true;
   } catch (error) {
-    console.error('[SessionMemory] 初始化失败:', error);
+    console.error('[SessionMemory] Initialization failed:', error);
     return false;
   }
 }
@@ -274,7 +274,7 @@ export function readSessionMemory(projectPath: string, sessionId: string): strin
 
     return fs.readFileSync(summaryPath, { encoding: 'utf-8' });
   } catch (error) {
-    console.error('[SessionMemory] 读取失败:', error);
+    console.error('[SessionMemory] Read failed:', error);
     return null;
   }
 }
@@ -296,7 +296,7 @@ export function writeSessionMemory(projectPath: string, sessionId: string, conte
     fs.writeFileSync(summaryPath, content, { encoding: 'utf-8', mode: 0o600 });
     return true;
   } catch (error) {
-    console.error('[SessionMemory] 写入失败:', error);
+    console.error('[SessionMemory] Write failed:', error);
     return false;
   }
 }

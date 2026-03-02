@@ -144,7 +144,7 @@ export function useIntentToCode(options: UseIntentToCodeOptions): UseIntentToCod
         alert(`意图编程失败: ${response.error || '未知错误'}`);
       }
     } catch (error: any) {
-      console.error('[useIntentToCode] 执行失败:', error);
+      console.error('[useIntentToCode] Execution failed:', error);
       alert(`意图编程异常: ${error.message || '未知错误'}`);
     } finally {
       setLoading(false);

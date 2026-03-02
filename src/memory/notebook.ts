@@ -111,7 +111,7 @@ export class NotebookManager {
         return fs.readFileSync(filePath, 'utf-8');
       }
     } catch (error) {
-      console.warn(`[Notebook] 读取 ${type} 失败:`, error);
+      console.warn(`[Notebook] Failed to read ${type}:`, error);
     }
     return '';
   }
@@ -125,7 +125,7 @@ export class NotebookManager {
     if (tokens > maxTokens) {
       return {
         success: false,
-        error: `内容超出 ${type} 笔记本预算 (${tokens}/${maxTokens} tokens)。请精简后重试。`,
+        error: `Content exceeds ${type} notebook budget (${tokens}/${maxTokens} tokens). Please condense and retry.`,
         tokens,
         path: filePath,
       };
@@ -141,7 +141,7 @@ export class NotebookManager {
     } catch (error) {
       return {
         success: false,
-        error: `写入失败: ${error instanceof Error ? error.message : String(error)}`,
+        error: `Write failed: ${error instanceof Error ? error.message : String(error)}`,
         tokens,
         path: filePath,
       };

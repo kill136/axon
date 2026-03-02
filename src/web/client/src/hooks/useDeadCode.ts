@@ -70,7 +70,7 @@ export function useDeadCode(options: UseDeadCodeOptions): UseDeadCodeReturn {
     setSummary(null);
 
     try {
-      console.log(`[AI Dead Code] 开始分析: ${currentFilePath}`);
+      console.log(`[AI Dead Code] Starting analysis: ${currentFilePath}`);
 
       const result = await aiDeadCodeApi.analyze({
         filePath: currentFilePath,
@@ -79,17 +79,17 @@ export function useDeadCode(options: UseDeadCodeOptions): UseDeadCodeReturn {
       });
 
       if (result.success) {
-        console.log(`[AI Dead Code] 分析完成，发现 ${result.deadCode.length} 个死代码${result.fromCache ? ' (缓存)' : ''}`);
+        console.log(`[AI Dead Code] Analysis complete, found ${result.deadCode.length} dead code items${result.fromCache ? ' (cached)' : ''}`);
         setItems(result.deadCode);
         setSummary(result.summary || null);
         setEnabled(true);
       } else {
-        console.error('[AI Dead Code] 分析失败:', result.error);
+        console.error('[AI Dead Code] Analysis failed:', result.error);
         setItems([]);
         setSummary(null);
       }
     } catch (error: any) {
-      console.error('[AI Dead Code] 分析异常:', error);
+      console.error('[AI Dead Code] Analysis error:', error);
       setItems([]);
       setSummary(null);
     } finally {

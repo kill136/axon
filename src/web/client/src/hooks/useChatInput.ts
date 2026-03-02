@@ -225,7 +225,7 @@ export function useChatInput({
         if (!project) return; // 用户取消了选择
         effectiveProjectPath = project.path;
       } catch (err) {
-        console.error('打开文件夹失败:', err);
+        console.error('Failed to open folder:', err);
         return;
       }
     }
@@ -456,7 +456,7 @@ export function useChatInput({
         send({ type: 'continuous_dev:rollback', payload: data });
         break;
       default:
-        console.warn('未知的开发动作:', action);
+        console.warn('Unknown dev action:', action);
     }
   }, [send]);
 

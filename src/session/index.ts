@@ -418,7 +418,7 @@ export function walAppend(sessionId: string, op: WalEntry['op'], data: unknown):
     fs.appendFileSync(getWalPath(sessionId), line, { mode: 0o600 });
   } catch (err) {
     // WAL 写失败不阻塞主流程，降级为丢该条
-    console.warn(`[WAL] append 失败 (session=${sessionId}):`, err);
+    console.warn(`[WAL] append failed (session=${sessionId}):`, err);
   }
 }
 
@@ -542,7 +542,7 @@ export function saveSession(session: SessionData, options?: { useResumedPath?: b
   // 验证 sessionId 有效性
   const sessionId = session.metadata.id;
   if (!sessionId || sessionId === 'undefined' || sessionId === 'null') {
-    console.error(`[Session] 无效的会话 ID，拒绝保存: ${sessionId}`);
+    console.error(`[Session] Invalid session ID, refusing to save: ${sessionId}`);
     return;
   }
 
@@ -652,7 +652,7 @@ export function loadSession(sessionId: string): SessionData | null {
 export function deleteSession(sessionId: string): boolean {
   // 验证 sessionId 有效性
   if (!sessionId || sessionId === 'undefined' || sessionId === 'null') {
-    console.error(`[Session] 无效的会话 ID: ${sessionId}`);
+    console.error(`[Session] Invalid session ID: ${sessionId}`);
     return false;
   }
 
@@ -663,7 +663,7 @@ export function deleteSession(sessionId: string): boolean {
 
   // 如果文件不存在，仍然返回 true（会话已经不存在了，删除目标达成）
   if (!fs.existsSync(sessionPath)) {
-    console.log(`[Session] 会话文件不存在，视为删除成功: ${sessionId}`);
+    console.log(`[Session] Session file does not exist, treating as deleted successfully: ${sessionId}`);
     return true;
   }
 
@@ -681,7 +681,7 @@ export function deleteSession(sessionId: string): boolean {
     // 清除内存中的 WAL 计数器
     walSeqCounters.delete(sessionId);
 
-    console.log(`[Session] 会话已删除: ${sessionId}`);
+    console.log(`[Session] Session deleted: ${sessionId}`);
     return true;
   } catch (err) {
     console.error(`Failed to delete session ${sessionId}:`, err);

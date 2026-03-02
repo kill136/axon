@@ -142,7 +142,7 @@ export function useCodeConversation(options: UseCodeConversationOptions): UseCod
         setInput(question);
       }
     } catch (error: any) {
-      console.error('[useCodeConversation] 发送失败:', error);
+      console.error('[useCodeConversation] Failed to send:', error);
       alert(`对话异常: ${error.message || '未知错误'}`);
       // 回退用户消息
       setMessages(messages);

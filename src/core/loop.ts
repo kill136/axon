@@ -1352,13 +1352,13 @@ async function trySessionMemoryCompact(
     const actualContent = readSessionMemory(projectPath, sessionId);
     if (actualContent && actualContent.trim()) {
       template = actualContent;
-      console.log(chalk.blue('[TJ1] 使用实际Session Memory内容进行压缩'));
+      console.log(chalk.blue('[TJ1] Using actual Session Memory content for compaction'));
     }
   }
   if (!template) {
     template = getSessionMemoryTemplate();
     if (template) {
-      console.log(chalk.blue('[TJ1] 使用Session Memory模板（未找到实际内容）'));
+      console.log(chalk.blue('[TJ1] Using Session Memory template (actual content not found)'));
     }
   }
   if (!template) {
@@ -1367,7 +1367,7 @@ async function trySessionMemoryCompact(
 
   // 5. 检查模板是否为空
   if (await isTemplateEmpty(template)) {
-    console.log(chalk.yellow('[TJ1] Session Memory模板为空，跳过压缩'));
+    console.log(chalk.yellow('[TJ1] Session Memory template is empty, skipping compaction'));
     return null;
   }
 
@@ -1381,7 +1381,7 @@ async function trySessionMemoryCompact(
       if (lastBoundaryIndex === -1) {
         // 找不到边界标记，可能会话数据不一致
         messagesToCompress = [];
-        console.log(chalk.yellow('[TJ1] 无法找到上次压缩边界，跳过压缩'));
+        console.log(chalk.yellow('[TJ1] Cannot find last compaction boundary, skipping compaction'));
       } else {
         // 只压缩边界之后的新消息
         messagesToCompress = messages.slice(lastBoundaryIndex + 1);
@@ -1389,7 +1389,7 @@ async function trySessionMemoryCompact(
     } else {
       // 首次压缩，压缩所有消息
       messagesToCompress = [];
-      console.log(chalk.blue('[TJ1] 检测到恢复的会话，将进行完整压缩'));
+      console.log(chalk.blue('[TJ1] Detected resumed session, will perform full compaction'));
     }
 
     // 7. 创建压缩结果（使用模板）
@@ -1425,10 +1425,10 @@ async function trySessionMemoryCompact(
     // 11. 返回压缩结果
     const savedTokens = compactResult.preCompactTokenCount - finalTokenCount;
 
-    console.log(chalk.green('[TJ1] Session Memory压缩成功'));
-    console.log(chalk.green(`[TJ1] 压缩前: ${compactResult.preCompactTokenCount.toLocaleString()} tokens`));
-    console.log(chalk.green(`[TJ1] 压缩后: ${finalTokenCount.toLocaleString()} tokens`));
-    console.log(chalk.green(`[TJ1] 节省: ${savedTokens.toLocaleString()} tokens`));
+    console.log(chalk.green('[TJ1] Session Memory compaction successful'));
+    console.log(chalk.green(`[TJ1] Before compaction: ${compactResult.preCompactTokenCount.toLocaleString()} tokens`));
+    console.log(chalk.green(`[TJ1] After compaction: ${finalTokenCount.toLocaleString()} tokens`));
+    console.log(chalk.green(`[TJ1] Saved: ${savedTokens.toLocaleString()} tokens`));
 
     return {
       success: true,
@@ -1481,7 +1481,7 @@ async function tryConversationSummary(
   try {
     // 1. 验证输入
     if (messages.length === 0) {
-      console.log(chalk.yellow('[NJ1] 消息列表为空，跳过摘要'));
+      console.log(chalk.yellow('[NJ1] Message list is empty, skipping summary'));
       return null;
     }
 
@@ -1501,7 +1501,7 @@ async function tryConversationSummary(
 
     // 5. 调用 AI 模型生成摘要
     // 注意：使用当前模型（Haiku模型成本低，但这里遵循官方使用 p3()）
-    console.log(chalk.blue('[NJ1] 正在生成对话摘要...'));
+    console.log(chalk.blue('[NJ1] Generating conversation summary...'));
 
     const summaryMessages = [...messagesToSummarize, summaryRequestMessage];
 
@@ -1527,18 +1527,18 @@ async function tryConversationSummary(
       }
 
       if (!summaryText || summaryText.trim().length === 0) {
-        console.log(chalk.yellow('[NJ1] AI返回空摘要，压缩失败'));
+        console.log(chalk.yellow('[NJ1] AI returned empty summary, compaction failed'));
         return null;
       }
 
       // 检查是否是错误响应
       if (summaryText.startsWith('API Error') || summaryText.includes('Prompt is too long')) {
-        console.log(chalk.yellow('[NJ1] AI返回错误响应，压缩失败'));
+        console.log(chalk.yellow('[NJ1] AI returned invalid response, compaction failed'));
         return null;
       }
 
     } catch (error) {
-      console.log(chalk.yellow(`[NJ1] 生成摘要时出错: ${error instanceof Error ? error.message : String(error)}`));
+      console.log(chalk.yellow(`[NJ1] Error generating summary: ${error instanceof Error ? error.message : String(error)}`));
       return null;
     }
 
@@ -1559,10 +1559,10 @@ async function tryConversationSummary(
     const postCompactTokenCount = calculateTotalTokens(compactedMessages);
     const savedTokens = preCompactTokenCount - postCompactTokenCount;
 
-    console.log(chalk.green(`[NJ1] 摘要生成成功`));
-    console.log(chalk.green(`[NJ1] 压缩前: ${preCompactTokenCount.toLocaleString()} tokens`));
-    console.log(chalk.green(`[NJ1] 压缩后: ${postCompactTokenCount.toLocaleString()} tokens`));
-    console.log(chalk.green(`[NJ1] 节省: ${savedTokens.toLocaleString()} tokens`));
+    console.log(chalk.green(`[NJ1] Summary generated successfully`));
+    console.log(chalk.green(`[NJ1] Before compaction: ${preCompactTokenCount.toLocaleString()} tokens`));
+    console.log(chalk.green(`[NJ1] After compaction: ${postCompactTokenCount.toLocaleString()} tokens`));
+    console.log(chalk.green(`[NJ1] Saved: ${savedTokens.toLocaleString()} tokens`));
 
     return {
       success: true,
@@ -1611,16 +1611,16 @@ async function autoCompact(
   const currentTokens = calculateTotalTokens(messages);
   const threshold = calculateAutoCompactThreshold(model);
 
-  console.log(chalk.yellow('[AutoCompact] 检测到需要压缩'));
-  console.log(chalk.yellow(`[AutoCompact] 当前 tokens: ${currentTokens.toLocaleString()}`));
-  console.log(chalk.yellow(`[AutoCompact] 压缩阈值: ${threshold.toLocaleString()}`));
-  console.log(chalk.yellow(`[AutoCompact] 超出: ${(currentTokens - threshold).toLocaleString()} tokens`));
+  console.log(chalk.yellow('[AutoCompact] Compaction needed'));
+  console.log(chalk.yellow(`[AutoCompact] Current tokens: ${currentTokens.toLocaleString()}`));
+  console.log(chalk.yellow(`[AutoCompact] Compaction threshold: ${threshold.toLocaleString()}`));
+  console.log(chalk.yellow(`[AutoCompact] Exceeded by: ${(currentTokens - threshold).toLocaleString()} tokens`));
 
   // 2. 优先尝试 TJ1 (Session Memory 压缩)
   const tj1Result = await trySessionMemoryCompact(messages, undefined, threshold, session, session?.cwd, session?.sessionId);
   if (tj1Result && tj1Result.success) {
-    console.log(chalk.green(`[AutoCompact] Session Memory压缩成功，节省 ${tj1Result.savedTokens.toLocaleString()} tokens`));
-    console.log(chalk.green(`[AutoCompact] 压缩比: ${tj1Result.preCompactTokenCount.toLocaleString()} → ${tj1Result.postCompactTokenCount.toLocaleString()} tokens (${Math.round(tj1Result.postCompactTokenCount / tj1Result.preCompactTokenCount * 100)}%)`));
+    console.log(chalk.green(`[AutoCompact] Session Memory compaction successful, saved ${tj1Result.savedTokens.toLocaleString()} tokens`));
+    console.log(chalk.green(`[AutoCompact] Compression ratio: ${tj1Result.preCompactTokenCount.toLocaleString()} → ${tj1Result.postCompactTokenCount.toLocaleString()} tokens (${Math.round(tj1Result.postCompactTokenCount / tj1Result.preCompactTokenCount * 100)}%)`));
     // 获取边界标记的 UUID（用于增量压缩）
     const boundaryUuid = tj1Result.boundaryMarker?.uuid;
     return { wasCompacted: true, messages: tj1Result.messages, boundaryUuid };
@@ -1629,14 +1629,14 @@ async function autoCompact(
   // 3. 如果 TJ1 失败，使用 NJ1 (对话总结)
   const nj1Result = await tryConversationSummary(messages, client);
   if (nj1Result && nj1Result.success) {
-    console.log(chalk.green(`[AutoCompact] 对话摘要成功，节省 ${nj1Result.savedTokens.toLocaleString()} tokens`));
-    console.log(chalk.green(`[AutoCompact] 压缩比: ${nj1Result.preCompactTokenCount.toLocaleString()} → ${nj1Result.postCompactTokenCount.toLocaleString()} tokens (${Math.round(nj1Result.postCompactTokenCount / nj1Result.preCompactTokenCount * 100)}%)`));
+    console.log(chalk.green(`[AutoCompact] Conversation summary successful, saved ${nj1Result.savedTokens.toLocaleString()} tokens`));
+    console.log(chalk.green(`[AutoCompact] Compression ratio: ${nj1Result.preCompactTokenCount.toLocaleString()} → ${nj1Result.postCompactTokenCount.toLocaleString()} tokens (${Math.round(nj1Result.postCompactTokenCount / nj1Result.preCompactTokenCount * 100)}%)`));
     return { wasCompacted: true, messages: nj1Result.messages };
   }
 
   // 4. 所有压缩策略都失败，返回未压缩
-  console.log(chalk.yellow('[AutoCompact] 所有压缩策略均失败，跳过压缩'));
-  console.log(chalk.yellow('[AutoCompact] 提示：您可以通过设置 DISABLE_COMPACT=1 禁用此警告'));
+  console.log(chalk.yellow('[AutoCompact] All compaction strategies failed, skipping compaction'));
+  console.log(chalk.yellow('[AutoCompact] Tip: You can disable this warning by setting DISABLE_COMPACT=1'));
 
   return { wasCompacted: false, messages };
 }
@@ -2210,7 +2210,7 @@ export class ConversationLoop {
     // 初始化长期记忆搜索系统（异步，fire-and-forget）
     const projectHash = crypto.createHash('md5').update(effectiveWorkingDir).digest('hex').slice(0, 12);
     initMemorySearchManager(effectiveWorkingDir, projectHash).catch(err => {
-      console.warn('[MemorySearch] 初始化失败:', err);
+      console.warn('[MemorySearch] Initialization failed:', err);
     });
 
     // 加载活跃目标
@@ -2611,7 +2611,7 @@ export class ConversationLoop {
 
       // 通过 processMessageStream 处理提醒消息
       // 这样模型在当前完整的对话上下文中执行任务
-      console.log(chalk.yellow(`\n⏰ 闹钟响了: "${alarm.taskName}"`));
+      console.log(chalk.yellow(`\n⏰ Alarm triggered: "${alarm.taskName}"`));
 
       try {
         for await (const event of this.processMessageStream(reminderMessage)) {
@@ -2651,7 +2651,7 @@ export class ConversationLoop {
         }
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
-        console.error(chalk.red(`闹钟任务执行失败: ${errMsg}`));
+        console.error(chalk.red(`Alarm task execution failed: ${errMsg}`));
 
         const task = store.getTask(alarm.taskId);
         if (task) {
@@ -3278,7 +3278,7 @@ Guidelines:
            errMsg.includes('without `tool_result` blocks') ||
            (errMsg.includes('invalid_request_error') && errMsg.includes('tool_result')))
         ) {
-          console.warn(chalk.yellow(`[Loop] 检测到消息一致性错误，尝试自愈: ${errMsg.substring(0, 100)}`));
+          console.warn(chalk.yellow(`[Loop] Detected message consistency error, attempting self-healing: ${errMsg.substring(0, 100)}`));
           const healedMessages = validateToolResults(this.session.getMessages());
           this.session.setMessages(healedMessages);
           messageConsistencyHealed = true; // 只尝试一次
@@ -3296,7 +3296,7 @@ Guidelines:
         if (isRetryableStreamError && streamRetryCount < maxStreamRetries) {
           streamRetryCount++;
           const delay = 1000 * Math.pow(2, streamRetryCount - 1); // 指数退避: 1s, 2s, 4s
-          console.warn(chalk.yellow(`[Loop] 流式请求失败 (${errCode || errMsg.substring(0, 50)}), ${delay}ms 后重试 (${streamRetryCount}/${maxStreamRetries})...`));
+          console.warn(chalk.yellow(`[Loop] Stream request failed (${errCode || errMsg.substring(0, 50)}), retrying after ${delay}ms (${streamRetryCount}/${maxStreamRetries})...`));
           await new Promise(r => setTimeout(r, delay));
           // 重新创建 AbortController（旧的可能已被污染）
           this.abortController = new AbortController();
@@ -3781,7 +3781,7 @@ NO_UPDATE
       if (expMatch && expMatch[1].trim()) {
         const result = nbMgr.write('experience', expMatch[1].trim());
         if (result.success) {
-          console.error(chalk.gray('[AutoMemory] experience 笔记本已更新'));
+          console.error(chalk.gray('[AutoMemory] experience notebook updated'));
         }
       }
 
@@ -3790,7 +3790,7 @@ NO_UPDATE
       if (projMatch && projMatch[1].trim()) {
         const result = nbMgr.write('project', projMatch[1].trim());
         if (result.success) {
-          console.error(chalk.gray('[AutoMemory] project 笔记本已更新'));
+          console.error(chalk.gray('[AutoMemory] project notebook updated'));
         }
       }
 
@@ -3801,7 +3801,7 @@ NO_UPDATE
       }
     } catch (error) {
       // 非静默失败，记录错误信息
-      console.error(chalk.gray('[AutoMemory] 记忆提取失败:', error instanceof Error ? error.message : String(error)));
+      console.error(chalk.gray('[AutoMemory] Memory extraction failed:', error instanceof Error ? error.message : String(error)));
     }
   }
 

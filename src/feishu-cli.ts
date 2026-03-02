@@ -103,7 +103,7 @@ async function main() {
 
   if (isWebUIMode) {
     // WebUI 桥接模式：先启动 WebUI 服务器，再启动飞书 Bot
-    console.log(chalk.cyan('\n启动 WebUI 服务器...'));
+    console.log(chalk.cyan('\nStarting WebUI server...'));
     const { startWebServer } = await import('./web/server/index.js');
     const { conversationManager } = await startWebServer({
       cwd: config.workingDir,
@@ -111,7 +111,7 @@ async function main() {
     });
 
     const sessionId = process.env.FEISHU_WEBUI_SESSION || 'feishu-bot';
-    console.log(chalk.green(`✓ WebUI 已启动，飞书消息将桥接到会话: ${sessionId}`));
+    console.log(chalk.green(`✓ WebUI started, Feishu messages will be bridged to session: ${sessionId}`));
 
     bot = new FeishuBot({
       config,
@@ -135,12 +135,12 @@ async function main() {
   try {
     await bot.start();
   } catch (err) {
-    console.error(chalk.red('\n✗ Bot 启动失败:'), err);
-    console.error(chalk.yellow('\n常见问题:'));
-    console.error(chalk.gray('  1. 检查 FEISHU_APP_ID 和 FEISHU_APP_SECRET 是否正确'));
-    console.error(chalk.gray('  2. 确保飞书应用已开通 im:message 权限'));
-    console.error(chalk.gray('  3. 确保飞书应用已发布（测试版也行）'));
-    console.error(chalk.gray('  4. WebSocket 模式需要在飞书后台启用长连接'));
+    console.error(chalk.red('\n✗ Bot failed to start:'), err);
+    console.error(chalk.yellow('\nCommon issues:'));
+    console.error(chalk.gray('  1. Check if FEISHU_APP_ID and FEISHU_APP_SECRET are correct'));
+    console.error(chalk.gray('  2. Ensure Feishu app has im:message permission enabled'));
+    console.error(chalk.gray('  3. Ensure Feishu app is published (test version is fine)'));
+    console.error(chalk.gray('  4. WebSocket mode requires long connection enabled in Feishu backend'));
     process.exit(1);
   }
 }

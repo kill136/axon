@@ -101,7 +101,7 @@ export function usePatternDetector(options: UsePatternDetectorOptions): UsePatte
       const filename = currentFilePath.split('/').pop() || 'file.txt';
       const lang = getMonacoLanguage(filename);
 
-      console.log(`[Pattern Detector] 开始检测: ${currentFilePath}, 语言: ${lang}`);
+      console.log(`[Pattern Detector] Starting detection: ${currentFilePath}, language: ${lang}`);
 
       const result = await aiPatternApi.detect({
         filePath: currentFilePath,
@@ -110,17 +110,17 @@ export function usePatternDetector(options: UsePatternDetectorOptions): UsePatte
       });
 
       if (result.success) {
-        console.log(`[Pattern Detector] 检测完成，发现 ${result.patterns.length} 个模式${result.fromCache ? ' (缓存)' : ''}`);
+        console.log(`[Pattern Detector] Detection complete, found ${result.patterns.length} patterns${result.fromCache ? ' (cached)' : ''}`);
         setPatterns(result.patterns);
         setSummary(result.summary || null);
         setEnabled(true);
       } else {
-        console.error('[Pattern Detector] 检测失败:', result.error);
+        console.error('[Pattern Detector] Detection failed:', result.error);
         setPatterns([]);
         setSummary(null);
       }
     } catch (error: any) {
-      console.error('[Pattern Detector] 检测异常:', error);
+      console.error('[Pattern Detector] Detection error:', error);
       setPatterns([]);
       setSummary(null);
     } finally {

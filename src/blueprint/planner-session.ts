@@ -119,9 +119,9 @@ export class PlannerSession extends EventEmitter {
     let fullText = '';
 
     if (this.config.debug) {
-      console.log('[PlannerSession] 开始流式交互...');
-      console.log('[PlannerSession] 消息历史长度:', this.messages.length);
-      console.log('[PlannerSession] 指令:', instruction.slice(0, 200));
+      console.log('[PlannerSession] Starting streaming interaction...');
+      console.log('[PlannerSession] Message history length:', this.messages.length);
+      console.log('[PlannerSession] Instruction:', instruction.slice(0, 200));
     }
 
     try {
@@ -187,8 +187,8 @@ export class PlannerSession extends EventEmitter {
 
           yield { type: 'tool_result', result };
         } catch (e) {
-          console.error('[PlannerSession] JSON 解析失败:', e);
-          yield { type: 'error', error: 'JSON 解析失败' };
+          console.error('[PlannerSession] JSON parsing failed:', e);
+          yield { type: 'error', error: 'JSON parsing failed' };
         }
       } else if (fullText) {
         // AI 没有调用工具，尝试从文本中解析
@@ -207,7 +207,7 @@ export class PlannerSession extends EventEmitter {
 
       return result;
     } catch (error: any) {
-      console.error('[PlannerSession] 交互失败:', error);
+      console.error('[PlannerSession] Interaction failed:', error);
       yield { type: 'error', error: error.message };
       return null;
     }
@@ -478,7 +478,7 @@ export class PlannerSession extends EventEmitter {
     }
 
     if (this.config.debug) {
-      console.log('[PlannerSession] 压缩历史，当前长度:', this.messages.length);
+      console.log('[PlannerSession] Compressing history, current length:', this.messages.length);
     }
 
     // 保留最近的消息，压缩早期的
@@ -499,7 +499,7 @@ export class PlannerSession extends EventEmitter {
     ];
 
     if (this.config.debug) {
-      console.log('[PlannerSession] 压缩后长度:', this.messages.length);
+      console.log('[PlannerSession] Length after compression:', this.messages.length);
     }
   }
 

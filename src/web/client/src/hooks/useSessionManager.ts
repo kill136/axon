@@ -184,7 +184,7 @@ export function useSessionManager({
   useProjectChangeListener(
     useCallback(
       (project: Project | null, _blueprint: BlueprintInfo | null) => {
-        console.log('[App] 项目切换，刷新会话列表:', project?.path);
+        console.log('[App] Project switched, refreshing session list:', project?.path);
         if (connected) {
           send({
             type: 'session_list',

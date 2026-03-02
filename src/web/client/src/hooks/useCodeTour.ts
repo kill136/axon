@@ -68,7 +68,7 @@ export function useCodeTour(options: UseCodeTourOptions): UseCodeTourReturn {
 
       // 如果 AI 接口失败或返回空，使用本地分析作为 fallback
       if (steps.length === 0) {
-        console.log('[Tour] AI 接口未返回结果，使用本地分析');
+        console.log('[Tour] AI API returned no result, using local analysis');
         steps = analyzeCodeStructure(content, filePath);
       }
 
@@ -85,7 +85,7 @@ export function useCodeTour(options: UseCodeTourOptions): UseCodeTourReturn {
         editorRef.current.setPosition({ lineNumber: steps[0].line, column: 1 });
       }
     } catch (err) {
-      console.error('生成导游失败:', err);
+      console.error('Failed to generate tour:', err);
       // 失败时尝试本地分析
       try {
         const localSteps = analyzeCodeStructure(content, filePath);

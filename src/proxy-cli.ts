@@ -89,7 +89,7 @@ function detectLocalAuth(): DetectedAuth | null {
   if (envAuthToken) {
     return {
       mode: 'oauth',
-      source: '环境变量 ANTHROPIC_AUTH_TOKEN',
+      source: 'Environment variable ANTHROPIC_AUTH_TOKEN',
       accessToken: envAuthToken,
       refreshToken: '',
       expiresAt: Date.now() + 3600 * 1000, // 假设 1 小时
@@ -101,7 +101,7 @@ function detectLocalAuth(): DetectedAuth | null {
   if (envApiKey) {
     return {
       mode: 'api-key',
-      source: '环境变量 ANTHROPIC_API_KEY',
+      source: 'Environment variable ANTHROPIC_API_KEY',
       apiKey: envApiKey,
     };
   }
@@ -124,7 +124,7 @@ function detectLocalAuth(): DetectedAuth | null {
 
           return {
             mode: 'oauth',
-            source: `~/.axon/.credentials.json (订阅账户，token 剩余 ${remainMin} 分钟)`,
+            source: `~/.axon/.credentials.json (subscription account, token expires in ${remainMin} min)`,
             accessToken: oauth.accessToken,
             refreshToken: oauth.refreshToken || '',
             expiresAt,

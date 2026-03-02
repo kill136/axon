@@ -194,7 +194,7 @@ export class FeishuBot {
     if (!userInput.trim()) return;
 
     const senderName = sender.sender_id?.open_id || 'unknown';
-    const chatLabel = isGroup ? `群聊:${chatId}` : '私聊';
+    const chatLabel = isGroup ? `group:${chatId}` : 'private';
     console.log(chalk.blue(`[${chatLabel}] ${senderName}: ${userInput.slice(0, 100)}${userInput.length > 100 ? '...' : ''}`));
 
     // 处理内置命令
@@ -205,17 +205,17 @@ export class FeishuBot {
           const roomId = isGroup ? chatId : null;
           this.sessionManager.resetSession(roomId, senderId);
         }
-        await this.sendReply(chatId, '对话历史已清除。', messageId);
+        await this.sendReply(chatId, 'Conversation history cleared.', messageId);
         return;
       }
       if (builtinResponse === '状态查询已触发') {
-        const modeLabel = this.isWebUIMode ? 'WebUI 桥接' : '独立';
+        const modeLabel = this.isWebUIMode ? 'WebUI Bridge' : 'Standalone';
         const sessionCount = this.sessionManager?.getActiveSessionCount() ?? 'N/A (WebUI)';
         const status = [
-          `运行模式: ${modeLabel}`,
-          `活跃会话数: ${sessionCount}`,
-          `当前模型: ${this.config.model}`,
-          `工作目录: ${this.config.workingDir}`,
+          `Mode: ${modeLabel}`,
+          `Active sessions: ${sessionCount}`,
+          `Current model: ${this.config.model}`,
+          `Working directory: ${this.config.workingDir}`,
           this.isWebUIMode ? `WebUI Session: ${this.webuiSessionId}` : '',
         ].filter(Boolean).join('\n');
         await this.sendReply(chatId, status, messageId);
@@ -235,7 +235,7 @@ export class FeishuBot {
     }
 
     // 发送 "思考中" 提示
-    await this.sendReply(chatId, '思考中...', messageId);
+    await this.sendReply(chatId, 'Thinking...', messageId);
 
     // 调用 Claude 处理
     try {
@@ -263,11 +263,11 @@ export class FeishuBot {
         }
       }
 
-      console.log(chalk.green(`  ↳ 回复 ${formatted.length} 字 (${chunks.length} 段)`));
+      console.log(chalk.green(`  ↳ Reply ${formatted.length} chars (${chunks.length} chunks)`));
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      console.error(chalk.red(`  ↳ 错误: ${errMsg}`));
-      await this.sendMessage(chatId, `处理出错: ${errMsg}`);
+      console.error(chalk.red(`  ↳ Error: ${errMsg}`));
+      await this.sendMessage(chatId, `Processing error: ${errMsg}`);
     }
   }
 
@@ -284,7 +284,7 @@ export class FeishuBot {
         },
       });
     } catch (err) {
-      console.error(chalk.red('[Error] 发送飞书回复失败:'), err);
+      console.error(chalk.red('[Error] Failed to send Feishu reply:'), err);
     }
   }
 
@@ -302,7 +302,7 @@ export class FeishuBot {
         },
       });
     } catch (err) {
-      console.error(chalk.red('[Error] 发送飞书消息失败:'), err);
+      console.error(chalk.red('[Error] Failed to send Feishu message:'), err);
     }
   }
 
@@ -310,9 +310,9 @@ export class FeishuBot {
    * 启动 Bot
    */
   async start(): Promise<void> {
-    console.log(chalk.cyan('\n飞书 Bot 启动中...\n'));
-    console.log(chalk.gray(`连接模式: ${this.config.connectionMode}`));
-    console.log(chalk.gray(`运行模式: ${this.isWebUIMode ? `WebUI 桥接 (session: ${this.webuiSessionId})` : '独立'}`));
+    console.log(chalk.cyan('\nFeishu Bot starting...\n'));
+    console.log(chalk.gray(`Connection mode: ${this.config.connectionMode}`));
+    console.log(chalk.gray(`Running mode: ${this.isWebUIMode ? `WebUI Bridge (session: ${this.webuiSessionId})` : 'Standalone'}`));
 
     const eventDispatcher = this.createEventDispatcher();
 
@@ -326,7 +326,7 @@ export class FeishuBot {
       });
 
       await this.wsClient.start({ eventDispatcher });
-      console.log(chalk.green('\n✓ WebSocket 长连接已建立'));
+      console.log(chalk.green('\n✓ WebSocket long connection established'));
     } else {
       // HTTP Webhook 模式
       const app = express();
@@ -339,26 +339,26 @@ export class FeishuBot {
 
       await new Promise<void>((resolve) => {
         app.listen(this.config.webhookPort, () => {
-          console.log(chalk.green(`\n✓ Webhook 服务器已启动: http://0.0.0.0:${this.config.webhookPort}${this.config.webhookPath}`));
+          console.log(chalk.green(`\n✓ Webhook server started: http://0.0.0.0:${this.config.webhookPort}${this.config.webhookPath}`));
           resolve();
         });
       });
     }
 
-    console.log(chalk.green('✓ Bot 已启动，等待消息...\n'));
+    console.log(chalk.green('✓ Bot started, waiting for messages...\n'));
   }
 
   /**
    * 停止 Bot
    */
   async stop(): Promise<void> {
-    console.log(chalk.yellow('\n正在停止 Bot...'));
+    console.log(chalk.yellow('\nStopping Bot...'));
     clearInterval(this.dedupeCleanupTimer);
     this.sessionManager?.destroy();
     if (this.wsClient) {
       this.wsClient.close();
     }
-    console.log(chalk.green('Bot 已停止'));
+    console.log(chalk.green('Bot stopped'));
   }
 }
 

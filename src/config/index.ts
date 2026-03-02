@@ -1288,7 +1288,7 @@ export class ConfigManager {
         return JSON.parse(content);
       }
     } catch (error) {
-      console.warn(`加载配置文件失败: ${filePath}`, error);
+      console.warn(`Failed to load config file: ${filePath}`, error);
     }
     return null;
   }
@@ -1553,7 +1553,7 @@ export class ConfigManager {
       this.save(validated);
       return true;
     } catch (error) {
-      console.error('导入配置失败:', error);
+      console.error('Failed to import config:', error);
       return false;
     }
   }
@@ -1757,7 +1757,7 @@ export class ConfigManager {
       // 清理旧的备份文件
       this.cleanOldBackups(backupDir, filename);
     } catch (error) {
-      console.warn(`备份配置失败: ${error}`);
+      console.warn(`Failed to backup config: ${error}`);
     }
   }
 
@@ -1780,7 +1780,7 @@ export class ConfigManager {
         fs.unlinkSync(file.path);
       });
     } catch (error) {
-      console.warn(`清理备份失败: ${error}`);
+      console.warn(`Failed to clean backups: ${error}`);
     }
   }
 
@@ -1814,7 +1814,7 @@ export class ConfigManager {
     const backupPath = path.join(backupDir, backupFilename);
 
     if (!fs.existsSync(backupPath)) {
-      console.error(`备份文件不存在: ${backupPath}`);
+      console.error(`Backup file does not exist: ${backupPath}`);
       return false;
     }
 
@@ -1830,7 +1830,7 @@ export class ConfigManager {
 
       return true;
     } catch (error) {
-      console.error(`恢复备份失败: ${error}`);
+      console.error(`Failed to restore backup: ${error}`);
       return false;
     }
   }
