@@ -197,7 +197,7 @@ async function getDirectoryTree(
     
     return null;
   } catch (error) {
-    console.error(`[File API] 读取目录树失败: ${dirPath}`, error);
+    console.error(`[File API] Failed to read directory tree: ${dirPath}`, error);
     return null;
   }
 }
@@ -276,7 +276,7 @@ router.get('/tree', async (req: Request, res: Response) => {
     
     res.json(tree);
   } catch (error) {
-    console.error('[File API] 获取目录树失败:', error);
+    console.error('[File API] Failed to get directory tree:', error);
     res.status(500).json({
       error: '获取目录树失败',
       message: error instanceof Error ? error.message : '未知错误',
@@ -342,7 +342,7 @@ router.get('/read', async (req: Request, res: Response) => {
     
     res.json(response);
   } catch (error) {
-    console.error('[File API] 读取文件失败:', error);
+    console.error('[File API] Failed to read file:', error);
     res.status(500).json({
       error: '读取文件失败',
       message: error instanceof Error ? error.message : '未知错误',
@@ -403,7 +403,7 @@ router.put('/write', async (req: Request, res: Response) => {
     
     res.json(response);
   } catch (error) {
-    console.error('[File API] 写入文件失败:', error);
+    console.error('[File API] Failed to write file:', error);
     res.status(500).json({
       success: false,
       message: error instanceof Error ? error.message : '未知错误',
@@ -486,7 +486,7 @@ router.post('/rename', async (req: Request, res: Response) => {
       success: true,
     });
   } catch (error) {
-    console.error('[File API] 重命名失败:', error);
+    console.error('[File API] Rename failed:', error);
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : '重命名失败',
@@ -549,7 +549,7 @@ router.post('/delete', async (req: Request, res: Response) => {
       success: true,
     });
   } catch (error) {
-    console.error('[File API] 删除失败:', error);
+    console.error('[File API] Delete failed:', error);
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : '删除失败',
@@ -611,7 +611,7 @@ router.post('/create', async (req: Request, res: Response) => {
       success: true,
     });
   } catch (error) {
-    console.error('[File API] 创建文件失败:', error);
+    console.error('[File API] Failed to create file:', error);
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : '创建文件失败',
@@ -668,7 +668,7 @@ router.post('/mkdir', async (req: Request, res: Response) => {
       success: true,
     });
   } catch (error) {
-    console.error('[File API] 创建目录失败:', error);
+    console.error('[File API] Failed to create directory:', error);
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : '创建目录失败',
@@ -742,7 +742,7 @@ router.post('/copy', async (req: Request, res: Response) => {
       success: true,
     });
   } catch (error) {
-    console.error('[File API] 复制失败:', error);
+    console.error('[File API] Copy failed:', error);
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : '复制失败',
@@ -813,7 +813,7 @@ router.post('/move', async (req: Request, res: Response) => {
       success: true,
     });
   } catch (error) {
-    console.error('[File API] 移动失败:', error);
+    console.error('[File API] Move failed:', error);
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : '移动失败',
@@ -884,7 +884,7 @@ router.post('/reveal', async (req: Request, res: Response) => {
       success: true,
     });
   } catch (error) {
-    console.error('[File API] 打开资源管理器失败:', error);
+    console.error('[File API] Failed to open file manager:', error);
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : '打开资源管理器失败',
@@ -947,7 +947,7 @@ router.get('/preview', async (req: Request, res: Response) => {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(content);
   } catch (error) {
-    console.error('[File API] 预览文件失败:', error);
+    console.error('[File API] Failed to preview file:', error);
     res.status(500).send('预览文件失败');
   }
 });
@@ -1043,7 +1043,7 @@ async function searchInDirectory(
       }
     }
   } catch (error) {
-    console.error(`[Search] 搜索目录失败: ${dirPath}`, error);
+    console.error(`[Search] Failed to search directory: ${dirPath}`, error);
   }
 }
 
@@ -1115,7 +1115,7 @@ async function searchInFile(
 
     return matches;
   } catch (error) {
-    console.error(`[Search] 搜索文件失败: ${filePath}`, error);
+    console.error(`[Search] Failed to search file: ${filePath}`, error);
     return [];
   }
 }
@@ -1359,7 +1359,7 @@ router.post('/search', async (req: Request, res: Response) => {
         res.json(rgResult);
         return;
       } catch (err) {
-        console.warn('[File API] ripgrep 搜索失败，降级为 JS 搜索:', err);
+        console.warn('[File API] ripgrep search failed, falling back to JS search:', err);
       }
     }
 
@@ -1391,7 +1391,7 @@ router.post('/search', async (req: Request, res: Response) => {
 
     res.json(response);
   } catch (error) {
-    console.error('[File API] 搜索失败:', error);
+    console.error('[File API] Search failed:', error);
     res.status(500).json({
       error: '搜索失败',
       message: error instanceof Error ? error.message : '未知错误',
@@ -1505,7 +1505,7 @@ router.post('/replace', async (req: Request, res: Response) => {
 
     res.json(response);
   } catch (error) {
-    console.error('[File API] 替换失败:', error);
+    console.error('[File API] Replace failed:', error);
     res.status(500).json({
       success: false,
       message: error instanceof Error ? error.message : '未知错误',
@@ -1568,7 +1568,7 @@ router.get('/preview', async (req: Request, res: Response) => {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(content);
   } catch (error) {
-    console.error('[File API] 预览文件失败:', error);
+    console.error('[File API] Failed to preview file:', error);
     res.status(500).send('预览文件失败');
   }
 });
@@ -1693,13 +1693,13 @@ router.get('/download', async (req: Request, res: Response) => {
     const stream = createReadStream(resolvedPath);
     stream.pipe(res);
     stream.on('error', (err) => {
-      console.error('[File API] 下载文件流错误:', err);
+      console.error('[File API] File download stream error:', err);
       if (!res.headersSent) {
         res.status(500).json({ error: '读取文件失败' });
       }
     });
   } catch (error) {
-    console.error('[File API] 下载文件失败:', error);
+    console.error('[File API] Failed to download file:', error);
     res.status(500).json({ error: '下载文件失败' });
   }
 });

@@ -154,7 +154,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
         offset,
       });
     } catch (error) {
-      console.error('[API] 获取会话列表失败:', error);
+      console.error('[API] Failed to get sessions list:', error);
       res.status(500).json({
         error: '获取会话列表失败',
         message: error instanceof Error ? error.message : '未知错误',
@@ -194,7 +194,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
         messages: session.chatHistory || [],
       });
     } catch (error) {
-      console.error('[API] 获取会话详情失败:', error);
+      console.error('[API] Failed to get session details:', error);
       res.status(500).json({
         error: '获取会话详情失败',
         message: error instanceof Error ? error.message : '未知错误',
@@ -222,7 +222,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
         });
       }
     } catch (error) {
-      console.error('[API] 删除会话失败:', error);
+      console.error('[API] Failed to delete session:', error);
       res.status(500).json({
         success: false,
         error: '删除会话失败',
@@ -260,7 +260,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
         });
       }
     } catch (error) {
-      console.error('[API] 重命名会话失败:', error);
+      console.error('[API] Failed to rename session:', error);
       res.status(500).json({
         success: false,
         error: '重命名会话失败',
@@ -295,7 +295,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
 
       res.send(content);
     } catch (error) {
-      console.error('[API] 导出会话失败:', error);
+      console.error('[API] Failed to export session:', error);
       res.status(500).json({
         error: '导出会话失败',
         message: error instanceof Error ? error.message : '未知错误',
@@ -324,7 +324,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
         });
       }
     } catch (error) {
-      console.error('[API] 恢复会话失败:', error);
+      console.error('[API] Failed to restore session:', error);
       res.status(500).json({
         success: false,
         error: '恢复会话失败',
@@ -354,7 +354,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
         tools,
       });
     } catch (error) {
-      console.error('[API] 获取工具过滤配置失败:', error);
+      console.error('[API] Failed to get tool filter config:', error);
       res.status(500).json({
         error: '获取工具过滤配置失败',
         message: error instanceof Error ? error.message : '未知错误',
@@ -388,7 +388,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
         config,
       });
     } catch (error) {
-      console.error('[API] 更新工具过滤配置失败:', error);
+      console.error('[API] Failed to update tool filter config:', error);
       res.status(500).json({
         success: false,
         error: '更新工具过滤配置失败',
@@ -427,7 +427,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
         disabled: tools.filter(t => !t.enabled).length,
       });
     } catch (error) {
-      console.error('[API] 获取可用工具列表失败:', error);
+      console.error('[API] Failed to get available tools list:', error);
       res.status(500).json({
         error: '获取可用工具列表失败',
         message: error instanceof Error ? error.message : '未知错误',
@@ -443,7 +443,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
       const status = await apiManager.getStatus();
       res.json(status);
     } catch (error) {
-      console.error('[API] 获取API状态失败:', error);
+      console.error('[API] Failed to get API status:', error);
       res.status(500).json({
         error: '获取API状态失败',
         message: error instanceof Error ? error.message : '未知错误',
@@ -457,7 +457,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
       const result = await apiManager.testConnection();
       res.json(result);
     } catch (error) {
-      console.error('[API] API测试失败:', error);
+      console.error('[API] API test failed:', error);
       res.status(500).json({
         error: 'API测试失败',
         message: error instanceof Error ? error.message : '未知错误',
@@ -471,7 +471,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
       const info = apiManager.getProviderInfo();
       res.json(info);
     } catch (error) {
-      console.error('[API] 获取Provider信息失败:', error);
+      console.error('[API] Failed to get provider info:', error);
       res.status(500).json({
         error: '获取Provider信息失败',
         message: error instanceof Error ? error.message : '未知错误',
@@ -485,7 +485,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
       const status = apiManager.getTokenStatus();
       res.json(status);
     } catch (error) {
-      console.error('[API] 获取Token状态失败:', error);
+      console.error('[API] Failed to get token status:', error);
       res.status(500).json({
         error: '获取Token状态失败',
         message: error instanceof Error ? error.message : '未知错误',
@@ -508,7 +508,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
         ...result,
       });
     } catch (error) {
-      console.error('[API] 获取系统提示失败:', error);
+      console.error('[API] Failed to get system prompt:', error);
       res.status(500).json({
         success: false,
         error: '获取系统提示失败',
@@ -547,7 +547,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
         });
       }
     } catch (error) {
-      console.error('[API] 更新系统提示失败:', error);
+      console.error('[API] Failed to update system prompt:', error);
       res.status(500).json({
         success: false,
         error: '更新系统提示失败',
@@ -570,7 +570,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
         total: servers.length,
       });
     } catch (error) {
-      console.error('[API] 获取 MCP 服务器列表失败:', error);
+      console.error('[API] Failed to get MCP servers list:', error);
       res.status(500).json({
         error: '获取 MCP 服务器列表失败',
         message: error instanceof Error ? error.message : '未知错误',
@@ -606,7 +606,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
         });
       }
     } catch (error) {
-      console.error('[API] 添加 MCP 服务器失败:', error);
+      console.error('[API] Failed to add MCP server:', error);
       res.status(500).json({
         success: false,
         error: '添加 MCP 服务器失败',
@@ -636,7 +636,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
         });
       }
     } catch (error) {
-      console.error('[API] 删除 MCP 服务器失败:', error);
+      console.error('[API] Failed to delete MCP server:', error);
       res.status(500).json({
         success: false,
         error: '删除 MCP 服务器失败',
@@ -668,7 +668,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
         });
       }
     } catch (error) {
-      console.error('[API] 切换 MCP 服务器失败:', error);
+      console.error('[API] Failed to toggle MCP server:', error);
       res.status(500).json({
         success: false,
         error: '切换 MCP 服务器失败',
@@ -702,7 +702,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
         formattedText,
       });
     } catch (error) {
-      console.error('[API] 运行诊断失败:', error);
+      console.error('[API] Failed to run diagnostics:', error);
       res.status(500).json({
         success: false,
         error: '运行诊断失败',
@@ -736,7 +736,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
         formattedText,
       });
     } catch (error) {
-      console.error('[API] 获取诊断报告失败:', error);
+      console.error('[API] Failed to get diagnostic report:', error);
       res.status(500).json({
         success: false,
         error: '获取诊断报告失败',
@@ -783,7 +783,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
         },
       });
     } catch (error) {
-      console.error('[API] 获取检查点列表失败:', error);
+      console.error('[API] Failed to get checkpoints list:', error);
       res.status(500).json({
         error: '获取检查点列表失败',
         message: error instanceof Error ? error.message : '未知错误',
@@ -818,7 +818,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
         totalSize: checkpoint.files.reduce((sum, f) => sum + f.size, 0),
       });
     } catch (error) {
-      console.error('[API] 创建检查点失败:', error);
+      console.error('[API] Failed to create checkpoint:', error);
       res.status(500).json({
         error: '创建检查点失败',
         message: error instanceof Error ? error.message : '未知错误',
@@ -845,7 +845,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
         errors: result.errors,
       });
     } catch (error) {
-      console.error('[API] 恢复检查点失败:', error);
+      console.error('[API] Failed to restore checkpoint:', error);
       res.status(500).json({
         error: '恢复检查点失败',
         message: error instanceof Error ? error.message : '未知错误',
@@ -873,7 +873,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
         });
       }
     } catch (error) {
-      console.error('[API] 删除检查点失败:', error);
+      console.error('[API] Failed to delete checkpoint:', error);
       res.status(500).json({
         error: '删除检查点失败',
         message: error instanceof Error ? error.message : '未知错误',
@@ -900,7 +900,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
         stats,
       });
     } catch (error) {
-      console.error('[API] 比较检查点失败:', error);
+      console.error('[API] Failed to compare checkpoint:', error);
       res.status(500).json({
         error: '比较检查点失败',
         message: error instanceof Error ? error.message : '未知错误',
@@ -919,7 +919,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
         message: `已清除 ${count} 个检查点`,
       });
     } catch (error) {
-      console.error('[API] 清除检查点失败:', error);
+      console.error('[API] Failed to cleanup checkpoints:', error);
       res.status(500).json({
         error: '清除检查点失败',
         message: error instanceof Error ? error.message : '未知错误',
@@ -939,7 +939,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
         total: plugins.length,
       });
     } catch (error) {
-      console.error('[API] 获取插件列表失败:', error);
+      console.error('[API] Failed to get plugins list:', error);
       res.status(500).json({
         error: '获取插件列表失败',
         message: error instanceof Error ? error.message : '未知错误',
@@ -966,7 +966,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
         plugin,
       });
     } catch (error) {
-      console.error('[API] 获取插件详情失败:', error);
+      console.error('[API] Failed to get plugin details:', error);
       res.status(500).json({
         error: '获取插件详情失败',
         message: error instanceof Error ? error.message : '未知错误',
@@ -995,7 +995,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
         });
       }
     } catch (error) {
-      console.error('[API] 启用插件失败:', error);
+      console.error('[API] Failed to enable plugin:', error);
       res.status(500).json({
         success: false,
         error: '启用插件失败',
@@ -1025,7 +1025,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
         });
       }
     } catch (error) {
-      console.error('[API] 禁用插件失败:', error);
+      console.error('[API] Failed to disable plugin:', error);
       res.status(500).json({
         success: false,
         error: '禁用插件失败',
@@ -1055,7 +1055,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
         });
       }
     } catch (error) {
-      console.error('[API] 卸载插件失败:', error);
+      console.error('[API] Failed to uninstall plugin:', error);
       res.status(500).json({
         success: false,
         error: '卸载插件失败',
@@ -1102,7 +1102,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
         isDemoMode: demoMode,
       });
     } catch (error) {
-      console.error('[API] 获取认证状态失败:', error);
+      console.error('[API] Failed to get auth status:', error);
       res.status(500).json({
         error: '获取认证状态失败',
         message: error instanceof Error ? error.message : '未知错误',
@@ -1139,7 +1139,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
         });
       }
     } catch (error) {
-      console.error('[API] 设置API密钥失败:', error);
+      console.error('[API] Failed to set API key:', error);
       res.status(500).json({
         success: false,
         error: '设置API密钥失败',
@@ -1160,7 +1160,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
         status,
       });
     } catch (error) {
-      console.error('[API] 清除认证失败:', error);
+      console.error('[API] Failed to clear auth:', error);
       res.status(500).json({
         success: false,
         error: '清除认证失败',
@@ -1189,7 +1189,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
         message: valid ? 'API密钥有效' : 'API密钥无效',
       });
     } catch (error) {
-      console.error('[API] 验证API密钥失败:', error);
+      console.error('[API] Failed to validate API key:', error);
       res.status(500).json({
         valid: false,
         error: '验证API密钥失败',
