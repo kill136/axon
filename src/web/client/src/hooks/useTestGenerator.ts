@@ -237,7 +237,7 @@ export function useTestGenerator(options: UseTestGeneratorOptions): UseTestGener
         alert(`测试生成失败: ${response.error || '未知错误'}`);
       }
     } catch (error: any) {
-      console.error('[useTestGenerator] 生成失败:', error);
+      console.error('[useTestGenerator] Generation failed:', error);
       alert(`测试生成异常: ${error.message || '未知错误'}`);
     } finally {
       setLoading(false);
@@ -254,7 +254,7 @@ export function useTestGenerator(options: UseTestGeneratorOptions): UseTestGener
       await navigator.clipboard.writeText(result.testCode);
       alert('测试代码已复制到剪贴板');
     } catch (error: any) {
-      console.error('[useTestGenerator] 复制失败:', error);
+      console.error('[useTestGenerator] Copy failed:', error);
       alert(`复制失败: ${error.message || '未知错误'}`);
     }
   }, [result]);

@@ -26,7 +26,7 @@ export class ApiManager {
       const creds = webAuth.getCredentials();
 
       if (!creds.apiKey && !creds.authToken) {
-        console.warn('[ApiManager] 未配置认证，请在设置页面配置 API Key 或登录 OAuth');
+        console.warn('[ApiManager] No authentication configured, please configure API Key or login with OAuth in settings');
         return;
       }
 
@@ -36,7 +36,7 @@ export class ApiManager {
         baseUrl: creds.baseUrl,
       });
     } catch (error) {
-      console.error('[ApiManager] 初始化客户端失败:', error);
+      console.error('[ApiManager] Failed to initialize client:', error);
     }
   }
 
@@ -116,7 +116,7 @@ export class ApiManager {
 
       return allModels;
     } catch (error) {
-      console.error('[ApiManager] 获取模型列表失败:', error);
+      console.error('[ApiManager] Failed to get model list:', error);
       return [];
     }
   }
@@ -160,7 +160,7 @@ export class ApiManager {
         tokenStatus,
       };
     } catch (error) {
-      console.error('[ApiManager] 获取API状态失败:', error);
+      console.error('[ApiManager] Failed to get API status:', error);
       return {
         connected: false,
         provider: 'anthropic',
@@ -220,7 +220,7 @@ export class ApiManager {
 
       return info;
     } catch (error) {
-      console.error('[ApiManager] 获取Provider信息失败:', error);
+      console.error('[ApiManager] Failed to get provider info:', error);
       return {
         type: 'anthropic',
         name: 'Anthropic',

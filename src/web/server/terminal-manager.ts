@@ -10,7 +10,7 @@ let pty: typeof import('node-pty') | null = null;
 try {
   pty = await import('node-pty');
 } catch (err) {
-  console.warn('[TerminalManager] node-pty 不可用，将使用 child_process 回退方案');
+  console.warn('[TerminalManager] node-pty unavailable, using child_process fallback');
 }
 
 import { spawn, type ChildProcess } from 'child_process';
@@ -72,7 +72,7 @@ export class TerminalManager {
     }
   ): boolean {
     if (this.sessions.has(id)) {
-      console.warn(`[TerminalManager] 会话 ${id} 已存在`);
+      console.warn(`[TerminalManager] Session ${id} already exists`);
       return false;
     }
 
@@ -119,10 +119,10 @@ export class TerminalManager {
 
         session.pty = ptyProcess;
         this.sessions.set(id, session);
-        console.log(`[TerminalManager] PTY 会话已创建: ${id}, shell=${shell}, cwd=${cwd}`);
+        console.log(`[TerminalManager] PTY session created: ${id}, shell=${shell}, cwd=${cwd}`);
         return true;
       } catch (err) {
-        console.error(`[TerminalManager] 创建 PTY 失败:`, err);
+        console.error(`[TerminalManager] Failed to create PTY:`, err);
         // 回退到 child_process
       }
     }
@@ -161,10 +161,10 @@ export class TerminalManager {
 
       session.process = childProcess;
       this.sessions.set(id, session);
-      console.log(`[TerminalManager] child_process 会话已创建: ${id}, shell=${shell}`);
+      console.log(`[TerminalManager] child_process session created: ${id}, shell=${shell}`);
       return true;
     } catch (err) {
-      console.error(`[TerminalManager] 创建终端失败:`, err);
+      console.error(`[TerminalManager] Failed to create terminal:`, err);
       return false;
     }
   }
@@ -204,7 +204,7 @@ export class TerminalManager {
         session.pty.resize(cols, rows);
         return true;
       } catch (err) {
-        console.error(`[TerminalManager] 调整大小失败:`, err);
+        console.error(`[TerminalManager] Failed to resize:`, err);
         return false;
       }
     }
@@ -229,7 +229,7 @@ export class TerminalManager {
     }
 
     this.sessions.delete(id);
-    console.log(`[TerminalManager] 会话已销毁: ${id}`);
+    console.log(`[TerminalManager] Session destroyed: ${id}`);
     return true;
   }
 

@@ -163,26 +163,26 @@ const program = new Command();
 
 program
   .name('claude-proxy')
-  .description('Anthropic API 透传代理 - 共享你的 Claude 订阅额度给其他设备')
+  .description('Anthropic API Proxy - Share your Claude subscription quota with other devices')
   .version(VERSION_BASE)
-  .option('-p, --port <port>', '代理服务器端口', process.env.PROXY_PORT || '8082')
-  .option('-H, --host <host>', '监听地址 (0.0.0.0 允许外部访问)', process.env.PROXY_HOST || '0.0.0.0')
+  .option('-p, --port <port>', 'Proxy server port', process.env.PROXY_PORT || '8082')
+  .option('-H, --host <host>', 'Listen address (0.0.0.0 allows external access)', process.env.PROXY_HOST || '0.0.0.0')
   .option(
     '-k, --proxy-key <key>',
-    '客户端连接代理时使用的 Key (不设置则自动生成)',
+    'Key for clients to connect to proxy (auto-generated if not set)',
     process.env.PROXY_API_KEY,
   )
   .option(
     '--anthropic-key <key>',
-    '手动指定 Anthropic API Key (覆盖自动检测)',
+    'Manually specify Anthropic API Key (overrides auto-detection)',
   )
   .option(
     '--auth-token <token>',
-    '手动指定 OAuth Access Token (覆盖自动检测)',
+    'Manually specify OAuth Access Token (overrides auto-detection)',
   )
   .option(
     '--target <url>',
-    '转发目标地址',
+    'Forward target address',
     'https://api.anthropic.com',
   )
   .action(async (options) => {
@@ -199,26 +199,26 @@ program
       // 手动指定 API Key
       authMode = 'api-key';
       anthropicApiKey = options.anthropicKey;
-      authSource = '命令行参数 --anthropic-key';
+      authSource = 'Command-line argument --anthropic-key';
     } else if (options.authToken) {
       // 手动指定 OAuth Token
       authMode = 'oauth';
       oauthAccessToken = options.authToken;
       oauthRefreshToken = '';
       oauthExpiresAt = Date.now() + 3600 * 1000;
-      authSource = '命令行参数 --auth-token';
+      authSource = 'Command-line argument --auth-token';
     } else {
       // 自动检测
       const detected = detectLocalAuth();
       if (!detected) {
         console.error(
-          '错误: 未检测到本地认证信息。\n\n' +
-          '请确保以下之一：\n' +
-          '  1. 已通过 claude 命令登录（订阅用户）\n' +
-          '     → 会自动读取 ~/.axon/.credentials.json\n' +
-          '  2. 设置环境变量 ANTHROPIC_API_KEY\n' +
-          '  3. 使用 --anthropic-key 手动指定 API Key\n' +
-          '  4. 使用 --auth-token 手动指定 OAuth Token\n',
+          'Error: No local authentication detected.\n\n' +
+          'Please ensure one of the following:\n' +
+          '  1. Logged in via claude command (subscription user)\n' +
+          '     → Will auto-read ~/.axon/.credentials.json\n' +
+          '  2. Set environment variable ANTHROPIC_API_KEY\n' +
+          '  3. Use --anthropic-key to manually specify API Key\n' +
+          '  4. Use --auth-token to manually specify OAuth Token\n',
         );
         process.exit(1);
       }
@@ -244,14 +244,14 @@ program
     const host = options.host;
     const targetBaseUrl = options.target;
 
-    const modeLabel = authMode === 'oauth' ? 'OAuth 订阅' : 'API Key';
+    const modeLabel = authMode === 'oauth' ? 'OAuth Subscription' : 'API Key';
 
     console.log(`
 ╔═══════════════════════════════════════════════════════════════╗
 ║                                                               ║
-║   Anthropic API 透传代理服务器                                ║
+║   Anthropic API Proxy Server                                ║
 ║                                                               ║
-║   共享你的 Claude ${modeLabel} 额度给其他设备              ║
+║   Share your Claude ${modeLabel} quota with other devices  ║
 ║                                                               ║
 ╚═══════════════════════════════════════════════════════════════╝
 `);
@@ -272,25 +272,25 @@ program
 
       await proxy.start();
 
-      console.log(`代理服务器已启动!`);
+      console.log(`Proxy server started!`);
       console.log(`─────────────────────────────────────────────────`);
-      console.log(`  认证模式:   ${modeLabel}`);
-      console.log(`  认证来源:   ${authSource}`);
-      console.log(`  监听地址:   http://${host}:${port}`);
-      console.log(`  转发目标:   ${targetBaseUrl}`);
-      console.log(`  代理 Key:   ${proxyApiKey}`);
+      console.log(`  Auth mode:   ${modeLabel}`);
+      console.log(`  Auth source:   ${authSource}`);
+      console.log(`  Listen address:   http://${host}:${port}`);
+      console.log(`  Target:   ${targetBaseUrl}`);
+      console.log(`  Proxy Key:   ${proxyApiKey}`);
 
       if (authMode === 'oauth' && proxy.oauthState) {
         const remainMin = Math.max(0, Math.round((proxy.oauthState.expiresAt - Date.now()) / 60000));
-        console.log(`  Token状态:  有效 (${remainMin} 分钟后自动刷新)`);
+        console.log(`  Token status:  Valid (auto-refresh in ${remainMin} min)`);
       }
 
-      console.log(`  健康检查:   http://${host}:${port}/health`);
-      console.log(`  请求统计:   http://${host}:${port}/stats`);
+      console.log(`  Health check:   http://${host}:${port}/health`);
+      console.log(`  Stats:   http://${host}:${port}/stats`);
       console.log(`─────────────────────────────────────────────────`);
 
-      const displayHost = host === '0.0.0.0' ? '<你的IP地址>' : host;
-      console.log(`\n客户端使用方法 (在其他电脑上执行):\n`);
+      const displayHost = host === '0.0.0.0' ? '<your-ip-address>' : host;
+      console.log(`\nClient usage (run on other machines):\n`);
       console.log(`  # Linux / macOS`);
       console.log(`  export ANTHROPIC_API_KEY="${proxyApiKey}"`);
       console.log(`  export ANTHROPIC_BASE_URL="http://${displayHost}:${port}"`);
@@ -303,13 +303,13 @@ program
       console.log(`  set ANTHROPIC_API_KEY=${proxyApiKey}`);
       console.log(`  set ANTHROPIC_BASE_URL=http://${displayHost}:${port}`);
       console.log(`  claude\n`);
-      console.log(`按 Ctrl+C 停止代理服务器\n`);
+      console.log(`Press Ctrl+C to stop proxy server\n`);
 
       // 优雅退出
       const shutdown = async () => {
-        console.log('\n正在关闭代理服务器...');
+        console.log('\nShutting down proxy server...');
         await proxy.stop();
-        console.log('代理服务器已停止。');
+        console.log('Proxy server stopped.');
         process.exit(0);
       };
 
@@ -317,7 +317,7 @@ program
       process.on('SIGTERM', shutdown);
 
     } catch (error: any) {
-      console.error('启动失败:', error.message);
+      console.error('Failed to start:', error.message);
       process.exit(1);
     }
   });

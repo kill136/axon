@@ -100,7 +100,7 @@ export function useTimeMachine(options: UseTimeMachineOptions): UseTimeMachineRe
     const currentLanguage = languageRef.current;
 
     if (!currentFilePath || !currentContent) {
-      console.warn('[Time Machine] 文件路径或内容为空');
+      console.warn('[Time Machine] File path or content is empty');
       return;
     }
 
@@ -133,7 +133,7 @@ export function useTimeMachine(options: UseTimeMachineOptions): UseTimeMachineRe
       const filename = currentFilePath.split('/').pop() || 'file.txt';
       const lang = getMonacoLanguage(filename);
 
-      console.log(`[Time Machine] 开始分析: ${currentFilePath}, 语言: ${lang}${startLine ? `, 行号: ${startLine}-${endLine}` : ''}`);
+      console.log(`[Time Machine] Starting analysis: ${currentFilePath}, language: ${lang}${startLine ? `, lines: ${startLine}-${endLine}` : ''}`);
 
       const response = await aiTimeMachineApi.analyze({
         filePath: currentFilePath,
@@ -145,14 +145,14 @@ export function useTimeMachine(options: UseTimeMachineOptions): UseTimeMachineRe
       });
 
       if (response.success && response.history) {
-        console.log(`[Time Machine] 分析完成，${response.history.commits.length} 个提交${response.fromCache ? ' (缓存)' : ''}`);
+        console.log(`[Time Machine] Analysis complete, ${response.history.commits.length} commits${response.fromCache ? ' (cached)' : ''}`);
         setResult(response.history);
       } else {
-        console.error('[Time Machine] 分析失败:', response.error);
+        console.error('[Time Machine] Analysis failed:', response.error);
         setResult(null);
       }
     } catch (error: any) {
-      console.error('[Time Machine] 分析异常:', error);
+      console.error('[Time Machine] Analysis error:', error);
       setResult(null);
     } finally {
       setLoading(false);

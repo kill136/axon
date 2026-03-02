@@ -113,13 +113,13 @@ export class CheckpointManager {
 
           this.checkpoints.set(checkpoint.id, checkpoint);
         } catch (error) {
-          console.error(`[CheckpointManager] 加载检查点 ${file} 失败:`, error);
+          console.error(`[CheckpointManager] Failed to load checkpoint ${file}:`, error);
         }
       }
 
-      console.log(`[CheckpointManager] 已加载 ${this.checkpoints.size} 个检查点`);
+      console.log(`[CheckpointManager] Loaded ${this.checkpoints.size} checkpoints`);
     } catch (error) {
-      console.error('[CheckpointManager] 加载检查点目录失败:', error);
+      console.error('[CheckpointManager] Failed to load checkpoints directory:', error);
     }
   }
 
@@ -156,7 +156,7 @@ export class CheckpointManager {
       const absolutePath = path.resolve(filePath);
 
       if (!fs.existsSync(absolutePath)) {
-        console.warn(`[CheckpointManager] 文件不存在: ${absolutePath}`);
+        console.warn(`[CheckpointManager] File does not exist: ${absolutePath}`);
         return null;
       }
 
@@ -172,7 +172,7 @@ export class CheckpointManager {
         mtime: stats.mtimeMs,
       };
     } catch (error) {
-      console.error(`[CheckpointManager] 读取文件 ${filePath} 失败:`, error);
+      console.error(`[CheckpointManager] Failed to read file ${filePath}:`, error);
       return null;
     }
   }
@@ -214,7 +214,7 @@ export class CheckpointManager {
     this.checkpoints.set(id, checkpoint);
     this.saveCheckpointToDisk(checkpoint);
 
-    console.log(`[CheckpointManager] 创建检查点: ${id} (${files.length} 个文件)`);
+    console.log(`[CheckpointManager] Created checkpoint: ${id} (${files.length} files)`);
 
     return checkpoint;
   }
@@ -312,9 +312,9 @@ export class CheckpointManager {
         fs.writeFileSync(file.path, file.content, 'utf-8');
         restored.push(file.path);
 
-        console.log(`[CheckpointManager] 恢复文件: ${file.path}`);
+        console.log(`[CheckpointManager] Restoring file: ${file.path}`);
       } catch (error) {
-        console.error(`[CheckpointManager] 恢复文件 ${file.path} 失败:`, error);
+        console.error(`[CheckpointManager] Failed to restore file ${file.path}:`, error);
         failed.push(file.path);
         errors.push({
           path: file.path,
@@ -351,7 +351,7 @@ export class CheckpointManager {
     this.checkpoints.delete(id);
     this.deleteCheckpointFromDisk(id);
 
-    console.log(`[CheckpointManager] 删除检查点: ${id}`);
+    console.log(`[CheckpointManager] Deleted checkpoint: ${id}`);
 
     return true;
   }
@@ -369,7 +369,7 @@ export class CheckpointManager {
 
     this.checkpoints.clear();
 
-    console.log(`[CheckpointManager] 清除所有检查点: ${count} 个`);
+    console.log(`[CheckpointManager] Cleared all checkpoints: ${count}`);
 
     return count;
   }
@@ -418,7 +418,7 @@ export class CheckpointManager {
           });
         }
       } catch (error) {
-        console.error(`[CheckpointManager] 比较文件 ${checkpointFile.path} 失败:`, error);
+        console.error(`[CheckpointManager] Failed to compare file ${checkpointFile.path}:`, error);
       }
     }
 

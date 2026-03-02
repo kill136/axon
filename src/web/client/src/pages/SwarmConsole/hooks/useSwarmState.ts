@@ -94,13 +94,13 @@ export function useSwarmState(options: UseSwarmStateOptions): UseSwarmStateRetur
           if (newPlan && prev.executionPlan) {
             // 如果执行计划 ID 变化，说明是新的执行
             if (newPlan.id !== prev.executionPlan.id) {
-              console.log('[SwarmState] 检测到新执行，清空旧的任务日志状态');
+              console.log('[SwarmState] New execution detected, clearing old task log state');
               newTaskLogs = {};
               newTaskStreams = {};
             }
           } else if (newPlan && !prev.executionPlan) {
             // 从无执行计划到有执行计划，也清空旧状态
-            console.log('[SwarmState] 新的执行计划，清空任务日志状态');
+            console.log('[SwarmState] New execution plan, clearing task log state');
             newTaskLogs = {};
             newTaskStreams = {};
           }
@@ -109,7 +109,7 @@ export function useSwarmState(options: UseSwarmStateOptions): UseSwarmStateRetur
           let newVerification = prev.verification;
           if ('verification' in message.payload && message.payload.verification) {
             const v = message.payload.verification as { status: string; e2eTaskId?: string; result?: any };
-            console.log(`[SwarmState] 从服务器恢复验收测试状态: ${v.status}, e2eTaskId=${v.e2eTaskId}`);
+            console.log(`[SwarmState] Restoring acceptance test state from server: ${v.status}, e2eTaskId=${v.e2eTaskId}`);
             newVerification = {
               status: v.status as any,
               e2eTaskId: v.e2eTaskId,
@@ -127,7 +127,7 @@ export function useSwarmState(options: UseSwarmStateOptions): UseSwarmStateRetur
               systemPrompt?: string;
               lastUpdated: string;
             };
-            console.log(`[SwarmState] 从服务器恢复 LeadAgent 状态: phase=${la.phase}, stream=${la.stream.length} blocks, events=${la.events.length}`);
+            console.log(`[SwarmState] Restoring LeadAgent state from server: phase=${la.phase}, stream=${la.stream.length} blocks, events=${la.events.length}`);
             newLeadAgent = {
               phase: la.phase as LeadAgentPhase,
               stream: la.stream,
@@ -174,7 +174,7 @@ export function useSwarmState(options: UseSwarmStateOptions): UseSwarmStateRetur
           // v9.0: 处理动态新增任务
           if ((message.payload as any).action === 'add' && (message.payload as any).task) {
             const newTask = (message.payload as any).task;
-            console.log(`[SwarmState] 动态新增任务: ${newTask.id} - ${newTask.name}`);
+            console.log(`[SwarmState] Dynamically adding task: ${newTask.id} - ${newTask.name}`);
 
             if (prev.executionPlan) {
               // 检查是否已存在（避免重复）
@@ -394,7 +394,7 @@ export function useSwarmState(options: UseSwarmStateOptions): UseSwarmStateRetur
         setState(prev => {
           const { taskId, streamType, content, toolName, toolInput, toolResult, toolError, timestamp } = message.payload;
           if (!taskId) {
-            console.warn('[SwarmState] ⚠️ worker_stream 没有 taskId，消息被丢弃');
+            console.warn('[SwarmState] ⚠️ worker_stream missing taskId, message discarded');
             return prev;
           }
 
@@ -538,7 +538,7 @@ export function useSwarmState(options: UseSwarmStateOptions): UseSwarmStateRetur
           if (prev.conflicts.conflicts.some(c => c.id === conflict.id)) {
             return prev;
           }
-          console.log(`[SwarmState] 🔴 新增冲突: ${conflict.id}, 任务: ${conflict.taskName}`);
+          console.log(`[SwarmState] 🔴 New conflict: ${conflict.id}, task: ${conflict.taskName}`);
           return {
             ...prev,
             conflicts: {
@@ -552,7 +552,7 @@ export function useSwarmState(options: UseSwarmStateOptions): UseSwarmStateRetur
       case 'conflict:resolved':
         // v3.5: 冲突已解决
         setState(prev => {
-          console.log(`[SwarmState] ✅ 冲突已解决: ${message.payload.conflictId}`);
+          console.log(`[SwarmState] ✅ Conflict resolved: ${message.payload.conflictId}`);
           return {
             ...prev,
             conflicts: {
@@ -582,7 +582,7 @@ export function useSwarmState(options: UseSwarmStateOptions): UseSwarmStateRetur
 
       case 'task:interject_success':
         // v4.5: 用户插嘴成功
-        console.log(`[SwarmState] ✅ 插嘴成功: 任务 ${message.payload.taskId}`);
+        console.log(`[SwarmState] ✅ Interruption successful: task ${message.payload.taskId}`);
         setState(prev => ({
           ...prev,
           interjectStatus: {
@@ -603,7 +603,7 @@ export function useSwarmState(options: UseSwarmStateOptions): UseSwarmStateRetur
 
       case 'task:interject_failed':
         // v4.5: 用户插嘴失败
-        console.log(`[SwarmState] ❌ 插嘴失败: 任务 ${message.payload.taskId}, 原因: ${message.payload.error}`);
+        console.log(`[SwarmState] ❌ Interruption failed: task ${message.payload.taskId}, reason: ${message.payload.error}`);
         setState(prev => ({
           ...prev,
           interjectStatus: {
@@ -624,7 +624,7 @@ export function useSwarmState(options: UseSwarmStateOptions): UseSwarmStateRetur
 
       case 'lead:interject_success':
         // v9.2: LeadAgent 插嘴成功
-        console.log(`[SwarmState] ✅ LeadAgent 插嘴成功`);
+        console.log(`[SwarmState] ✅ LeadAgent interruption successful`);
         setState(prev => ({
           ...prev,
           leadInterjectStatus: {
@@ -640,7 +640,7 @@ export function useSwarmState(options: UseSwarmStateOptions): UseSwarmStateRetur
 
       case 'lead:interject_failed':
         // v9.2: LeadAgent 插嘴失败
-        console.log(`[SwarmState] ❌ LeadAgent 插嘴失败: ${message.payload.error}`);
+        console.log(`[SwarmState] ❌ LeadAgent interruption failed: ${message.payload.error}`);
         setState(prev => ({
           ...prev,
           leadInterjectStatus: {
@@ -981,7 +981,7 @@ export function useSwarmState(options: UseSwarmStateOptions): UseSwarmStateRetur
         totalStreams: response.totalStreams,
       };
     } catch (err) {
-      console.error('[useSwarmState] 加载历史日志失败:', err);
+      console.error('[useSwarmState] Failed to load history logs:', err);
       return { success: false, error: err instanceof Error ? err.message : '未知错误' };
     }
   }, []);
@@ -1007,7 +1007,7 @@ export function useSwarmState(options: UseSwarmStateOptions): UseSwarmStateRetur
 
       return { success: true };
     } catch (err) {
-      console.error('[useSwarmState] 清空任务日志失败:', err);
+      console.error('[useSwarmState] Failed to clear task logs:', err);
       return { success: false, error: err instanceof Error ? err.message : '未知错误' };
     }
   }, []);

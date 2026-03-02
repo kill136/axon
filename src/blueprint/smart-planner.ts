@@ -353,7 +353,7 @@ export class SmartPlanner extends EventEmitter {
       } else if (event.type === 'tool_result' && event.result) {
         extracted = { ...extracted, ...event.result };
       } else if (event.type === 'error') {
-        console.error('[SmartPlanner] AI 分析失败:', event.error);
+        console.error('[SmartPlanner] AI analysis failed:', event.error);
       }
     }
 
@@ -450,7 +450,7 @@ export class SmartPlanner extends EventEmitter {
 
     } catch (error) {
       // 探索失败不阻塞流程
-      console.warn('[SmartPlanner] 代码库探索失败:', error);
+      console.warn('[SmartPlanner] Codebase exploration failed:', error);
     }
 
     return findings.length > 0 ? findings.join('\n') : '';
@@ -495,7 +495,7 @@ export class SmartPlanner extends EventEmitter {
         }
       }
     } catch (error) {
-      console.warn('[SmartPlanner] 代码搜索失败:', error);
+      console.warn('[SmartPlanner] Code search failed:', error);
     }
 
     return results;
@@ -624,7 +624,7 @@ export class SmartPlanner extends EventEmitter {
       } else if (event.type === 'tool_result' && event.result) {
         extracted = { ...extracted, ...event.result };
       } else if (event.type === 'error') {
-        console.error('[SmartPlanner] 需求提取失败:', event.error);
+        console.error('[SmartPlanner] Requirement extraction failed:', event.error);
       }
     }
 
@@ -984,7 +984,7 @@ export class SmartPlanner extends EventEmitter {
       } else if (event.type === 'tool_result' && event.result) {
         blueprintData = { ...blueprintData, ...event.result };
       } else if (event.type === 'error') {
-        console.error('[SmartPlanner] 蓝图生成失败:', event.error);
+        console.error('[SmartPlanner] Blueprint generation failed:', event.error);
       }
     }
 
@@ -992,12 +992,12 @@ export class SmartPlanner extends EventEmitter {
     this.emit('blueprint:progress', { step: 3, total: 5, message: '正在构建蓝图结构...' });
 
     // 调试日志：检查 AI 返回的数据
-    console.log('[SmartPlanner] AI 返回的蓝图数据:');
-    console.log('  - businessProcesses:', blueprintData.businessProcesses?.length || 0, '个');
-    console.log('  - modules:', blueprintData.modules?.length || 0, '个');
-    console.log('  - nfrs:', blueprintData.nfrs?.length || 0, '个');
+    console.log('[SmartPlanner] Blueprint data returned by AI:');
+    console.log('  - businessProcesses:', blueprintData.businessProcesses?.length || 0);
+    console.log('  - modules:', blueprintData.modules?.length || 0);
+    console.log('  - nfrs:', blueprintData.nfrs?.length || 0);
     if (!blueprintData.businessProcesses?.length && !blueprintData.modules?.length && !blueprintData.nfrs?.length) {
-      console.warn('[SmartPlanner] ⚠️ AI 返回的数据为空！可能是 AI 调用失败或未正确生成结构。');
+      console.warn('[SmartPlanner] ⚠️ AI returned empty data! May be AI call failed or structure not generated correctly.');
       console.log('[SmartPlanner] blueprintData:', JSON.stringify(blueprintData, null, 2).slice(0, 500));
     }
 
@@ -1121,7 +1121,7 @@ export class SmartPlanner extends EventEmitter {
         apiPrefix: apiContract.apiPrefix,
       });
 
-      console.log(`[SmartPlanner] API 契约已写入蓝图: ${apiContract.endpoints.length} 个端点, 前缀: ${apiContract.apiPrefix}`);
+      console.log(`[SmartPlanner] API contract written to blueprint: ${apiContract.endpoints.length} endpoints, prefix: ${apiContract.apiPrefix}`);
     }
 
     this.emit('planner:decomposing', { blueprintId: blueprint.id });
