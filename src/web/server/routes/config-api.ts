@@ -59,7 +59,7 @@ export function setupConfigApiRoutes(app: Express): void {
       const config = await webConfigService.getAllConfig();
       sendSuccess(res, config, '成功获取所有配置');
     } catch (error) {
-      console.error('[Config API] 获取所有配置失败:', error);
+      console.error('[Config API] Failed to get all config:', error);
       sendError(res, error);
     }
   });
@@ -73,7 +73,7 @@ export function setupConfigApiRoutes(app: Express): void {
       const apiConfig = await webConfigService.getApiConfig();
       sendSuccess(res, apiConfig, '成功获取 API 配置');
     } catch (error) {
-      console.error('[Config API] 获取 API 配置失败:', error);
+      console.error('[Config API] Failed to get API config:', error);
       sendError(res, error);
     }
   });
@@ -87,7 +87,7 @@ export function setupConfigApiRoutes(app: Express): void {
       const permissionsConfig = await webConfigService.getPermissionsConfig();
       sendSuccess(res, permissionsConfig, '成功获取权限配置');
     } catch (error) {
-      console.error('[Config API] 获取权限配置失败:', error);
+      console.error('[Config API] Failed to get permissions config:', error);
       sendError(res, error);
     }
   });
@@ -101,7 +101,7 @@ export function setupConfigApiRoutes(app: Express): void {
       const hooksConfig = await webConfigService.getHooksConfig();
       sendSuccess(res, hooksConfig, '成功获取 Hooks 配置');
     } catch (error) {
-      console.error('[Config API] 获取 Hooks 配置失败:', error);
+      console.error('[Config API] Failed to get hooks config:', error);
       sendError(res, error);
     }
   });
@@ -115,7 +115,7 @@ export function setupConfigApiRoutes(app: Express): void {
       const loggingConfig = await webConfigService.getLoggingConfig();
       sendSuccess(res, loggingConfig, '成功获取日志配置');
     } catch (error) {
-      console.error('[Config API] 获取日志配置失败:', error);
+      console.error('[Config API] Failed to get logging config:', error);
       sendError(res, error);
     }
   });
@@ -129,7 +129,7 @@ export function setupConfigApiRoutes(app: Express): void {
       const proxyConfig = await webConfigService.getProxyConfig();
       sendSuccess(res, proxyConfig, '成功获取代理配置');
     } catch (error) {
-      console.error('[Config API] 获取代理配置失败:', error);
+      console.error('[Config API] Failed to get proxy config:', error);
       sendError(res, error);
     }
   });
@@ -143,7 +143,7 @@ export function setupConfigApiRoutes(app: Express): void {
       const securityConfig = await webConfigService.getSecurityConfig();
       sendSuccess(res, securityConfig, '成功获取安全配置');
     } catch (error) {
-      console.error('[Config API] 获取安全配置失败:', error);
+      console.error('[Config API] Failed to get security config:', error);
       sendError(res, error);
     }
   });
@@ -172,7 +172,7 @@ export function setupConfigApiRoutes(app: Express): void {
         sendError(res, new Error('更新 API 配置失败'), 500);
       }
     } catch (error) {
-      console.error('[Config API] 更新 API 配置失败:', error);
+      console.error('[Config API] Failed to update API config:', error);
       sendError(res, error);
     }
   });
@@ -230,7 +230,7 @@ export function setupConfigApiRoutes(app: Express): void {
         const errorMessage = apiError.message || String(apiError);
         const statusCode = apiError.status || 500;
         
-        console.error('[Config API] API 测试失败:', errorMessage);
+        console.error('[Config API] API test failed:', errorMessage);
         
         return res.status(400).json({
           success: false,
@@ -242,7 +242,7 @@ export function setupConfigApiRoutes(app: Express): void {
         });
       }
     } catch (error) {
-      console.error('[Config API] 测试 API 连接失败:', error);
+      console.error('[Config API] Failed to test API connection:', error);
       sendError(res, error, 500);
     }
   });
@@ -268,7 +268,7 @@ export function setupConfigApiRoutes(app: Express): void {
         sendError(res, new Error('更新权限配置失败'), 500);
       }
     } catch (error) {
-      console.error('[Config API] 更新权限配置失败:', error);
+      console.error('[Config API] Failed to update permissions config:', error);
       sendError(res, error);
     }
   });
@@ -293,7 +293,7 @@ export function setupConfigApiRoutes(app: Express): void {
         sendError(res, new Error('更新 Hooks 配置失败'), 500);
       }
     } catch (error) {
-      console.error('[Config API] 更新 Hooks 配置失败:', error);
+      console.error('[Config API] Failed to update hooks config:', error);
       sendError(res, error);
     }
   });
@@ -318,7 +318,7 @@ export function setupConfigApiRoutes(app: Express): void {
         sendError(res, new Error('更新日志配置失败'), 500);
       }
     } catch (error) {
-      console.error('[Config API] 更新日志配置失败:', error);
+      console.error('[Config API] Failed to update logging config:', error);
       sendError(res, error);
     }
   });
@@ -343,7 +343,7 @@ export function setupConfigApiRoutes(app: Express): void {
         sendError(res, new Error('更新代理配置失败'), 500);
       }
     } catch (error) {
-      console.error('[Config API] 更新代理配置失败:', error);
+      console.error('[Config API] Failed to update proxy config:', error);
       sendError(res, error);
     }
   });
@@ -368,7 +368,7 @@ export function setupConfigApiRoutes(app: Express): void {
         sendError(res, new Error('更新安全配置失败'), 500);
       }
     } catch (error) {
-      console.error('[Config API] 更新安全配置失败:', error);
+      console.error('[Config API] Failed to update security config:', error);
       sendError(res, error);
     }
   });
@@ -399,7 +399,7 @@ export function setupConfigApiRoutes(app: Express): void {
         sendSuccess(res, JSON.parse(exportData), '配置导出成功');
       }
     } catch (error) {
-      console.error('[Config API] 导出配置失败:', error);
+      console.error('[Config API] Failed to export config:', error);
       sendError(res, error);
     }
   });
@@ -423,7 +423,7 @@ export function setupConfigApiRoutes(app: Express): void {
 
       sendSuccess(res, { imported: result }, '配置导入成功');
     } catch (error) {
-      console.error('[Config API] 导入配置失败:', error);
+      console.error('[Config API] Failed to import config:', error);
       sendError(res, error);
     }
   });
@@ -452,7 +452,7 @@ export function setupConfigApiRoutes(app: Express): void {
         });
       }
     } catch (error) {
-      console.error('[Config API] 验证配置失败:', error);
+      console.error('[Config API] Failed to validate config:', error);
       sendError(res, error);
     }
   });
@@ -477,7 +477,7 @@ export function setupConfigApiRoutes(app: Express): void {
         sendError(res, new Error('重置配置失败'), 500);
       }
     } catch (error) {
-      console.error('[Config API] 重置配置失败:', error);
+      console.error('[Config API] Failed to reset config:', error);
       sendError(res, error);
     }
   });
@@ -501,7 +501,7 @@ export function setupConfigApiRoutes(app: Express): void {
       const source = await webConfigService.getConfigSource(key);
       sendSuccess(res, source, `成功获取 ${key} 的配置来源`);
     } catch (error) {
-      console.error('[Config API] 获取配置来源失败:', error);
+      console.error('[Config API] Failed to get config source:', error);
       sendError(res, error);
     }
   });
@@ -515,7 +515,7 @@ export function setupConfigApiRoutes(app: Express): void {
       const sources = await webConfigService.getAllConfigSources();
       sendSuccess(res, sources, '成功获取所有配置来源');
     } catch (error) {
-      console.error('[Config API] 获取所有配置来源失败:', error);
+      console.error('[Config API] Failed to get all config sources:', error);
       sendError(res, error);
     }
   });
@@ -529,7 +529,7 @@ export function setupConfigApiRoutes(app: Express): void {
       const backups = await webConfigService.listBackups();
       sendSuccess(res, backups, '成功获取备份列表');
     } catch (error) {
-      console.error('[Config API] 获取备份列表失败:', error);
+      console.error('[Config API] Failed to get backup list:', error);
       sendError(res, error);
     }
   });
@@ -558,12 +558,12 @@ export function setupConfigApiRoutes(app: Express): void {
         sendError(res, new Error('恢复配置失败'), 500);
       }
     } catch (error) {
-      console.error('[Config API] 恢复配置失败:', error);
+      console.error('[Config API] Failed to restore config:', error);
       sendError(res, error);
     }
   });
 
-  console.log('[Config API] 配置 API 路由已设置');
+  console.log('[Config API] Config API routes configured');
 }
 
 /**
