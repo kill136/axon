@@ -239,18 +239,18 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
       });
       app.use(vite.middlewares);
       if (isEvolve) {
-        console.log('   模式: 开发 (Vite, HMR 已禁用 - Evolve 模式)');
+        console.log('   Mode: Development (Vite, HMR disabled - Evolve mode)');
       } else {
-        console.log('   模式: 开发 (Vite HMR)');
+        console.log('   Mode: Development (Vite HMR)');
       }
     } catch (e) {
-      console.warn('   警告: Vite 未安装，使用静态文件模式');
+      console.warn('   Warning: Vite not installed, using static file mode');
       setupStaticFiles(app, clientDistPath);
     }
   } else {
     // 生产模式：提供静态文件
     setupStaticFiles(app, clientDistPath);
-    console.log('   模式: 生产');
+    console.log('   Mode: Production');
   }
 
   // 设置 WebSocket 处理
@@ -316,7 +316,7 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
       const { executionManager } = await import('./routes/blueprint-api.js');
       await executionManager.initRecovery();
     } catch (error) {
-      console.error('[ExecutionManager] 初始化恢复失败:', error);
+      console.error('[ExecutionManager] Initialization recovery failed:', error);
     }
   }, 1000);
 
@@ -330,11 +330,11 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
       const proto = useHttps ? 'https' : 'http';
       const wsProto = useHttps ? 'wss' : 'ws';
       const url = `${proto}://${displayHost}:${port}`;
-      console.log(`\n🌐 Axon WebUI 已启动${useHttps ? ' (HTTPS)' : ''}`);
-      console.log(`   地址: ${url}`);
+      console.log(`\n🌐 Axon WebUI started${useHttps ? ' (HTTPS)' : ''}`);
+      console.log(`   URL: ${url}`);
       console.log(`   WebSocket: ${wsProto}://${displayHost}:${port}/ws`);
-      console.log(`   工作目录: ${cwd}`);
-      console.log(`   模型: ${model}`);
+      console.log(`   Working Directory: ${cwd}`);
+      console.log(`   Model: ${model}`);
 
       // 显示网络访问地址（局域网、Tailscale）
       if (host === '0.0.0.0') {
@@ -346,11 +346,11 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
         }
         if (addrs.lan.length > 0) {
           for (const ip of addrs.lan) {
-            console.log(`   📱 局域网:   ${proto}://${ip}:${port}`);
+            console.log(`   📱 LAN:   ${proto}://${ip}:${port}`);
           }
         }
         if (addrs.tailscale.length === 0 && addrs.lan.length === 0) {
-          console.log(`   💡 提示: 安装 Tailscale 可从手机远程访问`);
+          console.log(`   💡 Tip: Install Tailscale for remote mobile access`);
         }
       }
 
@@ -359,9 +359,9 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
         try {
           const open = (await import('open')).default;
           await open(url);
-          console.log(`   🌍 已在浏览器中打开`);
+          console.log(`   🌍 Opened in browser`);
         } catch (error) {
-          console.log(`   ⚠️  无法自动打开浏览器，请手动访问上述地址`);
+          console.log(`   ⚠️  Unable to open browser automatically, please visit the URL above manually`);
         }
       }
 
@@ -378,10 +378,10 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
       // 检查 authtoken
       const authtoken = process.env.NGROK_AUTHTOKEN;
       if (!authtoken) {
-        console.log(`   ⚠️  ngrok: 未设置 NGROK_AUTHTOKEN 环境变量`);
-        console.log(`   ⚠️  请访问 https://dashboard.ngrok.com/get-started/your-authtoken 获取 authtoken\n`);
+        console.log(`   ⚠️  ngrok: NGROK_AUTHTOKEN environment variable not set`);
+        console.log(`   ⚠️  Please visit https://dashboard.ngrok.com/get-started/your-authtoken to get authtoken\n`);
       } else {
-        console.log(`   🔗 正在创建 ngrok 隧道...`);
+        console.log(`   🔗 Creating ngrok tunnel...`);
 
         // 创建 ngrok 隧道
         ngrokListener = await ngrok.forward({
@@ -390,12 +390,12 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
         });
 
         const ngrokUrl = ngrokListener.url();
-        console.log(`   🌍 公网地址: ${ngrokUrl}`);
-        console.log(`   🌍 公网 WebSocket: ${ngrokUrl?.replace('https://', 'wss://').replace('http://', 'ws://')}/ws\n`);
+        console.log(`   🌍 Public URL: ${ngrokUrl}`);
+        console.log(`   🌍 Public WebSocket: ${ngrokUrl?.replace('https://', 'wss://').replace('http://', 'ws://')}/ws\n`);
       }
     } catch (err: any) {
-      console.log(`   ⚠️  ngrok 隧道创建失败: ${err.message}`);
-      console.log(`   ⚠️  请检查 NGROK_AUTHTOKEN 是否正确\n`);
+      console.log(`   ⚠️  ngrok tunnel creation failed: ${err.message}`);
+      console.log(`   ⚠️  Please check if NGROK_AUTHTOKEN is correct\n`);
     }
   } else {
     console.log('');
@@ -406,7 +406,7 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
   const gracefulShutdown = async (signal: string) => {
     if (isShuttingDown) return;
     isShuttingDown = true;
-    console.log(`\n[${signal}] 正在关闭服务器...`);
+    console.log(`\n[${signal}] Shutting down server...`);
 
     // 停止定时调度器
     webScheduler?.stop();
@@ -415,14 +415,14 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
     try {
       await conversationManager.persistAllSessions();
     } catch (err) {
-      console.error('持久化会话失败:', err);
+      console.error('Failed to persist session:', err);
     }
 
     // 关闭 ngrok 隧道
     if (ngrokListener) {
       try {
         await ngrokListener.close();
-        console.log('   ngrok 隧道已关闭');
+        console.log('   ngrok tunnel closed');
       } catch (err) {
         // 忽略关闭错误
       }
@@ -431,12 +431,12 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
     // 进化重启使用退出码 42，正常退出使用 0
     const exitCode = isEvolveRestartRequested() ? 42 : 0;
     if (isEvolveRestartRequested()) {
-      console.log('   [Evolve] 进化重启: 退出码 42');
+      console.log('   [Evolve] Evolution restart: exit code 42');
     }
 
     wss.close();
     server.close(() => {
-      console.log('服务器已关闭');
+      console.log('Server closed');
       process.exit(exitCode);
     });
 
@@ -484,7 +484,7 @@ function getNetworkAddresses(): { tailscale: string[]; lan: string[] } {
 function setupStaticFiles(app: express.Application, clientDistPath: string) {
   // 检查 dist 目录是否存在
   if (!fs.existsSync(clientDistPath)) {
-    console.warn(`   警告: 前端未构建，请先运行 cd src/web/client && npm run build`);
+    console.warn(`   Warning: Frontend not built, please run cd src/web/client && npm run build first`);
     app.use((req, res, next) => {
       if (req.path.startsWith('/api/') || req.path.startsWith('/ws') || req.path.startsWith('/proxy/')) {
         return next();

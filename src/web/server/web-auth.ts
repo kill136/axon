@@ -106,12 +106,12 @@ class WebAuthProvider {
 
     this.refreshPromise = (async () => {
       try {
-        console.log('[WebAuth] OAuth token 即将过期，自动刷新...');
+        console.log('[WebAuth] OAuth token expiring soon, auto-refreshing...');
         await oauthManager.refreshToken();
-        console.log('[WebAuth] OAuth token 刷新成功');
+        console.log('[WebAuth] OAuth token refreshed successfully');
         return true;
       } catch (err: any) {
-        console.error('[WebAuth] OAuth token 刷新失败:', err.message);
+        console.error('[WebAuth] OAuth token refresh failed:', err.message);
         return false;
       } finally {
         this.refreshPromise = null;
@@ -256,7 +256,7 @@ class WebAuthProvider {
       configManager.set('apiKey', key);
       return true;
     } catch (error) {
-      console.error('[WebAuth] 设置 API Key 失败:', error);
+      console.error('[WebAuth] Failed to set API Key:', error);
       return false;
     }
   }
@@ -268,7 +268,7 @@ class WebAuthProvider {
     try {
       configManager.set('apiKey', undefined as any);
     } catch (error) {
-      console.error('[WebAuth] 清除 API Key 失败:', error);
+      console.error('[WebAuth] Failed to clear API Key:', error);
     }
   }
 

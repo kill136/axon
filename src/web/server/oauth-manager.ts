@@ -130,7 +130,7 @@ export class OAuthManager {
         ...userInfo,
       });
 
-      console.log('[OAuthManager] Token 交换成功');
+      console.log('[OAuthManager] Token exchange successful');
 
       return {
         accessToken: access_token,
@@ -141,7 +141,7 @@ export class OAuthManager {
         rateLimitTier: userInfo.rateLimitTier,
       };
     } catch (error: any) {
-      console.error('[OAuthManager] Token 交换失败:', error.message);
+      console.error('[OAuthManager] Token exchange failed:', error.message);
       throw new Error(`OAuth token exchange failed: ${error.message}`);
     }
   }
@@ -164,7 +164,7 @@ export class OAuthManager {
     }
 
     try {
-      console.log('[OAuthManager] 开始刷新 OAuth token...');
+      console.log('[OAuthManager] Starting OAuth token refresh...');
 
       const requestBody = {
         grant_type: 'refresh_token',
@@ -193,7 +193,7 @@ export class OAuthManager {
       const expiresAt = Date.now() + expiresIn * 1000;
       const scopes = this.parseScopes(data.scope);
 
-      console.log('[OAuthManager] Token 刷新成功');
+      console.log('[OAuthManager] Token refresh successful');
 
       // 获取更新的用户信息
       const userInfo = await this.fetchUserInfo(accessToken);
@@ -216,7 +216,7 @@ export class OAuthManager {
         rateLimitTier: userInfo.rateLimitTier,
       };
     } catch (error: any) {
-      console.error('[OAuthManager] Token 刷新失败:', error.message);
+      console.error('[OAuthManager] Token refresh failed:', error.message);
 
       // 注意：刷新失败不应清除整个 oauthAccount（包括 refreshToken）
       // 只清除已过期的 accessToken，保留 refreshToken 以便下次重试
@@ -229,7 +229,7 @@ export class OAuthManager {
             accessToken: '',
             expiresAt: 0,
           });
-          console.log('[OAuthManager] 已清除过期的 accessToken，保留 refreshToken 供下次刷新');
+          console.log('[OAuthManager] Cleared expired accessToken, keeping refreshToken for next refresh');
         } else {
           // 没有 refreshToken，彻底清除
           this.clearOAuthConfig();
@@ -272,7 +272,7 @@ export class OAuthManager {
         hasExtraUsageEnabled: data.has_extra_usage_enabled,
       };
     } catch (error: any) {
-      console.warn('[OAuthManager] 获取用户信息失败，使用默认值:', error.message);
+      console.warn('[OAuthManager] Failed to get user info, using defaults:', error.message);
 
       // 返回默认值
       return {
@@ -316,7 +316,7 @@ export class OAuthManager {
       const refreshed = await this.refreshToken(config.refreshToken);
       return refreshed.accessToken;
     } catch (error) {
-      console.error('[OAuthManager] 获取有效 token 失败:', error);
+      console.error('[OAuthManager] Failed to get valid token:', error);
       return null;
     }
   }
@@ -349,7 +349,7 @@ export class OAuthManager {
 
       return null;
     } catch (error) {
-      console.error('[OAuthManager] 获取 OAuth 配置失败:', error);
+      console.error('[OAuthManager] Failed to get OAuth config:', error);
       return null;
     }
   }
@@ -367,9 +367,9 @@ export class OAuthManager {
         ...config,
       });
 
-      console.log('[OAuthManager] OAuth 配置已保存');
+      console.log('[OAuthManager] OAuth config saved');
     } catch (error) {
-      console.error('[OAuthManager] 保存 OAuth 配置失败:', error);
+      console.error('[OAuthManager] Failed to save OAuth config:', error);
       throw error;
     }
   }
@@ -380,9 +380,9 @@ export class OAuthManager {
   clearOAuthConfig(): void {
     try {
       configManager.set('oauthAccount', undefined as any);
-      console.log('[OAuthManager] OAuth 配置已清除');
+      console.log('[OAuthManager] OAuth config cleared');
     } catch (error) {
-      console.error('[OAuthManager] 清除 OAuth 配置失败:', error);
+      console.error('[OAuthManager] Failed to clear OAuth config:', error);
     }
   }
 
@@ -404,7 +404,7 @@ export class OAuthManager {
    */
   logout(): void {
     this.clearOAuthConfig();
-    console.log('[OAuthManager] 用户已登出');
+    console.log('[OAuthManager] User logged out');
   }
 }
 

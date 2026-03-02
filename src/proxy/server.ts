@@ -102,15 +102,15 @@ function extractAccountUUID(accessToken: string): string | null {
     // 尝试常见的 claim 名称
     const uuid = claims.sub || claims.account_uuid || claims.account_id;
     if (uuid && typeof uuid === 'string') {
-      console.log(`[AUTH] JWT 解码成功: sub=${uuid.slice(0, 12)}... claims=[${Object.keys(claims).join(',')}]`);
+      console.log(`[AUTH] JWT decoded successfully: sub=${uuid.slice(0, 12)}... claims=[${Object.keys(claims).join(',')}]`);
       return uuid;
     }
 
     // 没找到 UUID，打印所有 claims 帮助调试
-    console.log(`[AUTH] JWT 解码成功但未找到 account UUID, claims: ${JSON.stringify(claims).slice(0, 200)}`);
+    console.log(`[AUTH] JWT decoded successfully but no account UUID found, claims: ${JSON.stringify(claims).slice(0, 200)}`);
     return null;
   } catch (e: any) {
-    console.log(`[AUTH] access token 不是 JWT 格式或解码失败: ${e.message}`);
+    console.log(`[AUTH] access token is not JWT format or decoding failed: ${e.message}`);
     return null;
   }
 }
@@ -131,21 +131,21 @@ async function fetchAccountUUID(accessToken: string): Promise<string | null> {
     });
 
     if (!response.ok) {
-      console.log(`[AUTH] Profile API 失败: ${response.status} ${response.statusText}`);
+      console.log(`[AUTH] Profile API failed: ${response.status} ${response.statusText}`);
       return null;
     }
 
     const data = await response.json() as any;
     const uuid = data?.account?.uuid;
     if (uuid && typeof uuid === 'string') {
-      console.log(`[AUTH] Profile API 成功: accountUuid=${uuid.slice(0, 12)}... email=${data?.account?.email || 'N/A'}`);
+      console.log(`[AUTH] Profile API succeeded: accountUuid=${uuid.slice(0, 12)}... email=${data?.account?.email || 'N/A'}`);
       return uuid;
     }
 
-    console.log(`[AUTH] Profile API 返回但无 account.uuid: ${JSON.stringify(data).slice(0, 200)}`);
+    console.log(`[AUTH] Profile API returned but no account.uuid: ${JSON.stringify(data).slice(0, 200)}`);
     return null;
   } catch (err: any) {
-    console.log(`[AUTH] Profile API 异常: ${err.message}`);
+    console.log(`[AUTH] Profile API exception: ${err.message}`);
     return null;
   }
 }
@@ -205,7 +205,7 @@ async function refreshOAuthToken(state: OAuthState): Promise<boolean> {
     });
 
     if (!response.ok) {
-      console.error(`[AUTH] Token 刷新失败: ${response.status} ${response.statusText}`);
+      console.error(`[AUTH] Token refresh failed: ${response.status} ${response.statusText}`);
       return false;
     }
 
@@ -223,10 +223,10 @@ async function refreshOAuthToken(state: OAuthState): Promise<boolean> {
     }
 
     const remainMin = Math.round((state.expiresAt - Date.now()) / 60000);
-    console.log(`[AUTH] Token 刷新成功，有效期 ${remainMin} 分钟`);
+    console.log(`[AUTH] Token refresh succeeded, valid for ${remainMin} min`);
     return true;
   } catch (err: any) {
-    console.error(`[AUTH] Token 刷新异常: ${err.message}`);
+    console.error(`[AUTH] Token refresh exception: ${err.message}`);
     return false;
   }
 }
@@ -240,7 +240,7 @@ async function ensureValidOAuthToken(state: OAuthState): Promise<boolean> {
     return true;
   }
 
-  console.log('[AUTH] Token 即将过期，正在刷新...');
+  console.log('[AUTH] Token about to expire, refreshing...');
 
   // 防止并发刷新
   if (state.refreshing) {
@@ -406,7 +406,7 @@ export async function createProxyServer(config: ProxyConfig) {
 
     // 第二步：如果前两种都失败，调用 Profile API（官方 CC 的 C21() 函数）
     if (!accountUUID) {
-      console.log('[AUTH] JWT 和 credentials 都未找到 accountUuid，尝试调用 Profile API...');
+      console.log('[AUTH] JWT and credentials both failed to find accountUuid, trying Profile API...');
       const profileUUID = await fetchAccountUUID(config.oauthAccessToken || '');
       if (profileUUID) {
         accountUUID = profileUUID;
@@ -416,9 +416,9 @@ export async function createProxyServer(config: ProxyConfig) {
     }
 
     if (accountUUID) {
-      console.log(`[AUTH] Account UUID: ${accountUUID} (来源: ${uuidSource})`);
+      console.log(`[AUTH] Account UUID: ${accountUUID} (source: ${uuidSource})`);
     } else {
-      console.log('[AUTH] ⚠ 无法获取 account UUID（JWT/credentials/Profile API 全部失败），metadata 将使用空 account');
+      console.log('[AUTH] ⚠ Unable to get account UUID (JWT/credentials/Profile API all failed), metadata will use empty account');
     }
     console.log(`[AUTH] Proxy Device ID: ${PROXY_DEVICE_ID.slice(0, 16)}...`);
     console.log(`[AUTH] Proxy Session ID: ${PROXY_SESSION_ID}`);
@@ -509,7 +509,7 @@ export async function createProxyServer(config: ProxyConfig) {
             message: 'OAuth token expired and refresh failed. Please restart the proxy after re-login.',
           },
         }));
-        console.error(`[ERROR] OAuth token 刷新失败`);
+        console.error(`[ERROR] OAuth token refresh failed`);
         return;
       }
     }
@@ -728,21 +728,21 @@ export async function createProxyServer(config: ProxyConfig) {
                 user_id: `user_${PROXY_DEVICE_ID}_account_${accountUuid}_session_${PROXY_SESSION_ID}`
               };
               needsRewrite = true;
-              console.log(`[INJECT] 重建 metadata: device=${PROXY_DEVICE_ID.slice(0, 8)}... account=${accountUuid ? accountUuid.slice(0, 8) + '...' : '<空>'} session=${PROXY_SESSION_ID.slice(0, 8)}...`);
+              console.log(`[INJECT] Rebuilt metadata: device=${PROXY_DEVICE_ID.slice(0, 8)}... account=${accountUuid ? accountUuid.slice(0, 8) + '...' : '<empty>'} session=${PROXY_SESSION_ID.slice(0, 8)}...`);
             }
 
             if (needsRewrite) {
               body = Buffer.from(JSON.stringify(parsed));
-              console.log('[INJECT] 请求已重写');
+              console.log('[INJECT] Request rewritten');
             }
 
             // body 处理完毕，从模型名提取 requestModel（用于 betas）
             if (parsed.model) requestModel = parsed.model;
 
             // ===== 完整请求 DUMP：客户端原始 vs 代理转发 =====
-            console.log(`[DUMP] ═══ 客户端原始请求 ═══`);
+            console.log(`[DUMP] ═══ Client Original Request ═══`);
             // 客户端发来的所有 header（原始，未经代理修改）
-            console.log(`  [原始 headers - 全部]`);
+            console.log(`  [Original headers - all]`);
             for (const [hk, hv] of Object.entries(req.headers)) {
               const val = typeof hv === 'string' ? hv : Array.isArray(hv) ? hv.join(', ') : String(hv);
               if (hk === 'x-api-key' || hk === 'authorization') {
@@ -752,36 +752,36 @@ export async function createProxyServer(config: ProxyConfig) {
               }
             }
             // 客户端发来的所有 body 字段（修改前快照）
-            console.log(`  [原始 body 字段 - 全部]`);
+            console.log(`  [Original body fields - all]`);
             for (const [bk, bv] of Object.entries(originalBodySnapshot)) {
               console.log(`    ${bk}: ${bv}`);
             }
             // 原始 system prompt 详细结构（修改前）
             if (originalSystemDetail) {
-              console.log(`  [原始 system prompt 详情 - 修改前]`);
+              console.log(`  [Original system prompt details - before modification]`);
               console.log(`    ${originalSystemDetail}`);
             }
 
             // ===== 详细 DUMP：system prompt 结构 =====
-            console.log(`  [system prompt 详情 - 修改后]`);
+            console.log(`  [system prompt details - after modification]`);
             if (!parsed.system) {
-              console.log(`    <无 system prompt>`);
+              console.log(`    <no system prompt>`);
             } else if (typeof parsed.system === 'string') {
-              console.log(`    格式: string (len=${parsed.system.length})`);
-              console.log(`    内容前300字符: ${parsed.system.slice(0, 300)}`);
+              console.log(`    Format: string (len=${parsed.system.length})`);
+              console.log(`    Content first 300 chars: ${parsed.system.slice(0, 300)}`);
             } else if (Array.isArray(parsed.system)) {
-              console.log(`    格式: array[${parsed.system.length}]`);
+              console.log(`    Format: array[${parsed.system.length}]`);
               for (let si = 0; si < parsed.system.length; si++) {
                 const sb = parsed.system[si];
                 console.log(`    [${si}] type=${sb.type}, text.len=${sb.text?.length || 0}, cache_control=${JSON.stringify(sb.cache_control || null)}`);
-                console.log(`        text前200字符: ${(sb.text || '').slice(0, 200)}`);
+                console.log(`        text first 200 chars: ${(sb.text || '').slice(0, 200)}`);
               }
             }
 
             // ===== 详细 DUMP：消息列表 =====
             if (parsed.messages && Array.isArray(parsed.messages)) {
               const msgs = parsed.messages;
-              console.log(`  [messages 详情] 共 ${msgs.length} 条`);
+              console.log(`  [messages details] Total ${msgs.length} messages`);
               // 显示前3条和后2条
               const showIndices = new Set<number>();
               for (let mi = 0; mi < Math.min(3, msgs.length); mi++) showIndices.add(mi);
@@ -819,14 +819,14 @@ export async function createProxyServer(config: ProxyConfig) {
                 }
               }
               if (msgs.length > 5) {
-                console.log(`    ... 省略 ${msgs.length - 5} 条中间消息 ...`);
+                console.log(`    ... Omitted ${msgs.length - 5} middle messages ...`);
               }
             }
 
             // ===== 详细 DUMP：工具列表 =====
             if (parsed.tools && Array.isArray(parsed.tools) && parsed.tools.length > 0) {
               const toolNames = parsed.tools.map((t: any) => t.name || '?').join(', ');
-              console.log(`  [tools] ${parsed.tools.length} 个: ${toolNames}`);
+              console.log(`  [tools] ${parsed.tools.length} tools: ${toolNames}`);
             }
 
             // ===== 详细 DUMP：其他关键字段 =====
@@ -834,7 +834,7 @@ export async function createProxyServer(config: ProxyConfig) {
             if (parsed.output_config) console.log(`  output_config:  ${JSON.stringify(parsed.output_config)}`);
             if (parsed.context_management) console.log(`  context_mgmt:   ${JSON.stringify(parsed.context_management)}`);
 
-            console.log(`[DUMP] ═══ 代理转发请求 ═══`);
+            console.log(`[DUMP] ═══ Proxy Forwarding Request ═══`);
             // 代理修改后的 body 关键字段
             console.log(`  model:          ${parsed.model}`);
             console.log(`  metadata:       ${JSON.stringify(parsed.metadata || null)}`);
@@ -845,7 +845,7 @@ export async function createProxyServer(config: ProxyConfig) {
             console.log(`  stream:         ${parsed.stream}`);
             // 预览转发 headers（最终版在 body 处理后构建）
             const previewHeaders = buildForwardHeaders(authMode, authValue, requestModel, body.length, req.headers);
-            console.log(`  [转发 headers - 全部] (转发+修补)`);
+            console.log(`  [Forwarding headers - all] (forwarded+patched)`);
             for (const [hk, hv] of Object.entries(previewHeaders)) {
               const val = typeof hv === 'string' ? hv : String(hv);
               if (hk === 'authorization') {
@@ -854,7 +854,7 @@ export async function createProxyServer(config: ProxyConfig) {
                 console.log(`    ${hk}: ${val.slice(0, 200)}`);
               }
             }
-            console.log(`  [转发 body keys]: ${Object.keys(parsed).join(', ')}`);
+            console.log(`  [Forwarding body keys]: ${Object.keys(parsed).join(', ')}`);
             console.log(`[DUMP] ═══ end ═══`);
           }
         } catch {

@@ -161,7 +161,7 @@ export class TaskManager {
     }
 
     if (cleaned > 0) {
-      console.log(`[TaskManager] 自动清理 ${cleaned} 个过期任务`);
+      console.log(`[TaskManager] Auto-cleaned ${cleaned} expired tasks`);
     }
   }
 
@@ -192,7 +192,7 @@ export class TaskManager {
           },
         }));
       } catch (error) {
-        console.error('[TaskManager] 发送任务状态失败:', error);
+        console.error('[TaskManager] Failed to send task status:', error);
       }
     }
   }
@@ -218,7 +218,7 @@ export class TaskManager {
           },
         }));
       } catch (error) {
-        console.error('[TaskManager] 发送子 agent 工具开始事件失败:', error);
+        console.error('[TaskManager] Failed to send subagent tool start event:', error);
       }
     }
   }
@@ -245,7 +245,7 @@ export class TaskManager {
           },
         }));
       } catch (error) {
-        console.error('[TaskManager] 发送子 agent 工具结束事件失败:', error);
+        console.error('[TaskManager] Failed to send subagent tool end event:', error);
       }
     }
   }
@@ -425,7 +425,7 @@ export class TaskManager {
 
     try {
       // 日志：子 agent 开始执行
-      console.log(`[SubAgent:${task.agentType}] 🚀 启动任务: ${task.description}`);
+      console.log(`[SubAgent:${task.agentType}] 🚀 Starting task: ${task.description}`);
       console.log(`[SubAgent:${task.agentType}] 📝 Prompt: ${task.prompt.substring(0, 100)}${task.prompt.length > 100 ? '...' : ''}`);
 
       // 调用 SubagentStart Hook
@@ -610,10 +610,10 @@ export class TaskManager {
       const totalDuration = task.endTime.getTime() - task.startTime.getTime();
 
       // 日志：子 agent 完成
-      console.log(`[SubAgent:${task.agentType}] ✅ 任务完成 (耗时: ${totalDuration}ms, 工具调用: ${toolCallCounter}次)`);
+      console.log(`[SubAgent:${task.agentType}] ✅ Task completed (duration: ${totalDuration}ms, tool calls: ${toolCallCounter})`);
       if (task.result) {
         const resultPreview = task.result.substring(0, 200).replace(/\n/g, ' ');
-        console.log(`[SubAgent:${task.agentType}] 📤 结果: ${resultPreview}${task.result.length > 200 ? '...' : ''}`);
+        console.log(`[SubAgent:${task.agentType}] 📤 Result: ${resultPreview}${task.result.length > 200 ? '...' : ''}`);
       }
 
       // 保存输出到缓冲区
@@ -651,7 +651,7 @@ export class TaskManager {
       };
 
       // 日志：子 agent 失败（含完整堆栈）
-      console.error(`[SubAgent:${task.agentType}] 任务失败 (耗时: ${totalDuration}ms): ${errorMsg}${errorStack ? '\n' + errorStack : ''}`);
+      console.error(`[SubAgent:${task.agentType}] Task failed (duration: ${totalDuration}ms): ${errorMsg}${errorStack ? '\n' + errorStack : ''}`);
 
       // 发送状态更新
       this.sendTaskStatus(task);
