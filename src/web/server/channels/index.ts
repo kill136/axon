@@ -15,6 +15,8 @@ import type {
 } from './types.js';
 import { IMBridge } from './bridge.js';
 import { TelegramAdapter } from './adapters/telegram.js';
+import { FeishuAdapter } from './adapters/feishu.js';
+import { SlackBotAdapter } from './adapters/slack-bot.js';
 import { configManager } from '../../../config/index.js';
 
 // ============================================================================
@@ -27,8 +29,8 @@ import { configManager } from '../../../config/index.js';
  */
 const ADAPTER_FACTORIES: Record<string, () => ChannelAdapter> = {
   telegram: () => new TelegramAdapter(),
-  // Phase 2: feishu: () => new FeishuAdapter(),
-  // Phase 3: 'slack-bot': () => new SlackBotAdapter(),
+  feishu: () => new FeishuAdapter(),
+  'slack-bot': () => new SlackBotAdapter(),
 };
 
 /**

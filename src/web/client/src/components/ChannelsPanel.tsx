@@ -41,18 +41,22 @@ const CHANNEL_META: Record<string, {
   },
   feishu: {
     icon: '🐦',
-    description: 'Connect a Feishu/Lark Bot for enterprise IM integration',
+    description: 'Connect a Feishu/Lark Bot for enterprise IM integration (WebSocket, no public URL needed)',
     fields: [
       { key: 'appId', label: 'App ID', type: 'text', placeholder: 'cli_xxx...' },
       { key: 'appSecret', label: 'App Secret', type: 'password', placeholder: '' },
+      { key: 'domain', label: 'Domain (feishu or lark)', type: 'text', placeholder: 'feishu' },
     ],
+    docsUrl: 'https://open.feishu.cn/document/home/develop-a-bot-in-5-minutes/create-an-app',
   },
   'slack-bot': {
     icon: '💬',
-    description: 'Connect a Slack Bot (different from Slack MCP Connector)',
+    description: 'Connect a Slack Bot via Socket Mode (no public URL needed, different from Slack MCP Connector)',
     fields: [
-      { key: 'botToken', label: 'Bot Token', type: 'password', placeholder: 'xoxb-...' },
+      { key: 'botToken', label: 'Bot Token (xoxb-)', type: 'password', placeholder: 'xoxb-...' },
+      { key: 'appToken', label: 'App Token (xapp-)', type: 'password', placeholder: 'xapp-...' },
     ],
+    docsUrl: 'https://api.slack.com/start/quickstart',
   },
 };
 

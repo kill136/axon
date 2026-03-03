@@ -976,6 +976,218 @@
   border-color: #f59e0b;
 }
 
+/* ---- StatusView 工具栏 ---- */
+.git-status-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 0;
+  flex-wrap: wrap;
+}
+
+.git-status-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.git-status-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* 视图模式切换按钮 */
+.git-view-mode-switcher {
+  display: flex;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.git-view-mode-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  background: var(--bg-tertiary);
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.git-view-mode-btn:first-child {
+  border-right: 1px solid var(--border-color);
+}
+
+.git-view-mode-btn:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.git-view-mode-btn.active {
+  background: var(--accent-primary);
+  color: white;
+}
+
+/* 多选复选框 */
+.git-file-checkbox {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  cursor: pointer;
+  accent-color: var(--accent-primary);
+}
+
+/* 选中文件高亮 */
+.git-file-item--selected {
+  background: rgba(99, 102, 241, 0.15) !important;
+  border-color: var(--accent-primary) !important;
+}
+
+/* 批量操作栏 */
+.git-batch-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: rgba(99, 102, 241, 0.1);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  border-radius: 6px;
+}
+
+.git-batch-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-primary);
+  white-space: nowrap;
+}
+
+.git-batch-btn {
+  padding: 3px 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.git-batch-btn:hover {
+  background: var(--accent-primary);
+  color: white;
+  border-color: var(--accent-primary);
+}
+
+.git-batch-btn--stage:hover {
+  background: #10b981;
+  border-color: #10b981;
+}
+
+.git-batch-btn--unstage:hover {
+  background: #f59e0b;
+  border-color: #f59e0b;
+}
+
+.git-batch-btn--discard:hover {
+  background: #ef4444;
+  border-color: #ef4444;
+}
+
+/* 状态标记颜色 */
+.git-file-status-badge--M { background: rgba(234, 179, 8, 0.2); color: #eab308; }
+.git-file-status-badge--A { background: rgba(34, 197, 94, 0.2); color: #22c55e; }
+.git-file-status-badge--D { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+.git-file-status-badge--R { background: rgba(99, 102, 241, 0.2); color: #6366f1; }
+.git-file-status-badge--U { background: rgba(156, 163, 175, 0.2); color: #9ca3af; }
+.git-file-status-badge--C { background: rgba(239, 68, 68, 0.3); color: #ef4444; }
+
+/* ---- 树形视图 ---- */
+.git-tree-dir {
+  display: flex;
+  flex-direction: column;
+}
+
+.git-tree-dir-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+  user-select: none;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.git-tree-dir-header:hover {
+  background: var(--bg-tertiary);
+}
+
+.git-tree-dir-arrow {
+  font-size: 10px;
+  color: var(--text-muted);
+  width: 12px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.git-tree-dir-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.git-tree-dir-name {
+  flex: 1;
+  font-weight: 500;
+}
+
+.git-tree-dir-count {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 1px 6px;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+}
+
+.git-tree-dir-children {
+  padding-left: 16px;
+}
+
+/* 操作提示 */
+.git-status-hint {
+  padding: 8px 12px;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+  border-top: 1px solid var(--border-color);
+  margin-top: 8px;
+}
+
+.git-file-discard-btn {
+  padding: 4px 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.git-file-discard-btn:hover {
+  background: #ef4444;
+  color: white;
+  border-color: #ef4444;
+}
+
 /* ============================================
    DiffView - Diff 视图（table 布局）
    ============================================ */
@@ -3642,6 +3854,30 @@ pre.git-ai-result-content {
   color: #ec4899;
   border-color: rgba(236, 72, 153, 0.3);
   font-weight: 600;
+}
+
+/* Log 底部状态栏 */
+.git-log-status-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 16px;
+  font-size: 11px;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  flex-shrink: 0;
+}
+
+/* 加载更多指示器 */
+.git-log-loading-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  font-size: 12px;
+  color: var(--text-muted);
 }
 
 /* ============================================

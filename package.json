@@ -79,6 +79,7 @@
     "@ngrok/ngrok": "^1.7.0",
     "@resvg/resvg-js": "^2.6.2",
     "@resvg/resvg-wasm": "^2.6.2",
+    "@slack/bolt": "^4.6.0",
     "@trpc/client": "^11.0.0",
     "@trpc/server": "^11.0.0",
     "@vscode/tree-sitter-wasm": "^0.3.0",

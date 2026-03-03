@@ -210,8 +210,7 @@ assistant: Clients are marked as failed in the \`connectToServer\` function in s
       : '';
     dynamicParts.push(`# Self-Awareness
 You are an AI assistant whose own source code is located at: ${codeProjectRoot}
-如果遇到了完成不了的任务，
-You can read and modify your own .ts source files to improve yourself.
+You can read and modify your own .ts source files to improve yourself. If you encounter a task beyond your current capabilities, extend yourself by modifying the source.
 Config dir: ${claudeConfigDir}${selfEvolve}`);
 
     // 15. 语言设置（因用户配置而异）
