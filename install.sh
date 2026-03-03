@@ -19,7 +19,7 @@ REPO_URL_GITHUB="https://github.com/kill136/claude-code-open.git"
 REPO_URL_GITEE="https://gitee.com/lubanbbs/claude-code-open.git"
 REPO_URL=""  # Will be set by detect_repo_url()
 DOCKER_IMAGE="wbj66/axon:latest"
-INSTALL_DIR="$HOME/.axon"
+INSTALL_DIR="${AXON_CONFIG_DIR:-$HOME/.axon}"
 NODE_MAJOR_REQUIRED=18
 NODE_MAJOR_MAX=22  # LTS; native modules may lack prebuilds for newer versions
 NODE_HEAP_MB=3072  # Node.js max heap size for npm install (prevents OOM on low-memory devices)
@@ -57,6 +57,14 @@ detect_repo_url() {
     if [ -n "$REPO_URL" ]; then
         info "Using user-specified repo: $REPO_URL"
         return
+    fi
+
+    # Auto-detect system proxy and configure git to use it
+    local proxy="${HTTPS_PROXY:-${HTTP_PROXY:-${https_proxy:-${http_proxy:-}}}}"
+    if [ -n "$proxy" ]; then
+        info "Detected proxy: $proxy, configuring git..."
+        git config --global http.proxy "$proxy" 2>/dev/null
+        git config --global https.proxy "$proxy" 2>/dev/null
     fi
 
     info "Detecting network connectivity..."
@@ -568,7 +576,7 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-INSTALL_DIR="$HOME/.axon"
+INSTALL_DIR="${AXON_CONFIG_DIR:-$HOME/.axon}"
 
 info()    { echo -e "${BLUE}[INFO]${NC} $*"; }
 success() { echo -e "${GREEN}[OK]${NC} $*"; }
@@ -716,7 +724,7 @@ EOF
             SHORTCUT_FILE="$DESKTOP_DIR/Axon WebUI.command"
             cat > "$SHORTCUT_FILE" << EOF
 #!/bin/bash
-"$HOME/.axon/update-and-start.sh" &
+"${AXON_CONFIG_DIR:-$HOME/.axon}/update-and-start.sh" &
 APP_PID=\$!
 # Wait for server to start and open browser
 sleep 3
@@ -791,6 +799,27 @@ EOF
 # Install methods
 # ============================================
 
+clone_with_fallback() {
+    info "Cloning repository... (this may take a while)"
+    if git clone -b private_web_ui "$REPO_URL" "$INSTALL_DIR"; then
+        return 0
+    fi
+
+    # Clone failed — try Gitee fallback if we were using GitHub
+    if [ "$REPO_URL" = "$REPO_URL_GITHUB" ]; then
+        warn "GitHub clone failed, falling back to Gitee mirror..."
+        rm -rf "$INSTALL_DIR"
+        REPO_URL="$REPO_URL_GITEE"
+        if git clone -b private_web_ui "$REPO_URL" "$INSTALL_DIR"; then
+            success "Cloned from Gitee mirror successfully"
+            return 0
+        fi
+        error "Git clone failed from both GitHub and Gitee. Please check your network connection."
+    else
+        error "Git clone failed. Please check your network connection and try again."
+    fi
+}
+
 install_npm() {
     info "Installing via npm (from source)..."
 
@@ -808,19 +837,11 @@ install_npm() {
         else
             warn "Existing directory is not a git repository. Removing and re-installing..."
             rm -rf "$INSTALL_DIR"
-            info "Cloning repository..."
-            git clone -b private_web_ui "$REPO_URL" "$INSTALL_DIR"
-            if [ $? -ne 0 ]; then
-                error "Git clone failed. Please check your network connection and try again."
-            fi
+            clone_with_fallback
             cd "$INSTALL_DIR"
         fi
     else
-        info "Cloning repository..."
-        git clone -b private_web_ui "$REPO_URL" "$INSTALL_DIR"
-        if [ $? -ne 0 ]; then
-            error "Git clone failed. Please check your network connection and try again."
-        fi
+        clone_with_fallback
         cd "$INSTALL_DIR"
     fi
 
@@ -1037,6 +1058,33 @@ main() {
 
     detect_platform
     detect_pkg_manager
+    echo ""
+
+    # ---- Prompt for installation directory ----
+    echo -e "  ${BOLD}Install directory:${NC} ${CYAN}$INSTALL_DIR${NC}"
+    echo -e "  ${BOLD}Press Enter to accept, or type a new path:${NC}"
+    if [ -t 0 ] || [ -e /dev/tty ]; then
+        read -p "  " custom_dir < /dev/tty
+        if [ -n "$custom_dir" ]; then
+            INSTALL_DIR="${custom_dir%/}"
+        fi
+    fi
+    success "Installation directory: $INSTALL_DIR"
+
+    # Persist AXON_CONFIG_DIR if user chose a non-default path
+    DEFAULT_DIR="$HOME/.axon"
+    if [ "$INSTALL_DIR" != "$DEFAULT_DIR" ]; then
+        export AXON_CONFIG_DIR="$INSTALL_DIR"
+        # Add to shell rc files
+        for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
+            if [ -f "$rc" ]; then
+                if ! grep -q 'AXON_CONFIG_DIR' "$rc"; then
+                    echo "export AXON_CONFIG_DIR=\"$INSTALL_DIR\"" >> "$rc"
+                fi
+            fi
+        done
+        success "Saved AXON_CONFIG_DIR=$INSTALL_DIR to shell config"
+    fi
     echo ""
 
     # ---- Auto-install ALL dependencies ----
