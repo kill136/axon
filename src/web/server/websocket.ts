@@ -1559,7 +1559,10 @@ async function handleClientMessage(
       break;
 
     case 'git:get_log':
-      await handleGitGetLog(client, message.payload?.limit, conversationManager);
+      await handleGitGetLog(client, message.payload?.limit, conversationManager, {
+        all: message.payload?.all,
+        branch: message.payload?.branch,
+      });
       break;
 
     case 'git:get_branches':
@@ -2593,7 +2596,7 @@ async function handleSlashCommand(
     }
 
     // 如果内置命令未找到，尝试作为 skill 执行
-    if (!result.success && result.message?.startsWith('未知命令:')) {
+    if (!result.success && result.message?.startsWith('Unknown command:')) {
       const trimmed = command.trim();
       const parts = trimmed.slice(1).split(/\s+/);
       const skillName = parts[0];
@@ -2656,7 +2659,7 @@ async function handleSlashCommand(
     if (isCompactCmd) {
       sendMessage(ws, {
         type: 'context_compact',
-        payload: { phase: 'error', message: error instanceof Error ? error.message : '命令执行失败', sessionId },
+        payload: { phase: 'error', message: error instanceof Error ? error.message : 'Command execution failed', sessionId },
       });
     }
 
@@ -2665,7 +2668,7 @@ async function handleSlashCommand(
       payload: {
         command,
         success: false,
-        message: error instanceof Error ? error.message : '命令执行失败',
+        message: error instanceof Error ? error.message : 'Command execution failed',
       },
     });
   }
@@ -2729,7 +2732,7 @@ async function handleSessionList(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '获取会话列表失败',
+        message: error instanceof Error ? error.message : 'Failed to get session list',
       },
     });
   }
@@ -2750,7 +2753,7 @@ async function handleSessionCreate(
     const sessionManager = conversationManager.getSessionManager();
 
     const newSession = sessionManager.createSession({
-      name: name || `WebUI 会话 - ${new Date().toLocaleString('zh-CN')}`,
+      name: name || `WebUI Session - ${new Date().toLocaleString('en-US')}`,
       model: model || 'opus',
       tags: tags || ['webui'],
       projectPath,
@@ -2776,7 +2779,7 @@ async function handleSessionCreate(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '创建会话失败',
+        message: error instanceof Error ? error.message : 'Failed to create session',
       },
     });
   }
@@ -2827,7 +2830,7 @@ async function handleSessionNew(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '新建会话失败',
+        message: error instanceof Error ? error.message : 'Failed to create new session',
       },
     });
   }
@@ -2940,7 +2943,7 @@ async function handleSessionSwitch(
 
         sendMessage(ws, {
           type: 'status',
-          payload: { status: 'streaming', message: '对话处理中...', sessionId },
+          payload: { status: 'streaming', message: 'Processing conversation...', sessionId },
         });
 
         // 重发待处理的权限请求和用户问题
@@ -3098,7 +3101,7 @@ async function handleSessionSwitch(
           console.error(`[WebSocket] Auto-continuation failed:`, err);
           sendMessage(getActiveWs(), {
             type: 'error',
-            payload: { message: '自动继续对话失败: ' + (err instanceof Error ? err.message : String(err)), sessionId: chatSessionId },
+            payload: { message: 'Auto-continuation failed: ' + (err instanceof Error ? err.message : String(err)), sessionId: chatSessionId },
           });
           sendMessage(getActiveWs(), {
             type: 'status',
@@ -3110,7 +3113,7 @@ async function handleSessionSwitch(
       sendMessage(ws, {
         type: 'error',
         payload: {
-          message: '会话不存在或加载失败',
+          message: 'Session does not exist or failed to load',
         },
       });
     }
@@ -3119,7 +3122,7 @@ async function handleSessionSwitch(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '切换会话失败',
+        message: error instanceof Error ? error.message : 'Failed to switch session',
       },
     });
   }
@@ -3150,7 +3153,7 @@ async function handleSessionDelete(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '删除会话失败',
+        message: error instanceof Error ? error.message : 'Failed to delete session',
       },
     });
   }
@@ -3183,7 +3186,7 @@ async function handleSessionRename(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '重命名会话失败',
+        message: error instanceof Error ? error.message : 'Failed to rename session',
       },
     });
   }
@@ -3217,7 +3220,7 @@ async function handleSessionExport(
       sendMessage(ws, {
         type: 'error',
         payload: {
-          message: '会话不存在或导出失败',
+          message: 'Session does not exist or export failed',
         },
       });
     }
@@ -3226,7 +3229,7 @@ async function handleSessionExport(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '导出会话失败',
+        message: error instanceof Error ? error.message : 'Failed to export session',
       },
     });
   }
@@ -3270,7 +3273,7 @@ async function handleSessionImport(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '导入会话失败',
+        message: error instanceof Error ? error.message : 'Failed to import session',
       },
     });
   }
@@ -3310,7 +3313,7 @@ async function handleSessionResume(
       sendMessage(ws, {
         type: 'error',
         payload: {
-          message: '会话不存在或恢复失败',
+          message: 'Session does not exist or resume failed',
         },
       });
     }
@@ -3319,7 +3322,7 @@ async function handleSessionResume(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '恢复会话失败',
+        message: error instanceof Error ? error.message : 'Failed to resume session',
       },
     });
   }
@@ -3342,7 +3345,7 @@ async function handleToolFilterUpdate(
       sendMessage(ws, {
         type: 'error',
         payload: {
-          message: '无效的工具过滤配置',
+          message: 'Invalid tool filter config',
         },
       });
       return;
@@ -3362,7 +3365,7 @@ async function handleToolFilterUpdate(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '更新工具过滤配置失败',
+        message: error instanceof Error ? error.message : 'Failed to update tool filter config',
       },
     });
   }
@@ -3395,7 +3398,7 @@ async function handleToolListGet(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '获取工具列表失败',
+        message: error instanceof Error ? error.message : 'Failed to get tool list',
       },
     });
   }
@@ -3425,7 +3428,7 @@ async function handleSystemPromptUpdate(
       sendMessage(ws, {
         type: 'error',
         payload: {
-          message: '更新系统提示失败',
+          message: 'Failed to update system prompt',
         },
       });
     }
@@ -3434,7 +3437,7 @@ async function handleSystemPromptUpdate(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '更新系统提示失败',
+        message: error instanceof Error ? error.message : 'Failed to update system prompt',
       },
     });
   }
@@ -3461,7 +3464,7 @@ async function handleSystemPromptGet(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '获取系统提示失败',
+        message: error instanceof Error ? error.message : 'Failed to get system prompt',
       },
     });
   }
@@ -3483,7 +3486,7 @@ function handlePromptSnippetsList(client: ClientConnection): void {
   } catch (error) {
     sendMessage(ws, {
       type: 'error',
-      payload: { message: error instanceof Error ? error.message : '获取提示词片段失败' },
+      payload: { message: error instanceof Error ? error.message : 'Failed to get prompt snippets' },
     });
   }
 }
@@ -3499,7 +3502,7 @@ function handlePromptSnippetsCreate(client: ClientConnection, input: PromptSnipp
   } catch (error) {
     sendMessage(ws, {
       type: 'error',
-      payload: { message: error instanceof Error ? error.message : '创建提示词片段失败' },
+      payload: { message: error instanceof Error ? error.message : 'Failed to create prompt snippet' },
     });
   }
 }
@@ -3509,7 +3512,7 @@ function handlePromptSnippetsUpdate(client: ClientConnection, id: string, input:
   try {
     const updated = promptSnippetsManager.update(id, input);
     if (!updated) {
-      sendMessage(ws, { type: 'error', payload: { message: `片段 ${id} 不存在` } });
+      sendMessage(ws, { type: 'error', payload: { message: `Snippet ${id} does not exist` } });
       return;
     }
     sendMessage(ws, {
@@ -3519,7 +3522,7 @@ function handlePromptSnippetsUpdate(client: ClientConnection, id: string, input:
   } catch (error) {
     sendMessage(ws, {
       type: 'error',
-      payload: { message: error instanceof Error ? error.message : '更新提示词片段失败' },
+      payload: { message: error instanceof Error ? error.message : 'Failed to update prompt snippet' },
     });
   }
 }
@@ -3529,7 +3532,7 @@ function handlePromptSnippetsDelete(client: ClientConnection, id: string): void 
   try {
     const success = promptSnippetsManager.delete(id);
     if (!success) {
-      sendMessage(ws, { type: 'error', payload: { message: `片段 ${id} 不存在` } });
+      sendMessage(ws, { type: 'error', payload: { message: `Snippet ${id} does not exist` } });
       return;
     }
     sendMessage(ws, {
@@ -3539,7 +3542,7 @@ function handlePromptSnippetsDelete(client: ClientConnection, id: string): void 
   } catch (error) {
     sendMessage(ws, {
       type: 'error',
-      payload: { message: error instanceof Error ? error.message : '删除提示词片段失败' },
+      payload: { message: error instanceof Error ? error.message : 'Failed to delete prompt snippet' },
     });
   }
 }
@@ -3549,7 +3552,7 @@ function handlePromptSnippetsToggle(client: ClientConnection, id: string): void 
   try {
     const toggled = promptSnippetsManager.toggle(id);
     if (!toggled) {
-      sendMessage(ws, { type: 'error', payload: { message: `片段 ${id} 不存在` } });
+      sendMessage(ws, { type: 'error', payload: { message: `Snippet ${id} does not exist` } });
       return;
     }
     sendMessage(ws, {
@@ -3559,7 +3562,7 @@ function handlePromptSnippetsToggle(client: ClientConnection, id: string): void 
   } catch (error) {
     sendMessage(ws, {
       type: 'error',
-      payload: { message: error instanceof Error ? error.message : '切换提示词片段失败' },
+      payload: { message: error instanceof Error ? error.message : 'Failed to toggle prompt snippet' },
     });
   }
 }
@@ -3577,7 +3580,7 @@ function handlePromptSnippetsReorder(client: ClientConnection, orders: Array<{ i
   } catch (error) {
     sendMessage(ws, {
       type: 'error',
-      payload: { message: error instanceof Error ? error.message : '排序提示词片段失败' },
+      payload: { message: error instanceof Error ? error.message : 'Failed to reorder prompt snippets' },
     });
   }
 }
@@ -3604,7 +3607,7 @@ async function handleDebugGetMessages(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '获取调试消息失败',
+        message: error instanceof Error ? error.message : 'Failed to get debug messages',
       },
     });
   }
@@ -3626,7 +3629,7 @@ async function handleTaskList(
       sendMessage(ws, {
         type: 'error',
         payload: {
-          message: '任务管理器未初始化',
+          message: 'Task manager not initialized',
         },
       });
       return;
@@ -3668,7 +3671,7 @@ async function handleTaskList(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '获取任务列表失败',
+        message: error instanceof Error ? error.message : 'Failed to get task list',
       },
     });
   }
@@ -3690,7 +3693,7 @@ async function handleTaskCancel(
       sendMessage(ws, {
         type: 'error',
         payload: {
-          message: '任务管理器未初始化',
+          message: 'Task manager not initialized',
         },
       });
       return;
@@ -3725,7 +3728,7 @@ async function handleTaskCancel(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '取消任务失败',
+        message: error instanceof Error ? error.message : 'Failed to cancel task',
       },
     });
   }
@@ -3747,7 +3750,7 @@ async function handleTaskOutput(
       sendMessage(ws, {
         type: 'error',
         payload: {
-          message: '任务管理器未初始化',
+          message: 'Task manager not initialized',
         },
       });
       return;
@@ -3758,7 +3761,7 @@ async function handleTaskOutput(
       sendMessage(ws, {
         type: 'error',
         payload: {
-          message: `任务 ${taskId} 不存在`,
+          message: `Task ${taskId} does not exist`,
         },
       });
       return;
@@ -3780,7 +3783,7 @@ async function handleTaskOutput(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '获取任务输出失败',
+        message: error instanceof Error ? error.message : 'Failed to get task output',
       },
     });
   }
@@ -3806,7 +3809,7 @@ async function handleApiStatus(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '获取API状态失败',
+        message: error instanceof Error ? error.message : 'Failed to get API status',
       },
     });
   }
@@ -3832,7 +3835,7 @@ async function handleApiTest(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : 'API测试失败',
+        message: error instanceof Error ? error.message : 'API test failed',
       },
     });
   }
@@ -3858,7 +3861,7 @@ async function handleApiModels(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '获取模型列表失败',
+        message: error instanceof Error ? error.message : 'Failed to get model list',
       },
     });
   }
@@ -3884,7 +3887,7 @@ async function handleApiProvider(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '获取Provider信息失败',
+        message: error instanceof Error ? error.message : 'Failed to get provider info',
       },
     });
   }
@@ -3910,7 +3913,7 @@ async function handleApiTokenStatus(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '获取Token状态失败',
+        message: error instanceof Error ? error.message : 'Failed to get token status',
       },
     });
   }
@@ -3940,7 +3943,7 @@ async function handleMcpList(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '获取 MCP 服务器列表失败',
+        message: error instanceof Error ? error.message : 'Failed to get MCP server list',
       },
     });
   }
@@ -3963,7 +3966,7 @@ async function handleMcpAdd(
       sendMessage(ws, {
         type: 'error',
         payload: {
-          message: '无效的 MCP 服务器配置：缺少名称',
+          message: 'Invalid MCP server config: missing name',
         },
       });
       return;
@@ -4004,7 +4007,7 @@ async function handleMcpAdd(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '添加 MCP 服务器失败',
+        message: error instanceof Error ? error.message : 'Failed to add MCP server',
       },
     });
   }
@@ -4027,7 +4030,7 @@ async function handleMcpRemove(
       sendMessage(ws, {
         type: 'error',
         payload: {
-          message: '缺少服务器名称',
+          message: 'Missing server name',
         },
       });
       return;
@@ -4059,7 +4062,7 @@ async function handleMcpRemove(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '删除 MCP 服务器失败',
+        message: error instanceof Error ? error.message : 'Failed to remove MCP server',
       },
     });
   }
@@ -4082,7 +4085,7 @@ async function handleMcpToggle(
       sendMessage(ws, {
         type: 'error',
         payload: {
-          message: '缺少服务器名称',
+          message: 'Missing server name',
         },
       });
       return;
@@ -4115,7 +4118,7 @@ async function handleMcpToggle(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '切换 MCP 服务器失败',
+        message: error instanceof Error ? error.message : 'Failed to toggle MCP server',
       },
     });
   }
@@ -4156,7 +4159,7 @@ async function handleDoctorRun(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '运行诊断失败',
+        message: error instanceof Error ? error.message : 'Failed to run diagnostics',
       },
     });
   }
@@ -4181,7 +4184,7 @@ async function handleCheckpointCreate(
       sendMessage(ws, {
         type: 'error',
         payload: {
-          message: '创建检查点需要提供描述和文件列表',
+          message: 'Creating checkpoint requires a description and file list',
         },
       });
       return;
@@ -4211,7 +4214,7 @@ async function handleCheckpointCreate(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '创建检查点失败',
+        message: error instanceof Error ? error.message : 'Failed to create checkpoint',
       },
     });
   }
@@ -4268,7 +4271,7 @@ async function handleCheckpointList(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '获取检查点列表失败',
+        message: error instanceof Error ? error.message : 'Failed to get checkpoint list',
       },
     });
   }
@@ -4290,7 +4293,7 @@ async function handleCheckpointRestore(
       sendMessage(ws, {
         type: 'error',
         payload: {
-          message: '缺少检查点 ID',
+          message: 'Missing checkpoint ID',
         },
       });
       return;
@@ -4321,7 +4324,7 @@ async function handleCheckpointRestore(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '恢复检查点失败',
+        message: error instanceof Error ? error.message : 'Failed to restore checkpoint',
       },
     });
   }
@@ -4342,7 +4345,7 @@ async function handleCheckpointDelete(
       sendMessage(ws, {
         type: 'error',
         payload: {
-          message: '缺少检查点 ID',
+          message: 'Missing checkpoint ID',
         },
       });
       return;
@@ -4364,7 +4367,7 @@ async function handleCheckpointDelete(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '删除检查点失败',
+        message: error instanceof Error ? error.message : 'Failed to delete checkpoint',
       },
     });
   }
@@ -4385,7 +4388,7 @@ async function handleCheckpointDiff(
       sendMessage(ws, {
         type: 'error',
         payload: {
-          message: '缺少检查点 ID',
+          message: 'Missing checkpoint ID',
         },
       });
       return;
@@ -4418,7 +4421,7 @@ async function handleCheckpointDiff(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '比较检查点失败',
+        message: error instanceof Error ? error.message : 'Failed to compare checkpoints',
       },
     });
   }
@@ -4449,7 +4452,7 @@ async function handleCheckpointClear(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '清除检查点失败',
+        message: error instanceof Error ? error.message : 'Failed to clear checkpoints',
       },
     });
   }
@@ -4481,7 +4484,7 @@ async function handlePluginList(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '获取插件列表失败',
+        message: error instanceof Error ? error.message : 'Failed to get plugin list',
       },
     });
   }
@@ -4530,7 +4533,7 @@ async function handlePluginInfo(
       sendMessage(ws, {
         type: 'error',
         payload: {
-          message: '缺少插件名称',
+          message: 'Missing plugin name',
         },
       });
       return;
@@ -4549,7 +4552,7 @@ async function handlePluginInfo(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '获取插件详情失败',
+        message: error instanceof Error ? error.message : 'Failed to get plugin details',
       },
     });
   }
@@ -4570,7 +4573,7 @@ async function handlePluginEnable(
       sendMessage(ws, {
         type: 'error',
         payload: {
-          message: '缺少插件名称',
+          message: 'Missing plugin name',
         },
       });
       return;
@@ -4602,7 +4605,7 @@ async function handlePluginEnable(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '启用插件失败',
+        message: error instanceof Error ? error.message : 'Failed to enable plugin',
       },
     });
   }
@@ -4623,7 +4626,7 @@ async function handlePluginDisable(
       sendMessage(ws, {
         type: 'error',
         payload: {
-          message: '缺少插件名称',
+          message: 'Missing plugin name',
         },
       });
       return;
@@ -4655,7 +4658,7 @@ async function handlePluginDisable(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '禁用插件失败',
+        message: error instanceof Error ? error.message : 'Failed to disable plugin',
       },
     });
   }
@@ -4681,7 +4684,7 @@ async function handlePluginInstall(
       sendMessage(ws, {
         type: 'error',
         payload: {
-          message: '缺少插件路径或ID',
+          message: 'Missing plugin path or ID',
         },
       });
       return;
@@ -4735,7 +4738,7 @@ async function handlePluginInstall(
         type: 'plugin_installed',
         payload: {
           success: false,
-          error: result.error || '插件安装失败',
+          error: result.error || 'Plugin installation failed',
         },
       });
     }
@@ -4746,7 +4749,7 @@ async function handlePluginInstall(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: `安装插件失败: ${errorMsg}`,
+        message: `Failed to install plugin: ${errorMsg}`,
       },
     });
   }
@@ -4764,7 +4767,7 @@ async function handlePluginUninstall(
       sendMessage(ws, {
         type: 'error',
         payload: {
-          message: '缺少插件名称',
+          message: 'Missing plugin name',
         },
       });
       return;
@@ -4796,7 +4799,7 @@ async function handlePluginUninstall(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '卸载插件失败',
+        message: error instanceof Error ? error.message : 'Failed to uninstall plugin',
       },
     });
   }
@@ -4946,7 +4949,7 @@ async function handleSkillList(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '获取 skill 列表失败',
+        message: error instanceof Error ? error.message : 'Failed to get skill list',
       },
     });
   }
@@ -4966,7 +4969,7 @@ async function handleSkillView(
       sendMessage(ws, {
         type: 'error',
         payload: {
-          message: '缺少 skill 名称',
+          message: 'Missing skill name',
         },
       });
       return;
@@ -4979,7 +4982,7 @@ async function handleSkillView(
       sendMessage(ws, {
         type: 'error',
         payload: {
-          message: `未找到 skill: ${name}`,
+          message: `Skill not found: ${name}`,
         },
       });
       return;
@@ -4993,7 +4996,7 @@ async function handleSkillView(
       sendMessage(ws, {
         type: 'error',
         payload: {
-          message: `SKILL.md 文件不存在: ${skillMdPath}`,
+          message: `SKILL.md file does not exist: ${skillMdPath}`,
         },
       });
       return;
@@ -5013,7 +5016,7 @@ async function handleSkillView(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '查看 skill 失败',
+        message: error instanceof Error ? error.message : 'Failed to view skill',
       },
     });
   }
@@ -5034,7 +5037,7 @@ async function handleSkillDelete(
       sendMessage(ws, {
         type: 'error',
         payload: {
-          message: '缺少 skill 名称',
+          message: 'Missing skill name',
         },
       });
       return;
@@ -5045,7 +5048,7 @@ async function handleSkillDelete(
       sendMessage(ws, {
         type: 'error',
         payload: {
-          message: 'Plugin 内的 skill 不能单独删除，请卸载对应的 plugin',
+          message: 'Skills inside a plugin cannot be deleted individually, please uninstall the corresponding plugin',
         },
       });
       return;
@@ -5071,7 +5074,7 @@ async function handleSkillDelete(
         sendMessage(ws, {
           type: 'error',
           payload: {
-            message: `未找到 skill: ${name}`,
+            message: `Skill not found: ${name}`,
           },
         });
         return;
@@ -5119,7 +5122,7 @@ async function handleSkillDelete(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '删除 skill 失败',
+        message: error instanceof Error ? error.message : 'Failed to delete skill',
       },
     });
 
@@ -5148,7 +5151,7 @@ async function handleSkillToggle(
       sendMessage(ws, {
         type: 'error',
         payload: {
-          message: '缺少 skill 名称',
+          message: 'Missing skill name',
         },
       });
       return;
@@ -5170,7 +5173,7 @@ async function handleSkillToggle(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '切换 skill 状态失败',
+        message: error instanceof Error ? error.message : 'Failed to toggle skill status',
       },
     });
 
@@ -5209,7 +5212,7 @@ async function handleAuthStatus(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '获取认证状态失败',
+        message: error instanceof Error ? error.message : 'Failed to get auth status',
       },
     });
   }
@@ -5232,7 +5235,7 @@ async function handleAuthSetKey(
         type: 'auth_key_set',
         payload: {
           success: false,
-          message: '无效的 API 密钥',
+          message: 'Invalid API key',
         },
       });
       return;
@@ -5245,7 +5248,7 @@ async function handleAuthSetKey(
         type: 'auth_key_set',
         payload: {
           success: true,
-          message: 'API 密钥已设置',
+          message: 'API key has been set',
         },
       });
 
@@ -5262,7 +5265,7 @@ async function handleAuthSetKey(
         type: 'auth_key_set',
         payload: {
           success: false,
-          message: '设置 API 密钥失败',
+          message: 'Failed to set API key',
         },
       });
     }
@@ -5271,7 +5274,7 @@ async function handleAuthSetKey(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '设置 API 密钥失败',
+        message: error instanceof Error ? error.message : 'Failed to set API key',
       },
     });
   }
@@ -5308,7 +5311,7 @@ async function handleAuthClear(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '清除认证失败',
+        message: error instanceof Error ? error.message : 'Failed to clear auth',
       },
     });
   }
@@ -5331,7 +5334,7 @@ async function handleAuthValidate(
         type: 'auth_validated',
         payload: {
           valid: false,
-          message: '无效的 API 密钥格式',
+          message: 'Invalid API key format',
         },
       });
       return;
@@ -5343,7 +5346,7 @@ async function handleAuthValidate(
       type: 'auth_validated',
       payload: {
         valid,
-        message: valid ? 'API 密钥有效' : 'API 密钥无效',
+        message: valid ? 'API key is valid' : 'API key is invalid',
       },
     });
   } catch (error) {
@@ -5351,7 +5354,7 @@ async function handleAuthValidate(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '验证 API 密钥失败',
+        message: error instanceof Error ? error.message : 'Failed to validate API key',
       },
     });
   }
@@ -5378,7 +5381,7 @@ async function handleOAuthLogin(
         type: 'oauth_login_response',
         payload: {
           success: false,
-          message: '无效的授权码',
+          message: 'Invalid authorization code',
         },
       });
       return;
@@ -5389,7 +5392,7 @@ async function handleOAuthLogin(
         type: 'oauth_login_response',
         payload: {
           success: false,
-          message: '无效的回调 URI',
+          message: 'Invalid redirect URI',
         },
       });
       return;
@@ -5405,7 +5408,7 @@ async function handleOAuthLogin(
       payload: {
         success: true,
         token,
-        message: 'OAuth 登录成功',
+        message: 'OAuth login successful',
       },
     });
 
@@ -5416,7 +5419,7 @@ async function handleOAuthLogin(
       type: 'oauth_login_response',
       payload: {
         success: false,
-        message: error instanceof Error ? error.message : 'OAuth 登录失败',
+        message: error instanceof Error ? error.message : 'OAuth login failed',
       },
     });
   }
@@ -5444,7 +5447,7 @@ async function handleOAuthRefresh(
       payload: {
         success: true,
         token,
-        message: 'Token 刷新成功',
+        message: 'Token refresh successful',
       },
     });
 
@@ -5455,7 +5458,7 @@ async function handleOAuthRefresh(
       type: 'oauth_refresh_response',
       payload: {
         success: false,
-        message: error instanceof Error ? error.message : 'Token 刷新失败',
+        message: error instanceof Error ? error.message : 'Token refresh failed',
       },
     });
   }
@@ -5508,7 +5511,7 @@ async function handleOAuthStatus(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '获取 OAuth 状态失败',
+        message: error instanceof Error ? error.message : 'Failed to get OAuth status',
       },
     });
   }
@@ -5538,7 +5541,7 @@ async function handleOAuthLogout(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : 'OAuth 登出失败',
+        message: error instanceof Error ? error.message : 'OAuth logout failed',
       },
     });
   }
@@ -5560,7 +5563,7 @@ async function handleOAuthGetAuthUrl(
       sendMessage(ws, {
         type: 'error',
         payload: {
-          message: '无效的回调 URI',
+          message: 'Invalid redirect URI',
         },
       });
       return;
@@ -5579,7 +5582,7 @@ async function handleOAuthGetAuthUrl(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '生成授权 URL 失败',
+        message: error instanceof Error ? error.message : 'Failed to generate auth URL',
       },
     });
   }
@@ -5640,15 +5643,15 @@ async function processFileAttachment(file: FileAttachment): Promise<string> {
     };
 
     if (skillMap[ext]) {
-      hint = '\n可使用 Skill: ' + skillMap[ext] + ' 处理此文件';
+      hint = '\nCan use Skill: ' + skillMap[ext] + ' to process this file';
     } else if (mimeType.startsWith('text/') || /^\.(txt|md|json|js|ts|tsx|jsx|py|java|c|cpp|h|css|html|xml|yaml|yml|sh|bat|sql|log|csv|tsv|ini|cfg|conf|toml|rs|go|rb|php|swift|kt|scala|r|m|pl|lua|hs|ex|exs|clj|dart|vue|svelte)$/i.test(ext)) {
-      hint = '\n这是文本文件，可使用 Read 工具直接读取内容';
+      hint = '\nThis is a text file, can use the Read tool to read its content directly';
     }
 
-    return '[附件: ' + name + ']\nMIME: ' + mimeType + '\n文件路径: ' + tempFilePath + hint;
+    return '[Attachment: ' + name + ']\nMIME: ' + mimeType + '\nFile path: ' + tempFilePath + hint;
   } catch (error) {
     console.error('[WebSocket] Failed to save file attachment: ' + name, error);
-    throw new Error('保存文件附件失败: ' + (error instanceof Error ? error.message : '未知错误'));
+    throw new Error('Failed to save file attachment: ' + (error instanceof Error ? error.message : 'Unknown error'));
   }
 }
 
@@ -5671,7 +5674,7 @@ async function handleSwarmSubscribe(
       sendMessage(ws, {
         type: 'error',
         payload: {
-          message: '缺少 blueprintId',
+          message: 'Missing blueprintId',
         },
       });
       return;
@@ -5695,7 +5698,7 @@ async function handleSwarmSubscribe(
       if (session) {
         blueprint = {
           id: blueprintId,
-          name: session.blueprintName || 'TaskPlan 执行',
+          name: session.blueprintName || 'TaskPlan Execution',
           description: '',
           status: session.completedAt ? 'completed' : 'executing',
           projectPath: session.projectPath,
@@ -5708,7 +5711,7 @@ async function handleSwarmSubscribe(
           type: 'swarm:error',
           payload: {
             blueprintId,
-            error: 'Blueprint 不存在',
+            error: 'Blueprint does not exist',
             timestamp: new Date().toISOString(),
           },
         });
@@ -5883,7 +5886,7 @@ async function handleSwarmSubscribe(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '订阅失败',
+        message: error instanceof Error ? error.message : 'Subscription failed',
       },
     });
   }
@@ -6016,7 +6019,7 @@ async function handleResumeLead(
     if (!blueprintId) {
       sendMessage(ws, {
         type: 'error',
-        payload: { message: '缺少 blueprintId' },
+        payload: { message: 'Missing blueprintId' },
       });
       return;
     }
@@ -6053,7 +6056,7 @@ async function handleResumeLead(
         type: 'swarm:error',
         payload: {
           blueprintId,
-          error: result.error || '恢复失败',
+          error: result.error || 'Resume failed',
           timestamp: new Date().toISOString(),
         },
       });
@@ -6064,7 +6067,7 @@ async function handleResumeLead(
       type: 'swarm:error',
       payload: {
         blueprintId,
-        error: error instanceof Error ? error.message : '恢复 LeadAgent 失败',
+        error: error instanceof Error ? error.message : 'Failed to resume LeadAgent',
         timestamp: new Date().toISOString(),
       },
     });
@@ -6085,7 +6088,7 @@ async function handleSwarmStop(
     if (!blueprintId) {
       sendMessage(ws, {
         type: 'error',
-        payload: { message: '缺少 blueprintId' },
+        payload: { message: 'Missing blueprintId' },
       });
       return;
     }
@@ -6113,7 +6116,7 @@ async function handleSwarmStop(
       type: 'swarm:error',
       payload: {
         blueprintId,
-        error: error instanceof Error ? error.message : '停止失败',
+        error: error instanceof Error ? error.message : 'Stop failed',
         timestamp: new Date().toISOString(),
       },
     });
@@ -6136,7 +6139,7 @@ async function handleTaskRetry(
     if (!blueprintId) {
       sendMessage(ws, {
         type: 'error',
-        payload: { message: '缺少 blueprintId' },
+        payload: { message: 'Missing blueprintId' },
       });
       return;
     }
@@ -6144,7 +6147,7 @@ async function handleTaskRetry(
     if (!taskId) {
       sendMessage(ws, {
         type: 'error',
-        payload: { message: '缺少 taskId' },
+        payload: { message: 'Missing taskId' },
       });
       return;
     }
@@ -6171,7 +6174,7 @@ async function handleTaskRetry(
           blueprintId,
           taskId,
           success: false,
-          error: result.error || '重试失败',
+          error: result.error || 'Retry failed',
           timestamp: new Date().toISOString(),
         },
       });
@@ -6181,7 +6184,7 @@ async function handleTaskRetry(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '任务重试失败',
+        message: error instanceof Error ? error.message : 'Task retry failed',
       },
     });
   }
@@ -6202,7 +6205,7 @@ async function handleTaskSkip(
     if (!blueprintId || !taskId) {
       sendMessage(ws, {
         type: 'error',
-        payload: { message: '缺少 blueprintId 或 taskId' },
+        payload: { message: 'Missing blueprintId or taskId' },
       });
       return;
     }
@@ -6212,7 +6215,7 @@ async function handleTaskSkip(
     if (!session) {
       sendMessage(ws, {
         type: 'error',
-        payload: { message: '找不到执行会话' },
+        payload: { message: 'Execution session not found' },
       });
       return;
     }
@@ -6237,7 +6240,7 @@ async function handleTaskSkip(
           blueprintId,
           taskId,
           success: false,
-          error: '跳过失败',
+          error: 'Skip failed',
           timestamp: new Date().toISOString(),
         },
       });
@@ -6247,7 +6250,7 @@ async function handleTaskSkip(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '任务跳过失败',
+        message: error instanceof Error ? error.message : 'Task skip failed',
       },
     });
   }
@@ -6269,7 +6272,7 @@ async function handleTaskInterject(
     if (!blueprintId || !taskId || !message) {
       sendMessage(ws, {
         type: 'error',
-        payload: { message: '缺少必要参数: blueprintId, taskId, message' },
+        payload: { message: 'Missing required parameters: blueprintId, taskId, message' },
       });
       return;
     }
@@ -6289,7 +6292,7 @@ async function handleTaskInterject(
               blueprintId,
               taskId,
               success: true,
-              message: '消息已发送，E2E Agent 将在下一轮对话中处理',
+              message: 'Message sent, E2E Agent will process it in the next conversation turn',
               timestamp: new Date().toISOString(),
             },
           });
@@ -6301,7 +6304,7 @@ async function handleTaskInterject(
               blueprintId,
               taskId,
               success: false,
-              error: 'E2E Agent 插嘴失败，测试可能已完成或尚未开始',
+              error: 'E2E Agent interjection failed, test may have completed or not yet started',
               timestamp: new Date().toISOString(),
             },
           });
@@ -6315,7 +6318,7 @@ async function handleTaskInterject(
             blueprintId,
             taskId,
             success: false,
-            error: '找不到正在运行的 E2E 测试，测试可能已完成或尚未开始',
+            error: 'No running E2E test found, test may have completed or not yet started',
             timestamp: new Date().toISOString(),
           },
         });
@@ -6341,7 +6344,7 @@ async function handleTaskInterject(
           blueprintId,
           taskId,
           success: false,
-          error: '找不到执行该任务的 Worker，任务可能已完成或尚未开始',
+          error: 'Worker executing this task not found, task may have completed or not yet started',
           timestamp: new Date().toISOString(),
         },
       });
@@ -6359,7 +6362,7 @@ async function handleTaskInterject(
           blueprintId,
           taskId,
           success: true,
-          message: '消息已发送，Worker 将在下一轮对话中处理',
+          message: 'Message sent, Worker will process it in the next conversation turn',
           timestamp: new Date().toISOString(),
         },
       });
@@ -6371,7 +6374,7 @@ async function handleTaskInterject(
           blueprintId,
           taskId,
           success: false,
-          error: 'Worker 不支持插嘴功能',
+          error: 'Worker does not support interjection',
           timestamp: new Date().toISOString(),
         },
       });
@@ -6381,7 +6384,7 @@ async function handleTaskInterject(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '处理插嘴失败',
+        message: error instanceof Error ? error.message : 'Failed to handle interjection',
       },
     });
   }
@@ -6401,7 +6404,7 @@ async function handleLeadInterject(
     if (!blueprintId || !message) {
       sendMessage(ws, {
         type: 'error',
-        payload: { message: '缺少必要参数: blueprintId, message' },
+        payload: { message: 'Missing required parameters: blueprintId, message' },
       });
       return;
     }
@@ -6416,7 +6419,7 @@ async function handleLeadInterject(
         payload: {
           blueprintId,
           success: false as const,
-          error: '找不到活跃的执行会话，LeadAgent 可能尚未启动',
+          error: 'No active execution session found, LeadAgent may not have started yet',
           timestamp: new Date().toISOString(),
         },
       });
@@ -6431,7 +6434,7 @@ async function handleLeadInterject(
         payload: {
           blueprintId,
           success: false as const,
-          error: '找不到活跃的 LeadAgent，可能已完成或尚未启动',
+          error: 'No active LeadAgent found, it may have completed or not yet started',
           timestamp: new Date().toISOString(),
         },
       });
@@ -6447,7 +6450,7 @@ async function handleLeadInterject(
         payload: {
           blueprintId,
           success: true as const,
-          message: '消息已发送，LeadAgent 将在下一轮对话中处理',
+          message: 'Message sent, LeadAgent will process it in the next conversation turn',
           timestamp: new Date().toISOString(),
         },
       });
@@ -6457,7 +6460,7 @@ async function handleLeadInterject(
         payload: {
           blueprintId,
           success: false as const,
-          error: 'LeadAgent 插嘴失败，可能未在执行中',
+          error: 'LeadAgent interjection failed, it may not be executing',
           timestamp: new Date().toISOString(),
         },
       });
@@ -6467,7 +6470,7 @@ async function handleLeadInterject(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '处理 LeadAgent 插嘴失败',
+        message: error instanceof Error ? error.message : 'Failed to handle LeadAgent interjection',
       },
     });
   }
@@ -6492,7 +6495,7 @@ async function handleSwarmDebugAgent(
     if (!blueprintId) {
       sendMessage(ws, {
         type: 'error',
-        payload: { message: '缺少 blueprintId' },
+        payload: { message: 'Missing blueprintId' },
       });
       return;
     }
@@ -6501,7 +6504,7 @@ async function handleSwarmDebugAgent(
     if (!session) {
       sendMessage(ws, {
         type: 'error',
-        payload: { message: '找不到执行会话' },
+        payload: { message: 'Execution session not found' },
       });
       return;
     }
@@ -6514,7 +6517,7 @@ async function handleSwarmDebugAgent(
         payload: {
           agentType,
           workerId,
-          systemPrompt: `(${agentType} Agent 当前未在执行)`,
+          systemPrompt: `(${agentType} Agent is not currently executing)`,
           messages: [],
           tools: [],
           model: 'unknown',
@@ -6533,7 +6536,7 @@ async function handleSwarmDebugAgent(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '获取 Agent 调试信息失败',
+        message: error instanceof Error ? error.message : 'Failed to get Agent debug info',
       },
     });
   }
@@ -6554,7 +6557,7 @@ async function handleSwarmDebugAgentList(
     if (!blueprintId) {
       sendMessage(ws, {
         type: 'error',
-        payload: { message: '缺少 blueprintId' },
+        payload: { message: 'Missing blueprintId' },
       });
       return;
     }
@@ -6579,7 +6582,7 @@ async function handleSwarmDebugAgentList(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '获取 Agent 列表失败',
+        message: error instanceof Error ? error.message : 'Failed to get Agent list',
       },
     });
   }
@@ -6596,7 +6599,7 @@ async function handleSwarmCancel(
     if (!blueprintId) {
       sendMessage(ws, {
         type: 'error',
-        payload: { message: '缺少 blueprintId' },
+        payload: { message: 'Missing blueprintId' },
       });
       return;
     }
@@ -6606,7 +6609,7 @@ async function handleSwarmCancel(
     if (!session) {
       sendMessage(ws, {
         type: 'error',
-        payload: { message: '找不到执行会话' },
+        payload: { message: 'Execution session not found' },
       });
       return;
     }
@@ -6636,7 +6639,7 @@ async function handleSwarmCancel(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '取消执行失败',
+        message: error instanceof Error ? error.message : 'Failed to cancel execution',
       },
     });
   }
@@ -6666,7 +6669,7 @@ async function handleAskUserResponse(
     if (!blueprintId || !requestId) {
       sendMessage(ws, {
         type: 'error',
-        payload: { message: '缺少 blueprintId 或 requestId' },
+        payload: { message: 'Missing blueprintId or requestId' },
       });
       return;
     }
@@ -6680,7 +6683,7 @@ async function handleAskUserResponse(
         console.warn(`[Worker] No active worker found: ${workerKey}`);
         sendMessage(ws, {
           type: 'error',
-          payload: { message: `找不到活动的 Worker: ${workerId}` },
+          payload: { message: `Active Worker not found: ${workerId}` },
         });
         return;
       }
@@ -6702,7 +6705,7 @@ async function handleAskUserResponse(
         console.warn(`[E2E Agent] No active agent found for blueprint: ${blueprintId}`);
         sendMessage(ws, {
           type: 'error',
-          payload: { message: '找不到活动的 E2E Agent' },
+          payload: { message: 'Active E2E Agent not found' },
         });
         return;
       }
@@ -6728,7 +6731,7 @@ async function handleAskUserResponse(
     sendMessage(ws, {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : '处理响应失败',
+        message: error instanceof Error ? error.message : 'Failed to handle response',
       },
     });
   }

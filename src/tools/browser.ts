@@ -314,7 +314,10 @@ ADVANCED FEATURES:
         }
 
         case 'screenshot': {
-          const rawBuffer = await controller.screenshot({ fullPage: input.fullPage });
+          const rawBuffer = await controller.screenshot({ 
+            fullPage: input.fullPage,
+            timeout: input.timeout
+          });
           // Anthropic API 多图请求要求每张图片任意维度不超过 2000px
           const MAX_DIM = 2000;
           let finalBuffer = rawBuffer;
@@ -350,7 +353,10 @@ ADVANCED FEATURES:
         }
 
         case 'screenshot_labeled': {
-          const result = await controller.screenshotWithLabels({ fullPage: input.fullPage });
+          const result = await controller.screenshotWithLabels({ 
+            fullPage: input.fullPage,
+            timeout: input.timeout
+          });
           // Resize if needed
           const MAX_DIM = 2000;
           let finalBuffer = result.buffer;

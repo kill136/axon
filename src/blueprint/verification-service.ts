@@ -262,7 +262,7 @@ export class VerificationService extends EventEmitter {
     // 检查项目路径
     const fs = await import('fs');
     if (!fs.existsSync(blueprint.projectPath)) {
-      throw new Error(`项目路径不存在: ${blueprint.projectPath}`);
+      throw new Error(`Project path does not exist: ${blueprint.projectPath}`);
     }
 
     // 检查 package.json 或其他配置
@@ -387,7 +387,7 @@ export class VerificationService extends EventEmitter {
       passedTests: success ? 1 : 0,
       failedTests: success ? 0 : 1,
       skippedTests: 0,
-      failures: success ? [] : [{ name: 'unknown', error: '测试失败' }],
+      failures: success ? [] : [{ name: 'unknown', error: 'Test failed' }],
     };
   }
 

@@ -53,6 +53,14 @@ This is an educational reverse-engineering project that recreates @anthropic-ai/
 - 工具调用 > 文本描述。用户需要输入 = 立即弹出交互式问题。
 - 违反此条 = 被动的批处理思维，而不是主动的交互式 Agent。
 
+### 铁律10：工具不够用，改进工具源码
+- **遇到工具能力不足，优先改进工具源码，而非放弃或让用户手动完成**。
+- 流程：Read 工具源码 → 分析问题根因 → 改进代码 → SelfEvolve 验证。
+- 例：Browser 表单交互失败 → 不应让用户手动，应改进 `src/tools/browser.ts`。
+- 例：文章引用代码 → 必须先 Read 源码验证准确性，不能凭记忆编造。
+- **你能看到并修改自己的全部源码（F:/claude-code-open/src/）**。
+- 违反此条 = 把工具当黑盒，放弃自我进化能力。
+
 ## 项目性质
 - 这是一个**复刻还原项目**，目标是还原 @anthropic-ai/claude-code v2.1.4。
 - 唯一准则：**保持和官方一致**。不要"改进"，不要"优化"，不要"我觉得这样更好"。

@@ -962,7 +962,7 @@ export class ConversationManager {
     // 统一的 token 有效性检查（对齐官方 NM() 语义）
     const refreshOk = await webAuth.ensureValidToken();
     if (!refreshOk) {
-      throw new Error('OAuth token 已过期，刷新失败。请重新登录。');
+      throw new Error('OAuth token expired, refresh failed. Please log in again.');
     }
 
     // 只有 token 真正变更了才重建客户端
@@ -1655,7 +1655,7 @@ export class ConversationManager {
               id: `compact-boundary-${Date.now()}`,
               role: 'system',
               timestamp: Date.now(),
-              content: [{ type: 'text' as const, text: `对话已压缩，节省约 ${(compactResult.savedTokens || 0).toLocaleString()} tokens` }],
+              content: [{ type: 'text' as const, text: `Conversation compacted, saved approximately ${(compactResult.savedTokens || 0).toLocaleString()} tokens` }],
               isCompactBoundary: true,
               _messagesLen: state.messages.length,
             };
@@ -2130,7 +2130,7 @@ export class ConversationManager {
                 id: `compact-boundary-${Date.now()}`,
                 role: 'system',
                 timestamp: Date.now(),
-                content: [{ type: 'text' as const, text: `对话已压缩，节省约 ${(compactResult.savedTokens || 0).toLocaleString()} tokens` }],
+                content: [{ type: 'text' as const, text: `Conversation compacted, saved approximately ${(compactResult.savedTokens || 0).toLocaleString()} tokens` }],
                 isCompactBoundary: true,
                 _messagesLen: state.messages.length,
               };
@@ -2190,7 +2190,7 @@ export class ConversationManager {
           networkRetryCount++;
           const delay = 1000 * Math.pow(2, networkRetryCount - 1); // 1s, 2s, 4s
           console.warn(
-            `[ConversationManager] 网络错误 (${errMsg})，${delay}ms 后重试 (${networkRetryCount}/${MAX_CONVERSATION_RETRIES})...`
+            `[ConversationManager] Network error (${errMsg}), retrying in ${delay}ms (${networkRetryCount}/${MAX_CONVERSATION_RETRIES})...`
           );
           await new Promise(resolve => setTimeout(resolve, delay));
           // continueLoop 保持为 true，继续下一次循环迭代（重新发起 API 调用）
@@ -2487,8 +2487,8 @@ export class ConversationManager {
 
       const durationSec = ((endedAt - startedAt) / 1000).toFixed(1);
       const output = result.success
-        ? `定时任务 "${taskName}" 已执行完成（耗时 ${durationSec}s），执行结果已实时展示给用户，无需重复总结。`
-        : `定时任务 "${taskName}" 执行失败（耗时 ${durationSec}s）: ${result.error}`;
+        ? `Scheduled task "${taskName}" completed (took ${durationSec}s), results have been shown to user in real-time, no need to summarize again.`
+        : `Scheduled task "${taskName}" failed (took ${durationSec}s): ${result.error}`;
 
       callbacks.onToolResult?.(toolUse.id, result.success, output, result.success ? undefined : result.error, {
         tool: 'ScheduleTask',
@@ -2587,14 +2587,14 @@ export class ConversationManager {
     const isMcpTool = !tool && toolUse.name.startsWith('mcp__');
 
     if (!tool && !isMcpTool) {
-      const error = `未知工具: ${toolUse.name}`;
+      const error = `Unknown tool: ${toolUse.name}`;
       callbacks.onToolResult?.(toolUse.id, false, undefined, error);
       return { success: false, error };
     }
 
     // 检查工具是否被过滤
     if (!this.isToolEnabled(toolUse.name, state.toolFilterConfig)) {
-      const error = `工具 ${toolUse.name} 已被禁用`;
+      const error = `Tool ${toolUse.name} is disabled`;
       callbacks.onToolResult?.(toolUse.id, false, undefined, error);
       return { success: false, error };
     }
@@ -2605,14 +2605,14 @@ export class ConversationManager {
     try {
       const permissionResult = await this.checkToolPermission(toolUse, state, callbacks);
       if (permissionResult === 'denied') {
-        const error = `用户拒绝了 ${toolUse.name} 的执行权限`;
+        const error = `User denied execution permission for ${toolUse.name}`;
         callbacks.onToolResult?.(toolUse.id, false, undefined, error);
         return { success: false, error };
       }
       // permissionResult === 'allowed' 或 'skipped'（无需权限），继续执行
     } catch (permError) {
       // 权限请求超时或被取消
-      const error = permError instanceof Error ? permError.message : '权限请求失败';
+      const error = permError instanceof Error ? permError.message : 'Permission request failed';
       callbacks.onToolResult?.(toolUse.id, false, undefined, error);
       return { success: false, error };
     }
@@ -2624,7 +2624,7 @@ export class ConversationManager {
     try {
       const hookResult = await runPreToolUseHooks(toolUse.name, toolUse.input, hookSessionId);
       if (!hookResult.allowed) {
-        const error = hookResult.message || `PreToolUse hook 阻止了 ${toolUse.name} 的执行`;
+        const error = hookResult.message || `PreToolUse hook blocked execution of ${toolUse.name}`;
         callbacks.onToolResult?.(toolUse.id, false, undefined, error);
         return { success: false, error };
       }
@@ -2991,9 +2991,9 @@ export class ConversationManager {
           const nfrCount = blueprint.nfrs?.length || 0;
           const reqCount = blueprint.requirements?.length || 0;
           const stats = isCodebase
-            ? `模块: ${moduleCount}, 流程: ${processCount}, NFR: ${nfrCount}`
-            : `需求数: ${reqCount}`;
-          const output = `蓝图已生成并保存。\n蓝图ID: ${blueprint.id}\n项目名: ${blueprint.name}\n类型: ${isCodebase ? '全景蓝图' : '需求蓝图'}\n${stats}\n\n现在可以调用 StartLeadAgent 启动执行。`;
+            ? `Modules: ${moduleCount}, Processes: ${processCount}, NFR: ${nfrCount}`
+            : `Requirements: ${reqCount}`;
+          const output = `Blueprint generated and saved.\nBlueprint ID: ${blueprint.id}\nProject: ${blueprint.name}\nType: ${isCodebase ? 'Panoramic Blueprint' : 'Requirements Blueprint'}\n${stats}\n\nYou can now call StartLeadAgent to start execution.`;
           callbacks.onToolResult?.(toolUse.id, true, output);
           return { success: true, output };
         } catch (error) {
@@ -3036,7 +3036,7 @@ export class ConversationManager {
           const result = await geminiImageService.generateImage(prompt, style);
 
           if (!result.success) {
-            const error = result.error || '图片生成失败';
+            const error = result.error || 'Image generation failed';
             callbacks.onToolResult?.(toolUse.id, false, undefined, error);
             return { success: false, error };
           }
@@ -3054,7 +3054,7 @@ export class ConversationManager {
             }));
           }
 
-          const output = `图片已生成并发送给用户预览。${result.generatedText ? `\n\n描述: ${result.generatedText}` : ''}\n\n用户可以在聊天界面中查看生成的图片。`;
+          const output = `Image generated and sent to user for preview.${result.generatedText ? `\n\nDescription: ${result.generatedText}` : ''}\n\nUser can view the generated image in the chat interface.`;
           callbacks.onToolResult?.(toolUse.id, true, output);
           return { success: true, output };
         } catch (error) {
@@ -3133,7 +3133,7 @@ export class ConversationManager {
         const mcpResult = await callMcpTool(mcpServerName, mcpToolName, toolUse.input);
         const mcpOutput = mcpResult.output || mcpResult.error || JSON.stringify(mcpResult);
         const truncatedMcpOutput = mcpOutput.length > 50000
-          ? mcpOutput.slice(0, 50000) + '\n... (输出已截断)'
+          ? mcpOutput.slice(0, 50000) + '\n... (output truncated)'
           : mcpOutput;
 
         // PostToolUse Hook
@@ -3172,7 +3172,7 @@ export class ConversationManager {
       // 截断过长输出
       const maxOutputLength = 50000;
       if (output.length > maxOutputLength) {
-        output = output.slice(0, maxOutputLength) + '\n... (输出已截断)';
+        output = output.slice(0, maxOutputLength) + '\n... (output truncated)';
       }
 
       // 提取 newMessages（对齐官网实现：Skill 工具返回的额外消息）
@@ -3912,17 +3912,17 @@ Respond ONLY with valid JSON, no other text.`;
 
         if (!isCodebase) continue;
 
-        const lines: string[] = ['# 项目全景（来自代码分析蓝图）'];
+        const lines: string[] = ['# Project Overview (from Code Analysis Blueprint)'];
 
         if (data.modules?.length > 0) {
-          lines.push(`\n## 模块结构（${data.modules.length} 个模块）`);
+          lines.push(`\n## Module Structure (${data.modules.length} modules)`);
           for (const m of data.modules) {
             lines.push(`- **${m.name}** [${m.type || 'other'}]: ${m.description}`);
           }
         }
 
         if (data.businessProcesses?.length > 0) {
-          lines.push(`\n## 业务流程（${data.businessProcesses.length} 个）`);
+          lines.push(`\n## Business Processes (${data.businessProcesses.length})`);
           for (const p of data.businessProcesses) {
             lines.push(`- **${p.name}**: ${p.description}`);
           }
@@ -4235,7 +4235,7 @@ Guidelines:
       onTextDelta: (text: string) => broadcast({ type: 'text_delta', payload: { messageId, text, sessionId: targetSessionId } }),
       onToolUseStart: (toolUseId: string, toolName: string, input: unknown) => {
         broadcast({ type: 'tool_use_start', payload: { messageId, toolUseId, toolName, input, sessionId: targetSessionId } });
-        broadcast({ type: 'status', payload: { status: 'tool_executing', message: `执行 ${toolName}...`, sessionId: targetSessionId } });
+        broadcast({ type: 'status', payload: { status: 'tool_executing', message: `Executing ${toolName}...`, sessionId: targetSessionId } });
       },
       onToolUseDelta: (toolUseId: string, partialJson: string) => broadcast({ type: 'tool_use_delta', payload: { toolUseId, partialJson, sessionId: targetSessionId } }),
       onToolResult: (toolUseId: string, success: boolean, output?: string, error?: string, data?: unknown) => {
@@ -4484,12 +4484,12 @@ Guidelines:
   ): Promise<void> {
     const state = this.sessions.get(sessionId);
     if (!state) {
-      callbacks.onError?.(new Error('会话不存在'));
+      callbacks.onError?.(new Error('Session not found'));
       return;
     }
 
     if (state.isProcessing) {
-      callbacks.onError?.(new Error('会话正在处理中'));
+      callbacks.onError?.(new Error('Session is currently processing'));
       return;
     }
 
@@ -4632,11 +4632,11 @@ Guidelines:
   }> {
     const state = this.sessions.get(sessionId);
     if (!state) {
-      return { success: false, error: '会话不存在或未加载到内存中。' };
+      return { success: false, error: 'Session not found or not loaded into memory.' };
     }
 
     if (state.messages.length === 0) {
-      return { success: false, error: '没有对话历史需要压缩。' };
+      return { success: false, error: 'No conversation history to compact.' };
     }
 
     const messagesBefore = state.messages.length;
@@ -4645,7 +4645,7 @@ Guidelines:
       const compactResult = await this.performAutoCompact(state.messages, state.model, state);
 
       if (!compactResult.wasCompacted) {
-        return { success: false, error: '压缩未执行（可能消息过少或已在压缩状态）。' };
+        return { success: false, error: 'Compaction not performed (possibly too few messages or already compacted).' };
       }
 
       // 更新会话消息
@@ -4665,7 +4665,7 @@ Guidelines:
     } catch (error) {
       return {
         success: false,
-        error: `压缩失败: ${error instanceof Error ? error.message : String(error)}`,
+        error: `Compaction failed: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
   }
@@ -4751,7 +4751,7 @@ Guidelines:
     const state = this.sessions.get(sessionId);
     if (!state) {
       return {
-        systemPrompt: '(会话不存在)',
+        systemPrompt: '(Session not found)',
         messages: [],
         tools: [],
         model: 'unknown',
@@ -5367,7 +5367,7 @@ Guidelines:
   async installPlugin(pluginId: string): Promise<{ success: boolean; plugin?: any; error?: string }> {
     try {
       if (!this.marketplaceManager) {
-        return { success: false, error: '插件市场管理器未初始化' };
+        return { success: false, error: 'Plugin marketplace manager not initialized' };
       }
 
       console.log(`[ConversationManager] Starting plugin installation: ${pluginId}`);
@@ -5378,7 +5378,7 @@ Guidelines:
       if (!result.success || !result.plugin) {
         return {
           success: false,
-          error: result.error || '插件安装失败',
+          error: result.error || 'Plugin installation failed',
         };
       }
 
@@ -5414,7 +5414,7 @@ Guidelines:
   getRewindableMessages(sessionId: string) {
     const state = this.sessions.get(sessionId);
     if (!state) {
-      throw new Error(`会话未找到: ${sessionId}`);
+      throw new Error(`Session not found: ${sessionId}`);
     }
 
     // 设置消息给 RewindManager
@@ -5429,7 +5429,7 @@ Guidelines:
   getRewindPreview(sessionId: string, messageId: string, option: RewindOption) {
     const state = this.sessions.get(sessionId);
     if (!state) {
-      throw new Error(`会话未找到: ${sessionId}`);
+      throw new Error(`Session not found: ${sessionId}`);
     }
 
     // 防御性检查：如果旧 session 没有 rewindManager，创建一个新的
@@ -5450,7 +5450,7 @@ Guidelines:
   async rewind(sessionId: string, messageId: string, option: RewindOption) {
     const state = this.sessions.get(sessionId);
     if (!state) {
-      throw new Error(`会话未找到: ${sessionId}`);
+      throw new Error(`Session not found: ${sessionId}`);
     }
 
     console.log(`[ConversationManager] Executing rewind: sessionId=${sessionId}, messageId=${messageId}, option=${option}`);
@@ -5462,7 +5462,7 @@ Guidelines:
       const messageIndex = state.chatHistory.findIndex(m => m.id === messageId);
       if (messageIndex < 0) {
         console.error(`[ConversationManager] Message not found: ${messageId}`);
-        return { success: false, option, error: '未找到要回滚的消息' };
+        return { success: false, option, error: 'Message to rewind not found' };
       }
 
       const originalChatCount = state.chatHistory.length;

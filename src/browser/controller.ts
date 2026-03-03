@@ -914,19 +914,20 @@ export class BrowserController {
 
   // --- Screenshot ---
 
-  async screenshot(options?: { fullPage?: boolean }): Promise<Buffer> {
+  async screenshot(options?: { fullPage?: boolean; timeout?: number }): Promise<Buffer> {
     const page = await this.getSessionPage();
     return await page.screenshot({ 
       fullPage: options?.fullPage ?? false,
       scale: 'css',
-      timeout: 30000,
+      timeout: options?.timeout ?? 60000,  // 增加默认超时到 60 秒
+      animations: 'disabled',  // 禁用动画加速截图
     });
   }
 
   /**
    * Take screenshot with labeled overlays for each ref (Set-of-Mark style)
    */
-  async screenshotWithLabels(options?: { fullPage?: boolean }): Promise<{ 
+  async screenshotWithLabels(options?: { fullPage?: boolean; timeout?: number }): Promise<{ 
     buffer: Buffer; 
     labelCount: number; 
     skippedCount: number;
@@ -938,7 +939,8 @@ export class BrowserController {
       const buffer = await page.screenshot({ 
         fullPage: options?.fullPage ?? false,
         scale: 'css',
-        timeout: 15000,
+        timeout: options?.timeout ?? 60000,
+        animations: 'disabled',
       });
       return { buffer, labelCount: 0, skippedCount: 0 };
     }
@@ -1026,7 +1028,8 @@ export class BrowserController {
     const buffer = await page.screenshot({ 
       fullPage: options?.fullPage ?? false,
       scale: 'css',
-      timeout: 15000,
+      timeout: options?.timeout ?? 60000,
+      animations: 'disabled',
     });
 
     // Remove overlays

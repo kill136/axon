@@ -144,7 +144,7 @@ export const blueprintApi = {
     });
     const result = await response.json();
     if (!result.success) {
-      throw new Error(result.error || '删除蓝图失败');
+      throw new Error(result.error || 'Failed to delete blueprint');
     }
   },
 
@@ -164,7 +164,7 @@ export const blueprintApi = {
     // v12.1: 处理 409 冲突（项目已有活跃蓝图正在执行）
     if (response.status === 409) {
       const result = await response.json();
-      throw new Error(result.error || '项目已有活跃蓝图正在执行');
+      throw new Error(result.error || 'Project already has an active blueprint execution');
     }
     return handleResponse(response);
   },

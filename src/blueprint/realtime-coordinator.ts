@@ -397,7 +397,7 @@ export class RealtimeCoordinator extends EventEmitter {
 
     // v9.0: LeadAgent 持久大脑模式（唯一执行路径）
     if (!this.currentBlueprint) {
-      throw new Error('LeadAgent 模式需要蓝图或任务计划，请先调用 setBlueprint()');
+      throw new Error('LeadAgent mode requires a blueprint or task plan, please call setBlueprint() first');
     }
     return this.startWithLeadAgent(plan, options?.isResume);
   }
@@ -408,7 +408,7 @@ export class RealtimeCoordinator extends EventEmitter {
    */
   private async startWithLeadAgent(plan: ExecutionPlan, isResume?: boolean): Promise<ExecutionResult> {
     if (!this.currentBlueprint) {
-      throw new Error('LeadAgent 模式需要蓝图或任务计划，请先调用 setBlueprint()');
+      throw new Error('LeadAgent mode requires a blueprint or task plan, please call setBlueprint() first');
     }
 
     if (isResume) {
@@ -631,7 +631,7 @@ export class RealtimeCoordinator extends EventEmitter {
             if (!hasResult) {
               console.log(`[RealtimeCoordinator] Cleaning up orphan task: ${task.id} (${task.name}) - LeadAgent has ended but task is still running`);
               task.status = 'failed';
-              task.result = { success: false, changes: [], decisions: [], error: 'LeadAgent 执行结束，任务未完成' };
+              task.result = { success: false, changes: [], decisions: [], error: 'LeadAgent execution ended, task not completed' };
               task.completedAt = new Date();
               result.failedTasks.push(task.id);
 
@@ -641,7 +641,7 @@ export class RealtimeCoordinator extends EventEmitter {
                 taskId: task.id,
                 updates: {
                   status: 'failed',
-                  error: 'LeadAgent 执行结束，任务未完成',
+                  error: 'LeadAgent execution ended, task not completed',
                   completedAt: new Date().toISOString(),
                 },
               });
@@ -905,7 +905,7 @@ export class RealtimeCoordinator extends EventEmitter {
     const result = this.taskResults.get(taskId);
     let actualStatus: TaskStatus = task.status || 'pending';
     if (result) {
-      if (result.error === '任务被跳过') {
+      if (result.error === 'Task skipped') {
         actualStatus = 'skipped';
       } else {
         actualStatus = result.success ? 'completed' : 'failed';
@@ -935,7 +935,7 @@ export class RealtimeCoordinator extends EventEmitter {
       success: false,
       changes: [],
       decisions: [],
-      error: '任务被跳过',
+      error: 'Task skipped',
     });
 
     // 发送任务跳过事件
@@ -1173,7 +1173,7 @@ export class RealtimeCoordinator extends EventEmitter {
       if (activeWorker || isExecuting) {
         finalStatus = 'running';
       } else if (result) {
-        if (result.error === '任务被跳过') {
+        if (result.error === 'Task skipped') {
           finalStatus = 'skipped';
         } else {
           finalStatus = result.success ? 'completed' : 'failed';
@@ -1235,7 +1235,7 @@ export class RealtimeCoordinator extends EventEmitter {
     this.taskResults.forEach((result, taskId) => {
       if (result.success) {
         completedCount++;
-      } else if (result.error === '任务被跳过') {
+      } else if (result.error === 'Task skipped') {
         skippedCount++;
       } else {
         failedCount++;
@@ -1389,7 +1389,7 @@ export class RealtimeCoordinator extends EventEmitter {
     this.taskResults.forEach((result, taskId) => {
       if (result.success) {
         completedTaskIds.push(taskId);
-      } else if (result.error === '任务被跳过') {
+      } else if (result.error === 'Task skipped') {
         skippedTaskIds.push(taskId);
       } else {
         failedTaskIds.push(taskId);
@@ -1510,7 +1510,7 @@ export class RealtimeCoordinator extends EventEmitter {
       // 同步更新任务状态
       const task = plan.tasks.find(t => t.id === result.taskId);
       if (task) {
-        task.status = result.success ? 'completed' : (result.error === '任务被跳过' ? 'skipped' : 'failed');
+        task.status = result.success ? 'completed' : (result.error === 'Task skipped' ? 'skipped' : 'failed');
       }
     }
 
@@ -1635,7 +1635,7 @@ export class RealtimeCoordinator extends EventEmitter {
       return {
         success: false,
         conflictId: decision.conflictId,
-        message: `冲突 ${decision.conflictId} 不存在或已解决`,
+        message: `Conflict ${decision.conflictId} does not exist or is already resolved`,
       };
     }
 
@@ -1658,7 +1658,7 @@ export class RealtimeCoordinator extends EventEmitter {
     return {
       success: true,
       conflictId: decision.conflictId,
-      message: '冲突已解决',
+      message: 'Conflict resolved',
     };
   }
 
@@ -1745,7 +1745,7 @@ export function createMockTaskExecutor(
         return {
           success: false,
           changes: [],
-          error: '模拟执行失败',
+          error: 'Simulated execution failed',
           decisions,
         };
       }

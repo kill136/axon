@@ -114,10 +114,10 @@ export function LogView({ commits, send, addMessageHandler, projectPath, selecte
         payload: { projectPath, limit: 200, branch: filterBranch },
       });
     } else {
-      // 请求所有分支的 log
+      // 请求所有分支的 log（--all 显示完整 graph）
       send({
         type: 'git:get_log',
-        payload: { projectPath, limit: 200 },
+        payload: { projectPath, limit: 200, all: true },
       });
     }
   }, [filterBranch, projectPath, send]);

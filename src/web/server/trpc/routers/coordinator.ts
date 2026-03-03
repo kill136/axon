@@ -87,7 +87,7 @@ export const coordinatorRouter = router({
         return {
           logs: [],
           workerId: null,
-          message: '该任务尚未分配 Worker',
+          message: 'No Worker assigned to this task yet',
         };
       }
 
@@ -178,7 +178,7 @@ export const coordinatorRouter = router({
             resumed: false,
             blueprintId,
             executionId: existingSession.id,
-            message: '执行已完成，请创建新蓝图',
+            message: 'Execution completed, please create a new blueprint',
           };
         }
 
@@ -191,7 +191,7 @@ export const coordinatorRouter = router({
           blueprintId,
           executionId: existingSession.id,
           planId: (existingSession as any).plan?.id,
-          message: '执行已恢复',
+          message: 'Execution resumed',
         };
       }
 
@@ -206,7 +206,7 @@ export const coordinatorRouter = router({
               blueprintId,
               executionId: recoveredSession.id,
               planId: (recoveredSession as any).plan?.id,
-              message: '从中断状态恢复执行',
+              message: 'Execution recovered from interrupted state',
             };
           }
         } catch (recoverError: any) {
@@ -219,7 +219,7 @@ export const coordinatorRouter = router({
       if (!blueprint) {
         throw new TRPCError({
           code: 'NOT_FOUND',
-          message: '蓝图不存在',
+          message: 'Blueprint not found',
         });
       }
 
@@ -236,7 +236,7 @@ export const coordinatorRouter = router({
         parallelGroups: (session as any).plan?.parallelGroups?.length || 0,
         estimatedMinutes: (session as any).plan?.estimatedMinutes,
         estimatedCost: (session as any).plan?.estimatedCost,
-        message: '新执行已启动',
+        message: 'New execution started',
       };
     }),
 
@@ -338,7 +338,7 @@ export const coordinatorRouter = router({
         return {
           executionId: existingSession.id,
           blueprintId: input.blueprintId,
-          message: '会话已恢复',
+          message: 'Session recovered',
         };
       }
 
@@ -349,7 +349,7 @@ export const coordinatorRouter = router({
           return {
             executionId: recoveredSession.id,
             blueprintId: input.blueprintId,
-            message: '从中断状态恢复执行成功',
+            message: 'Successfully recovered execution from interrupted state',
           };
         }
       }
@@ -359,7 +359,7 @@ export const coordinatorRouter = router({
       if (!blueprint) {
         throw new TRPCError({
           code: 'NOT_FOUND',
-          message: '蓝图不存在',
+          message: 'Blueprint not found',
         });
       }
 
@@ -367,7 +367,7 @@ export const coordinatorRouter = router({
       return {
         executionId: session.id,
         blueprintId: input.blueprintId,
-        message: '创建新执行',
+        message: 'New execution created',
       };
     }),
 

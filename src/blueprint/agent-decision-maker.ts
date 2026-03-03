@@ -541,7 +541,7 @@ ${useTools ? '你可以使用工具来分析代码、检查文件，获取更准
         return JSON.parse(arrayMatch[0]);
       }
 
-      throw new Error('无法从响应中提取 JSON');
+      throw new Error('Unable to extract JSON from response');
     }
   }
 }

@@ -215,11 +215,14 @@ export class GitManager {
   /**
    * 获取 commit 历史
    */
-  getLog(limit: number = 50): GitResult<GitCommit[]> {
+  getLog(limit: number = 50, options?: { all?: boolean; branch?: string }): GitResult<GitCommit[]> {
     try {
       // 格式：hash, parents, shortHash, author, date, message, refs
       const format = '%H%n%P%n%h%n%an%n%ai%n%s%n%D%n--END--';
-      const output = this.execGit(`log -${limit} --format="${format}"`);
+      let cmd = `log -${limit} --format="${format}"`;
+      if (options?.all) cmd += ' --all';
+      if (options?.branch) cmd += ` "${options.branch}"`;
+      const output = this.execGit(cmd);
 
       const commits: GitCommit[] = [];
       const entries = output.split('--END--\n').filter(e => e.trim());

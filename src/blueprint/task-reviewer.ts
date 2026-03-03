@@ -223,7 +223,7 @@ export class TaskReviewer {
     } catch (error) {
       // 根据项目规则：禁止降级方案，直接抛出错误
       console.error('[TaskReviewer] Review failed:', error);
-      throw new Error(`Reviewer 审查过程出错: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Reviewer process error: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -578,7 +578,7 @@ SubmitReview({
 
     // 如果没有调用 SubmitReview 工具，直接抛出异常（禁止降级）
     console.error('[TaskReviewer] Reviewer did not call SubmitReview tool');
-    throw new Error('Reviewer 未调用 SubmitReview 工具，无法完成审查');
+    throw new Error('Reviewer did not call SubmitReview tool, unable to complete review');
   }
 
   /**
@@ -680,7 +680,7 @@ SubmitReview({
 
     // v5.7: AI 也无法解析时，抛出异常让上层降级为信任 Worker
     // 不再返回 needs_revision + "需要人工审核"，因为系统设计为全自动化
-    throw new Error(`无法解析审查结果，原始响应: ${text.substring(0, 200)}`);
+    throw new Error(`Unable to parse review result, raw response: ${text.substring(0, 200)}`);
   }
 
   /**

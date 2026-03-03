@@ -101,6 +101,32 @@ function TerminalInstance({
     xtermRef.current = term;
     fitAddonRef.current = fitAddon;
 
+    // 初始 fit：延迟执行，等容器有真实尺寸
+    const fitWithRetry = () => {
+      try {
+        fitAddon.fit();
+      } catch {
+        // ignore
+      }
+    };
+    // 多次尝试 fit，确保容器从 display:none 过渡后能正确计算尺寸
+    requestAnimationFrame(() => fitWithRetry());
+    const t1 = setTimeout(fitWithRetry, 100);
+    const t2 = setTimeout(fitWithRetry, 300);
+
+    // 使用 ResizeObserver 监听容器尺寸变化，自动 fit
+    let resizeObserver: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined' && containerRef.current) {
+      resizeObserver = new ResizeObserver(() => {
+        try {
+          fitAddon.fit();
+        } catch {
+          // ignore
+        }
+      });
+      resizeObserver.observe(containerRef.current);
+    }
+
     // 用户输入 → 发送到服务端
     term.onData((data: string) => {
       const tid = terminalIdRef.current;
@@ -113,6 +139,9 @@ function TerminalInstance({
     });
 
     return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      resizeObserver?.disconnect();
       term.dispose();
       xtermRef.current = null;
       fitAddonRef.current = null;
@@ -322,18 +351,30 @@ export function TerminalPanel({
                 : t
             ));
 
-            // fit + resize
-            setTimeout(() => {
+            // fit + resize（多次重试确保成功）
+            const fitAndResize = () => {
               const el = findInstanceEl(pendingTabId);
               if (el) {
                 (el as any).__xtermFit?.();
                 const size = (el as any).__xtermGetSize?.();
-                if (size) {
+                if (size && size.cols > 0 && size.rows > 0) {
                   send({
                     type: 'terminal:resize',
                     payload: { terminalId: serverTerminalId, cols: size.cols, rows: size.rows },
                   });
+                  return true;
                 }
+              }
+              return false;
+            };
+            // 多次尝试，兼容慢 layout 的浏览器/设备
+            setTimeout(() => {
+              if (!fitAndResize()) {
+                setTimeout(() => {
+                  if (!fitAndResize()) {
+                    setTimeout(fitAndResize, 500);
+                  }
+                }, 200);
               }
             }, 100);
           }

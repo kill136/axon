@@ -205,7 +205,7 @@ export type ClientMessage =
   | { type: 'rewind_execute'; payload: { messageId: string; option: 'code' | 'conversation' | 'both' } }
   // Git 消息
   | { type: 'git:get_status' }
-  | { type: 'git:get_log'; payload?: { limit?: number } }
+  | { type: 'git:get_log'; payload?: { limit?: number; all?: boolean; branch?: string } }
   | { type: 'git:get_branches' }
   | { type: 'git:get_stashes' }
   | { type: 'git:stage'; payload: { files: string[] } }

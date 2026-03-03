@@ -723,39 +723,39 @@ router.post('/refactor', async (req: Request, res: Response) => {
 
     // 创建新请求
     const requestPromise = (async (): Promise<RefactorResponse> => {
-      const prompt = `你是一个代码质量专家。请分析下方代码，提出重构建议。
+      const prompt = `You are a code quality expert. Please analyze the code below and propose refactoring suggestions.
 
-## 代码文件: ${filePath}
-语言: ${language}
+## Code File: ${filePath}
+Language: ${language}
 
 \`\`\`${language}
 ${content}
 \`\`\`
 
-## 分析维度
-- extract: 可以提取的函数/方法
-- simplify: 可以简化的逻辑
-- rename: 命名不清晰的变量/函数
-- unused: 未使用的代码
-- duplicate: 重复代码
-- performance: 性能问题
-- safety: 安全隐患
+## Analysis Dimensions
+- extract: Functions/methods that can be extracted
+- simplify: Logic that can be simplified
+- rename: Poorly named variables/functions
+- unused: Unused code
+- duplicate: Duplicate code
+- performance: Performance issues
+- safety: Security concerns
 
-## 输出要求
-返回 JSON 格式，包含 suggestions 数组：
+## Output Requirements
+Return JSON format containing a suggestions array:
 {
   "suggestions": [
     {
-      "line": 起始行号（从1开始）,
-      "endLine": 结束行号,
+      "line": starting line number (from 1),
+      "endLine": ending line number,
       "type": "extract" | "simplify" | "rename" | "unused" | "duplicate" | "performance" | "safety",
-      "message": "建议描述（中文，1-2句话）",
+      "message": "suggestion description (1-2 sentences)",
       "priority": "high" | "medium" | "low"
     }
   ]
 }
 
-只返回最重要的 5-10 条建议。只输出 JSON，不要有其他内容。`;
+Only return the 5-10 most important suggestions. Output only JSON, no other content.`;
 
       try {
         const response = await callClaude(prompt);
@@ -832,33 +832,33 @@ router.post('/bubbles', async (req: Request, res: Response) => {
 
     // 创建新请求
     const requestPromise = (async (): Promise<BubblesResponse> => {
-      const prompt = `你是一个代码解释专家。请为下方代码生成有价值的解释气泡，帮助读者理解代码。
+      const prompt = `You are a code explanation expert. Please generate valuable explanation bubbles for the code below to help readers understand the code.
 
-## 代码文件: ${filePath}
-语言: ${language}
+## Code File: ${filePath}
+Language: ${language}
 
 \`\`\`${language}
 ${content}
 \`\`\`
 
-## 气泡类型
-- info: 一般信息（代码作用、设计模式等）
-- warning: 注意事项（边界条件、潜在问题等）
-- tip: 优化建议（更好的写法、性能提示等）
+## Bubble Types
+- info: General information (code purpose, design patterns, etc.)
+- warning: Notes (boundary conditions, potential issues, etc.)
+- tip: Optimization suggestions (better approaches, performance tips, etc.)
 
-## 输出要求
-返回 JSON 格式，包含 bubbles 数组：
+## Output Requirements
+Return JSON format containing a bubbles array:
 {
   "bubbles": [
     {
-      "line": 行号（从1开始）,
-      "message": "解释文本（中文，1-2句话，有价值的内容，避免废话）",
+      "line": line number (from 1),
+      "message": "explanation text (1-2 sentences, valuable content, avoid obvious statements)",
       "type": "info" | "warning" | "tip"
     }
   ]
 }
 
-只返回最有价值的 3-8 个气泡，避免显而易见的内容。只输出 JSON，不要有其他内容。`;
+Only return the 3-8 most valuable bubbles, avoid obvious content. Output only JSON, no other content.`;
 
       try {
         const response = await callClaude(prompt);
@@ -937,47 +937,47 @@ router.post('/intent-to-code', async (req: Request, res: Response) => {
       let prompt = '';
 
       if (mode === 'rewrite') {
-        prompt = `你是一个专业的代码编写助手。用户选中了一段代码，并提出了修改意图，请按照意图改写代码。
+        prompt = `You are a professional code writing assistant. The user has selected a piece of code and described their modification intent. Please rewrite the code according to the intent.
 
-## 原代码
-文件路径: ${filePath}
-语言: ${language}
+## Original Code
+File path: ${filePath}
+Language: ${language}
 
 \`\`\`${language}
 ${code}
 \`\`\`
 
-## 用户意图
+## User Intent
 ${intent}
 
-## 输出要求
-返回 JSON 格式：
+## Output Requirements
+Return JSON format:
 {
-  "code": "改写后的完整代码（保持格式和风格）",
-  "explanation": "简短说明改动了什么（中文，1-2句话）"
+  "code": "complete rewritten code (maintain formatting and style)",
+  "explanation": "brief description of what was changed (1-2 sentences)"
 }
 
-只输出 JSON，不要有其他内容。`;
+Output only JSON, no other content.`;
       } else {
         // generate 模式
-        prompt = `你是一个专业的代码编写助手。用户在代码注释后要求生成代码，请根据意图生成代码。
+        prompt = `You are a professional code writing assistant. The user wants to generate code after a code comment. Please generate code based on the intent.
 
-## 上下文
-文件路径: ${filePath}
-语言: ${language}
-注释内容: ${code}
+## Context
+File path: ${filePath}
+Language: ${language}
+Comment content: ${code}
 
-## 用户意图
+## User Intent
 ${intent}
 
-## 输出要求
-返回 JSON 格式：
+## Output Requirements
+Return JSON format:
 {
-  "code": "生成的代码（格式规范，可直接使用）",
-  "explanation": "简短说明生成了什么（中文，1-2句话）"
+  "code": "generated code (well-formatted, ready to use)",
+  "explanation": "brief description of what was generated (1-2 sentences)"
 }
 
-只输出 JSON，不要有其他内容。`;
+Output only JSON, no other content.`;
       }
 
       try {
@@ -1054,43 +1054,43 @@ router.post('/code-review', async (req: Request, res: Response) => {
 
     // 创建新请求
     const requestPromise = (async (): Promise<CodeReviewResponse> => {
-      const prompt = `你是一个代码审查专家。请分析下方代码，找出潜在问题，按类型分类。
+      const prompt = `You are a code review expert. Please analyze the code below, find potential issues, and categorize them by type.
 
-## 代码文件: ${filePath}
-语言: ${language}
+## Code File: ${filePath}
+Language: ${language}
 
 \`\`\`${language}
 ${content}
 \`\`\`
 
-## 问题分类
-- bug: 潜在 bug（空指针、未初始化变量、竞态条件、边界条件等）
-- performance: 性能问题（N+1查询、不必要的渲染、内存泄漏、低效算法等）
-- security: 安全隐患（注入漏洞、XSS、敏感信息泄露、不安全的随机数等）
-- style: 代码风格和最佳实践（命名规范、代码重复、可读性、设计模式等）
+## Issue Categories
+- bug: Potential bugs (null pointers, uninitialized variables, race conditions, boundary conditions, etc.)
+- performance: Performance issues (N+1 queries, unnecessary renders, memory leaks, inefficient algorithms, etc.)
+- security: Security concerns (injection vulnerabilities, XSS, sensitive data exposure, insecure random numbers, etc.)
+- style: Code style and best practices (naming conventions, code duplication, readability, design patterns, etc.)
 
-## 严重程度
-- error: 严重问题，必须修复
-- warning: 警告，建议修复
-- info: 信息提示，可选优化
+## Severity Levels
+- error: Serious issue, must fix
+- warning: Warning, should fix
+- info: Informational, optional optimization
 
-## 输出要求
-返回 JSON 格式：
+## Output Requirements
+Return JSON format:
 {
   "issues": [
     {
-      "line": 起始行号（从1开始）,
-      "endLine": 结束行号,
+      "line": starting line number (from 1),
+      "endLine": ending line number,
       "type": "bug" | "performance" | "security" | "style",
       "severity": "error" | "warning" | "info",
-      "message": "问题描述（中文，1句话）",
-      "suggestion": "修复建议（中文，1句话，可选）"
+      "message": "issue description (1 sentence)",
+      "suggestion": "fix suggestion (1 sentence, optional)"
     }
   ],
-  "summary": "整体代码质量总结（中文，2-3句话）"
+  "summary": "overall code quality summary (2-3 sentences)"
 }
 
-只返回最重要的 5-15 个问题。只输出 JSON，不要有其他内容。`;
+Only return the 5-15 most important issues. Output only JSON, no other content.`;
 
       try {
         const response = await callClaude(prompt);
@@ -1182,34 +1182,34 @@ router.post('/generate-test', async (req: Request, res: Response) => {
 
       const testFramework = framework || detectFramework(language);
 
-      const prompt = `你是一个测试代码生成专家。请为下方函数生成完整的单元测试。
+      const prompt = `You are a test code generation expert. Please generate complete unit tests for the function below.
 
-## 函数代码
-文件路径: ${filePath}
-语言: ${language}
-函数名: ${functionName}
+## Function Code
+File path: ${filePath}
+Language: ${language}
+Function name: ${functionName}
 
 \`\`\`${language}
 ${code}
 \`\`\`
 
-## 测试要求
-- 测试框架: ${testFramework}
-- 覆盖正常情况、边界条件、异常情况
-- 测试代码要完整可运行，包含必要的 import 和 setup
-- 测试用例命名清晰
-- 每个测试一个独立的 test case
+## Test Requirements
+- Test framework: ${testFramework}
+- Cover normal cases, boundary conditions, and error cases
+- Test code should be complete and runnable, including necessary imports and setup
+- Test case names should be clear and descriptive
+- Each test should be an independent test case
 
-## 输出要求
-返回 JSON 格式：
+## Output Requirements
+Return JSON format:
 {
-  "testCode": "完整的测试文件代码",
+  "testCode": "complete test file code",
   "testFramework": "${testFramework}",
-  "testCount": 测试用例数量（数字）,
-  "explanation": "测试覆盖了哪些场景（中文，1-2句话）"
+  "testCount": number of test cases (number),
+  "explanation": "what scenarios the tests cover (1-2 sentences)"
 }
 
-只输出 JSON，不要有其他内容。`;
+Output only JSON, no other content.`;
 
       try {
         const response = await callClaude(prompt);
@@ -1341,35 +1341,35 @@ router.post('/smart-diff', async (req: Request, res: Response) => {
           };
         }
 
-        const prompt = `请分析以下代码改动的语义影响。
+        const prompt = `Please analyze the semantic impact of the following code changes.
 
-文件路径: ${filePath}
-编程语言: ${language}
+File path: ${filePath}
+Programming language: ${language}
 
-原始代码:
+Original code:
 \`\`\`${language}
 ${originalContent}
 \`\`\`
 
-修改后代码:
+Modified code:
 \`\`\`${language}
 ${modifiedContent}
 \`\`\`
 
-请分析：
-1. 改动摘要（summary）：简要说明这次改动做了什么
-2. 风险等级（impact）：safe（安全，无风险）、warning（有潜在问题需注意）、danger（危险，可能引入 bug）
-3. 具体改动列表（changes）：每个改动包含 type（added/removed/modified）、description（语义描述）、risk（可选，风险提示）
-4. 警告列表（warnings）：列出所有潜在问题
+Please analyze:
+1. Change summary: briefly describe what this change does
+2. Risk level (impact): safe (no risk), warning (potential issues to watch), danger (may introduce bugs)
+3. Specific changes list: each change includes type (added/removed/modified), description (semantic description), risk (optional risk note)
+4. Warnings list: list all potential issues
 
-请以 JSON 格式返回，格式如下：
+Return in JSON format as follows:
 {
-  "summary": "改动摘要",
+  "summary": "change summary",
   "impact": "safe" | "warning" | "danger",
   "changes": [
-    { "type": "added" | "removed" | "modified", "description": "语义描述", "risk": "可选风险提示" }
+    { "type": "added" | "removed" | "modified", "description": "semantic description", "risk": "optional risk note" }
   ],
-  "warnings": ["警告1", "警告2"]
+  "warnings": ["warning 1", "warning 2"]
 }`;
 
         console.log(`[AI Editor] /smart-diff calling Claude: ${filePath}`);
@@ -1662,31 +1662,31 @@ router.post('/dead-code', async (req: Request, res: Response) => {
           };
         }
 
-        const prompt = `请分析以下代码中的死代码（dead code）。
+        const prompt = `Please analyze the following code for dead code.
 
-文件路径: ${filePath}
-编程语言: ${language}
+File path: ${filePath}
+Programming language: ${language}
 
-代码内容:
+Code content:
 \`\`\`${language}
 ${content}
 \`\`\`
 
-请检测以下类型的死代码：
-1. unused: 未使用的变量、函数、导入
-2. unreachable: 不可达代码（如 return 后的代码）
-3. redundant: 冗余代码（重复赋值、永真条件等）
-4. suspicious: 导出了但可能整个项目没人使用（单文件分析无法确定，标记为可疑）
+Please detect the following types of dead code:
+1. unused: Unused variables, functions, imports
+2. unreachable: Unreachable code (e.g., code after return)
+3. redundant: Redundant code (duplicate assignments, always-true conditions, etc.)
+4. suspicious: Exported but possibly unused across the entire project (cannot be determined from single-file analysis, mark as suspicious)
 
-对于每个死代码，返回：
-- line: 起始行号
-- endLine: 结束行号
-- type: 类型（unused/unreachable/redundant/suspicious）
-- name: 变量/函数/导入名
-- reason: 为什么被判定为死代码
-- confidence: 置信度（high/medium/low）
+For each dead code instance, return:
+- line: starting line number
+- endLine: ending line number
+- type: type (unused/unreachable/redundant/suspicious)
+- name: variable/function/import name
+- reason: why it is considered dead code
+- confidence: confidence level (high/medium/low)
 
-请以 JSON 格式返回，格式如下：
+Return in JSON format as follows:
 {
   "deadCode": [
     {
@@ -1694,14 +1694,14 @@ ${content}
       "endLine": 12,
       "type": "unused",
       "name": "unusedVar",
-      "reason": "变量声明后从未使用",
+      "reason": "Variable declared but never used",
       "confidence": "high"
     }
   ],
-  "summary": "检测到 N 个死代码"
+  "summary": "Detected N instances of dead code"
 }
 
-如果没有死代码，返回空数组。`;
+If there is no dead code, return an empty array.`;
 
         console.log(`[AI Editor] /dead-code calling Claude: ${filePath}`);
 
@@ -1736,7 +1736,7 @@ ${content}
         return {
           success: true,
           deadCode: parsed.deadCode,
-          summary: parsed.summary || `检测到 ${parsed.deadCode.length} 个死代码`,
+          summary: parsed.summary || `Detected ${parsed.deadCode.length} instances of dead code`,
         };
       } catch (error: any) {
         console.error('[AI Editor] /dead-code AI call failed:', error);
@@ -1838,18 +1838,18 @@ router.post('/conversation', async (req: Request, res: Response) => {
         }
 
         // 构建 system prompt
-        const systemPrompt = `你是一个专业的代码助手。用户正在查看以下文件：
+        const systemPrompt = `You are a professional code assistant. The user is viewing the following file:
 
-文件路径: ${filePath}
-编程语言: ${language}
-${cursorLine ? `光标行号: ${cursorLine}` : ''}
+File path: ${filePath}
+Programming language: ${language}
+${cursorLine ? `Cursor line: ${cursorLine}` : ''}
 
-当前代码上下文:
+Current code context:
 \`\`\`${language}
 ${codeContext}
 \`\`\`
 
-请基于上述代码上下文，回答用户的问题。如果用户提到"这段代码"、"当前位置"等，请参考上述代码上下文。`;
+Please answer the user's questions based on the code context above. If the user mentions "this code", "current position", etc., refer to the code context above.`;
 
         // 构建消息列表
         const conversationMessages = [
@@ -2005,44 +2005,44 @@ router.post('/time-machine', async (req: Request, res: Response) => {
           }
         } catch (error: any) {
           console.error('[AI Editor] /time-machine git command failed:', error);
-          gitError = error.message || 'Git 命令执行失败';
+          gitError = error.message || 'Git command execution failed';
           // 不是 git repo 或文件无历史，继续但通知 AI
         }
 
         // 构建 AI prompt
         const codeToAnalyze = selectedCode || content;
-        const rangeDesc = startLine && endLine ? `选中的代码范围（第 ${startLine}-${endLine} 行）` : '整个文件';
+        const rangeDesc = startLine && endLine ? `Selected code range (lines ${startLine}-${endLine})` : 'entire file';
 
-        const prompt = `请分析以下代码的演变历史。
+        const prompt = `Please analyze the evolution history of the following code.
 
-文件路径: ${filePath}
-分析范围: ${rangeDesc}
+File path: ${filePath}
+Analysis scope: ${rangeDesc}
 
-${commits.length > 0 ? `Git 历史（最近 ${commits.length} 次提交）：
+${commits.length > 0 ? `Git history (last ${commits.length} commits):
 ${commits.map(c => `- ${c.hash.substring(0, 7)} | ${c.author} | ${c.date} | ${c.message}`).join('\n')}
-` : `注意：此文件无 Git 历史${gitError ? `（原因：${gitError}）` : ''}，请基于代码内容推测可能的演变过程。`}
+` : `Note: This file has no Git history${gitError ? ` (reason: ${gitError})` : ''}, please infer the possible evolution process based on the code content.`}
 
-代码内容:
+Code content:
 \`\`\`${language}
 ${codeToAnalyze}
 \`\`\`
 
-请以 JSON 格式返回分析结果：
+Return the analysis results in JSON format:
 {
-  "story": "用通俗易懂的语言讲述这段代码是如何一步步演变到现在的，包括主要的设计决策和重构过程",
+  "story": "Describe in plain language how this code evolved step by step to its current state, including major design decisions and refactoring processes",
   "keyChanges": [
     {
       "date": "2024-01-15",
-      "description": "初始版本，实现了基本功能"
+      "description": "Initial version, implemented basic functionality"
     },
     {
       "date": "2024-02-20",
-      "description": "重构：引入依赖注入模式"
+      "description": "Refactoring: introduced dependency injection pattern"
     }
   ]
 }
 
-如果没有 Git 历史，请根据代码结构和注释推测可能的演变过程（例如从简单到复杂、从硬编码到配置化等）。`;
+If there is no Git history, please infer the possible evolution process based on the code structure and comments (e.g., from simple to complex, from hardcoded to configurable, etc.).`;
 
         console.log(`[AI Editor] /time-machine calling Claude: ${filePath}, ${commits.length} commits`);
 
@@ -2161,67 +2161,67 @@ router.post('/detect-patterns', async (req: Request, res: Response) => {
           };
         }
 
-        const prompt = `请分析以下代码中的重复模式和可抽象的代码。
+        const prompt = `Please analyze the following code for duplicate patterns and abstractable code.
 
-文件路径: ${filePath}
-编程语言: ${language}
+File path: ${filePath}
+Programming language: ${language}
 
-代码内容:
+Code content:
 \`\`\`${language}
 ${content}
 \`\`\`
 
-请检测以下类型的模式：
+Please detect the following types of patterns:
 
-1. **duplicate**（重复代码块）：
-   - 相似的 try-catch 块
-   - 相似的 API 调用模式
-   - 重复的数据转换逻辑
-   - 重复的验证代码
+1. **duplicate** (duplicate code blocks):
+   - Similar try-catch blocks
+   - Similar API call patterns
+   - Duplicate data transformation logic
+   - Duplicate validation code
 
-2. **similar-logic**（相似逻辑）：
-   - 相似的条件判断
-   - 相似的循环处理
-   - 相似的错误处理
+2. **similar-logic** (similar logic):
+   - Similar conditional checks
+   - Similar loop processing
+   - Similar error handling
 
-3. **extract-candidate**（可提取候选）：
-   - 可以提取为独立函数的代码块
-   - 可以提取为工具类的方法
-   - 可以提取为自定义 Hook（React）
+3. **extract-candidate** (extraction candidates):
+   - Code blocks that can be extracted into standalone functions
+   - Methods that can be extracted into utility classes
+   - Code that can be extracted into custom Hooks (React)
 
-4. **design-pattern**（设计模式机会）：
-   - 可以应用策略模式的地方
-   - 可以应用工厂模式的地方
-   - 可以应用装饰器模式的地方
-   - 其他设计模式
+4. **design-pattern** (design pattern opportunities):
+   - Places where the Strategy pattern can be applied
+   - Places where the Factory pattern can be applied
+   - Places where the Decorator pattern can be applied
+   - Other design patterns
 
-对于每个检测到的模式，返回：
-- type: 模式类型
-- name: 模式名称（简短描述）
-- locations: 出现的位置数组 [{ line, endLine }, ...]
-- description: 详细描述
-- suggestion: 建议的抽象/重构方式
-- impact: 影响级别（high/medium/low）
+For each detected pattern, return:
+- type: pattern type
+- name: pattern name (brief description)
+- locations: array of locations [{ line, endLine }, ...]
+- description: detailed description
+- suggestion: suggested abstraction/refactoring approach
+- impact: impact level (high/medium/low)
 
-请以 JSON 格式返回：
+Return in JSON format:
 {
   "patterns": [
     {
       "type": "duplicate",
-      "name": "重复的错误处理",
+      "name": "Duplicate error handling",
       "locations": [
         { "line": 10, "endLine": 15 },
         { "line": 30, "endLine": 35 }
       ],
-      "description": "两处相似的 try-catch 错误处理逻辑",
-      "suggestion": "提取为 handleError 工具函数",
+      "description": "Two similar try-catch error handling blocks",
+      "suggestion": "Extract into a handleError utility function",
       "impact": "medium"
     }
   ],
-  "summary": "检测到 N 个模式，建议优先处理 X 个高影响模式"
+  "summary": "Detected N patterns, recommend prioritizing X high-impact patterns"
 }
 
-如果没有检测到模式，返回空数组。`;
+If no patterns are detected, return an empty array.`;
 
         console.log(`[AI Editor] /detect-patterns calling Claude: ${filePath}`);
 
@@ -2256,7 +2256,7 @@ ${content}
         return {
           success: true,
           patterns: parsed.patterns,
-          summary: parsed.summary || `检测到 ${parsed.patterns.length} 个模式`,
+          summary: parsed.summary || `Detected ${parsed.patterns.length} patterns`,
         };
       } catch (error: any) {
         console.error('[AI Editor] /detect-patterns AI call failed:', error);
@@ -2339,49 +2339,49 @@ router.post('/api-doc', async (req: Request, res: Response) => {
           };
         }
 
-        const prompt = `请提供以下第三方库 API 的使用文档。
+        const prompt = `Please provide usage documentation for the following third-party library API.
 
-符号名称: ${symbolName}
-${packageName ? `所属包: ${packageName}` : ''}
-编程语言: ${language}
+Symbol name: ${symbolName}
+${packageName ? `Package: ${packageName}` : ''}
+Programming language: ${language}
 
-代码上下文:
+Code context:
 \`\`\`${language}
 ${codeContext}
 \`\`\`
 
-请提供该 API 的详细使用说明，包括：
-1. 简要描述（一句话说明这个 API 是做什么的）
-2. 参数说明（每个参数的类型、含义、是否可选）
-3. 返回值说明（返回值类型和含义）
-4. 常见用法示例（至少 2-3 个实用示例）
-5. 常见陷阱/注意事项（使用时需要注意的问题）
-6. 相关 API（相关或替代的 API）
+Please provide detailed usage instructions for this API, including:
+1. Brief description (one sentence explaining what this API does)
+2. Parameter descriptions (type, meaning, and whether optional for each parameter)
+3. Return value description (return type and meaning)
+4. Common usage examples (at least 2-3 practical examples)
+5. Common pitfalls/notes (issues to watch out for when using)
+6. Related APIs (related or alternative APIs)
 
-请以 JSON 格式返回：
+Return in JSON format:
 {
   "name": "${symbolName}",
-  "package": "${packageName || '未知'}",
-  "brief": "简要描述",
+  "package": "${packageName || 'unknown'}",
+  "brief": "brief description",
   "params": [
     {
-      "name": "参数名",
-      "type": "类型",
-      "description": "说明",
+      "name": "parameter name",
+      "type": "type",
+      "description": "description",
       "optional": false
     }
   ],
   "returns": {
-    "type": "返回值类型",
-    "description": "返回值说明"
+    "type": "return type",
+    "description": "return value description"
   },
   "examples": [
-    "示例代码1",
-    "示例代码2"
+    "example code 1",
+    "example code 2"
   ],
   "pitfalls": [
-    "注意事项1",
-    "注意事项2"
+    "note 1",
+    "note 2"
   ],
   "seeAlso": [
     "relatedAPI1",
@@ -2389,7 +2389,7 @@ ${codeContext}
   ]
 }
 
-如果无法识别该 API 或不是第三方库 API，请在 brief 中说明。`;
+If the API cannot be identified or is not a third-party library API, explain in the brief field.`;
 
         console.log(`[AI Editor] /api-doc calling Claude: ${symbolName}`);
 
@@ -2430,7 +2430,7 @@ ${codeContext}
           success: true,
           doc: {
             name: parsed.name,
-            package: parsed.package || packageName || '未知',
+            package: parsed.package || packageName || 'unknown',
             brief: parsed.brief || '',
             params: parsed.params || [],
             returns: parsed.returns,
@@ -2622,22 +2622,22 @@ router.post('/inline-complete', async (req: Request, res: Response) => {
         const trimmedPrefix = prefixLines.slice(-30).join('\n');
         const suffixLines = suffix ? suffix.split('\n').slice(0, 10).join('\n') : '';
 
-        const prompt = `你是一个代码补全引擎。根据上下文预测用户接下来要写的代码。
+        const prompt = `You are a code completion engine. Predict the code the user will write next based on context.
 
-文件: ${path.basename(filePath)} (${language})
+File: ${path.basename(filePath)} (${language})
 
-== 光标前的代码 ==
+== Code before cursor ==
 ${trimmedPrefix}
-== 光标位置（在此处补全）==
-${suffixLines ? `== 光标后的代码 ==\n${suffixLines}` : ''}
+== Cursor position (complete here) ==
+${suffixLines ? `== Code after cursor ==\n${suffixLines}` : ''}
 
-规则：
-- 只输出要补全的代码片段，不要解释，不要 markdown
-- 补全应该自然地续接光标前的代码
-- 通常补全 1-3 行，不要过长
-- 如果当前行已经写了一半，先补完当前行
-- 如果无法确定应该补全什么，返回空字符串
-- 不要重复已有的代码`;
+Rules:
+- Only output the code snippet to complete, no explanations, no markdown
+- The completion should naturally continue from the code before the cursor
+- Typically complete 1-3 lines, do not make it too long
+- If the current line is partially written, complete the current line first
+- If unsure what to complete, return an empty string
+- Do not repeat existing code`;
 
         const response = await client.createMessage(
           [{ role: 'user', content: [{ type: 'text', text: prompt }] }],

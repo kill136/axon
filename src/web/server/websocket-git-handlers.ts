@@ -56,10 +56,11 @@ export async function handleGitGetStatus(
 export async function handleGitGetLog(
   client: ClientConnection,
   limit: number | undefined,
-  conversationManager: ConversationManager
+  conversationManager: ConversationManager,
+  options?: { all?: boolean; branch?: string }
 ): Promise<void> {
   const git = getGitManager(client);
-  const result = git.getLog(limit || 50);
+  const result = git.getLog(limit || 200, { all: options?.all ?? true, branch: options?.branch });
   sendMessage(client.ws, {
     type: 'git:log_response',
     payload: result,

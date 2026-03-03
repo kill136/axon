@@ -47,9 +47,9 @@ const BlueprintSchema = z.object({
 });
 
 const CreateBlueprintInputSchema = z.object({
-  name: z.string().min(1, '蓝图名称不能为空'),
+  name: z.string().min(1, 'Blueprint name cannot be empty'),
   description: z.string().optional(),
-  projectPath: z.string().min(1, '项目路径不能为空'),
+  projectPath: z.string().min(1, 'Project path cannot be empty'),
   requirements: z.array(z.string()).optional(),
   techStack: TechStackSchema.optional(),
   constraints: z.array(z.string()).optional(),
@@ -97,7 +97,7 @@ export const blueprintRouter = router({
       if (!blueprint) {
         throw new TRPCError({
           code: 'NOT_FOUND',
-          message: '蓝图不存在',
+          message: 'Blueprint not found',
         });
       }
 
@@ -125,7 +125,7 @@ export const blueprintRouter = router({
       if (existingBlueprint) {
         throw new TRPCError({
           code: 'CONFLICT',
-          message: `该项目路径已存在蓝图: "${existingBlueprint.name}" (ID: ${existingBlueprint.id})`,
+          message: `A blueprint already exists for this project path: "${existingBlueprint.name}" (ID: ${existingBlueprint.id})`,
         });
       }
 
@@ -159,7 +159,7 @@ export const blueprintRouter = router({
             updatedAt: blueprint.updatedAt.toISOString(),
             confirmedAt: blueprint.confirmedAt.toISOString(),
           },
-          message: '蓝图创建成功',
+          message: 'Blueprint created successfully',
         };
       }
 
@@ -169,7 +169,7 @@ export const blueprintRouter = router({
 
       return {
         dialogState,
-        message: '对话已开始，请继续提供需求',
+        message: 'Dialog started, please continue providing requirements',
       };
     }),
 
@@ -186,7 +186,7 @@ export const blueprintRouter = router({
       if (!blueprint) {
         throw new TRPCError({
           code: 'NOT_FOUND',
-          message: '蓝图不存在',
+          message: 'Blueprint not found',
         });
       }
 
@@ -194,14 +194,14 @@ export const blueprintRouter = router({
       if (blueprint.status === 'executing') {
         throw new TRPCError({
           code: 'PRECONDITION_FAILED',
-          message: '无法删除正在执行的蓝图',
+          message: 'Cannot delete a blueprint that is currently executing',
         });
       }
 
       blueprintStore.delete(input.id);
 
       return {
-        message: '蓝图已删除',
+        message: 'Blueprint deleted',
       };
     }),
 
@@ -220,7 +220,7 @@ export const blueprintRouter = router({
       if (!blueprint) {
         throw new TRPCError({
           code: 'NOT_FOUND',
-          message: '蓝图不存在',
+          message: 'Blueprint not found',
         });
       }
 
@@ -228,14 +228,14 @@ export const blueprintRouter = router({
       if (blueprint.status === 'executing') {
         throw new TRPCError({
           code: 'BAD_REQUEST',
-          message: '蓝图正在执行中',
+          message: 'Blueprint is currently executing',
         });
       }
 
       if (blueprint.status !== 'confirmed' && blueprint.status !== 'paused' && blueprint.status !== 'failed') {
         throw new TRPCError({
           code: 'PRECONDITION_FAILED',
-          message: '蓝图状态不允许执行，需要先确认蓝图',
+          message: 'Blueprint status does not allow execution, please confirm the blueprint first',
         });
       }
 
