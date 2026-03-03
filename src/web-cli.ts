@@ -60,15 +60,15 @@ const program = new Command();
 
 program
   .name('claude-web')
-  .description('Axon WebUI 服务器')
+  .description('Axon WebUI Server')
   .version(VERSION_BASE)
-  .option('-p, --port <port>', '服务器端口', process.env.PORT || '3456')
-  .option('-H, --host <host>', '服务器主机', process.env.AXON_WEB_HOST || '0.0.0.0')
-  .option('-m, --model <model>', '默认模型 (opus/sonnet/haiku)', 'sonnet')
-  .option('-d, --dir <directory>', '工作目录', process.cwd())
-  .option('--ngrok', '启用 ngrok 公网隧道 (需要 NGROK_AUTHTOKEN 环境变量)', false)
-  .option('--no-open', '不自动打开浏览器')
-  .option('--evolve', '启用自我进化模式 (AI 可修改源码并自动重启生效)', false)
+  .option('-p, --port <port>', 'Server port', process.env.PORT || '3456')
+  .option('-H, --host <host>', 'Server host', process.env.AXON_WEB_HOST || '0.0.0.0')
+  .option('-m, --model <model>', 'Default model (opus/sonnet/haiku)', 'sonnet')
+  .option('-d, --dir <directory>', 'Working directory', process.cwd())
+  .option('--ngrok', 'Enable ngrok tunnel (requires NGROK_AUTHTOKEN env var)', false)
+  .option('--no-open', 'Do not auto-open browser')
+  .option('--evolve', 'Enable self-evolve mode (AI can modify source and auto-restart)', false)
   .action(async (options) => {
     if (options.evolve) {
       await runEvolveMode(options);
@@ -229,7 +229,7 @@ function printBanner(evolve: boolean, restartCount = 0) {
 ║                                                           ║
 ║   🤖 Axon WebUI                                    ║
 ║                                                           ║
-║   一个基于 Web 的 Axon 界面                        ║
+║   A Web-based interface for Axon                   ║
 ║                                                           ║
 ╚═══════════════════════════════════════════════════════════╝
 `);

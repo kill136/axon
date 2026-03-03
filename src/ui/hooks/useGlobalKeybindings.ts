@@ -351,14 +351,14 @@ export function getRegisteredActions(): string[] {
 const builtinActions: Record<string, { description: string; handler: () => void }> = {
   // 剪贴板操作
   'copy': {
-    description: '复制选中内容',
+    description: 'Copy selected content',
     handler: () => {
       // 复制操作由终端原生支持，此处仅作占位
       process.stdout.write('\x1b[?1004h'); // 启用焦点报告
     },
   },
   'paste': {
-    description: '粘贴剪贴板内容',
+    description: 'Paste clipboard content',
     handler: () => {
       // 粘贴操作由终端原生支持，此处仅作占位
       process.stdout.write('\x1b[?1004l'); // 禁用焦点报告
@@ -367,25 +367,25 @@ const builtinActions: Record<string, { description: string; handler: () => void 
 
   // 导航操作
   'scroll_up': {
-    description: '向上滚动',
+    description: 'Scroll up',
     handler: () => {
       process.stdout.write('\x1b[1S'); // 向上滚动一行
     },
   },
   'scroll_down': {
-    description: '向下滚动',
+    description: 'Scroll down',
     handler: () => {
       process.stdout.write('\x1b[1T'); // 向下滚动一行
     },
   },
   'scroll_page_up': {
-    description: '向上翻页',
+    description: 'Page up',
     handler: () => {
       process.stdout.write('\x1b[10S'); // 向上滚动10行
     },
   },
   'scroll_page_down': {
-    description: '向下翻页',
+    description: 'Page down',
     handler: () => {
       process.stdout.write('\x1b[10T'); // 向下滚动10行
     },
@@ -393,13 +393,13 @@ const builtinActions: Record<string, { description: string; handler: () => void 
 
   // 历史记录操作
   'history_prev': {
-    description: '上一条历史记录',
+    description: 'Previous history entry',
     handler: () => {
       process.stdin.emit('keypress', '', { name: 'up' });
     },
   },
   'history_next': {
-    description: '下一条历史记录',
+    description: 'Next history entry',
     handler: () => {
       process.stdin.emit('keypress', '', { name: 'down' });
     },
@@ -407,13 +407,13 @@ const builtinActions: Record<string, { description: string; handler: () => void 
 
   // 光标操作
   'cursor_home': {
-    description: '移动光标到行首',
+    description: 'Move cursor to line start',
     handler: () => {
       process.stdout.write('\x1b[H');
     },
   },
   'cursor_end': {
-    description: '移动光标到行尾',
+    description: 'Move cursor to line end',
     handler: () => {
       process.stdout.write('\x1b[F');
     },
@@ -421,13 +421,13 @@ const builtinActions: Record<string, { description: string; handler: () => void 
 
   // 编辑操作
   'clear_line': {
-    description: '清空当前行',
+    description: 'Clear current line',
     handler: () => {
       process.stdout.write('\x1b[2K\r');
     },
   },
   'clear_screen': {
-    description: '清屏',
+    description: 'Clear screen',
     handler: () => {
       process.stdout.write('\x1b[2J\x1b[H');
     },
@@ -435,14 +435,14 @@ const builtinActions: Record<string, { description: string; handler: () => void 
 
   // 会话操作
   'new_session': {
-    description: '新建会话',
+    description: 'New session',
     handler: () => {
       // 触发新会话事件（需要上层组件监听）
       process.emit('AXON_NEW_SESSION' as any);
     },
   },
   'save_session': {
-    description: '保存当前会话',
+    description: 'Save current session',
     handler: () => {
       process.emit('AXON_SAVE_SESSION' as any);
     },
@@ -450,19 +450,19 @@ const builtinActions: Record<string, { description: string; handler: () => void 
 
   // 输出操作
   'toggle_output': {
-    description: '切换输出显示模式',
+    description: 'Toggle output display mode',
     handler: () => {
       process.emit('AXON_TOGGLE_OUTPUT' as any);
     },
   },
   'expand_output': {
-    description: '展开全部输出',
+    description: 'Expand all output',
     handler: () => {
       process.emit('AXON_EXPAND_OUTPUT' as any);
     },
   },
   'collapse_output': {
-    description: '折叠全部输出',
+    description: 'Collapse all output',
     handler: () => {
       process.emit('AXON_COLLAPSE_OUTPUT' as any);
     },
@@ -470,7 +470,7 @@ const builtinActions: Record<string, { description: string; handler: () => void 
 
   // 外部编辑器操作 (v2.1.6)
   'external_editor': {
-    description: '在外部编辑器中编辑当前输入 (Ctrl+G)',
+    description: 'Edit current input in external editor (Ctrl+G)',
     handler: () => {
       // 触发外部编辑器事件（由上层组件处理）
       (process as any).emit('AXON_EXTERNAL_EDITOR');
@@ -499,11 +499,11 @@ function createActionHandler(action: string): () => void {
         // 如果是 Promise，添加错误处理
         if (result instanceof Promise) {
           result.catch((err) => {
-            console.error(`[Keybinding] 自定义动作执行失败 "${action}":`, err);
+            console.error(`[Keybinding] Custom action execution failed "${action}":`, err);
           });
         }
       } catch (err) {
-        console.error(`[Keybinding] 自定义动作执行失败 "${action}":`, err);
+        console.error(`[Keybinding] Custom action execution failed "${action}":`, err);
       }
       return;
     }
@@ -514,7 +514,7 @@ function createActionHandler(action: string): () => void {
       try {
         builtinAction.handler();
       } catch (err) {
-        console.error(`[Keybinding] 内置动作执行失败 "${action}":`, err);
+        console.error(`[Keybinding] Built-in action execution failed "${action}":`, err);
       }
       return;
     }
@@ -569,12 +569,12 @@ function createActionHandler(action: string): () => void {
     }
 
     // 未知动作，输出警告
-    console.warn(`[Keybinding] 未知动作: "${action}"，请检查键绑定配置`);
+    console.warn(`[Keybinding] Unknown action: "${action}", please check keybinding configuration`);
     console.warn(
-      `[Keybinding] 可用的内置动作: ${Object.keys(builtinActions).join(', ')}`
+      `[Keybinding] Available built-in actions: ${Object.keys(builtinActions).join(', ')}`
     );
     console.warn(
-      `[Keybinding] 已注册的自定义动作: ${getRegisteredActions().join(', ') || '(无)'}`
+      `[Keybinding] Registered custom actions: ${getRegisteredActions().join(', ') || '(none)'}`
     );
   };
 }

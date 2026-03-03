@@ -45,34 +45,34 @@ export interface SubmitE2EResultInput {
  */
 export class SubmitE2EResultTool extends BaseTool<SubmitE2EResultInput, ToolResult> {
   name = 'SubmitE2EResult';
-  description = `提交 E2E 测试结果（E2E 测试 Agent 专用工具）
+  description = `Submit E2E test results (E2E test Agent exclusive tool)
 
-## 使用时机
-完成所有测试后，必须调用此工具提交测试结论。
+## When to Use
+After completing all tests, you must call this tool to submit test conclusions.
 
-## 参数说明
-- success: 整体测试是否成功（所有关键步骤通过）
-- summary: 测试总结（简洁描述测试结果）
-- steps: 测试步骤结果数组
-  - name: 步骤名称
+## Parameters
+- success: Whether overall test succeeded (all critical steps passed)
+- summary: Test summary (concise description of test results)
+- steps: Test step results array
+  - name: Step name
   - status: "passed" | "failed" | "skipped"
-  - description: 步骤描述（可选）
-  - error: 失败原因（可选）
-  - screenshotPath: 截图路径（可选）
-  - designComparison: 设计图对比结果（可选）
-- totalDuration: 总测试时间（毫秒，可选）
-- fixAttempts: 修复尝试记录（可选）
-- environmentIssues: 环境问题列表（可选）
-- recommendations: 改进建议（可选）
+  - description: Step description (optional)
+  - error: Failure reason (optional)
+  - screenshotPath: Screenshot path (optional)
+  - designComparison: Design comparison result (optional)
+- totalDuration: Total test duration (milliseconds, optional)
+- fixAttempts: Fix attempt records (optional)
+- environmentIssues: Environment issue list (optional)
+- recommendations: Improvement suggestions (optional)
 
-## 示例
+## Example
 {
   "success": true,
-  "summary": "所有 5 个测试步骤通过，页面与设计图一致",
+  "summary": "All 5 test steps passed, page matches design",
   "steps": [
-    { "name": "首页加载", "status": "passed" },
-    { "name": "用户登录", "status": "passed" },
-    { "name": "导航到设置页", "status": "passed" }
+    { "name": "Homepage load", "status": "passed" },
+    { "name": "User login", "status": "passed" },
+    { "name": "Navigate to settings", "status": "passed" }
   ],
   "totalDuration": 45000
 }`;
@@ -86,26 +86,26 @@ export class SubmitE2EResultTool extends BaseTool<SubmitE2EResultInput, ToolResu
       properties: {
         success: {
           type: 'boolean',
-          description: '整体测试是否成功',
+          description: 'Whether overall test succeeded',
         },
         summary: {
           type: 'string',
-          description: '测试总结（1-3句话简洁描述）',
+          description: 'Test summary (1-3 concise sentences)',
         },
         steps: {
           type: 'array',
           items: {
             type: 'object',
             properties: {
-              name: { type: 'string', description: '步骤名称' },
+              name: { type: 'string', description: 'Step name' },
               status: {
                 type: 'string',
                 enum: ['passed', 'failed', 'skipped'],
-                description: '步骤状态',
+                description: 'Step status',
               },
-              description: { type: 'string', description: '步骤描述' },
-              error: { type: 'string', description: '失败原因' },
-              screenshotPath: { type: 'string', description: '截图路径' },
+              description: { type: 'string', description: 'Step description' },
+              error: { type: 'string', description: 'Failure reason' },
+              screenshotPath: { type: 'string', description: 'Screenshot path' },
               designComparison: {
                 type: 'object',
                 properties: {
@@ -118,11 +118,11 @@ export class SubmitE2EResultTool extends BaseTool<SubmitE2EResultInput, ToolResu
             },
             required: ['name', 'status'],
           },
-          description: '测试步骤结果列表',
+          description: 'Test step results list',
         },
         totalDuration: {
           type: 'number',
-          description: '总测试时间（毫秒）',
+          description: 'Total test duration (milliseconds)',
         },
         fixAttempts: {
           type: 'array',
@@ -133,17 +133,17 @@ export class SubmitE2EResultTool extends BaseTool<SubmitE2EResultInput, ToolResu
               success: { type: 'boolean' },
             },
           },
-          description: '修复尝试记录',
+          description: 'Fix attempt records',
         },
         environmentIssues: {
           type: 'array',
           items: { type: 'string' },
-          description: '环境问题列表',
+          description: 'Environment issue list',
         },
         recommendations: {
           type: 'array',
           items: { type: 'string' },
-          description: '改进建议',
+          description: 'Improvement suggestions',
         },
       },
       required: ['success', 'summary', 'steps'],
@@ -161,20 +161,20 @@ export class SubmitE2EResultTool extends BaseTool<SubmitE2EResultInput, ToolResu
 
     const emoji = input.success ? '✅' : '❌';
 
-    const output = `${emoji} E2E 测试结果已提交
+    const output = `${emoji} E2E test results submitted
 
-总结: ${input.summary}
+Summary: ${input.summary}
 
-步骤统计:
-- 通过: ${passedSteps}
-- 失败: ${failedSteps}
-- 跳过: ${skippedSteps}
+Step statistics:
+- Passed: ${passedSteps}
+- Failed: ${failedSteps}
+- Skipped: ${skippedSteps}
 
-${input.totalDuration ? `总耗时: ${Math.round(input.totalDuration / 1000)}秒` : ''}
-${input.fixAttempts?.length ? `修复尝试: ${input.fixAttempts.length}次` : ''}
-${input.environmentIssues?.length ? `环境问题: ${input.environmentIssues.length}项` : ''}
+${input.totalDuration ? `Total duration: ${Math.round(input.totalDuration / 1000)}s` : ''}
+${input.fixAttempts?.length ? `Fix attempts: ${input.fixAttempts.length}` : ''}
+${input.environmentIssues?.length ? `Environment issues: ${input.environmentIssues.length}` : ''}
 
-测试流程已完成。`;
+Test flow completed.`;
 
     return {
       success: true,

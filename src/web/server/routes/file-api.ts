@@ -110,7 +110,7 @@ function validatePath(filePath: string, projectRoot: string): { valid: boolean; 
       return {
         valid: false,
         resolvedPath,
-        error: '路径必须在项目目录下',
+        error: 'Path must be within the project directory',
       };
     }
     
@@ -122,7 +122,7 @@ function validatePath(filePath: string, projectRoot: string): { valid: boolean; 
     return {
       valid: false,
       resolvedPath: '',
-      error: error instanceof Error ? error.message : '路径解析失败',
+      error: error instanceof Error ? error.message : 'Path resolution failed',
     };
   }
 }
@@ -259,7 +259,7 @@ router.get('/tree', async (req: Request, res: Response) => {
       await fs.access(validation.resolvedPath);
     } catch {
       res.status(404).json({
-        error: '路径不存在',
+        error: 'Path does not exist',
       });
       return;
     }
@@ -269,7 +269,7 @@ router.get('/tree', async (req: Request, res: Response) => {
     
     if (!tree) {
       res.status(404).json({
-        error: '无法读取目录',
+        error: 'Unable to read directory',
       });
       return;
     }
@@ -278,8 +278,8 @@ router.get('/tree', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[File API] Failed to get directory tree:', error);
     res.status(500).json({
-      error: '获取目录树失败',
-      message: error instanceof Error ? error.message : '未知错误',
+      error: 'Failed to get directory tree',
+      message: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 });
@@ -298,7 +298,7 @@ router.get('/read', async (req: Request, res: Response) => {
     
     if (!queryPath) {
       res.status(400).json({
-        error: '缺少 path 参数',
+        error: 'Missing path parameter',
       });
       return;
     }
@@ -317,13 +317,13 @@ router.get('/read', async (req: Request, res: Response) => {
       const stats = await fs.stat(validation.resolvedPath);
       if (!stats.isFile()) {
         res.status(400).json({
-          error: '路径不是文件',
+          error: 'Path is not a file',
         });
         return;
       }
     } catch {
       res.status(404).json({
-        error: '文件不存在',
+        error: 'File does not exist',
       });
       return;
     }
@@ -344,8 +344,8 @@ router.get('/read', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[File API] Failed to read file:', error);
     res.status(500).json({
-      error: '读取文件失败',
-      message: error instanceof Error ? error.message : '未知错误',
+      error: 'Failed to read file',
+      message: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 });
@@ -366,7 +366,7 @@ router.put('/write', async (req: Request, res: Response) => {
     if (!filePath) {
       res.status(400).json({
         success: false,
-        message: '缺少 path 参数',
+        message: 'Missing path parameter',
       });
       return;
     }
@@ -374,7 +374,7 @@ router.put('/write', async (req: Request, res: Response) => {
     if (typeof content !== 'string') {
       res.status(400).json({
         success: false,
-        message: 'content 必须是字符串',
+        message: 'content must be a string',
       });
       return;
     }
@@ -398,7 +398,7 @@ router.put('/write', async (req: Request, res: Response) => {
     
     const response: WriteFileResponse = {
       success: true,
-      message: '文件写入成功',
+      message: 'File written successfully',
     };
     
     res.json(response);
@@ -406,7 +406,7 @@ router.put('/write', async (req: Request, res: Response) => {
     console.error('[File API] Failed to write file:', error);
     res.status(500).json({
       success: false,
-      message: error instanceof Error ? error.message : '未知错误',
+      message: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 });
@@ -427,7 +427,7 @@ router.post('/rename', async (req: Request, res: Response) => {
     if (!oldPath || !newPath) {
       res.status(400).json({
         success: false,
-        error: '缺少 oldPath 或 newPath 参数',
+        error: 'Missing oldPath or newPath parameter',
       });
       return;
     }
@@ -439,7 +439,7 @@ router.post('/rename', async (req: Request, res: Response) => {
     if (!oldValidation.valid) {
       res.status(400).json({
         success: false,
-        error: `源路径无效: ${oldValidation.error}`,
+        error: `Invalid source path: ${oldValidation.error}`,
       });
       return;
     }
@@ -447,7 +447,7 @@ router.post('/rename', async (req: Request, res: Response) => {
     if (!newValidation.valid) {
       res.status(400).json({
         success: false,
-        error: `目标路径无效: ${newValidation.error}`,
+        error: `Invalid target path: ${newValidation.error}`,
       });
       return;
     }
@@ -458,7 +458,7 @@ router.post('/rename', async (req: Request, res: Response) => {
     } catch {
       res.status(404).json({
         success: false,
-        error: '源路径不存在',
+        error: 'Source path does not exist',
       });
       return;
     }
@@ -468,7 +468,7 @@ router.post('/rename', async (req: Request, res: Response) => {
       await fs.access(newValidation.resolvedPath);
       res.status(400).json({
         success: false,
-        error: '目标路径已存在',
+        error: 'Target path already exists',
       });
       return;
     } catch {
@@ -489,7 +489,7 @@ router.post('/rename', async (req: Request, res: Response) => {
     console.error('[File API] Rename failed:', error);
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : '重命名失败',
+      error: error instanceof Error ? error.message : 'Rename failed',
     });
   }
 });
@@ -509,7 +509,7 @@ router.post('/delete', async (req: Request, res: Response) => {
     if (!filePath) {
       res.status(400).json({
         success: false,
-        error: '缺少 path 参数',
+        error: 'Missing path parameter',
       });
       return;
     }
@@ -530,7 +530,7 @@ router.post('/delete', async (req: Request, res: Response) => {
     } catch {
       res.status(404).json({
         success: false,
-        error: '路径不存在',
+        error: 'Path does not exist',
       });
       return;
     }
@@ -552,7 +552,7 @@ router.post('/delete', async (req: Request, res: Response) => {
     console.error('[File API] Delete failed:', error);
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : '删除失败',
+      error: error instanceof Error ? error.message : 'Delete failed',
     });
   }
 });
@@ -573,7 +573,7 @@ router.post('/create', async (req: Request, res: Response) => {
     if (!filePath) {
       res.status(400).json({
         success: false,
-        error: '缺少 path 参数',
+        error: 'Missing path parameter',
       });
       return;
     }
@@ -593,7 +593,7 @@ router.post('/create', async (req: Request, res: Response) => {
       await fs.access(validation.resolvedPath);
       res.status(400).json({
         success: false,
-        error: '文件已存在',
+        error: 'File already exists',
       });
       return;
     } catch {
@@ -614,7 +614,7 @@ router.post('/create', async (req: Request, res: Response) => {
     console.error('[File API] Failed to create file:', error);
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : '创建文件失败',
+      error: error instanceof Error ? error.message : 'Failed to create file',
     });
   }
 });
@@ -634,7 +634,7 @@ router.post('/mkdir', async (req: Request, res: Response) => {
     if (!dirPath) {
       res.status(400).json({
         success: false,
-        error: '缺少 path 参数',
+        error: 'Missing path parameter',
       });
       return;
     }
@@ -654,7 +654,7 @@ router.post('/mkdir', async (req: Request, res: Response) => {
       await fs.access(validation.resolvedPath);
       res.status(400).json({
         success: false,
-        error: '目录已存在',
+        error: 'Directory already exists',
       });
       return;
     } catch {
@@ -671,7 +671,7 @@ router.post('/mkdir', async (req: Request, res: Response) => {
     console.error('[File API] Failed to create directory:', error);
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : '创建目录失败',
+      error: error instanceof Error ? error.message : 'Failed to create directory',
     });
   }
 });
@@ -692,7 +692,7 @@ router.post('/copy', async (req: Request, res: Response) => {
     if (!sourcePath || !destPath) {
       res.status(400).json({
         success: false,
-        error: '缺少 sourcePath 或 destPath 参数',
+        error: 'Missing sourcePath or destPath parameter',
       });
       return;
     }
@@ -704,7 +704,7 @@ router.post('/copy', async (req: Request, res: Response) => {
     if (!sourceValidation.valid) {
       res.status(400).json({
         success: false,
-        error: `源路径无效: ${sourceValidation.error}`,
+        error: `Invalid source path: ${sourceValidation.error}`,
       });
       return;
     }
@@ -712,7 +712,7 @@ router.post('/copy', async (req: Request, res: Response) => {
     if (!destValidation.valid) {
       res.status(400).json({
         success: false,
-        error: `目标路径无效: ${destValidation.error}`,
+        error: `Invalid target path: ${destValidation.error}`,
       });
       return;
     }
@@ -723,7 +723,7 @@ router.post('/copy', async (req: Request, res: Response) => {
     } catch {
       res.status(404).json({
         success: false,
-        error: '源路径不存在',
+        error: 'Source path does not exist',
       });
       return;
     }
@@ -745,7 +745,7 @@ router.post('/copy', async (req: Request, res: Response) => {
     console.error('[File API] Copy failed:', error);
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : '复制失败',
+      error: error instanceof Error ? error.message : 'Copy failed',
     });
   }
 });
@@ -766,7 +766,7 @@ router.post('/move', async (req: Request, res: Response) => {
     if (!sourcePath || !destPath) {
       res.status(400).json({
         success: false,
-        error: '缺少 sourcePath 或 destPath 参数',
+        error: 'Missing sourcePath or destPath parameter',
       });
       return;
     }
@@ -778,7 +778,7 @@ router.post('/move', async (req: Request, res: Response) => {
     if (!sourceValidation.valid) {
       res.status(400).json({
         success: false,
-        error: `源路径无效: ${sourceValidation.error}`,
+        error: `Invalid source path: ${sourceValidation.error}`,
       });
       return;
     }
@@ -786,7 +786,7 @@ router.post('/move', async (req: Request, res: Response) => {
     if (!destValidation.valid) {
       res.status(400).json({
         success: false,
-        error: `目标路径无效: ${destValidation.error}`,
+        error: `Invalid target path: ${destValidation.error}`,
       });
       return;
     }
@@ -797,7 +797,7 @@ router.post('/move', async (req: Request, res: Response) => {
     } catch {
       res.status(404).json({
         success: false,
-        error: '源路径不存在',
+        error: 'Source path does not exist',
       });
       return;
     }
@@ -816,7 +816,7 @@ router.post('/move', async (req: Request, res: Response) => {
     console.error('[File API] Move failed:', error);
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : '移动失败',
+      error: error instanceof Error ? error.message : 'Move failed',
     });
   }
 });
@@ -836,7 +836,7 @@ router.post('/reveal', async (req: Request, res: Response) => {
     if (!filePath) {
       res.status(400).json({
         success: false,
-        error: '缺少 path 参数',
+        error: 'Missing path parameter',
       });
       return;
     }
@@ -857,7 +857,7 @@ router.post('/reveal', async (req: Request, res: Response) => {
     } catch {
       res.status(404).json({
         success: false,
-        error: '路径不存在',
+        error: 'Path does not exist',
       });
       return;
     }
@@ -887,7 +887,7 @@ router.post('/reveal', async (req: Request, res: Response) => {
     console.error('[File API] Failed to open file manager:', error);
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : '打开资源管理器失败',
+      error: error instanceof Error ? error.message : 'Failed to open file explorer',
     });
   }
 });
@@ -905,14 +905,14 @@ router.get('/preview', async (req: Request, res: Response) => {
     const queryPath = req.query.path as string;
     
     if (!queryPath) {
-      res.status(400).send('缺少 path 参数');
+      res.status(400).send('Missing path parameter');
       return;
     }
 
     // 只允许 .html / .htm 文件
     const ext = path.extname(queryPath).toLowerCase();
     if (ext !== '.html' && ext !== '.htm') {
-      res.status(400).send('仅支持预览 .html / .htm 文件');
+      res.status(400).send('Only .html / .htm files are supported for preview');
       return;
     }
 
@@ -924,7 +924,7 @@ router.get('/preview', async (req: Request, res: Response) => {
       const projectRoot = getProjectRoot(req);
       const validation = validatePath(queryPath, projectRoot);
       if (!validation.valid) {
-        res.status(400).send(validation.error || '路径无效');
+        res.status(400).send(validation.error || 'Invalid path');
         return;
       }
       resolvedPath = validation.resolvedPath;
@@ -934,11 +934,11 @@ router.get('/preview', async (req: Request, res: Response) => {
     try {
       const stats = await fs.stat(resolvedPath);
       if (!stats.isFile()) {
-        res.status(400).send('路径不是文件');
+        res.status(400).send('Path is not a file');
         return;
       }
     } catch {
-      res.status(404).send('文件不存在');
+      res.status(404).send('File does not exist');
       return;
     }
 
@@ -948,7 +948,7 @@ router.get('/preview', async (req: Request, res: Response) => {
     res.send(content);
   } catch (error) {
     console.error('[File API] Failed to preview file:', error);
-    res.status(500).send('预览文件失败');
+    res.status(500).send('Failed to preview file');
   }
 });
 
@@ -1329,7 +1329,7 @@ router.post('/search', async (req: Request, res: Response) => {
 
     if (!query) {
       res.status(400).json({
-        error: '缺少 query 参数',
+        error: 'Missing query parameter',
       });
       return;
     }
@@ -1339,7 +1339,7 @@ router.post('/search', async (req: Request, res: Response) => {
       await fs.access(projectRoot);
     } catch {
       res.status(404).json({
-        error: '项目根目录不存在',
+        error: 'Project root directory does not exist',
       });
       return;
     }
@@ -1393,8 +1393,8 @@ router.post('/search', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[File API] Search failed:', error);
     res.status(500).json({
-      error: '搜索失败',
-      message: error instanceof Error ? error.message : '未知错误',
+      error: 'Search failed',
+      message: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 });
@@ -1416,7 +1416,7 @@ router.post('/replace', async (req: Request, res: Response) => {
     if (!filePath) {
       res.status(400).json({
         success: false,
-        message: '缺少 file 参数',
+        message: 'Missing file parameter',
       });
       return;
     }
@@ -1424,7 +1424,7 @@ router.post('/replace', async (req: Request, res: Response) => {
     if (!Array.isArray(replacements) || replacements.length === 0) {
       res.status(400).json({
         success: false,
-        message: '缺少 replacements 参数',
+        message: 'Missing replacements parameter',
       });
       return;
     }
@@ -1445,14 +1445,14 @@ router.post('/replace', async (req: Request, res: Response) => {
       if (!stats.isFile()) {
         res.status(400).json({
           success: false,
-          message: '路径不是文件',
+          message: 'Path is not a file',
         });
         return;
       }
     } catch {
       res.status(404).json({
         success: false,
-        message: '文件不存在',
+        message: 'File does not exist',
       });
       return;
     }
@@ -1508,7 +1508,7 @@ router.post('/replace', async (req: Request, res: Response) => {
     console.error('[File API] Replace failed:', error);
     res.status(500).json({
       success: false,
-      message: error instanceof Error ? error.message : '未知错误',
+      message: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 });
@@ -1526,14 +1526,14 @@ router.get('/preview', async (req: Request, res: Response) => {
     const queryPath = req.query.path as string;
 
     if (!queryPath) {
-      res.status(400).send('缺少 path 参数');
+      res.status(400).send('Missing path parameter');
       return;
     }
 
     // 只允许 .html / .htm 文件
     const ext = path.extname(queryPath).toLowerCase();
     if (ext !== '.html' && ext !== '.htm') {
-      res.status(400).send('仅支持预览 .html / .htm 文件');
+      res.status(400).send('Only .html / .htm files are supported for preview');
       return;
     }
 
@@ -1545,7 +1545,7 @@ router.get('/preview', async (req: Request, res: Response) => {
       const projectRoot = getProjectRoot(req);
       const validation = validatePath(queryPath, projectRoot);
       if (!validation.valid) {
-        res.status(400).send(validation.error || '路径无效');
+        res.status(400).send(validation.error || 'Invalid path');
         return;
       }
       resolvedPath = validation.resolvedPath;
@@ -1555,11 +1555,11 @@ router.get('/preview', async (req: Request, res: Response) => {
     try {
       const stats = await fs.stat(resolvedPath);
       if (!stats.isFile()) {
-        res.status(400).send('路径不是文件');
+        res.status(400).send('Path is not a file');
         return;
       }
     } catch {
-      res.status(404).send('文件不存在');
+      res.status(404).send('File does not exist');
       return;
     }
 
@@ -1569,7 +1569,7 @@ router.get('/preview', async (req: Request, res: Response) => {
     res.send(content);
   } catch (error) {
     console.error('[File API] Failed to preview file:', error);
-    res.status(500).send('预览文件失败');
+    res.status(500).send('Failed to preview file');
   }
 });
 
@@ -1589,7 +1589,7 @@ router.get('/download', async (req: Request, res: Response) => {
     const queryPath = req.query.path as string;
 
     if (!queryPath) {
-      res.status(400).json({ error: '缺少 path 参数' });
+      res.status(400).json({ error: 'Missing path parameter' });
       return;
     }
 
@@ -1601,7 +1601,7 @@ router.get('/download', async (req: Request, res: Response) => {
       const projectRoot = getProjectRoot(req);
       const validation = validatePath(queryPath, projectRoot);
       if (!validation.valid) {
-        res.status(400).json({ error: validation.error || '路径无效' });
+        res.status(400).json({ error: validation.error || 'Invalid path' });
         return;
       }
       resolvedPath = validation.resolvedPath;
@@ -1612,11 +1612,11 @@ router.get('/download', async (req: Request, res: Response) => {
     try {
       stats = await fs.stat(resolvedPath);
       if (!stats.isFile()) {
-        res.status(400).json({ error: '路径不是文件' });
+        res.status(400).json({ error: 'Path is not a file' });
         return;
       }
     } catch {
-      res.status(404).json({ error: '文件不存在' });
+      res.status(404).json({ error: 'File does not exist' });
       return;
     }
 
@@ -1695,12 +1695,12 @@ router.get('/download', async (req: Request, res: Response) => {
     stream.on('error', (err) => {
       console.error('[File API] File download stream error:', err);
       if (!res.headersSent) {
-        res.status(500).json({ error: '读取文件失败' });
+        res.status(500).json({ error: 'Failed to read file' });
       }
     });
   } catch (error) {
     console.error('[File API] Failed to download file:', error);
-    res.status(500).json({ error: '下载文件失败' });
+    res.status(500).json({ error: 'Failed to download file' });
   }
 });
 

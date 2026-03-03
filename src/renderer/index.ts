@@ -95,7 +95,7 @@ export class SvgRenderer {
       if (this.Resvg) {
         this.useNative = true;
         this.initialized = true;
-        console.log('resvg: 使用原生模块');
+        console.log('resvg: using native module');
         return true;
       }
     } catch {
@@ -113,16 +113,16 @@ export class SvgRenderer {
         await resvgModule.initWasm(wasmBuffer);
       } else {
         // 如果找不到 WASM 文件，抛出错误
-        throw new Error('resvg WASM 文件未找到');
+        throw new Error('resvg WASM file not found');
       }
 
       this.Resvg = resvgModule.Resvg;
       this.useNative = false;
       this.initialized = true;
-      console.log('resvg: 使用 WASM 模块');
+      console.log('resvg: using WASM module');
       return true;
     } catch (err) {
-      console.warn('resvg 初始化失败:', err);
+      console.warn('resvg initialization failed:', err);
       return false;
     }
   }
@@ -155,7 +155,7 @@ export class SvgRenderer {
     if (!this.initialized) {
       const success = await this.initialize();
       if (!success) {
-        throw new Error('SVG 渲染器初始化失败');
+        throw new Error('SVG renderer initialization failed');
       }
     }
 

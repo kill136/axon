@@ -131,27 +131,27 @@ async function checkNodeVersion(): Promise<DiagnosticResult> {
 
   if (major >= 20) {
     return {
-      category: '环境',
-      name: 'Node.js 版本',
+      category: 'Environment',
+      name: 'Node.js Version',
       status: 'pass',
-      message: `Node.js ${version} 已安装`,
+      message: `Node.js ${version} installed`,
     };
   } else if (major >= 18) {
     return {
-      category: '环境',
-      name: 'Node.js 版本',
+      category: 'Environment',
+      name: 'Node.js Version',
       status: 'warn',
-      message: `Node.js ${version} 可用，但建议使用 20+`,
-      fix: '升级到 Node.js 20+: nvm install 20 && nvm use 20',
+      message: `Node.js ${version} available, but 20+ is recommended`,
+      fix: 'Upgrade to Node.js 20+: nvm install 20 && nvm use 20',
     };
   } else {
     return {
-      category: '环境',
-      name: 'Node.js 版本',
+      category: 'Environment',
+      name: 'Node.js Version',
       status: 'fail',
-      message: `Node.js ${version} 版本过低`,
-      details: '请升级到 Node.js 20 或更高版本',
-      fix: '安装 Node.js 20+: https://nodejs.org/',
+      message: `Node.js ${version} is too old`,
+      details: 'Please upgrade to Node.js 20 or higher',
+      fix: 'Install Node.js 20+: https://nodejs.org/',
     };
   }
 }
@@ -164,17 +164,17 @@ async function checkNpmVersion(): Promise<DiagnosticResult> {
     child_process.exec('npm --version', (error, stdout) => {
       if (error) {
         resolve({
-          category: '环境',
+          category: 'Environment',
           name: 'npm',
           status: 'warn',
-          message: '未找到 npm',
-          details: 'npm 通常随 Node.js 一起安装',
-          fix: '从 https://nodejs.org/ 重新安装 Node.js',
+          message: 'npm not found',
+          details: 'npm is usually installed with Node.js',
+          fix: 'Reinstall Node.js from https://nodejs.org/',
         });
       } else {
         const version = stdout.trim();
         resolve({
-          category: '环境',
+          category: 'Environment',
           name: 'npm',
           status: 'pass',
           message: `npm ${version}`,
@@ -192,16 +192,16 @@ async function checkGitAvailability(): Promise<DiagnosticResult> {
     child_process.exec('git --version', (error, stdout) => {
       if (error) {
         resolve({
-          category: '环境',
+          category: 'Environment',
           name: 'Git',
           status: 'warn',
-          message: '未找到 Git',
-          details: '某些功能可能无法使用',
-          fix: '安装 Git: https://git-scm.com/',
+          message: 'Git not found',
+          details: 'Some features may not work',
+          fix: 'Install Git: https://git-scm.com/',
         });
       } else {
         resolve({
-          category: '环境',
+          category: 'Environment',
           name: 'Git',
           status: 'pass',
           message: stdout.trim(),
@@ -221,18 +221,18 @@ async function checkApiKey(): Promise<DiagnosticResult> {
   if (validation.valid) {
     return {
       category: 'API',
-      name: 'API 密钥',
+      name: 'API Key',
       status: 'pass',
-      message: `${provider.type} 认证已配置`,
+      message: `${provider.type} authentication configured`,
     };
   } else {
     return {
       category: 'API',
-      name: 'API 密钥',
+      name: 'API Key',
       status: 'fail',
-      message: '未配置认证',
+      message: 'Authentication not configured',
       details: validation.errors.join('; '),
-      fix: '设置环境变量 ANTHROPIC_API_KEY 或 AXON_API_KEY',
+      fix: 'Set environment variable ANTHROPIC_API_KEY or AXON_API_KEY',
     };
   }
 }
@@ -255,26 +255,26 @@ async function checkApiConnectivity(): Promise<DiagnosticResult> {
     if (response.ok || response.status === 405) {
       return {
         category: 'API',
-        name: 'API 连接',
+        name: 'API Connection',
         status: 'pass',
-        message: '可以访问 Anthropic API',
+        message: 'Anthropic API is accessible',
       };
     } else {
       return {
         category: 'API',
-        name: 'API 连接',
+        name: 'API Connection',
         status: 'warn',
-        message: `API 响应状态 ${response.status}`,
+        message: `API response status ${response.status}`,
       };
     }
   } catch (err: any) {
     return {
       category: 'API',
-      name: 'API 连接',
+      name: 'API Connection',
       status: 'fail',
-      message: '无法访问 Anthropic API',
+      message: 'Unable to access Anthropic API',
       details: err.message || String(err),
-      fix: '检查网络连接和防火墙设置',
+      fix: 'Check network connection and firewall settings',
     };
   }
 }
@@ -296,26 +296,26 @@ async function checkWorkingDirectory(): Promise<DiagnosticResult> {
       fs.unlinkSync(testFile);
 
       return {
-        category: '文件系统',
-        name: '工作目录',
+        category: 'Filesystem',
+        name: 'Working Directory',
         status: 'pass',
-        message: `目录可读写: ${cwd}`,
+        message: `Directory is readable and writable: ${cwd}`,
       };
     } catch {
       return {
-        category: '文件系统',
-        name: '工作目录',
+        category: 'Filesystem',
+        name: 'Working Directory',
         status: 'warn',
-        message: '目录可读但不可写',
-        details: `路径: ${cwd}`,
+        message: 'Directory is readable but not writable',
+        details: `Path: ${cwd}`,
       };
     }
   } catch (err) {
     return {
-      category: '文件系统',
-      name: '工作目录',
+      category: 'Filesystem',
+      name: 'Working Directory',
       status: 'fail',
-      message: '无法访问工作目录',
+      message: 'Unable to access working directory',
       details: String(err),
     };
   }
@@ -346,20 +346,20 @@ async function checkSessionDirectory(): Promise<DiagnosticResult> {
     const sizeMB = (totalSize / (1024 * 1024)).toFixed(2);
 
     return {
-      category: '文件系统',
-      name: '会话目录',
+      category: 'Filesystem',
+      name: 'Session Directory',
       status: 'pass',
-      message: `${sessionFiles.length} 个会话，${sizeMB} MB`,
-      details: `路径: ${sessionDir}`,
+      message: `${sessionFiles.length} sessions, ${sizeMB} MB`,
+      details: `Path: ${sessionDir}`,
     };
   } catch (err) {
     return {
-      category: '文件系统',
-      name: '会话目录',
+      category: 'Filesystem',
+      name: 'Session Directory',
       status: 'fail',
-      message: '无法访问会话目录',
+      message: 'Unable to access session directory',
       details: String(err),
-      fix: `确保 ${sessionDir} 目录可写`,
+      fix: `Ensure ${sessionDir} directory is writable`,
     };
   }
 }
@@ -381,22 +381,22 @@ async function checkFilePermissions(): Promise<DiagnosticResult> {
     fs.writeFileSync(testFile, 'test');
     fs.unlinkSync(testFile);
   } catch (err) {
-    issues.push(`无法写入 ${claudeDir}: ${err}`);
+    issues.push(`Cannot write to ${claudeDir}: ${err}`);
   }
 
   if (issues.length === 0) {
     return {
-      category: '文件系统',
-      name: '文件权限',
+      category: 'Filesystem',
+      name: 'File Permissions',
       status: 'pass',
-      message: '文件权限正常',
+      message: 'File permissions are normal',
     };
   } else {
     return {
-      category: '文件系统',
-      name: '文件权限',
+      category: 'Filesystem',
+      name: 'File Permissions',
       status: 'fail',
-      message: '检测到权限问题',
+      message: 'Permission issues detected',
       details: issues.join('; '),
     };
   }
@@ -409,17 +409,17 @@ async function checkConfigurationFiles(): Promise<DiagnosticResult> {
   const files: { path: string; name: string; required: boolean }[] = [
     {
       path: path.join(os.homedir(), '.axon', 'settings.json'),
-      name: '全局配置',
+      name: 'Global Config',
       required: false
     },
     {
       path: path.join(process.cwd(), '.axon', 'settings.local.json'),
-      name: '本地配置',
+      name: 'Local Config',
       required: false
     },
     {
       path: path.join(process.cwd(), 'AXON.md'),
-      name: '项目指令',
+      name: 'Project Instructions',
       required: false
     },
   ];
@@ -435,34 +435,34 @@ async function checkConfigurationFiles(): Promise<DiagnosticResult> {
         }
         found.push(file.name);
       } catch (err) {
-        issues.push(`${file.name} 格式无效`);
+        issues.push(`${file.name} has invalid format`);
       }
     } else if (file.required) {
-      issues.push(`${file.name} 未找到`);
+      issues.push(`${file.name} not found`);
     }
   }
 
   if (issues.length > 0) {
     return {
-      category: '配置',
-      name: '配置文件',
+      category: 'Configuration',
+      name: 'Config Files',
       status: 'warn',
-      message: '检测到配置问题',
+      message: 'Configuration issues detected',
       details: issues.join('; '),
     };
   } else if (found.length > 0) {
     return {
-      category: '配置',
-      name: '配置文件',
+      category: 'Configuration',
+      name: 'Config Files',
       status: 'pass',
-      message: `找到: ${found.join(', ')}`,
+      message: `Found: ${found.join(', ')}`,
     };
   } else {
     return {
-      category: '配置',
-      name: '配置文件',
+      category: 'Configuration',
+      name: 'Config Files',
       status: 'pass',
-      message: '使用默认配置',
+      message: 'Using default configuration',
     };
   }
 }
@@ -478,10 +478,10 @@ async function checkPermissionRules(): Promise<DiagnosticResult> {
     // 如果没有配置规则
     if (stats.totalRules === 0) {
       return {
-        category: '配置',
-        name: '权限规则',
+        category: 'Configuration',
+        name: 'Permission Rules',
         status: 'pass',
-        message: '使用默认权限设置',
+        message: 'Using default permission settings',
       };
     }
 
@@ -495,10 +495,10 @@ async function checkPermissionRules(): Promise<DiagnosticResult> {
       const fixes = result.unreachableRules.map(ur => ur.fixSuggestion).join('; ');
 
       return {
-        category: '配置',
-        name: '权限规则',
+        category: 'Configuration',
+        name: 'Permission Rules',
         status: 'warn',
-        message: `发现 ${unreachableCount} 个不可达规则`,
+        message: `Found ${unreachableCount} unreachable rules`,
         details: details,
         fix: fixes,
       };
@@ -506,17 +506,17 @@ async function checkPermissionRules(): Promise<DiagnosticResult> {
 
     // 规则配置正常
     return {
-      category: '配置',
-      name: '权限规则',
+      category: 'Configuration',
+      name: 'Permission Rules',
       status: 'pass',
-      message: `${stats.totalRules} 个规则 (${stats.allowRules} 允许, ${stats.denyRules} 拒绝)`,
+      message: `${stats.totalRules} rules (${stats.allowRules} allow, ${stats.denyRules} deny)`,
     };
   } catch (err) {
     return {
-      category: '配置',
-      name: '权限规则',
+      category: 'Configuration',
+      name: 'Permission Rules',
       status: 'warn',
-      message: '无法检查权限规则',
+      message: 'Unable to check permission rules',
       details: String(err),
     };
   }
@@ -553,24 +553,24 @@ async function checkNetworkConnectivity(): Promise<DiagnosticResult> {
 
   if (failures.length === 0) {
     return {
-      category: '网络',
-      name: '网络连接',
+      category: 'Network',
+      name: 'Network Connection',
       status: 'pass',
-      message: '网络连接正常',
+      message: 'Network connection is normal',
     };
   } else if (results.length > 0) {
     return {
-      category: '网络',
-      name: '网络连接',
+      category: 'Network',
+      name: 'Network Connection',
       status: 'warn',
-      message: `部分端点无法访问: ${failures.join(', ')}`,
+      message: `Some endpoints unreachable: ${failures.join(', ')}`,
     };
   } else {
     return {
-      category: '网络',
-      name: '网络连接',
+      category: 'Network',
+      name: 'Network Connection',
       status: 'fail',
-      message: '无网络连接',
+      message: 'No network connection',
     };
   }
 }
@@ -584,25 +584,25 @@ async function checkMemoryUsage(): Promise<DiagnosticResult> {
 
   if (percentUsed >= 90) {
     return {
-      category: '性能',
-      name: '内存使用',
+      category: 'Performance',
+      name: 'Memory Usage',
       status: 'warn',
-      message: `内存使用率高: ${percentUsed.toFixed(1)}%`,
-      details: `${memInfo.used} / ${memInfo.total} 已使用`,
-      fix: '关闭一些应用程序以释放内存',
+      message: `Memory usage is high: ${percentUsed.toFixed(1)}%`,
+      details: `${memInfo.used} / ${memInfo.total} used`,
+      fix: 'Close some applications to free up memory',
     };
   } else if (percentUsed >= 75) {
     return {
-      category: '性能',
-      name: '内存使用',
+      category: 'Performance',
+      name: 'Memory Usage',
       status: 'warn',
-      message: `内存使用率中等: ${percentUsed.toFixed(1)}%`,
-      details: `${memInfo.used} / ${memInfo.total} 已使用`,
+      message: `Memory usage is moderate: ${percentUsed.toFixed(1)}%`,
+      details: `${memInfo.used} / ${memInfo.total} used`,
     };
   } else {
     return {
-      category: '性能',
-      name: '内存使用',
+      category: 'Performance',
+      name: 'Memory Usage',
       status: 'pass',
       message: `${percentUsed.toFixed(1)}% (${memInfo.used} / ${memInfo.total})`,
     };
@@ -620,34 +620,34 @@ async function checkDiskSpace(): Promise<DiagnosticResult> {
 
     if (freeGB >= 1) {
       return {
-        category: '性能',
-        name: '磁盘空间',
+        category: 'Performance',
+        name: 'Disk Space',
         status: 'pass',
-        message: `${freeGB.toFixed(1)} GB 可用`,
+        message: `${freeGB.toFixed(1)} GB available`,
       };
     } else if (freeGB >= 0.1) {
       return {
-        category: '性能',
-        name: '磁盘空间',
+        category: 'Performance',
+        name: 'Disk Space',
         status: 'warn',
-        message: `仅剩 ${freeGB.toFixed(1)} GB`,
-        details: '建议释放磁盘空间',
+        message: `Only ${freeGB.toFixed(1)} GB remaining`,
+        details: 'Consider freeing up disk space',
       };
     } else {
       return {
-        category: '性能',
-        name: '磁盘空间',
+        category: 'Performance',
+        name: 'Disk Space',
         status: 'fail',
-        message: '磁盘空间非常低',
-        details: '可用空间不足 100MB',
+        message: 'Disk space is critically low',
+        details: 'Available space is less than 100MB',
       };
     }
   } catch {
     return {
-      category: '性能',
-      name: '磁盘空间',
+      category: 'Performance',
+      name: 'Disk Space',
       status: 'warn',
-      message: '无法检查磁盘空间',
+      message: 'Unable to check disk space',
     };
   }
 }
@@ -715,22 +715,22 @@ export function formatDoctorReport(report: DoctorReport, verbose: boolean = fals
   const lines: string[] = [];
 
   lines.push('╭─────────────────────────────────────────────╮');
-  lines.push('│      Axon WebUI 诊断报告                   │');
+  lines.push('│      Axon WebUI Diagnostic Report          │');
   lines.push('╰─────────────────────────────────────────────╯');
   lines.push('');
 
   if (report.systemInfo) {
-    lines.push(`  版本:     ${report.systemInfo.version}`);
-    lines.push(`  平台:     ${report.systemInfo.platform}`);
+    lines.push(`  Version:  ${report.systemInfo.version}`);
+    lines.push(`  Platform: ${report.systemInfo.platform}`);
     lines.push(`  Node:     ${report.systemInfo.nodeVersion}`);
 
     if (verbose) {
       lines.push('');
-      lines.push('  系统信息:');
-      lines.push(`    内存:   ${report.systemInfo.memory.used} / ${report.systemInfo.memory.total} (${report.systemInfo.memory.percentUsed.toFixed(1)}% 已使用)`);
+      lines.push('  System Info:');
+      lines.push(`    Memory: ${report.systemInfo.memory.used} / ${report.systemInfo.memory.total} (${report.systemInfo.memory.percentUsed.toFixed(1)}% used)`);
       lines.push(`    CPU:    ${report.systemInfo.cpu.model}`);
-      lines.push(`    核心:   ${report.systemInfo.cpu.cores}`);
-      lines.push(`    负载:   ${report.systemInfo.cpu.loadAverage.map(l => l.toFixed(2)).join(', ')}`);
+      lines.push(`    Cores:  ${report.systemInfo.cpu.cores}`);
+      lines.push(`    Load:   ${report.systemInfo.cpu.loadAverage.map(l => l.toFixed(2)).join(', ')}`);
     }
   }
 
@@ -756,7 +756,7 @@ export function formatDoctorReport(report: DoctorReport, verbose: boolean = fals
       }
 
       if (verbose && check.fix) {
-        lines.push(`    💡 修复: ${check.fix}`);
+        lines.push(`    💡 Fix: ${check.fix}`);
       }
     }
 
@@ -765,11 +765,11 @@ export function formatDoctorReport(report: DoctorReport, verbose: boolean = fals
 
   lines.push('─────────────────────────────────────────────');
   lines.push('');
-  lines.push(`  总结: ${report.summary.passed} 通过, ${report.summary.warnings} 警告, ${report.summary.failed} 失败`);
+  lines.push(`  Summary: ${report.summary.passed} passed, ${report.summary.warnings} warnings, ${report.summary.failed} failed`);
   lines.push('');
 
   if (report.summary.warnings > 0 || report.summary.failed > 0) {
-    lines.push('  💡 使用 /doctor verbose 查看详细信息和修复建议');
+    lines.push('  💡 Use /doctor verbose to see details and fix suggestions');
     lines.push('');
   }
 

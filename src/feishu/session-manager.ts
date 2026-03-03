@@ -59,7 +59,7 @@ export class SessionManager {
       this.dailyCostResetTime = Date.now();
     }
     if (this.dailyCost >= this.config.dailyBudgetUSD) {
-      return '今日使用额度已用完，请明天再试。';
+      return 'Daily usage quota exhausted, please try again tomorrow.';
     }
 
     // 检查每用户速率
@@ -77,7 +77,7 @@ export class SessionManager {
 
     if (entry.timestamps.length >= this.config.rateLimitPerMinute) {
       const waitSec = Math.ceil((entry.timestamps[0] + windowMs - now) / 1000);
-      return `请求过于频繁，请 ${waitSec} 秒后再试。`;
+      return `Too many requests, please try again in ${waitSec} seconds.`;
     }
 
     entry.timestamps.push(now);
@@ -108,7 +108,7 @@ export class SessionManager {
       // 注入飞书 chat_id 到 system prompt，让模型创建定时任务时自动关联当前会话
       let systemPrompt = this.config.systemPrompt;
       if (chatId) {
-        systemPrompt += `\n\n## 飞书会话上下文\n当前飞书会话 chat_id: ${chatId}\n当你使用 ScheduleTask 工具创建任务时，请始终设置 feishuChatId 为 "${chatId}"，并确保 notify 包含 "feishu"，这样任务执行结果会发回当前对话。`;
+        systemPrompt += `\n\n## Feishu Session Context\nCurrent Feishu session chat_id: ${chatId}\nWhen using the ScheduleTask tool to create tasks, always set feishuChatId to "${chatId}" and ensure notify includes "feishu", so that task execution results are sent back to the current conversation.`;
       }
 
       const loop = new ConversationLoop({
@@ -169,7 +169,7 @@ export class SessionManager {
       task.resolve(response);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
-      task.resolve(`处理消息时出错: ${errorMsg}`);
+      task.resolve(`Error processing message: ${errorMsg}`);
     } finally {
       entry.processing = false;
       this.drainQueue(entry);

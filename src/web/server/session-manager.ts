@@ -141,7 +141,7 @@ export class WebSessionManager {
       saveSession(session);
       return true;
     } catch (error) {
-      console.error(`保存会话失败 ${sessionId}:`, error);
+      console.error(`Failed to save session ${sessionId}:`, error);
       return false;
     }
   }
@@ -382,7 +382,7 @@ export class WebSessionManager {
 
     // 创建新会话
     return this.createSession({
-      name: `WebUI 会话 - ${new Date().toLocaleString('zh-CN')}`,
+      name: `WebUI Session - ${new Date().toLocaleString('en-US')}`,
       model,
       tags: ['webui'],
       projectPath,
@@ -417,24 +417,24 @@ export class WebSessionManager {
     lines.push('');
 
     // 元数据
-    lines.push('## 会话信息');
+    lines.push('## Session Info');
     lines.push('');
     lines.push(`- **ID:** ${session.metadata.id}`);
-    lines.push(`- **创建时间:** ${new Date(session.metadata.createdAt).toLocaleString('zh-CN')}`);
-    lines.push(`- **更新时间:** ${new Date(session.metadata.updatedAt).toLocaleString('zh-CN')}`);
-    lines.push(`- **模型:** ${session.metadata.model}`);
-    lines.push(`- **消息数:** ${session.metadata.messageCount}`);
+    lines.push(`- **Created:** ${new Date(session.metadata.createdAt).toLocaleString('en-US')}`);
+    lines.push(`- **Updated:** ${new Date(session.metadata.updatedAt).toLocaleString('en-US')}`);
+    lines.push(`- **Model:** ${session.metadata.model}`);
+    lines.push(`- **Messages:** ${session.metadata.messageCount}`);
 
     if (session.metadata.cost) {
-      lines.push(`- **成本:** $${session.metadata.cost.toFixed(4)}`);
+      lines.push(`- **Cost:** ${session.metadata.cost.toFixed(4)}`);
     }
 
     lines.push(
-      `- **Token 使用:** ${session.metadata.tokenUsage.total} (输入: ${session.metadata.tokenUsage.input} / 输出: ${session.metadata.tokenUsage.output})`
+      `- **Token Usage:** ${session.metadata.tokenUsage.total} (Input: ${session.metadata.tokenUsage.input} / Output: ${session.metadata.tokenUsage.output})`
     );
 
     if (session.metadata.tags && session.metadata.tags.length > 0) {
-      lines.push(`- **标签:** ${session.metadata.tags.join(', ')}`);
+      lines.push(`- **Tags:** ${session.metadata.tags.join(', ')}`);
     }
 
     lines.push('');
@@ -442,12 +442,12 @@ export class WebSessionManager {
     lines.push('');
 
     // 对话内容
-    lines.push('## 对话内容');
+    lines.push('## Conversation');
     lines.push('');
 
     if (session.chatHistory && session.chatHistory.length > 0) {
       for (const msg of session.chatHistory) {
-        const role = msg.role === 'user' ? '👤 用户' : '🤖 助手';
+        const role = msg.role === 'user' ? '👤 User' : '🤖 Assistant';
         lines.push(`### ${role}`);
         lines.push('');
 
@@ -455,12 +455,12 @@ export class WebSessionManager {
           if (content.type === 'text') {
             lines.push(content.text);
           } else if (content.type === 'tool_use') {
-            lines.push(`**工具调用:** ${content.name}`);
+            lines.push(`**Tool Call:** ${content.name}`);
             lines.push('```json');
             lines.push(JSON.stringify(content.input, null, 2));
             lines.push('```');
           } else if (content.type === 'tool_result') {
-            lines.push('**工具结果:**');
+            lines.push('**Tool Result:**');
             lines.push('```');
             lines.push(content.output || content.error || '');
             lines.push('```');
@@ -506,7 +506,7 @@ export class WebSessionManager {
         name: data.metadata.name || newId,
       };
     } catch (err) {
-      console.error('[WebSessionManager] 导入会话失败:', err);
+      console.error('[WebSessionManager] Failed to import session:', err);
       return null;
     }
   }

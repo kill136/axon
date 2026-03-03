@@ -95,7 +95,7 @@ export function sendMessage(ws: WebSocket, message: ServerMessage): void {
     if (!closedWsLogged.has(ws)) {
       closedWsLogged.add(ws);
       const sessionId = ('payload' in message ? (message.payload as any)?.sessionId : '') || '';
-      console.warn(`[WebSocket] 连接已关闭 (readyState=${ws.readyState}), 后续消息将静默丢弃. session=${sessionId}, first_dropped=${message.type}`);
+      console.warn(`[WebSocket] Connection closed (readyState=${ws.readyState}), subsequent messages will be silently dropped. session=${sessionId}, first_dropped=${message.type}`);
     }
   }
 }

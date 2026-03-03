@@ -50,29 +50,29 @@ interface TriggerE2ETestInput {
  */
 export class TriggerE2ETestTool extends BaseTool<TriggerE2ETestInput, ToolResult> {
   name = 'TriggerE2ETest';
-  description = `触发 E2E 端到端测试（LeadAgent 专用）
+  description = `Trigger E2E end-to-end testing (LeadAgent exclusive)
 
-## 使用时机
-当所有开发任务完成并通过集成检查（构建、单元测试）后，调用此工具启动 E2E 浏览器测试。
+## When to Use
+After all development tasks are completed and pass integration checks (build, unit tests), call this tool to start E2E browser testing.
 
-## 测试内容
-E2E Agent 会自动：
-1. 启动应用服务
-2. 打开浏览器，按蓝图定义的业务流程验收
-3. 对比设计图与实际页面
-4. 发现问题尝试自动修复（最多 3 轮）
-5. 提交测试报告
+## Test Content
+E2E Agent will automatically:
+1. Start the application service
+2. Open browser, validate according to blueprint-defined business flows
+3. Compare design mockups with actual pages
+4. Attempt automatic fixes when issues found (up to 3 rounds)
+5. Submit test report
 
-## 返回值
-E2E 测试的完整结果，包括：
-- 通过/失败的测试步骤
-- 设计图对比结果
-- 修复尝试记录
-- 测试摘要
+## Return Value
+Complete E2E test results, including:
+- Passed/failed test steps
+- Design comparison results
+- Fix attempt records
+- Test summary
 
-## 后续操作
-- 如果测试通过 → 任务完成
-- 如果测试失败 → 根据报告修复代码，然后再次调用此工具验证`;
+## Next Steps
+- If tests pass -> task complete
+- If tests fail -> fix code based on report, then call this tool again to verify`;
 
   // 静态上下文
   private static context: E2EToolContext | null = null;
@@ -97,20 +97,20 @@ E2E 测试的完整结果，包括：
       properties: {
         appUrl: {
           type: 'string',
-          description: '应用 URL（默认 http://localhost:3000）',
+          description: 'Application URL (default http://localhost:3000)',
         },
         similarityThreshold: {
           type: 'number',
-          description: '设计图对比相似度阈值 (0-100)，默认 80',
+          description: 'Design comparison similarity threshold (0-100), default 80',
         },
         model: {
           type: 'string',
           enum: ['haiku', 'sonnet', 'opus'],
-          description: 'E2E Agent 使用的模型（默认 opus）',
+          description: 'Model used by E2E Agent (default opus)',
         },
         maxTestDuration: {
           type: 'number',
-          description: '最大测试时间（毫秒），默认 1800000（30分钟）',
+          description: 'Maximum test duration (milliseconds), default 1800000 (30 minutes)',
         },
       },
       required: [],

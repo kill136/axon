@@ -62,7 +62,7 @@ export function classifySymbol(kind: string | undefined): SymbolClassification {
       canHaveCallGraph: false,
       defaultView: ViewType.DEFINITION,
       supportedViews: [ViewType.DEFINITION, ViewType.REFERENCES],
-      description: '未知符号类型',
+      description: 'Unknown symbol type',
     };
   }
 
@@ -75,17 +75,17 @@ export function classifySymbol(kind: string | undefined): SymbolClassification {
     normalizedKind === 'constructor'
   ) {
     let type = SymbolType.FUNCTION;
-    let description = '函数';
+    let description = 'Function';
 
     if (normalizedKind === 'method') {
       type = SymbolType.METHOD;
-      description = '方法';
+      description = 'Method';
     } else if (normalizedKind === 'constructor') {
       type = SymbolType.CONSTRUCTOR;
-      description = '构造函数';
+      description = 'Constructor';
     } else if (normalizedKind.includes('arrow')) {
       type = SymbolType.ARROW_FUNCTION;
-      description = '箭头函数';
+      description = 'Arrow function';
     }
 
     return {
@@ -112,7 +112,7 @@ export function classifySymbol(kind: string | undefined): SymbolClassification {
         ViewType.REFERENCES,
         ViewType.TYPE_HIERARCHY,
       ],
-      description: '接口定义',
+      description: 'Interface',
     };
   }
 
@@ -127,7 +127,7 @@ export function classifySymbol(kind: string | undefined): SymbolClassification {
         ViewType.REFERENCES,
         ViewType.TYPE_HIERARCHY,
       ],
-      description: '类型别名',
+      description: 'Type alias',
     };
   }
 
@@ -142,7 +142,7 @@ export function classifySymbol(kind: string | undefined): SymbolClassification {
         ViewType.REFERENCES,
         ViewType.TYPE_HIERARCHY,
       ],
-      description: '类定义',
+      description: 'Class',
     };
   }
 
@@ -153,7 +153,7 @@ export function classifySymbol(kind: string | undefined): SymbolClassification {
       canHaveCallGraph: false,
       defaultView: ViewType.REFERENCES,
       supportedViews: [ViewType.DEFINITION, ViewType.REFERENCES],
-      description: '属性',
+      description: 'Property',
     };
   }
 
@@ -170,7 +170,7 @@ export function classifySymbol(kind: string | undefined): SymbolClassification {
       canHaveCallGraph: false,
       defaultView: ViewType.REFERENCES,
       supportedViews: [ViewType.DEFINITION, ViewType.REFERENCES],
-      description: isConst ? '常量' : '变量',
+      description: isConst ? 'Constant' : 'Variable',
     };
   }
 
@@ -180,7 +180,7 @@ export function classifySymbol(kind: string | undefined): SymbolClassification {
     canHaveCallGraph: false,
     defaultView: ViewType.DEFINITION,
     supportedViews: [ViewType.DEFINITION, ViewType.REFERENCES],
-    description: `未知类型 (${kind})`,
+    description: `Unknown type (${kind})`,
   };
 }
 

@@ -376,7 +376,7 @@ function createGitAIClient(conversationManager: ConversationManager): ClaudeClie
   const config = conversationManager.getClientConfig('haiku');
 
   if (!config.apiKey && !config.authToken) {
-    throw new Error('未配置 API Key 或 Auth Token');
+    throw new Error('API Key or Auth Token not configured');
   }
 
   return new ClaudeClient({
@@ -470,7 +470,7 @@ export async function handleGitSmartCommit(
     if (!diff) {
       sendMessage(client.ws, {
         type: 'git:smart_commit_response',
-        payload: { success: false, error: '没有可提交的更改' },
+        payload: { success: false, error: 'No changes to commit' },
       });
       return;
     }
@@ -518,19 +518,19 @@ export async function handleGitSmartReview(
     if (!fullDiff) {
       sendMessage(client.ws, {
         type: 'git:smart_review_response',
-        payload: { success: false, error: '没有可审查的更改' },
+        payload: { success: false, error: 'No changes to review' },
       });
       return;
     }
 
-    const review = await aiRequest(conversationManager, `作为资深代码审查者，审查以下代码变更。请指出：
+    const review = await aiRequest(conversationManager, `As a senior code reviewer, review the following code changes. Please identify:
 
-1. **Bug 风险** - 可能引入的 bug 或逻辑错误
-2. **安全问题** - XSS、注入、敏感信息泄露等
-3. **设计问题** - 架构、可维护性、复杂度
-4. **改进建议** - 代码质量、最佳实践
+1. **Bug Risks** - Potential bugs or logic errors
+2. **Security Issues** - XSS, injection, sensitive data exposure, etc.
+3. **Design Issues** - Architecture, maintainability, complexity
+4. **Improvement Suggestions** - Code quality, best practices
 
-如果代码质量好，也要给出正面评价。使用中文回复。
+If the code quality is good, also provide positive feedback.
 
 Diff:
 \`\`\`
@@ -565,12 +565,12 @@ export async function handleGitExplainCommit(
     if (!commitDetail.success || !commitDetail.data) {
       sendMessage(client.ws, {
         type: 'git:explain_commit_response',
-        payload: { success: false, error: commitDetail.error || '无法获取 commit 详情' },
+        payload: { success: false, error: commitDetail.error || 'Failed to get commit details' },
       });
       return;
     }
 
-    const explanation = await aiRequest(conversationManager, `解释以下 git commit 做了什么。
+    const explanation = await aiRequest(conversationManager, `Explain what the following git commit does.
 
 Commit: ${commitDetail.data.shortHash} - ${commitDetail.data.message}
 Author: ${commitDetail.data.author}
@@ -581,10 +581,10 @@ Diff:
 ${commitDetail.data.diff.substring(0, 10000)}
 \`\`\`
 
-请用中文简要说明：
-1. 这个 commit 的主要目的
-2. 具体做了哪些更改
-3. 为什么要这样改（推测意图）`);
+Please briefly explain:
+1. The main purpose of this commit
+2. What specific changes were made
+3. Why these changes were made (inferred intent)`);
 
     sendMessage(client.ws, {
       type: 'git:explain_commit_response',

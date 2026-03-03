@@ -21,12 +21,12 @@ const router = Router();
 function returnUpgradeNotice(res: Response, operation: string): void {
   res.status(501).json({
     success: false,
-    error: `需求对话 API 已升级`,
-    message: `操作 "${operation}" 已被新的 SmartPlanner 对话 API 替代。请使用 /api/blueprint/dialog/* 端点。`,
+    error: `Requirement dialog API has been upgraded`,
+    message: `Operation "${operation}" has been replaced by the new SmartPlanner dialog API. Please use /api/blueprint/dialog/* endpoints.`,
     migrationGuide: {
       oldApi: '/api/blueprint/requirement/*',
       newApi: '/api/blueprint/dialog/*',
-      documentation: '新API端点: POST /dialog/start, POST /dialog/:sessionId/message, POST /dialog/:sessionId/confirm, DELETE /dialog/:sessionId',
+      documentation: 'New API endpoints: POST /dialog/start, POST /dialog/:sessionId/message, POST /dialog/:sessionId/confirm, DELETE /dialog/:sessionId',
     },
   });
 }
@@ -96,7 +96,7 @@ router.get('/sessions', (_req: Request, res: Response) => {
     success: true,
     sessions: [],
     total: 0,
-    message: '需求对话 API 已升级到 SmartPlanner，请使用新的 API',
+    message: 'Requirement dialog API has been upgraded to SmartPlanner, please use the new API',
   });
 });
 

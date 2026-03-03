@@ -212,28 +212,28 @@ export class PermissionHandler {
   private generateDescription(tool: string, args: Record<string, unknown>): string {
     switch (tool) {
       case 'Write':
-        return `创建/覆盖文件: ${args.file_path}`;
+        return `Create/overwrite file: ${args.file_path}`;
 
       case 'Edit':
-        return `编辑文件: ${args.file_path}`;
+        return `Edit file: ${args.file_path}`;
 
       case 'MultiEdit':
         const edits = args.edits as Array<{ file_path: string }> || [];
-        return `批量编辑 ${edits.length} 个文件`;
+        return `Batch edit ${edits.length} files`;
 
       case 'Bash':
         const command = args.command as string;
         const truncated = command.length > 50 ? command.slice(0, 50) + '...' : command;
-        return `执行命令: ${truncated}`;
+        return `Execute command: ${truncated}`;
 
       case 'NotebookEdit':
-        return `编辑 Notebook: ${args.notebook_path}`;
+        return `Edit Notebook: ${args.notebook_path}`;
 
       case 'TaskStop':
-        return `终止进程: ${args.bash_id}`;
+        return `Kill process: ${args.bash_id}`;
 
       default:
-        return `执行 ${tool}`;
+        return `Execute ${tool}`;
     }
   }
 
@@ -307,7 +307,7 @@ export class PermissionHandler {
     return new Promise<boolean>((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pendingRequests.delete(request.requestId);
-        reject(new Error('权限请求超时'));
+        reject(new Error('Permission request timed out'));
       }, this.config.timeout);
 
       // 4. 保存请求和 Promise 控制函数
@@ -327,7 +327,7 @@ export class PermissionHandler {
   async waitForResponse(requestId: string): Promise<boolean> {
     const pending = this.pendingRequests.get(requestId);
     if (!pending) {
-      throw new Error(`未找到权限请求: ${requestId}`);
+      throw new Error(`Permission request not found: ${requestId}`);
     }
 
     // 返回现有的 Promise（通过创建一个新的 Promise 来包装）
@@ -361,10 +361,10 @@ export class PermissionHandler {
     this.pendingRequests.set(request.requestId, {
       request,
       resolve: () => {
-        console.warn('[PermissionHandler] resolve 被调用但没有关联的 Promise');
+        console.warn('[PermissionHandler] resolve called but no associated Promise');
       },
       reject: () => {
-        console.warn('[PermissionHandler] reject 被调用但没有关联的 Promise');
+        console.warn('[PermissionHandler] reject called but no associated Promise');
       },
       timeout,
     });
@@ -383,7 +383,7 @@ export class PermissionHandler {
     const pending = this.pendingRequests.get(requestId);
 
     if (!pending) {
-      console.warn(`[PermissionHandler] 未找到待处理的权限请求: ${requestId}`);
+      console.warn(`[PermissionHandler] Pending permission request not found: ${requestId}`);
       return;
     }
 
@@ -655,7 +655,7 @@ export class PermissionHandler {
   cancelAll(): void {
     this.pendingRequests.forEach((pending) => {
       clearTimeout(pending.timeout);
-      pending.reject(new Error('权限请求已取消'));
+      pending.reject(new Error('Permission request cancelled'));
     });
     this.pendingRequests.clear();
   }
@@ -667,7 +667,7 @@ export class PermissionHandler {
     const pending = this.pendingRequests.get(requestId);
     if (pending) {
       clearTimeout(pending.timeout);
-      pending.reject(new Error('权限请求已取消'));
+      pending.reject(new Error('Permission request cancelled'));
       this.pendingRequests.delete(requestId);
     }
   }
@@ -701,7 +701,7 @@ export class PermissionHandler {
    */
   private approveAllPending(): void {
     if (this.pendingRequests.size === 0) return;
-    console.log(`[PermissionHandler] bypassPermissions 模式激活，自动批准 ${this.pendingRequests.size} 个待处理请求`);
+    console.log(`[PermissionHandler] bypassPermissions mode activated, auto-approving ${this.pendingRequests.size} pending requests`);
     this.pendingRequests.forEach((pending, requestId) => {
       clearTimeout(pending.timeout);
       pending.resolve(true);

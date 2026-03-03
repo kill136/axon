@@ -920,6 +920,28 @@ install_docker() {
 #!/bin/bash
 IMAGE_NAME="wbj66/axon:latest"
 mkdir -p ~/.axon
+
+# Auto-update image (once per 24 hours). Set AXON_AUTO_PULL=0 to disable.
+AXON_AUTO_PULL="${AXON_AUTO_PULL:-1}"
+if [ "$AXON_AUTO_PULL" = "1" ]; then
+    LAST_PULL_FILE="$HOME/.axon/.last_docker_pull"
+    CURRENT_TIME=$(date +%s)
+    LAST_PULL=$(cat "$LAST_PULL_FILE" 2>/dev/null || echo 0)
+    HOURS_SINCE=$(( (CURRENT_TIME - LAST_PULL) / 3600 ))
+    if [ "$HOURS_SINCE" -ge 24 ] || ! docker image inspect "$IMAGE_NAME" &> /dev/null; then
+        echo "Checking for Docker image updates..."
+        if timeout 30 docker pull "$IMAGE_NAME" 2>/dev/null; then
+            echo "$CURRENT_TIME" > "$LAST_PULL_FILE"
+        else
+            echo "Warning: Could not update image, using local version."
+        fi
+    fi
+else
+    if ! docker image inspect "$IMAGE_NAME" &> /dev/null; then
+        docker pull "$IMAGE_NAME"
+    fi
+fi
+
 exec docker run -it --rm \
     ${ANTHROPIC_API_KEY:+-e ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY"} \
     -v "$HOME/.axon:/root/.axon" \

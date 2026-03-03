@@ -94,7 +94,7 @@ export function getDefaultConfig(): FeishuBotConfig {
 
     model: 'sonnet',
     maxTokens: 16000,
-    systemPrompt: '你是一个在飞书群里的 AI 助手。请用简洁的中文回复，适当使用 Markdown 格式。回复尽量控制在 500 字以内。',
+    systemPrompt: 'You are an AI assistant in a Feishu group chat. Please reply concisely, use Markdown formatting where appropriate. Keep responses under 500 words.',
 
     allowedTools: [
       'Read',

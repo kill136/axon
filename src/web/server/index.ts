@@ -289,14 +289,14 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
     errorWatcher.setErrorNotifier(async (pattern, sourceContext) => {
       const notification = [
         `<system-reminder>`,
-        `[ErrorWatcher] 检测到源码错误反复发生，请检查是否需要修复：`,
-        `- 模块: ${pattern.sample.module}`,
-        `- 错误: ${pattern.sample.msg.slice(0, 200)}`,
-        `- 位置: ${pattern.sourceLocation || '未知'}`,
-        `- 5分钟内重复 ${pattern.count} 次`,
-        pattern.sample.stack ? `- 堆栈: ${pattern.sample.stack.slice(0, 300)}` : '',
+        `[ErrorWatcher] Repeated source code error detected, please check if it needs fixing:`,
+        `- Module: ${pattern.sample.module}`,
+        `- Error: ${pattern.sample.msg.slice(0, 200)}`,
+        `- Location: ${pattern.sourceLocation || 'unknown'}`,
+        `- Repeated ${pattern.count} times in 5 minutes`,
+        pattern.sample.stack ? `- Stack: ${pattern.sample.stack.slice(0, 300)}` : '',
         ``,
-        `源码上下文:`,
+        `Source context:`,
         '```typescript',
         sourceContext.slice(0, 800),
         '```',
@@ -401,6 +401,24 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
     console.log('');
   }
 
+  // 后台版本检查（不阻塞启动）
+  setTimeout(async () => {
+    try {
+      const config = configManager.getAll();
+      if ((config as any).autoUpdatesChannel === 'disabled') return;
+      const { checkVersion } = await import('../../updater/index.js');
+      const result = await checkVersion();
+      if (result.hasUpdate) {
+        console.log(`\n📦 New version ${result.latest} available (current: ${result.current}). Run 'axon update' to upgrade.`);
+        (globalThis as any).__axon_update_info = result;
+      } else {
+        (globalThis as any).__axon_update_info = { hasUpdate: false, current: result.current, latest: result.latest };
+      }
+    } catch {
+      // Update check failed silently - don't disrupt the server
+    }
+  }, 3000);
+
   // 优雅关闭 - 处理 SIGINT (Ctrl+C) 和 SIGTERM (tsx watch 重启)
   let isShuttingDown = false;
   const gracefulShutdown = async (signal: string) => {
@@ -493,13 +511,13 @@ function setupStaticFiles(app: express.Application, clientDistPath: string) {
         <html>
           <head><title>Axon WebUI</title></head>
           <body style="font-family: sans-serif; padding: 40px; text-align: center;">
-            <h1>🚧 前端未构建</h1>
-            <p>请先构建前端：</p>
+            <h1>🚧 Frontend Not Built</h1>
+            <p>Please build the frontend first:</p>
             <pre style="background: #f5f5f5; padding: 20px; display: inline-block;">
 cd src/web/client
 npm install
 npm run build</pre>
-            <p>然后重启服务器</p>
+            <p>Then restart the server.</p>
           </body>
         </html>
       `);

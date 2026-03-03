@@ -332,6 +332,13 @@ ${techStack.language}${techStack.framework ? ' + ' + techStack.framework : ''}`;
 
       this.log(`用户插嘴: ${message.substring(0, 50)}${message.length > 50 ? '...' : ''}`);
 
+      // v10.2: 软中断当前正在进行的 API 请求
+      // 仅注入消息不够 — 如果当前 turn 的 API 请求 hang 住，插嘴消息永远不会被读取
+      // softInterrupt 会中断当前请求但不终止 Loop，
+      // Loop 的 while 循环会 continue 到下一轮 turn 重新发起请求，
+      // 此时插嘴消息已经在 Session 中，会被包含在新请求里
+      this.currentLoop.softInterrupt();
+
       // 发射事件通知前端
       this.emit('stream:text', {
         workerId: this.workerId,
@@ -504,28 +511,49 @@ ${techStack.language}${techStack.framework ? ' + ' + techStack.framework : ''}`;
       // v10.0: 对齐 TaskTool 模式 — 收集完整文本输出，让 LeadAgent 获得完整上下文
       const messageStream = loop.processMessageStream(taskPrompt);
 
-      for await (const event of messageStream) {
-        // v10.0: 收集 raw text（对齐 TaskTool 的 response += event.content）
-        if (event.type === 'text' && event.content) {
-          rawResponse += event.content;
-        }
+      // v10.2: 单轮活性检测 — 如果 5 分钟内没有收到任何 stream 事件，视为 API 请求 hang 住
+      const HEARTBEAT_TIMEOUT = 5 * 60 * 1000; // 5 分钟
+      let heartbeatTimer: ReturnType<typeof setTimeout> | null = null;
+      const resetHeartbeat = () => {
+        if (heartbeatTimer) clearTimeout(heartbeatTimer);
+        heartbeatTimer = setTimeout(() => {
+          this.log(`⚠️ Worker 活性检测：${HEARTBEAT_TIMEOUT / 60000} 分钟无事件，触发软中断`);
+          // 使用 softInterrupt 而不是 abort，给 Loop 一次恢复机会
+          loop.softInterrupt();
+        }, HEARTBEAT_TIMEOUT);
+      };
+      resetHeartbeat();
 
-        // v3.2: 统计工具调用
-        if (event.type === 'tool_end' && event.toolName) {
-          toolCallCount++;
-          // v3.3: 检测测试运行
-          if (event.toolName === 'Bash' && event.toolInput) {
-            const input = event.toolInput as { command?: string };
-            const command = input.command || '';
-            if (/\b(npm\s+test|npm\s+run\s+test|vitest|jest|pytest|go\s+test|cargo\s+test)\b/i.test(command)) {
-              testsRan = true;
-              if (!event.toolError) {
-                testsPassed = true;
+      try {
+        for await (const event of messageStream) {
+          // 每收到一个事件就重置心跳计时器
+          resetHeartbeat();
+
+          // v10.0: 收集 raw text（对齐 TaskTool 的 response += event.content）
+          if (event.type === 'text' && event.content) {
+            rawResponse += event.content;
+          }
+
+          // v3.2: 统计工具调用
+          if (event.type === 'tool_end' && event.toolName) {
+            toolCallCount++;
+            // v3.3: 检测测试运行
+            if (event.toolName === 'Bash' && event.toolInput) {
+              const input = event.toolInput as { command?: string };
+              const command = input.command || '';
+              if (/\b(npm\s+test|npm\s+run\s+test|vitest|jest|pytest|go\s+test|cargo\s+test)\b/i.test(command)) {
+                testsRan = true;
+                if (!event.toolError) {
+                  testsPassed = true;
+                }
               }
             }
           }
+          this.handleStreamEvent(event, task, writtenFiles, context);
         }
-        this.handleStreamEvent(event, task, writtenFiles, context);
+      } finally {
+        // 清理心跳计时器
+        if (heartbeatTimer) clearTimeout(heartbeatTimer);
       }
 
       // v10.0: 对齐 TaskTool — 直接返回 Worker 的完整文本输出

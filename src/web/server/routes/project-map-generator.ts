@@ -48,7 +48,7 @@ export async function calculateTotalLines(files: string[]): Promise<number> {
       totalLines += codeLines.length;
     } catch (err) {
       // 忽略无法读取的文件
-      console.error(`[Project Map] 无法读取文件: ${file}`, err);
+      console.error(`[Project Map] Unable to read file: ${file}`, err);
     }
   }
 
@@ -105,7 +105,7 @@ export async function detectEntryPoints(files: string[]): Promise<EntryPoint[]> 
       }
     }
   } catch (err) {
-    console.error('[Project Map] 无法读取 package.json', err);
+    console.error('[Project Map] Unable to read package.json', err);
   }
 
   // 2. 检查常见入口文件
@@ -385,7 +385,7 @@ async function extractFileSymbols(filePath: string, rootDir: string): Promise<Tr
       });
     }
   } catch (err) {
-    console.error(`[Treemap] 提取符号失败: ${filePath}`, err);
+    console.error(`[Treemap] Failed to extract symbols: ${filePath}`, err);
   }
 
   return symbols;
@@ -498,7 +498,7 @@ export async function generateTreemapDataAsync(
         };
       }
     } catch (err) {
-      console.error(`[Treemap] 无法处理: ${dirPath}`, err);
+      console.error(`[Treemap] Unable to process: ${dirPath}`, err);
     }
 
     return null;
@@ -828,7 +828,7 @@ export async function generateLayeredTreemapData(
         };
       }
     } catch (err) {
-      console.error(`[LayeredTreemap] 无法处理: ${dirPath}`, err);
+      console.error(`[LayeredTreemap] Unable to process: ${dirPath}`, err);
     }
 
     return null;
@@ -942,7 +942,7 @@ export async function loadNodeChildren(
     // 加载文件内的符号（懒加载模式 - 只在用户点击进入文件时加载）
     const ext = path.extname(fullPath).toLowerCase();
     if (['.ts', '.tsx', '.js', '.jsx'].includes(ext)) {
-      console.log(`[loadNodeChildren] 懒加载文件符号: ${nodePath}`);
+      console.log(`[loadNodeChildren] Lazy loading file symbols: ${nodePath}`);
       const symbols = await extractFileSymbols(fullPath, rootDir);
       for (const sym of symbols) {
         children.push({
@@ -960,7 +960,7 @@ export async function loadNodeChildren(
           }
         });
       }
-      console.log(`[loadNodeChildren] 加载了 ${children.length} 个符号`);
+      console.log(`[loadNodeChildren] Loaded ${children.length} symbols`);
     }
   }
 

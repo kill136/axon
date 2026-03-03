@@ -1852,7 +1852,7 @@ export class ConfigManager {
       this.mergedConfig.mcpServers[name] = config;
       this.save({ mcpServers: this.mergedConfig.mcpServers });
     } catch (error) {
-      throw new Error(`无效的 MCP 服务器配置: ${error}`);
+      throw new Error(`Invalid MCP server configuration: ${error}`);
     }
   }
 
@@ -1874,7 +1874,7 @@ export class ConfigManager {
         this.save({ mcpServers: this.mergedConfig.mcpServers });
         return true;
       } catch (error) {
-        throw new Error(`无效的 MCP 服务器配置: ${error}`);
+        throw new Error(`Invalid MCP server configuration: ${error}`);
       }
     }
     return false;

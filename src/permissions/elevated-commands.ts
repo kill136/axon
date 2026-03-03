@@ -77,18 +77,18 @@ export function needsElevation(command: string): boolean {
  */
 export function getElevationReason(command: string): string {
   if (/install/i.test(command)) {
-    return '安装软件需要管理员权限';
+    return 'Installing software requires administrator privileges';
   }
   if (/start|stop|restart|enable|disable/i.test(command)) {
-    return '管理系统服务需要管理员权限';
+    return 'Managing system services requires administrator privileges';
   }
   if (/docker/i.test(command)) {
-    return 'Docker 操作可能需要管理员权限';
+    return 'Docker operations may require administrator privileges';
   }
   if (/sudo/i.test(command)) {
-    return '命令包含 sudo，需要管理员权限';
+    return 'Command contains sudo, requires administrator privileges';
   }
-  return '此命令可能需要管理员权限';
+  return 'This command may require administrator privileges';
 }
 
 // ============================================================================
@@ -286,7 +286,7 @@ async function executeElevatedLinux(
         stdout: '',
         stderr: error.stderr || '',
         exitCode: error.status || 1,
-        error: `权限提升执行失败: ${error.message}`,
+        error: `Elevated execution failed: ${error.message}`,
       };
     }
   }

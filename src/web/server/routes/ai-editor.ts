@@ -298,7 +298,7 @@ function createClient(): ClaudeClient | null {
       model: 'claude-haiku-4-5-20251001', // AI Editor 使用 haiku 以节省成本
     });
   } catch (error) {
-    console.error('[AI Editor] 初始化客户端失败:', error);
+    console.error('[AI Editor] Failed to initialize client:', error);
     return null;
   }
 }
@@ -311,7 +311,7 @@ async function callClaude(prompt: string): Promise<string | null> {
   await webAuth.ensureValidToken();
   const client = createClient();
   if (!client) {
-    throw new Error('API 客户端未初始化，请检查 API Key 配置');
+    throw new Error('API client not initialized, please check API Key configuration');
   }
 
   try {
@@ -336,7 +336,7 @@ async function callClaude(prompt: string): Promise<string | null> {
 
     return null;
   } catch (error: any) {
-    console.error('[AI Editor] API 调用失败:', error);
+    console.error('[AI Editor] API call failed:', error);
     throw error;
   }
 }
@@ -357,7 +357,7 @@ function extractJSON(text: string): any {
   // 2. 尝试匹配最外层 JSON 对象（使用大括号计数而非贪婪正则）
   const firstBrace = text.indexOf('{');
   if (firstBrace === -1) {
-    throw new Error('无法从响应中提取 JSON');
+    throw new Error('Unable to extract JSON from response');
   }
 
   let depth = 0;
@@ -376,7 +376,7 @@ function extractJSON(text: string): any {
   // 3. fallback: 贪婪正则
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
-    throw new Error('无法从响应中提取 JSON');
+    throw new Error('Unable to extract JSON from response');
   }
   return JSON.parse(jsonMatch[0]);
 }
@@ -395,7 +395,7 @@ router.post('/tour', async (req: Request, res: Response) => {
     if (!filePath || !content) {
       return res.status(400).json({
         success: false,
-        error: '缺少必需参数: filePath 和 content',
+        error: 'Missing required parameters: filePath and content',
       });
     }
 
@@ -415,25 +415,25 @@ router.post('/tour', async (req: Request, res: Response) => {
 
     // 创建新请求
     const requestPromise = (async (): Promise<TourResponse> => {
-      const prompt = `你是一个专业的代码导游。请分析下方代码，提取重要的函数、类、组件等作为导游步骤。
+      const prompt = `You are a professional code tour guide. Please analyze the code below, extracting important functions, classes, components, etc. as tour steps.
 
-## 代码文件: ${filePath}
+## Code File: ${filePath}
 \`\`\`
 ${content}
 \`\`\`
 
-## 输出要求
-返回 JSON 格式，包含 steps 数组，每个步骤包含：
+## Output Requirements
+Return JSON format containing a steps array, each step includes:
 - type: 'file' | 'function' | 'class' | 'block'
-- name: 名称
-- line: 起始行号（从1开始）
-- endLine: 结束行号（可选）
-- description: 简短描述（中文，1-2句话）
+- name: name
+- line: starting line number (from 1)
+- endLine: ending line number (optional)
+- description: brief description (1-2 sentences)
 - importance: 'high' | 'medium' | 'low'
 
-只返回最重要的 5-10 个步骤，按行号排序。只输出 JSON，不要有其他内容。
+Only return the 5-10 most important steps, sorted by line number. Output only JSON, no other content.
 
-示例：
+Example:
 {
   "steps": [
     {
@@ -441,7 +441,7 @@ ${content}
       "name": "UserController",
       "line": 10,
       "endLine": 50,
-      "description": "用户控制器，处理用户相关的 HTTP 请求",
+      "description": "User controller, handles user-related HTTP requests",
       "importance": "high"
     }
   ]
@@ -450,7 +450,7 @@ ${content}
       try {
         const response = await callClaude(prompt);
         if (!response) {
-          return { success: false, error: '无法获取 AI 响应' };
+          return { success: false, error: 'Unable to get AI response' };
         }
 
         const parsed = extractJSON(response);
@@ -463,7 +463,7 @@ ${content}
       } catch (error: any) {
         return {
           success: false,
-          error: error.message || 'AI 分析失败',
+          error: error.message || 'AI analysis failed',
         };
       }
     })();
@@ -483,10 +483,10 @@ ${content}
       pendingRequests.delete(cacheKey);
     }
   } catch (error: any) {
-    console.error('[AI Editor] /tour 请求处理失败:', error);
+    console.error('[AI Editor] /tour request processing failed:', error);
     res.status(500).json({
       success: false,
-      error: error.message || '服务器内部错误',
+      error: error.message || 'Internal server error',
     });
   }
 });
@@ -501,7 +501,7 @@ router.post('/ask', async (req: Request, res: Response) => {
     if (!code || !question) {
       return res.status(400).json({
         success: false,
-        error: '缺少必需参数: code 和 question',
+        error: 'Missing required parameters: code and question',
       });
     }
 
@@ -522,34 +522,34 @@ router.post('/ask', async (req: Request, res: Response) => {
     // 创建新请求
     const requestPromise = (async (): Promise<AskAIResponse> => {
       const parts: string[] = [
-        '你是一个专业的代码分析助手。用户选中了一段代码并提出问题，请基于代码上下文回答。',
+        'You are a professional code analysis assistant. The user has selected a piece of code and asked a question. Please answer based on the code context.',
         '',
-        '## 用户问题',
+        '## User Question',
         question,
         '',
-        '## 代码上下文',
+        '## Code Context',
       ];
 
       if (filePath) {
-        parts.push(`文件路径: ${filePath}`);
+        parts.push(`File path: ${filePath}`);
       }
       if (context?.language) {
-        parts.push(`语言: ${context.language}`);
+        parts.push(`Language: ${context.language}`);
       }
 
       parts.push('```' + (context?.language || ''));
       parts.push(code);
       parts.push('```');
       parts.push('');
-      parts.push('## 输出要求');
-      parts.push('用中文回答，简洁明了，2-4句话。只输出答案文本，不要有额外格式。');
+      parts.push('## Output Requirements');
+      parts.push('Answer concisely in 2-4 sentences. Output only the answer text, no extra formatting.');
 
       const prompt = parts.join('\n');
 
       try {
         const response = await callClaude(prompt);
         if (!response) {
-          return { success: false, error: '无法获取 AI 响应' };
+          return { success: false, error: 'Unable to get AI response' };
         }
 
         return {
@@ -559,7 +559,7 @@ router.post('/ask', async (req: Request, res: Response) => {
       } catch (error: any) {
         return {
           success: false,
-          error: error.message || 'AI 分析失败',
+          error: error.message || 'AI analysis failed',
         };
       }
     })();
@@ -579,10 +579,10 @@ router.post('/ask', async (req: Request, res: Response) => {
       pendingRequests.delete(cacheKey);
     }
   } catch (error: any) {
-    console.error('[AI Editor] /ask 请求处理失败:', error);
+    console.error('[AI Editor] /ask request processing failed:', error);
     res.status(500).json({
       success: false,
-      error: error.message || '服务器内部错误',
+      error: error.message || 'Internal server error',
     });
   }
 });
@@ -598,7 +598,7 @@ router.post('/heatmap', async (req: Request, res: Response) => {
       return res.status(400).json({
         success: false,
         heatmap: [],
-        error: '缺少必需参数: filePath, content 和 language',
+        error: 'Missing required parameters: filePath, content, and language',
       });
     }
 
@@ -618,40 +618,40 @@ router.post('/heatmap', async (req: Request, res: Response) => {
 
     // 创建新请求
     const requestPromise = (async (): Promise<HeatmapResponse> => {
-      const prompt = `你是一个代码复杂度分析专家。请分析下方代码，为每一行代码评估复杂度分数（0-100）。
+      const prompt = `You are a code complexity analysis expert. Please analyze the code below and assess a complexity score (0-100) for each line.
 
-## 代码文件: ${filePath}
-语言: ${language}
+## Code File: ${filePath}
+Language: ${language}
 
 \`\`\`${language}
 ${content}
 \`\`\`
 
-## 评分标准
-- 0-20: 简单语句（变量声明、简单赋值等）
-- 21-40: 基础逻辑（if/for/while 单层）
-- 41-60: 中等复杂度（嵌套逻辑、多条件判断）
-- 61-80: 高复杂度（深层嵌套、复杂算法）
-- 81-100: 极高复杂度（需要重构的代码）
+## Scoring Criteria
+- 0-20: Simple statements (variable declarations, simple assignments, etc.)
+- 21-40: Basic logic (single-level if/for/while)
+- 41-60: Medium complexity (nested logic, multi-condition checks)
+- 61-80: High complexity (deep nesting, complex algorithms)
+- 81-100: Very high complexity (code that needs refactoring)
 
-## 输出要求
-返回 JSON 格式，包含 heatmap 数组，只包含复杂度 > 30 的行：
+## Output Requirements
+Return JSON format containing a heatmap array, only include lines with complexity > 30:
 {
   "heatmap": [
     {
-      "line": 行号（从1开始）,
-      "complexity": 复杂度分数（0-100）,
-      "reason": "简短原因（中文，1句话）"
+      "line": line number (from 1),
+      "complexity": complexity score (0-100),
+      "reason": "brief reason (1 sentence)"
     }
   ]
 }
 
-只输出 JSON，不要有其他内容。`;
+Output only JSON, no other content.`;
 
       try {
         const response = await callClaude(prompt);
         if (!response) {
-          return { success: false, heatmap: [], error: '无法获取 AI 响应' };
+          return { success: false, heatmap: [], error: 'Unable to get AI response' };
         }
 
         const parsed = extractJSON(response);
@@ -663,7 +663,7 @@ ${content}
         return {
           success: false,
           heatmap: [],
-          error: error.message || 'AI 分析失败',
+          error: error.message || 'AI analysis failed',
         };
       }
     })();
@@ -683,11 +683,11 @@ ${content}
       pendingRequests.delete(cacheKey);
     }
   } catch (error: any) {
-    console.error('[AI Editor] /heatmap 请求处理失败:', error);
+    console.error('[AI Editor] /heatmap request processing failed:', error);
     res.status(500).json({
       success: false,
       heatmap: [],
-      error: error.message || '服务器内部错误',
+      error: error.message || 'Internal server error',
     });
   }
 });
@@ -703,7 +703,7 @@ router.post('/refactor', async (req: Request, res: Response) => {
       return res.status(400).json({
         success: false,
         suggestions: [],
-        error: '缺少必需参数: filePath, content 和 language',
+        error: 'Missing required parameters: filePath, content, and language',
       });
     }
 
@@ -760,7 +760,7 @@ ${content}
       try {
         const response = await callClaude(prompt);
         if (!response) {
-          return { success: false, suggestions: [], error: '无法获取 AI 响应' };
+          return { success: false, suggestions: [], error: 'Unable to get AI response' };
         }
 
         const parsed = extractJSON(response);
@@ -772,7 +772,7 @@ ${content}
         return {
           success: false,
           suggestions: [],
-          error: error.message || 'AI 分析失败',
+          error: error.message || 'AI analysis failed',
         };
       }
     })();
@@ -792,11 +792,11 @@ ${content}
       pendingRequests.delete(cacheKey);
     }
   } catch (error: any) {
-    console.error('[AI Editor] /refactor 请求处理失败:', error);
+    console.error('[AI Editor] /refactor request processing failed:', error);
     res.status(500).json({
       success: false,
       suggestions: [],
-      error: error.message || '服务器内部错误',
+      error: error.message || 'Internal server error',
     });
   }
 });
@@ -812,7 +812,7 @@ router.post('/bubbles', async (req: Request, res: Response) => {
       return res.status(400).json({
         success: false,
         bubbles: [],
-        error: '缺少必需参数: filePath, content 和 language',
+        error: 'Missing required parameters: filePath, content, and language',
       });
     }
 
@@ -863,7 +863,7 @@ ${content}
       try {
         const response = await callClaude(prompt);
         if (!response) {
-          return { success: false, bubbles: [], error: '无法获取 AI 响应' };
+          return { success: false, bubbles: [], error: 'Unable to get AI response' };
         }
 
         const parsed = extractJSON(response);
@@ -875,7 +875,7 @@ ${content}
         return {
           success: false,
           bubbles: [],
-          error: error.message || 'AI 分析失败',
+          error: error.message || 'AI analysis failed',
         };
       }
     })();
@@ -895,11 +895,11 @@ ${content}
       pendingRequests.delete(cacheKey);
     }
   } catch (error: any) {
-    console.error('[AI Editor] /bubbles 请求处理失败:', error);
+    console.error('[AI Editor] /bubbles request processing failed:', error);
     res.status(500).json({
       success: false,
       bubbles: [],
-      error: error.message || '服务器内部错误',
+      error: error.message || 'Internal server error',
     });
   }
 });
@@ -914,7 +914,7 @@ router.post('/intent-to-code', async (req: Request, res: Response) => {
     if (!filePath || !code || !intent || !language || !mode) {
       return res.status(400).json({
         success: false,
-        error: '缺少必需参数: filePath, code, intent, language 和 mode',
+        error: 'Missing required parameters: filePath, code, intent, language, and mode',
       });
     }
 
@@ -983,7 +983,7 @@ ${intent}
       try {
         const response = await callClaude(prompt);
         if (!response) {
-          return { success: false, error: '无法获取 AI 响应' };
+          return { success: false, error: 'Unable to get AI response' };
         }
 
         const parsed = extractJSON(response);
@@ -995,7 +995,7 @@ ${intent}
       } catch (error: any) {
         return {
           success: false,
-          error: error.message || 'AI 生成失败',
+          error: error.message || 'AI generation failed',
         };
       }
     })();
@@ -1015,10 +1015,10 @@ ${intent}
       pendingRequests.delete(cacheKey);
     }
   } catch (error: any) {
-    console.error('[AI Editor] /intent-to-code 请求处理失败:', error);
+    console.error('[AI Editor] /intent-to-code request processing failed:', error);
     res.status(500).json({
       success: false,
-      error: error.message || '服务器内部错误',
+      error: error.message || 'Internal server error',
     });
   }
 });
@@ -1034,7 +1034,7 @@ router.post('/code-review', async (req: Request, res: Response) => {
       return res.status(400).json({
         success: false,
         issues: [],
-        error: '缺少必需参数: filePath, content 和 language',
+        error: 'Missing required parameters: filePath, content, and language',
       });
     }
 
@@ -1095,7 +1095,7 @@ ${content}
       try {
         const response = await callClaude(prompt);
         if (!response) {
-          return { success: false, issues: [], error: '无法获取 AI 响应' };
+          return { success: false, issues: [], error: 'Unable to get AI response' };
         }
 
         const parsed = extractJSON(response);
@@ -1108,7 +1108,7 @@ ${content}
         return {
           success: false,
           issues: [],
-          error: error.message || 'AI 分析失败',
+          error: error.message || 'AI analysis failed',
         };
       }
     })();
@@ -1128,11 +1128,11 @@ ${content}
       pendingRequests.delete(cacheKey);
     }
   } catch (error: any) {
-    console.error('[AI Editor] /code-review 请求处理失败:', error);
+    console.error('[AI Editor] /code-review request processing failed:', error);
     res.status(500).json({
       success: false,
       issues: [],
-      error: error.message || '服务器内部错误',
+      error: error.message || 'Internal server error',
     });
   }
 });
@@ -1147,7 +1147,7 @@ router.post('/generate-test', async (req: Request, res: Response) => {
     if (!filePath || !code || !functionName || !language) {
       return res.status(400).json({
         success: false,
-        error: '缺少必需参数: filePath, code, functionName 和 language',
+        error: 'Missing required parameters: filePath, code, functionName, and language',
       });
     }
 
@@ -1214,7 +1214,7 @@ ${code}
       try {
         const response = await callClaude(prompt);
         if (!response) {
-          return { success: false, error: '无法获取 AI 响应' };
+          return { success: false, error: 'Unable to get AI response' };
         }
 
         const parsed = extractJSON(response);
@@ -1228,7 +1228,7 @@ ${code}
       } catch (error: any) {
         return {
           success: false,
-          error: error.message || 'AI 生成失败',
+          error: error.message || 'AI generation failed',
         };
       }
     })();
@@ -1248,10 +1248,10 @@ ${code}
       pendingRequests.delete(cacheKey);
     }
   } catch (error: any) {
-    console.error('[AI Editor] /generate-test 请求处理失败:', error);
+    console.error('[AI Editor] /generate-test request processing failed:', error);
     res.status(500).json({
       success: false,
-      error: error.message || '服务器内部错误',
+      error: error.message || 'Internal server error',
     });
   }
 });
@@ -1306,7 +1306,7 @@ router.post('/smart-diff', async (req: Request, res: Response) => {
     if (!filePath || !originalContent || !modifiedContent) {
       return res.status(400).json({
         success: false,
-        error: '缺少必要参数 (filePath, originalContent, modifiedContent)',
+        error: 'Missing required parameters (filePath, originalContent, modifiedContent)',
       });
     }
 
@@ -1319,13 +1319,13 @@ router.post('/smart-diff', async (req: Request, res: Response) => {
     // 检查缓存
     const cached = smartDiffCache.get(cacheKey);
     if (cached) {
-      console.log(`[AI Editor] /smart-diff 命中缓存: ${cacheKey}`);
+      console.log(`[AI Editor] /smart-diff cache hit: ${cacheKey}`);
       return res.json({ ...cached, fromCache: true });
     }
 
     // 检查是否有正在处理的相同请求
     if (pendingRequests.has(cacheKey)) {
-      console.log(`[AI Editor] /smart-diff 请求已在处理中，复用: ${cacheKey}`);
+      console.log(`[AI Editor] /smart-diff request already in progress, reusing: ${cacheKey}`);
       const result = await pendingRequests.get(cacheKey);
       return res.json(result);
     }
@@ -1337,7 +1337,7 @@ router.post('/smart-diff', async (req: Request, res: Response) => {
         if (!client) {
           return {
             success: false,
-            error: 'API 客户端未初始化，请检查 API Key 配置',
+            error: 'API client not initialized, please check API Key configuration',
           };
         }
 
@@ -1372,7 +1372,7 @@ ${modifiedContent}
   "warnings": ["警告1", "警告2"]
 }`;
 
-        console.log(`[AI Editor] /smart-diff 调用 Claude: ${filePath}`);
+        console.log(`[AI Editor] /smart-diff calling Claude: ${filePath}`);
 
         const response = await client.createMessage(
           [{ role: 'user', content: [{ type: 'text', text: prompt }] }],
@@ -1386,17 +1386,17 @@ ${modifiedContent}
         if (!rawText) {
           return {
             success: false,
-            error: 'AI 未返回有效分析结果',
+            error: 'AI did not return valid analysis results',
           };
         }
 
         // 尝试解析 JSON
         const parsed = extractJSON(rawText);
         if (!parsed || !parsed.summary || !parsed.impact) {
-          console.error('[AI Editor] /smart-diff 无法解析 AI 返回的 JSON:', rawText);
+          console.error('[AI Editor] /smart-diff failed to parse AI response JSON:', rawText);
           return {
             success: false,
-            error: 'AI 返回格式不正确',
+            error: 'AI returned incorrect format',
           };
         }
 
@@ -1410,10 +1410,10 @@ ${modifiedContent}
           },
         };
       } catch (error: any) {
-        console.error('[AI Editor] /smart-diff AI 调用失败:', error);
+        console.error('[AI Editor] /smart-diff AI call failed:', error);
         return {
           success: false,
-          error: error.message || 'AI 调用失败',
+          error: error.message || 'AI call failed',
         };
       }
     })();
@@ -1433,10 +1433,10 @@ ${modifiedContent}
       pendingRequests.delete(cacheKey);
     }
   } catch (error: any) {
-    console.error('[AI Editor] /smart-diff 请求处理失败:', error);
+    console.error('[AI Editor] /smart-diff request processing failed:', error);
     res.status(500).json({
       success: false,
-      error: error.message || '服务器内部错误',
+      error: error.message || 'Internal server error',
     });
   }
 });
@@ -1626,7 +1626,7 @@ router.post('/dead-code', async (req: Request, res: Response) => {
       return res.status(400).json({
         success: false,
         deadCode: [],
-        error: '缺少必要参数 (filePath, content)',
+        error: 'Missing required parameters (filePath, content)',
       });
     }
 
@@ -1639,13 +1639,13 @@ router.post('/dead-code', async (req: Request, res: Response) => {
     // 检查缓存
     const cached = deadCodeCache.get(cacheKey);
     if (cached) {
-      console.log(`[AI Editor] /dead-code 命中缓存: ${cacheKey}`);
+      console.log(`[AI Editor] /dead-code cache hit: ${cacheKey}`);
       return res.json({ ...cached, fromCache: true });
     }
 
     // 检查是否有正在处理的相同请求
     if (pendingRequests.has(cacheKey)) {
-      console.log(`[AI Editor] /dead-code 请求已在处理中，复用: ${cacheKey}`);
+      console.log(`[AI Editor] /dead-code request already in progress, reusing: ${cacheKey}`);
       const result = await pendingRequests.get(cacheKey);
       return res.json(result);
     }
@@ -1658,7 +1658,7 @@ router.post('/dead-code', async (req: Request, res: Response) => {
           return {
             success: false,
             deadCode: [],
-            error: 'API 客户端未初始化，请检查 API Key 配置',
+            error: 'API client not initialized, please check API Key configuration',
           };
         }
 
@@ -1703,7 +1703,7 @@ ${content}
 
 如果没有死代码，返回空数组。`;
 
-        console.log(`[AI Editor] /dead-code 调用 Claude: ${filePath}`);
+        console.log(`[AI Editor] /dead-code calling Claude: ${filePath}`);
 
         const response = await client.createMessage(
           [{ role: 'user', content: [{ type: 'text', text: prompt }] }],
@@ -1718,18 +1718,18 @@ ${content}
           return {
             success: false,
             deadCode: [],
-            error: 'AI 未返回有效分析结果',
+            error: 'AI did not return valid analysis results',
           };
         }
 
         // 尝试解析 JSON
         const parsed = extractJSON(rawText);
         if (!parsed || !Array.isArray(parsed.deadCode)) {
-          console.error('[AI Editor] /dead-code 无法解析 AI 返回的 JSON:', rawText);
+          console.error('[AI Editor] /dead-code failed to parse AI response JSON:', rawText);
           return {
             success: false,
             deadCode: [],
-            error: 'AI 返回格式不正确',
+            error: 'AI returned incorrect format',
           };
         }
 
@@ -1739,11 +1739,11 @@ ${content}
           summary: parsed.summary || `检测到 ${parsed.deadCode.length} 个死代码`,
         };
       } catch (error: any) {
-        console.error('[AI Editor] /dead-code AI 调用失败:', error);
+        console.error('[AI Editor] /dead-code AI call failed:', error);
         return {
           success: false,
           deadCode: [],
-          error: error.message || 'AI 调用失败',
+          error: error.message || 'AI call failed',
         };
       }
     })();
@@ -1763,11 +1763,11 @@ ${content}
       pendingRequests.delete(cacheKey);
     }
   } catch (error: any) {
-    console.error('[AI Editor] /dead-code 请求处理失败:', error);
+    console.error('[AI Editor] /dead-code request processing failed:', error);
     res.status(500).json({
       success: false,
       deadCode: [],
-      error: error.message || '服务器内部错误',
+      error: error.message || 'Internal server error',
     });
   }
 });
@@ -1809,7 +1809,7 @@ router.post('/conversation', async (req: Request, res: Response) => {
     if (!filePath || !codeContext || !question) {
       return res.status(400).json({
         success: false,
-        error: '缺少必要参数 (filePath, codeContext, question)',
+        error: 'Missing required parameters (filePath, codeContext, question)',
       });
     }
 
@@ -1821,7 +1821,7 @@ router.post('/conversation', async (req: Request, res: Response) => {
 
     // 检查是否有正在处理的相同请求（防重）
     if (pendingRequests.has(cacheKey)) {
-      console.log(`[AI Editor] /conversation 请求已在处理中，复用: ${cacheKey}`);
+      console.log(`[AI Editor] /conversation request already in progress, reusing: ${cacheKey}`);
       const result = await pendingRequests.get(cacheKey);
       return res.json(result);
     }
@@ -1833,7 +1833,7 @@ router.post('/conversation', async (req: Request, res: Response) => {
         if (!client) {
           return {
             success: false,
-            error: 'API 客户端未初始化，请检查 API Key 配置',
+            error: 'API client not initialized, please check API Key configuration',
           };
         }
 
@@ -1863,7 +1863,7 @@ ${codeContext}
           },
         ];
 
-        console.log(`[AI Editor] /conversation 调用 Claude: ${filePath}, ${conversationMessages.length} 条消息`);
+        console.log(`[AI Editor] /conversation calling Claude: ${filePath}, ${conversationMessages.length} messages`);
 
         // 调用 Claude API
         const response = await client.createMessage(
@@ -1878,7 +1878,7 @@ ${codeContext}
         if (!answer) {
           return {
             success: false,
-            error: 'AI 未返回有效回答',
+            error: 'AI did not return a valid answer',
           };
         }
 
@@ -1887,10 +1887,10 @@ ${codeContext}
           answer,
         };
       } catch (error: any) {
-        console.error('[AI Editor] /conversation AI 调用失败:', error);
+        console.error('[AI Editor] /conversation AI call failed:', error);
         return {
           success: false,
-          error: error.message || 'AI 调用失败',
+          error: error.message || 'AI call failed',
         };
       }
     })();
@@ -1904,10 +1904,10 @@ ${codeContext}
       pendingRequests.delete(cacheKey);
     }
   } catch (error: any) {
-    console.error('[AI Editor] /conversation 请求处理失败:', error);
+    console.error('[AI Editor] /conversation request processing failed:', error);
     res.status(500).json({
       success: false,
-      error: error.message || '服务器内部错误',
+      error: error.message || 'Internal server error',
     });
   }
 });
@@ -1928,7 +1928,7 @@ router.post('/time-machine', async (req: Request, res: Response) => {
     if (!filePath || !content) {
       return res.status(400).json({
         success: false,
-        error: '缺少必要参数 (filePath, content)',
+        error: 'Missing required parameters (filePath, content)',
       });
     }
 
@@ -1941,13 +1941,13 @@ router.post('/time-machine', async (req: Request, res: Response) => {
     // 检查缓存
     const cached = timeMachineCache.get(cacheKey);
     if (cached) {
-      console.log(`[AI Editor] /time-machine 命中缓存: ${cacheKey}`);
+      console.log(`[AI Editor] /time-machine cache hit: ${cacheKey}`);
       return res.json({ ...cached, fromCache: true });
     }
 
     // 检查是否有正在处理的相同请求
     if (pendingRequests.has(cacheKey)) {
-      console.log(`[AI Editor] /time-machine 请求已在处理中，复用: ${cacheKey}`);
+      console.log(`[AI Editor] /time-machine request already in progress, reusing: ${cacheKey}`);
       const result = await pendingRequests.get(cacheKey);
       return res.json(result);
     }
@@ -1959,7 +1959,7 @@ router.post('/time-machine', async (req: Request, res: Response) => {
         if (!client) {
           return {
             success: false,
-            error: 'API 客户端未初始化，请检查 API Key 配置',
+            error: 'API client not initialized, please check API Key configuration',
           };
         }
 
@@ -2000,11 +2000,11 @@ router.post('/time-machine', async (req: Request, res: Response) => {
               });
               // 这个输出会更详细，但格式复杂，我们暂时只用于丰富上下文
             } catch (lineError: any) {
-              console.log('[AI Editor] /time-machine git log -L 失败（可能不支持），跳过');
+              console.log('[AI Editor] /time-machine git log -L failed (possibly unsupported), skipping');
             }
           }
         } catch (error: any) {
-          console.error('[AI Editor] /time-machine git 命令失败:', error);
+          console.error('[AI Editor] /time-machine git command failed:', error);
           gitError = error.message || 'Git 命令执行失败';
           // 不是 git repo 或文件无历史，继续但通知 AI
         }
@@ -2044,7 +2044,7 @@ ${codeToAnalyze}
 
 如果没有 Git 历史，请根据代码结构和注释推测可能的演变过程（例如从简单到复杂、从硬编码到配置化等）。`;
 
-        console.log(`[AI Editor] /time-machine 调用 Claude: ${filePath}, ${commits.length} commits`);
+        console.log(`[AI Editor] /time-machine calling Claude: ${filePath}, ${commits.length} commits`);
 
         const response = await client.createMessage(
           [{ role: 'user', content: [{ type: 'text', text: prompt }] }],
@@ -2058,17 +2058,17 @@ ${codeToAnalyze}
         if (!rawText) {
           return {
             success: false,
-            error: 'AI 未返回有效分析结果',
+            error: 'AI did not return valid analysis results',
           };
         }
 
         // 解析 JSON
         const parsed = extractJSON(rawText);
         if (!parsed || !parsed.story) {
-          console.error('[AI Editor] /time-machine 无法解析 AI 返回的 JSON:', rawText);
+          console.error('[AI Editor] /time-machine failed to parse AI response JSON:', rawText);
           return {
             success: false,
-            error: 'AI 返回格式不正确',
+            error: 'AI returned incorrect format',
           };
         }
 
@@ -2081,10 +2081,10 @@ ${codeToAnalyze}
           },
         };
       } catch (error: any) {
-        console.error('[AI Editor] /time-machine AI 调用失败:', error);
+        console.error('[AI Editor] /time-machine AI call failed:', error);
         return {
           success: false,
-          error: error.message || 'AI 调用失败',
+          error: error.message || 'AI call failed',
         };
       }
     })();
@@ -2104,10 +2104,10 @@ ${codeToAnalyze}
       pendingRequests.delete(cacheKey);
     }
   } catch (error: any) {
-    console.error('[AI Editor] /time-machine 请求处理失败:', error);
+    console.error('[AI Editor] /time-machine request processing failed:', error);
     res.status(500).json({
       success: false,
-      error: error.message || '服务器内部错误',
+      error: error.message || 'Internal server error',
     });
   }
 });
@@ -2125,7 +2125,7 @@ router.post('/detect-patterns', async (req: Request, res: Response) => {
       return res.status(400).json({
         success: false,
         patterns: [],
-        error: '缺少必要参数 (filePath, content)',
+        error: 'Missing required parameters (filePath, content)',
       });
     }
 
@@ -2138,13 +2138,13 @@ router.post('/detect-patterns', async (req: Request, res: Response) => {
     // 检查缓存
     const cached = patternCache.get(cacheKey);
     if (cached) {
-      console.log(`[AI Editor] /detect-patterns 命中缓存: ${cacheKey}`);
+      console.log(`[AI Editor] /detect-patterns cache hit: ${cacheKey}`);
       return res.json({ ...cached, fromCache: true });
     }
 
     // 检查是否有正在处理的相同请求
     if (pendingRequests.has(cacheKey)) {
-      console.log(`[AI Editor] /detect-patterns 请求已在处理中，复用: ${cacheKey}`);
+      console.log(`[AI Editor] /detect-patterns request already in progress, reusing: ${cacheKey}`);
       const result = await pendingRequests.get(cacheKey);
       return res.json(result);
     }
@@ -2157,7 +2157,7 @@ router.post('/detect-patterns', async (req: Request, res: Response) => {
           return {
             success: false,
             patterns: [],
-            error: 'API 客户端未初始化，请检查 API Key 配置',
+            error: 'API client not initialized, please check API Key configuration',
           };
         }
 
@@ -2223,7 +2223,7 @@ ${content}
 
 如果没有检测到模式，返回空数组。`;
 
-        console.log(`[AI Editor] /detect-patterns 调用 Claude: ${filePath}`);
+        console.log(`[AI Editor] /detect-patterns calling Claude: ${filePath}`);
 
         const response = await client.createMessage(
           [{ role: 'user', content: [{ type: 'text', text: prompt }] }],
@@ -2238,18 +2238,18 @@ ${content}
           return {
             success: false,
             patterns: [],
-            error: 'AI 未返回有效分析结果',
+            error: 'AI did not return valid analysis results',
           };
         }
 
         // 解析 JSON
         const parsed = extractJSON(rawText);
         if (!parsed || !Array.isArray(parsed.patterns)) {
-          console.error('[AI Editor] /detect-patterns 无法解析 AI 返回的 JSON:', rawText);
+          console.error('[AI Editor] /detect-patterns failed to parse AI response JSON:', rawText);
           return {
             success: false,
             patterns: [],
-            error: 'AI 返回格式不正确',
+            error: 'AI returned incorrect format',
           };
         }
 
@@ -2259,11 +2259,11 @@ ${content}
           summary: parsed.summary || `检测到 ${parsed.patterns.length} 个模式`,
         };
       } catch (error: any) {
-        console.error('[AI Editor] /detect-patterns AI 调用失败:', error);
+        console.error('[AI Editor] /detect-patterns AI call failed:', error);
         return {
           success: false,
           patterns: [],
-          error: error.message || 'AI 调用失败',
+          error: error.message || 'AI call failed',
         };
       }
     })();
@@ -2283,11 +2283,11 @@ ${content}
       pendingRequests.delete(cacheKey);
     }
   } catch (error: any) {
-    console.error('[AI Editor] /detect-patterns 请求处理失败:', error);
+    console.error('[AI Editor] /detect-patterns request processing failed:', error);
     res.status(500).json({
       success: false,
       patterns: [],
-      error: error.message || '服务器内部错误',
+      error: error.message || 'Internal server error',
     });
   }
 });
@@ -2304,7 +2304,7 @@ router.post('/api-doc', async (req: Request, res: Response) => {
     if (!symbolName || !codeContext) {
       return res.status(400).json({
         success: false,
-        error: '缺少必要参数 (symbolName, codeContext)',
+        error: 'Missing required parameters (symbolName, codeContext)',
       });
     }
 
@@ -2317,13 +2317,13 @@ router.post('/api-doc', async (req: Request, res: Response) => {
     // 检查缓存
     const cached = apiDocCache.get(cacheKey);
     if (cached) {
-      console.log(`[AI Editor] /api-doc 命中缓存: ${cacheKey}`);
+      console.log(`[AI Editor] /api-doc cache hit: ${cacheKey}`);
       return res.json({ ...cached, fromCache: true });
     }
 
     // 检查是否有正在处理的相同请求
     if (pendingRequests.has(cacheKey)) {
-      console.log(`[AI Editor] /api-doc 请求已在处理中，复用: ${cacheKey}`);
+      console.log(`[AI Editor] /api-doc request already in progress, reusing: ${cacheKey}`);
       const result = await pendingRequests.get(cacheKey);
       return res.json(result);
     }
@@ -2335,7 +2335,7 @@ router.post('/api-doc', async (req: Request, res: Response) => {
         if (!client) {
           return {
             success: false,
-            error: 'API 客户端未初始化，请检查 API Key 配置',
+            error: 'API client not initialized, please check API Key configuration',
           };
         }
 
@@ -2391,7 +2391,7 @@ ${codeContext}
 
 如果无法识别该 API 或不是第三方库 API，请在 brief 中说明。`;
 
-        console.log(`[AI Editor] /api-doc 调用 Claude: ${symbolName}`);
+        console.log(`[AI Editor] /api-doc calling Claude: ${symbolName}`);
 
         const response = await client.createMessage(
           [{ role: 'user', content: [{ type: 'text', text: prompt }] }],
@@ -2409,20 +2409,20 @@ ${codeContext}
         console.log(`[AI Editor] /api-doc rawText (${rawText.length} chars):`, rawText.slice(0, 500));
 
         if (!rawText) {
-          console.error('[AI Editor] /api-doc 无 text content, blocks:', response.content.map((b: any) => b.type));
+          console.error('[AI Editor] /api-doc no text content, blocks:', response.content.map((b: any) => b.type));
           return {
             success: false,
-            error: 'AI 未返回有效文档',
+            error: 'AI did not return valid documentation',
           };
         }
 
         // 解析 JSON
         const parsed = extractJSON(rawText);
         if (!parsed || !parsed.name) {
-          console.error('[AI Editor] /api-doc 无法解析 AI 返回的 JSON:', rawText);
+          console.error('[AI Editor] /api-doc failed to parse AI response JSON:', rawText);
           return {
             success: false,
-            error: 'AI 返回格式不正确',
+            error: 'AI returned incorrect format',
           };
         }
 
@@ -2440,10 +2440,10 @@ ${codeContext}
           },
         };
       } catch (error: any) {
-        console.error('[AI Editor] /api-doc AI 调用失败:', error);
+        console.error('[AI Editor] /api-doc AI call failed:', error);
         return {
           success: false,
-          error: error.message || 'AI 调用失败',
+          error: error.message || 'AI call failed',
         };
       }
     })();
@@ -2463,10 +2463,10 @@ ${codeContext}
       pendingRequests.delete(cacheKey);
     }
   } catch (error: any) {
-    console.error('[AI Editor] /api-doc 请求处理失败:', error);
+    console.error('[AI Editor] /api-doc request processing failed:', error);
     res.status(500).json({
       success: false,
-      error: error.message || '服务器内部错误',
+      error: error.message || 'Internal server error',
     });
   }
 });
@@ -2483,7 +2483,7 @@ router.post('/complete-path', async (req: Request, res: Response) => {
       return res.status(400).json({
         success: false,
         items: [],
-        error: '缺少必要参数 filePath',
+        error: 'Missing required parameter filePath',
       });
     }
 
@@ -2539,7 +2539,7 @@ router.post('/complete-path', async (req: Request, res: Response) => {
         items.push({
           label: entry.name,
           kind: 'folder',
-          detail: '📁 目录',
+          detail: 'Directory',
         });
       } else if (entry.isFile()) {
         // 只显示代码相关文件
@@ -2568,11 +2568,11 @@ router.post('/complete-path', async (req: Request, res: Response) => {
 
     res.json({ success: true, items });
   } catch (error: any) {
-    console.error('[AI Editor] /complete-path 失败:', error);
+    console.error('[AI Editor] /complete-path failed:', error);
     res.status(500).json({
       success: false,
       items: [],
-      error: error.message || '服务器内部错误',
+      error: error.message || 'Internal server error',
     });
   }
 });
@@ -2588,7 +2588,7 @@ router.post('/inline-complete', async (req: Request, res: Response) => {
     if (!filePath || !prefix) {
       return res.status(400).json({
         success: false,
-        error: '缺少必要参数',
+        error: 'Missing required parameters',
       });
     }
 
@@ -2614,7 +2614,7 @@ router.post('/inline-complete', async (req: Request, res: Response) => {
       try {
         const client = createClient();
         if (!client) {
-          return { success: false, error: 'API 客户端未初始化' };
+          return { success: false, error: 'API client not initialized' };
         }
 
         // 截取上下文（避免 token 过多）
@@ -2663,8 +2663,8 @@ ${suffixLines ? `== 光标后的代码 ==\n${suffixLines}` : ''}
         inlineCompleteCache.set(cacheKey, { completion });
         return result;
       } catch (error: any) {
-        console.error('[AI Editor] /inline-complete AI 调用失败:', error);
-        return { success: false, error: error.message || 'AI 调用失败' };
+        console.error('[AI Editor] /inline-complete AI call failed:', error);
+        return { success: false, error: error.message || 'AI call failed' };
       }
     })();
 
@@ -2676,10 +2676,10 @@ ${suffixLines ? `== 光标后的代码 ==\n${suffixLines}` : ''}
       pendingRequests.delete(cacheKey);
     }
   } catch (error: any) {
-    console.error('[AI Editor] /inline-complete 请求处理失败:', error);
+    console.error('[AI Editor] /inline-complete request processing failed:', error);
     res.status(500).json({
       success: false,
-      error: error.message || '服务器内部错误',
+      error: error.message || 'Internal server error',
     });
   }
 });

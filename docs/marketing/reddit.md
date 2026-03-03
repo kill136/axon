@@ -25,7 +25,7 @@ Everything runs locally. MIT licensed. No telemetry.
 
 GitHub: https://github.com/kill136/axon
 Website: https://www.chatbi.site
-Live Demo: http://voicegpt.site:3456/
+Live Demo: http://voicegpt.site/
 
 ---
 
@@ -61,5 +61,5 @@ I've been building an open-source alternative to @anthropic-ai/claude-code that'
 MIT licensed, runs locally, supports Anthropic API / AWS Bedrock / Google Vertex AI.
 
 GitHub: https://github.com/kill136/axon
-Live Demo: http://voicegpt.site:3456/
+Live Demo: http://voicegpt.site/
 Discord: https://discord.gg/bNyJKk6PVZ

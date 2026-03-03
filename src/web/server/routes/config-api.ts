@@ -33,7 +33,7 @@ function sendSuccess<T>(res: Response, data: T, message?: string): void {
  * 发送错误响应
  */
 function sendError(res: Response, error: unknown, statusCode: number = 500): void {
-  const errorMessage = error instanceof Error ? error.message : '未知错误';
+  const errorMessage = error instanceof Error ? error.message : 'Unknown error';
   const response: ApiResponse = {
     success: false,
     error: errorMessage
@@ -57,7 +57,7 @@ export function setupConfigApiRoutes(app: Express): void {
   app.get('/api/config/all', async (req: Request, res: Response) => {
     try {
       const config = await webConfigService.getAllConfig();
-      sendSuccess(res, config, '成功获取所有配置');
+      sendSuccess(res, config, 'Successfully retrieved all configurations');
     } catch (error) {
       console.error('[Config API] Failed to get all config:', error);
       sendError(res, error);
@@ -71,7 +71,7 @@ export function setupConfigApiRoutes(app: Express): void {
   app.get('/api/config/api', async (req: Request, res: Response) => {
     try {
       const apiConfig = await webConfigService.getApiConfig();
-      sendSuccess(res, apiConfig, '成功获取 API 配置');
+      sendSuccess(res, apiConfig, 'Successfully retrieved API configuration');
     } catch (error) {
       console.error('[Config API] Failed to get API config:', error);
       sendError(res, error);
@@ -85,7 +85,7 @@ export function setupConfigApiRoutes(app: Express): void {
   app.get('/api/config/permissions', async (req: Request, res: Response) => {
     try {
       const permissionsConfig = await webConfigService.getPermissionsConfig();
-      sendSuccess(res, permissionsConfig, '成功获取权限配置');
+      sendSuccess(res, permissionsConfig, 'Successfully retrieved permissions configuration');
     } catch (error) {
       console.error('[Config API] Failed to get permissions config:', error);
       sendError(res, error);
@@ -99,7 +99,7 @@ export function setupConfigApiRoutes(app: Express): void {
   app.get('/api/config/hooks', async (req: Request, res: Response) => {
     try {
       const hooksConfig = await webConfigService.getHooksConfig();
-      sendSuccess(res, hooksConfig, '成功获取 Hooks 配置');
+      sendSuccess(res, hooksConfig, 'Successfully retrieved Hooks configuration');
     } catch (error) {
       console.error('[Config API] Failed to get hooks config:', error);
       sendError(res, error);
@@ -113,7 +113,7 @@ export function setupConfigApiRoutes(app: Express): void {
   app.get('/api/config/logging', async (req: Request, res: Response) => {
     try {
       const loggingConfig = await webConfigService.getLoggingConfig();
-      sendSuccess(res, loggingConfig, '成功获取日志配置');
+      sendSuccess(res, loggingConfig, 'Successfully retrieved logging configuration');
     } catch (error) {
       console.error('[Config API] Failed to get logging config:', error);
       sendError(res, error);
@@ -127,7 +127,7 @@ export function setupConfigApiRoutes(app: Express): void {
   app.get('/api/config/proxy', async (req: Request, res: Response) => {
     try {
       const proxyConfig = await webConfigService.getProxyConfig();
-      sendSuccess(res, proxyConfig, '成功获取代理配置');
+      sendSuccess(res, proxyConfig, 'Successfully retrieved proxy configuration');
     } catch (error) {
       console.error('[Config API] Failed to get proxy config:', error);
       sendError(res, error);
@@ -141,7 +141,7 @@ export function setupConfigApiRoutes(app: Express): void {
   app.get('/api/config/security', async (req: Request, res: Response) => {
     try {
       const securityConfig = await webConfigService.getSecurityConfig();
-      sendSuccess(res, securityConfig, '成功获取安全配置');
+      sendSuccess(res, securityConfig, 'Successfully retrieved security configuration');
     } catch (error) {
       console.error('[Config API] Failed to get security config:', error);
       sendError(res, error);
@@ -161,15 +161,15 @@ export function setupConfigApiRoutes(app: Express): void {
       const updates = req.body;
 
       if (!updates || typeof updates !== 'object') {
-        return sendError(res, new Error('无效的请求体'), 400);
+        return sendError(res, new Error('Invalid request body'), 400);
       }
 
       const success = await webConfigService.updateApiConfig(updates);
 
       if (success) {
-        sendSuccess(res, { updated: true }, 'API 配置已成功更新');
+        sendSuccess(res, { updated: true }, 'API configuration updated successfully');
       } else {
-        sendError(res, new Error('更新 API 配置失败'), 500);
+        sendError(res, new Error('Failed to update API configuration'), 500);
       }
     } catch (error) {
       console.error('[Config API] Failed to update API config:', error);
@@ -193,7 +193,7 @@ export function setupConfigApiRoutes(app: Express): void {
       }
 
       if (!apiKey) {
-        return sendError(res, new Error('需要提供 API Key 进行测试'), 400);
+        return sendError(res, new Error('API Key is required for testing'), 400);
       }
 
       // 导入 Anthropic SDK
@@ -224,7 +224,7 @@ export function setupConfigApiRoutes(app: Express): void {
           model: testModel,
           baseUrl: apiBaseUrl || 'https://api.anthropic.com',
           responseId: response.id,
-        }, 'API 连接测试成功');
+        }, 'API connection test successful');
       } catch (apiError: any) {
         // API 调用失败
         const errorMessage = apiError.message || String(apiError);
@@ -234,7 +234,7 @@ export function setupConfigApiRoutes(app: Express): void {
         
         return res.status(400).json({
           success: false,
-          error: `API 测试失败: ${errorMessage}`,
+          error: `API test failed: ${errorMessage}`,
           details: {
             statusCode,
             message: errorMessage,
@@ -257,15 +257,15 @@ export function setupConfigApiRoutes(app: Express): void {
       const updates = req.body;
 
       if (!updates || typeof updates !== 'object') {
-        return sendError(res, new Error('无效的请求体'), 400);
+        return sendError(res, new Error('Invalid request body'), 400);
       }
 
       const success = await webConfigService.updatePermissionsConfig(updates);
 
       if (success) {
-        sendSuccess(res, { updated: true }, '权限配置已成功更新');
+        sendSuccess(res, { updated: true }, 'Permissions configuration updated successfully');
       } else {
-        sendError(res, new Error('更新权限配置失败'), 500);
+        sendError(res, new Error('Failed to update permissions configuration'), 500);
       }
     } catch (error) {
       console.error('[Config API] Failed to update permissions config:', error);
@@ -282,15 +282,15 @@ export function setupConfigApiRoutes(app: Express): void {
       const updates = req.body;
 
       if (!updates || typeof updates !== 'object') {
-        return sendError(res, new Error('无效的请求体'), 400);
+        return sendError(res, new Error('Invalid request body'), 400);
       }
 
       const success = await webConfigService.updateHooksConfig(updates);
 
       if (success) {
-        sendSuccess(res, { updated: true }, 'Hooks 配置已成功更新');
+        sendSuccess(res, { updated: true }, 'Hooks configuration updated successfully');
       } else {
-        sendError(res, new Error('更新 Hooks 配置失败'), 500);
+        sendError(res, new Error('Failed to update Hooks configuration'), 500);
       }
     } catch (error) {
       console.error('[Config API] Failed to update hooks config:', error);
@@ -307,15 +307,15 @@ export function setupConfigApiRoutes(app: Express): void {
       const updates = req.body;
 
       if (!updates || typeof updates !== 'object') {
-        return sendError(res, new Error('无效的请求体'), 400);
+        return sendError(res, new Error('Invalid request body'), 400);
       }
 
       const success = await webConfigService.updateLoggingConfig(updates);
 
       if (success) {
-        sendSuccess(res, { updated: true }, '日志配置已成功更新');
+        sendSuccess(res, { updated: true }, 'Logging configuration updated successfully');
       } else {
-        sendError(res, new Error('更新日志配置失败'), 500);
+        sendError(res, new Error('Failed to update logging configuration'), 500);
       }
     } catch (error) {
       console.error('[Config API] Failed to update logging config:', error);
@@ -332,15 +332,15 @@ export function setupConfigApiRoutes(app: Express): void {
       const updates = req.body;
 
       if (!updates || typeof updates !== 'object') {
-        return sendError(res, new Error('无效的请求体'), 400);
+        return sendError(res, new Error('Invalid request body'), 400);
       }
 
       const success = await webConfigService.updateProxyConfig(updates);
 
       if (success) {
-        sendSuccess(res, { updated: true }, '代理配置已成功更新');
+        sendSuccess(res, { updated: true }, 'Proxy configuration updated successfully');
       } else {
-        sendError(res, new Error('更新代理配置失败'), 500);
+        sendError(res, new Error('Failed to update proxy configuration'), 500);
       }
     } catch (error) {
       console.error('[Config API] Failed to update proxy config:', error);
@@ -357,15 +357,15 @@ export function setupConfigApiRoutes(app: Express): void {
       const updates = req.body;
 
       if (!updates || typeof updates !== 'object') {
-        return sendError(res, new Error('无效的请求体'), 400);
+        return sendError(res, new Error('Invalid request body'), 400);
       }
 
       const success = await webConfigService.updateSecurityConfig(updates);
 
       if (success) {
-        sendSuccess(res, { updated: true }, '安全配置已成功更新');
+        sendSuccess(res, { updated: true }, 'Security configuration updated successfully');
       } else {
-        sendError(res, new Error('更新安全配置失败'), 500);
+        sendError(res, new Error('Failed to update security configuration'), 500);
       }
     } catch (error) {
       console.error('[Config API] Failed to update security config:', error);
@@ -396,7 +396,7 @@ export function setupConfigApiRoutes(app: Express): void {
         res.setHeader('Content-Disposition', `attachment; filename="claude-config-${Date.now()}.json"`);
         res.send(exportData);
       } else {
-        sendSuccess(res, JSON.parse(exportData), '配置导出成功');
+        sendSuccess(res, JSON.parse(exportData), 'Configuration exported successfully');
       }
     } catch (error) {
       console.error('[Config API] Failed to export config:', error);
@@ -413,7 +413,7 @@ export function setupConfigApiRoutes(app: Express): void {
       const { config } = req.body;
 
       if (!config) {
-        return sendError(res, new Error('无效的配置数据'), 400);
+        return sendError(res, new Error('Invalid configuration data'), 400);
       }
 
       // 如果 config 是对象，转换为 JSON 字符串
@@ -421,7 +421,7 @@ export function setupConfigApiRoutes(app: Express): void {
 
       const result = await webConfigService.importConfig(configStr);
 
-      sendSuccess(res, { imported: result }, '配置导入成功');
+      sendSuccess(res, { imported: result }, 'Configuration imported successfully');
     } catch (error) {
       console.error('[Config API] Failed to import config:', error);
       sendError(res, error);
@@ -437,18 +437,18 @@ export function setupConfigApiRoutes(app: Express): void {
       const { config } = req.body;
 
       if (!config || typeof config !== 'object') {
-        return sendError(res, new Error('无效的配置数据'), 400);
+        return sendError(res, new Error('Invalid configuration data'), 400);
       }
 
       const validationResult = await webConfigService.validateConfig(config);
 
       if (validationResult.valid) {
-        sendSuccess(res, validationResult, '配置验证通过');
+        sendSuccess(res, validationResult, 'Configuration validation passed');
       } else {
         res.status(400).json({
           success: false,
           data: validationResult,
-          message: '配置验证失败'
+          message: 'Configuration validation failed'
         });
       }
     } catch (error) {
@@ -466,15 +466,15 @@ export function setupConfigApiRoutes(app: Express): void {
       const { confirm } = req.body;
 
       if (!confirm) {
-        return sendError(res, new Error('需要确认重置操作'), 400);
+        return sendError(res, new Error('Reset operation requires confirmation'), 400);
       }
 
       const success = await webConfigService.resetConfig();
 
       if (success) {
-        sendSuccess(res, { reset: true }, '所有配置已重置为默认值');
+        sendSuccess(res, { reset: true }, 'All configurations have been reset to defaults');
       } else {
-        sendError(res, new Error('重置配置失败'), 500);
+        sendError(res, new Error('Failed to reset configuration'), 500);
       }
     } catch (error) {
       console.error('[Config API] Failed to reset config:', error);
@@ -495,11 +495,11 @@ export function setupConfigApiRoutes(app: Express): void {
       const { key } = req.params;
 
       if (!key) {
-        return sendError(res, new Error('缺少配置键名'), 400);
+        return sendError(res, new Error('Missing configuration key name'), 400);
       }
 
       const source = await webConfigService.getConfigSource(key);
-      sendSuccess(res, source, `成功获取 ${key} 的配置来源`);
+      sendSuccess(res, source, `Successfully retrieved configuration source for ${key}`);
     } catch (error) {
       console.error('[Config API] Failed to get config source:', error);
       sendError(res, error);
@@ -513,7 +513,7 @@ export function setupConfigApiRoutes(app: Express): void {
   app.get('/api/config/sources', async (req: Request, res: Response) => {
     try {
       const sources = await webConfigService.getAllConfigSources();
-      sendSuccess(res, sources, '成功获取所有配置来源');
+      sendSuccess(res, sources, 'Successfully retrieved all configuration sources');
     } catch (error) {
       console.error('[Config API] Failed to get all config sources:', error);
       sendError(res, error);
@@ -527,7 +527,7 @@ export function setupConfigApiRoutes(app: Express): void {
   app.get('/api/config/backups', async (req: Request, res: Response) => {
     try {
       const backups = await webConfigService.listBackups();
-      sendSuccess(res, backups, '成功获取备份列表');
+      sendSuccess(res, backups, 'Successfully retrieved backup list');
     } catch (error) {
       console.error('[Config API] Failed to get backup list:', error);
       sendError(res, error);
@@ -543,19 +543,19 @@ export function setupConfigApiRoutes(app: Express): void {
       const { backupId, confirm } = req.body;
 
       if (!backupId) {
-        return sendError(res, new Error('缺少备份 ID'), 400);
+        return sendError(res, new Error('Missing backup ID'), 400);
       }
 
       if (!confirm) {
-        return sendError(res, new Error('需要确认恢复操作'), 400);
+        return sendError(res, new Error('Restore operation requires confirmation'), 400);
       }
 
       const success = await webConfigService.restoreFromBackup(backupId);
 
       if (success) {
-        sendSuccess(res, { restored: true, backupId }, `成功从备份 ${backupId} 恢复配置`);
+        sendSuccess(res, { restored: true, backupId }, `Successfully restored configuration from backup ${backupId}`);
       } else {
-        sendError(res, new Error('恢复配置失败'), 500);
+        sendError(res, new Error('Failed to restore configuration'), 500);
       }
     } catch (error) {
       console.error('[Config API] Failed to restore config:', error);

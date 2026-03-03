@@ -125,26 +125,26 @@ export function splitMessage(text: string, maxLength: number): string[] {
 export function handleBuiltinCommand(text: string): string | null {
   const cmd = text.trim().toLowerCase();
 
-  if (cmd === '/help' || cmd === '帮助') {
+  if (cmd === '/help' || cmd === 'help') {
     return [
-      'Axon 飞书助手',
+      'Axon Feishu Assistant',
       '',
-      '可用命令:',
-      '  /help 或 帮助 - 显示此帮助',
-      '  /reset 或 重置 - 清除对话历史',
-      '  /status 或 状态 - 查看当前状态',
+      'Available commands:',
+      '  /help - Show this help',
+      '  /reset - Clear conversation history',
+      '  /status - View current status',
       '',
-      '使用方式:',
-      '  群聊中 @我 + 你的问题',
-      '  私聊直接发消息即可',
+      'Usage:',
+      '  In group chat: @me + your question',
+      '  In private chat: send messages directly',
     ].join('\n');
   }
 
-  if (cmd === '/status' || cmd === '状态') {
-    return '状态查询已触发';
+  if (cmd === '/status' || cmd === 'status') {
+    return 'Status query triggered';
   }
 
-  if (cmd === '/reset' || cmd === '重置') {
+  if (cmd === '/reset' || cmd === 'reset') {
     return '__RESET_SESSION__';
   }
 

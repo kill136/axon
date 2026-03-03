@@ -559,7 +559,7 @@ export async function createProxyServer(config: ProxyConfig) {
                   for (let si = 0; si < (v as any[]).length; si++) {
                     const sb = (v as any[])[si];
                     originalSystemDetail += `      [${si}] type=${sb.type}, text.len=${sb.text?.length || 0}, cache_control=${JSON.stringify(sb.cache_control || null)}\n`;
-                    originalSystemDetail += `          text前200字符: ${(sb.text || '').slice(0, 200)}\n`;
+                    originalSystemDetail += `          text first 200 chars: ${(sb.text || '').slice(0, 200)}\n`;
                   }
                 } else {
                   originalBodySnapshot[k] = typeof v;
@@ -631,16 +631,12 @@ export async function createProxyServer(config: ProxyConfig) {
               }
             }
 
-            // cache_control 注入 — 完全对齐 src/core/client.ts 的实现
+            // cache_control 注入 — 对齐 src/core/client.ts v6.1
             //
-            // 我们自己的 CLI（npm run dev）用的格式：
-            //   formatSystemPrompt(): 每个 system text block → { type: 'ephemeral' }
-            //   buildApiTools():      最后一个 tool → { type: 'ephemeral' }
-            //   formatMessages():     最后一条消息的最后一个非 thinking block → { type: 'ephemeral' }
-            //
-            // 注意：不用 ttl:"1h" 或 scope:"global"！
-            //   ttl/scope 格式会触发 "maximum 4 blocks" 限制，
-            //   而简单的 {type:"ephemeral"} 没有这个限制。
+            // 缓存策略：
+            //   formatSystemPrompt(): 静态 system block → { type: 'ephemeral', scope: 'global' }
+            //   buildApiTools():      不加 cache_control（依赖 prompt-caching-scope beta）
+            //   formatMessages():     最后2条消息的最后一个非 thinking block → { type: 'ephemeral' }
             {
               const CC = { type: 'ephemeral' };
 
@@ -667,20 +663,14 @@ export async function createProxyServer(config: ProxyConfig) {
                 }
               }
 
-              // 2. tools → 仅最后一个（对齐 buildApiTools）
+              // 2. tools → v6.1: 不加 cache_control（对齐官方，依赖 prompt-caching-scope beta）
+              // 只清除可能存在的旧 cache_control
               if (Array.isArray(parsed.tools) && parsed.tools.length > 0) {
-                // 先清除所有 tools 上已有的 cache_control
                 for (const tool of parsed.tools) {
                   if (tool && typeof tool === 'object' && tool.cache_control) {
                     delete tool.cache_control;
                     needsRewrite = true;
                   }
-                }
-                // 仅最后一个 tool
-                const lastTool = parsed.tools[parsed.tools.length - 1];
-                if (lastTool && typeof lastTool === 'object') {
-                  lastTool.cache_control = { ...CC };
-                  needsRewrite = true;
                 }
               }
 

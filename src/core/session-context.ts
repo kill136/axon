@@ -18,7 +18,7 @@ const sessionIdStorage = new AsyncLocalStorage<string>();
  */
 export function runWithSessionId<T>(sessionId: string, fn: () => T): T {
   if (!sessionId) {
-    throw new Error('runWithSessionId: sessionId 不能为空');
+    throw new Error('runWithSessionId: sessionId cannot be empty');
   }
   return sessionIdStorage.run(sessionId, fn);
 }

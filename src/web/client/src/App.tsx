@@ -14,6 +14,7 @@ import {
   DebugPanel,
 } from './components';
 import { CrossSessionToast } from './components/CrossSessionToast';
+import { UpdateBanner } from './components/UpdateBanner';
 import { SlashCommandDialog } from './components/SlashCommandDialog';
 import { RewindOption } from './components/RewindMenu';
 import { InputArea } from './components/InputArea';
@@ -444,6 +445,7 @@ function AppContent({
 
   return (
     <div style={{ display: 'flex', height: '100%', width: '100%', flex: 1 }}>
+      <UpdateBanner />
       {codeViewActive ? (
         // 代码视图模式
         <CodeView

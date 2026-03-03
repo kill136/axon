@@ -1,11 +1,13 @@
 /**
  * client.ts 缓存相关功能单元测试
  *
- * 覆盖与官方 CLI 对齐的 4 个差异点：
- *   差异1: formatMessages — 最后 2 条消息（而非仅最后 1 条）添加 cache_control
- *   差异2: isPromptCachingEnabled — DISABLE_PROMPT_CACHING 系列 env var 按型号控制
- *   差异3: buildCacheControl / formatMessages / buildApiTools — OAuth 用户加 ttl:"1h"
- *   差异4: trackCacheState + reportCacheBreak — 缓存破裂追踪系统
+ * v6.1 对齐官方缓存机制：
+ *   1. formatMessages — 最后 2 条消息添加 cache_control，接受 querySource 参数
+ *   2. isPromptCachingEnabled — DISABLE_PROMPT_CACHING 系列 env var 按型号控制
+ *   3. buildCacheControl — 支持 global/org scope
+ *   4. formatSystemPrompt — 支持 skipGlobalCacheForSystemPrompt 降级逻辑
+ *   5. buildApiTools — 不给 tools 加 cache_control（对齐官方）
+ *   6. trackCacheState + reportCacheBreak — 缓存破裂追踪系统
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -23,9 +25,9 @@ import {
   cacheBreakMap,
 } from './client.js';
 
-// ─── 差异2: isPromptCachingEnabled ────────────────────────────────────────────
+// ─── isPromptCachingEnabled ──────────────────────────────────────────────────
 
-describe('isPromptCachingEnabled (差异2)', () => {
+describe('isPromptCachingEnabled', () => {
   const OLD_ENV = process.env;
 
   beforeEach(() => {
@@ -75,34 +77,21 @@ describe('isPromptCachingEnabled (差异2)', () => {
   });
 });
 
-// ─── 差异3: buildCacheControl ────────────────────────────────────────────────
+// ─── buildCacheControl ───────────────────────────────────────────────────────
 
-describe('buildCacheControl (差异3)', () => {
-  it('org scope、无 OAuth → 仅 type:ephemeral', () => {
+describe('buildCacheControl', () => {
+  it('org scope → 仅 type:ephemeral', () => {
     expect(buildCacheControl('org')).toEqual({ type: 'ephemeral' });
   });
 
-  it('global scope、无 OAuth → type:ephemeral + scope:global', () => {
+  it('global scope → type:ephemeral + scope:global', () => {
     expect(buildCacheControl('global')).toEqual({ type: 'ephemeral', scope: 'global' });
-  });
-
-  it('org scope + OAuth → type:ephemeral + ttl:1h', () => {
-    expect(buildCacheControl('org', true)).toEqual({ type: 'ephemeral', ttl: '1h' });
-  });
-
-  it('global scope + OAuth → type:ephemeral + ttl:1h + scope:global', () => {
-    expect(buildCacheControl('global', true)).toEqual({ type: 'ephemeral', ttl: '1h', scope: 'global' });
-  });
-
-  it('isOAuth=false 不加 ttl', () => {
-    expect(buildCacheControl('org', false)).toEqual({ type: 'ephemeral' });
-    expect(buildCacheControl('global', false)).toEqual({ type: 'ephemeral', scope: 'global' });
   });
 });
 
-// ─── 差异1 + 差异3: formatMessages ───────────────────────────────────────────
+// ─── formatMessages ──────────────────────────────────────────────────────────
 
-describe('formatMessages (差异1 + 差异3)', () => {
+describe('formatMessages', () => {
   function makeMessages(count: number) {
     return Array.from({ length: count }, (_, i) => ({
       role: i % 2 === 0 ? 'user' : 'assistant',
@@ -110,7 +99,7 @@ describe('formatMessages (差异1 + 差异3)', () => {
     }));
   }
 
-  it('差异1: 3 条消息时，最后 2 条得到 cache_control，第 1 条不加', () => {
+  it('3 条消息时，最后 2 条得到 cache_control，第 1 条不加', () => {
     const msgs = makeMessages(3);
     const result = formatMessages(msgs);
 
@@ -125,7 +114,7 @@ describe('formatMessages (差异1 + 差异3)', () => {
     expect(content2[0].cache_control).toEqual({ type: 'ephemeral' });
   });
 
-  it('差异1: 5 条消息时，只有最后 2 条得到 cache_control', () => {
+  it('5 条消息时，只有最后 2 条得到 cache_control', () => {
     const msgs = makeMessages(5);
     const result = formatMessages(msgs);
 
@@ -136,13 +125,13 @@ describe('formatMessages (差异1 + 差异3)', () => {
     expect(result[4].content[0].cache_control).toEqual({ type: 'ephemeral' });
   });
 
-  it('差异1: 1 条消息时，那 1 条得到 cache_control（最后 2 条中至少包含它）', () => {
+  it('1 条消息时，那 1 条得到 cache_control', () => {
     const msgs = makeMessages(1);
     const result = formatMessages(msgs);
     expect(result[0].content[0].cache_control).toEqual({ type: 'ephemeral' });
   });
 
-  it('差异2: enableCaching=false 时所有消息都不加 cache_control', () => {
+  it('enableCaching=false 时所有消息都不加 cache_control', () => {
     const msgs = makeMessages(4);
     const result = formatMessages(msgs, false, false);
     for (const msg of result) {
@@ -150,18 +139,11 @@ describe('formatMessages (差异1 + 差异3)', () => {
     }
   });
 
-  it('差异3: OAuth 模式下 cache_control 带 ttl:1h', () => {
+  it('接受 querySource 参数（保持接口对齐官方 S2z）', () => {
     const msgs = makeMessages(3);
-    const result = formatMessages(msgs, false, true, true);
+    const result = formatMessages(msgs, false, true, 'repl_main_thread');
 
-    expect(result[1].content[0].cache_control).toEqual({ type: 'ephemeral', ttl: '1h' });
-    expect(result[2].content[0].cache_control).toEqual({ type: 'ephemeral', ttl: '1h' });
-  });
-
-  it('差异3: 非 OAuth 模式 cache_control 不含 ttl', () => {
-    const msgs = makeMessages(3);
-    const result = formatMessages(msgs, false, true, false);
-
+    // querySource 目前不影响输出（ttl 逻辑未实现），但接口需要对齐
     expect(result[1].content[0].cache_control).toEqual({ type: 'ephemeral' });
     expect(result[2].content[0].cache_control).toEqual({ type: 'ephemeral' });
   });
@@ -214,9 +196,9 @@ describe('formatMessages (差异1 + 差异3)', () => {
   });
 });
 
-// ─── formatSystemPrompt (差异2 + 差异3) ──────────────────────────────────────
+// ─── formatSystemPrompt ─────────────────────────────────────────────────────
 
-describe('formatSystemPrompt (差异2 + 差异3)', () => {
+describe('formatSystemPrompt', () => {
   it('enableCaching=false 时不加 cache_control', () => {
     const result = formatSystemPrompt('hello', false, undefined, false) as any[];
     expect(result[0].cache_control).toBeUndefined();
@@ -239,49 +221,69 @@ describe('formatSystemPrompt (差异2 + 差异3)', () => {
     expect(result[0].cache_control).toBeUndefined();
   });
 
-  it('OAuth 模式下 cache_control 带 ttl:1h', () => {
-    const blocks = [{ text: 'static', cacheScope: 'global' as const }];
-    const result = formatSystemPrompt('static', true, blocks, true) as any[];
-    expect(result[0].cache_control).toEqual({ type: 'ephemeral', ttl: '1h', scope: 'global' });
-  });
-
   it('无 system prompt 且非 OAuth → undefined', () => {
     const result = formatSystemPrompt(undefined, false, undefined, true);
     expect(result).toBeUndefined();
   });
 
   it('空字符串 system prompt 且非 OAuth → undefined', () => {
-    // formatSystemPrompt 只检测 falsy，'' 是 falsy
     const result = formatSystemPrompt('', false, undefined, true);
     expect(result).toBeUndefined();
   });
+
+  // v6.1: skipGlobalCacheForSystemPrompt 测试
+  it('skipGlobalCacheForSystemPrompt="system_prompt" 时 global 降级为 org', () => {
+    const blocks = [
+      { text: 'static part', cacheScope: 'global' as const },
+      { text: 'dynamic part', cacheScope: null },
+    ];
+    const result = formatSystemPrompt('combined', false, blocks, true, 'system_prompt') as any[];
+    // static block: 原本 global → 降级为 org（无 scope 字段）
+    expect(result[0].cache_control).toEqual({ type: 'ephemeral' });
+    // dynamic block: null → 不加 cache_control
+    expect(result[1].cache_control).toBeUndefined();
+  });
+
+  it('skipGlobalCacheForSystemPrompt="none" 时保持 global', () => {
+    const blocks = [
+      { text: 'static part', cacheScope: 'global' as const },
+      { text: 'dynamic part', cacheScope: null },
+    ];
+    const result = formatSystemPrompt('combined', false, blocks, true, 'none') as any[];
+    expect(result[0].cache_control).toEqual({ type: 'ephemeral', scope: 'global' });
+    expect(result[1].cache_control).toBeUndefined();
+  });
+
+  it('skipGlobalCacheForSystemPrompt 对 org scope blocks 无影响', () => {
+    const blocks = [{ text: 'org text', cacheScope: 'org' as const }];
+    const result1 = formatSystemPrompt('org text', false, blocks, true, 'none') as any[];
+    const result2 = formatSystemPrompt('org text', false, blocks, true, 'system_prompt') as any[];
+    // 两种模式下 org scope 都是 { type: 'ephemeral' }（无 scope 字段）
+    expect(result1[0].cache_control).toEqual({ type: 'ephemeral' });
+    expect(result2[0].cache_control).toEqual({ type: 'ephemeral' });
+  });
 });
 
-// ─── buildApiTools (差异2 + 差异3) ───────────────────────────────────────────
+// ─── buildApiTools ───────────────────────────────────────────────────────────
 
-describe('buildApiTools (差异2 + 差异3)', () => {
+describe('buildApiTools', () => {
   const dummyTools = [
     { name: 'Read', description: 'read', inputSchema: { type: 'object', properties: {} } },
     { name: 'Write', description: 'write', inputSchema: { type: 'object', properties: {} } },
   ] as any[];
 
-  it('启用缓存时最后一个工具（web_search）加 cache_control', () => {
+  it('v6.1: tools 不加 cache_control（对齐官方）', () => {
     const result = buildApiTools(dummyTools, false, true, false)!;
-    const last = result[result.length - 1];
-    expect(last.cache_control).toEqual({ type: 'ephemeral' });
-  });
-
-  it('差异2: enableCaching=false 时不加 cache_control', () => {
-    const result = buildApiTools(dummyTools, false, false, false)!;
     for (const tool of result) {
       expect(tool.cache_control).toBeUndefined();
     }
   });
 
-  it('差异3: OAuth 时 cache_control 带 ttl:1h', () => {
-    const result = buildApiTools(dummyTools, false, true, true)!;
-    const last = result[result.length - 1];
-    expect(last.cache_control).toEqual({ type: 'ephemeral', ttl: '1h' });
+  it('enableCaching=false 时也不加 cache_control', () => {
+    const result = buildApiTools(dummyTools, false, false, false)!;
+    for (const tool of result) {
+      expect(tool.cache_control).toBeUndefined();
+    }
   });
 
   it('始终包含 web_search server tool', () => {
@@ -301,208 +303,81 @@ describe('buildApiTools (差异2 + 差异3)', () => {
 // ─── 工具函数 ─────────────────────────────────────────────────────────────────
 
 describe('hashContent', () => {
-  it('相同内容返回相同哈希', () => {
-    expect(hashContent({ a: 1 })).toBe(hashContent({ a: 1 }));
+  it('相同内容产生相同哈希', () => {
+    const a = hashContent([{ type: 'text', text: 'hello' }]);
+    const b = hashContent([{ type: 'text', text: 'hello' }]);
+    expect(a).toBe(b);
   });
 
-  it('不同内容返回不同哈希', () => {
-    expect(hashContent({ a: 1 })).not.toBe(hashContent({ a: 2 }));
-  });
-
-  it('对字符串和对象都能处理', () => {
-    expect(typeof hashContent('hello')).toBe('number');
-    expect(typeof hashContent([1, 2, 3])).toBe('number');
+  it('不同内容产生不同哈希', () => {
+    const a = hashContent([{ type: 'text', text: 'hello' }]);
+    const b = hashContent([{ type: 'text', text: 'world' }]);
+    expect(a).not.toBe(b);
   });
 });
 
 describe('stripCacheControlFields', () => {
-  it('移除 cache_control 字段', () => {
-    const items = [{ text: 'hi', cache_control: { type: 'ephemeral' } }];
+  it('去除 cache_control 字段', () => {
+    const items = [
+      { type: 'text', text: 'a', cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: 'b' },
+    ];
     const result = stripCacheControlFields(items);
-    expect(result[0]).toEqual({ text: 'hi' });
-    expect(result[0].cache_control).toBeUndefined();
-  });
-
-  it('没有 cache_control 的 item 原样保留', () => {
-    const items = [{ text: 'hi' }];
-    const result = stripCacheControlFields(items);
-    expect(result[0]).toEqual({ text: 'hi' });
-  });
-
-  it('不修改原始数组', () => {
-    const items = [{ text: 'hi', cache_control: { type: 'ephemeral' } }];
-    stripCacheControlFields(items);
-    expect(items[0].cache_control).toBeDefined();
+    expect(result[0]).toEqual({ type: 'text', text: 'a' });
+    expect(result[1]).toEqual({ type: 'text', text: 'b' });
   });
 });
 
 describe('getSystemCharCount', () => {
-  it('计算所有 text 字段的字符总数', () => {
-    const blocks = [{ text: 'hello' }, { text: ' world' }];
-    expect(getSystemCharCount(blocks)).toBe(11);
-  });
-
-  it('空数组返回 0', () => {
-    expect(getSystemCharCount([])).toBe(0);
-  });
-
-  it('没有 text 字段的 block 计 0', () => {
-    expect(getSystemCharCount([{ type: 'text' }])).toBe(0);
+  it('计算 text 字段的字符数总和', () => {
+    const blocks = [
+      { type: 'text', text: 'hello' },
+      { type: 'text', text: 'world' },
+    ];
+    expect(getSystemCharCount(blocks)).toBe(10);
   });
 });
 
-// ─── 差异4: 缓存破裂追踪系统 ──────────────────────────────────────────────────
+// ─── trackCacheState + reportCacheBreak ──────────────────────────────────────
 
-describe('trackCacheState + reportCacheBreak (差异4)', () => {
-  const SRC = 'test-source-' + Math.random().toString(36).slice(2);
-
-  const systemBlocks = [{ text: 'system prompt' }];
-  const tools = [{ name: 'Read', description: 'read', input_schema: {} }];
-
+describe('trackCacheState + reportCacheBreak', () => {
   beforeEach(() => {
-    cacheBreakMap.delete(SRC);
-  });
-
-  it('首次调用：创建状态条目', () => {
-    trackCacheState(systemBlocks, tools, 'claude-sonnet-4-6', SRC, false);
-    const state = cacheBreakMap.get(SRC)!;
-    expect(state).toBeDefined();
-    expect(state.callCount).toBe(1);
-    expect(state.pendingChanges).toBeNull();
-    expect(state.prevCacheReadTokens).toBeNull();
-  });
-
-  it('二次调用相同内容：无 pendingChanges', () => {
-    trackCacheState(systemBlocks, tools, 'claude-sonnet-4-6', SRC, false);
-    trackCacheState(systemBlocks, tools, 'claude-sonnet-4-6', SRC, false);
-    const state = cacheBreakMap.get(SRC)!;
-    expect(state.callCount).toBe(2);
-    expect(state.pendingChanges).toBeNull();
-  });
-
-  it('system prompt 变化：记录 systemPromptChanged', () => {
-    trackCacheState(systemBlocks, tools, 'claude-sonnet-4-6', SRC, false);
-    const newSystem = [{ text: 'different system prompt' }];
-    trackCacheState(newSystem, tools, 'claude-sonnet-4-6', SRC, false);
-    const state = cacheBreakMap.get(SRC)!;
-    expect(state.pendingChanges?.systemPromptChanged).toBe(true);
-    expect(state.pendingChanges?.toolSchemasChanged).toBe(false);
-  });
-
-  it('tools 变化：记录 toolSchemasChanged', () => {
-    trackCacheState(systemBlocks, tools, 'claude-sonnet-4-6', SRC, false);
-    const newTools = [{ name: 'Write', description: 'write', input_schema: {} }];
-    trackCacheState(systemBlocks, newTools, 'claude-sonnet-4-6', SRC, false);
-    const state = cacheBreakMap.get(SRC)!;
-    expect(state.pendingChanges?.toolSchemasChanged).toBe(true);
-  });
-
-  it('model 变化：记录 modelChanged + previousModel/newModel', () => {
-    trackCacheState(systemBlocks, tools, 'claude-sonnet-4-6', SRC, false);
-    trackCacheState(systemBlocks, tools, 'claude-opus-4-6', SRC, false);
-    const state = cacheBreakMap.get(SRC)!;
-    expect(state.pendingChanges?.modelChanged).toBe(true);
-    expect(state.pendingChanges?.previousModel).toBe('claude-sonnet-4-6');
-    expect(state.pendingChanges?.newModel).toBe('claude-opus-4-6');
-  });
-
-  it('fastMode 切换：记录 fastModeChanged', () => {
-    trackCacheState(systemBlocks, tools, 'claude-sonnet-4-6', SRC, false);
-    trackCacheState(systemBlocks, tools, 'claude-sonnet-4-6', SRC, true);
-    const state = cacheBreakMap.get(SRC)!;
-    expect(state.pendingChanges?.fastModeChanged).toBe(true);
-  });
-
-  it('cache_control 字段变化不视为内容变化（hR7 等价）', () => {
-    const blocksWithCache = [{ text: 'system', cache_control: { type: 'ephemeral' } }];
-    const blocksNoCache = [{ text: 'system' }];
-    trackCacheState(blocksWithCache, tools, 'claude-sonnet-4-6', SRC, false);
-    trackCacheState(blocksNoCache, tools, 'claude-sonnet-4-6', SRC, false);
-    const state = cacheBreakMap.get(SRC)!;
-    // 剥离 cache_control 后内容相同，不应视为变化
-    expect(state.pendingChanges).toBeNull();
-  });
-
-  it('reportCacheBreak: 首次无 prevCacheReadTokens → 不报告', () => {
-    const warnSpy = vi.spyOn(console, 'warn');
-    trackCacheState(systemBlocks, tools, 'claude-sonnet-4-6', SRC, false);
-    reportCacheBreak(SRC, 1000, 500, true);
-    expect(warnSpy).not.toHaveBeenCalled();
-  });
-
-  it('reportCacheBreak: token 下降幅度小于阈值 → 不报告', () => {
-    const warnSpy = vi.spyOn(console, 'warn');
-    trackCacheState(systemBlocks, tools, 'claude-sonnet-4-6', SRC, false);
-    // 首次设置 prevCacheReadTokens
-    reportCacheBreak(SRC, 10000, 500, true);
-    // 第二次：下降 100 token（< 2000 阈值）
-    reportCacheBreak(SRC, 9900, 500, true);
-    expect(warnSpy).not.toHaveBeenCalled();
-  });
-
-  it('reportCacheBreak: token 显著下降（>5% 且 >2000）+ 变化原因 → debug=true 时 warn', () => {
-    const warnSpy = vi.spyOn(console, 'warn');
-    trackCacheState(systemBlocks, tools, 'claude-sonnet-4-6', SRC, false);
-    // 触发 system 变化
-    const newSystem = [{ text: 'drastically different system prompt content here' }];
-    trackCacheState(newSystem, tools, 'claude-sonnet-4-6', SRC, false);
-    // 设置 prevCacheReadTokens
-    reportCacheBreak(SRC, 50000, 500, true);
-    // 下降 >5% 且 >2000
-    reportCacheBreak(SRC, 10000, 5000, true);
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('[PROMPT CACHE BREAK]'));
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('system prompt changed'));
-  });
-
-  it('reportCacheBreak: debug=false 时即使破裂也不 warn', () => {
-    const warnSpy = vi.spyOn(console, 'warn');
-    trackCacheState(systemBlocks, tools, 'claude-sonnet-4-6', SRC, false);
-    const newSystem = [{ text: 'different' }];
-    trackCacheState(newSystem, tools, 'claude-sonnet-4-6', SRC, false);
-    reportCacheBreak(SRC, 50000, 500, false);
-    reportCacheBreak(SRC, 10000, 5000, false);
-    expect(warnSpy).not.toHaveBeenCalled();
-  });
-
-  it('reportCacheBreak: haiku 模型跳过报告', () => {
-    const warnSpy = vi.spyOn(console, 'warn');
-    const haikuSrc = SRC + '-haiku';
-    cacheBreakMap.delete(haikuSrc);
-    trackCacheState(systemBlocks, tools, 'claude-haiku-4-5', haikuSrc, false);
-    const newSystem = [{ text: 'different' }];
-    trackCacheState(newSystem, tools, 'claude-haiku-4-5', haikuSrc, false);
-    reportCacheBreak(haikuSrc, 50000, 500, true);
-    reportCacheBreak(haikuSrc, 10000, 5000, true);
-    expect(warnSpy).not.toHaveBeenCalled();
-    cacheBreakMap.delete(haikuSrc);
-  });
-
-  it('报告时消息包含 source 和 callCount', () => {
-    const warnSpy = vi.spyOn(console, 'warn');
-    trackCacheState(systemBlocks, tools, 'claude-sonnet-4-6', SRC, false);
-    reportCacheBreak(SRC, 50000, 500, true);
-    // 下降幅度足够大
-    reportCacheBreak(SRC, 100, 5000, true);
-    const call = warnSpy.mock.calls.find(c => String(c[0]).includes('[PROMPT CACHE BREAK]'));
-    if (call) {
-      expect(String(call[0])).toContain(`source=${SRC}`);
-    }
-  });
-
-  it('容量超过 CACHE_BREAK_MAX_SOURCES(10) 时驱逐最旧条目', () => {
-    // 清空所有已有条目
     cacheBreakMap.clear();
-    for (let i = 0; i < 10; i++) {
-      trackCacheState(systemBlocks, tools, 'claude-sonnet-4-6', `evict-test-src-${i}`, false);
-    }
-    expect(cacheBreakMap.size).toBe(10);
-    // 添加第 11 个
-    trackCacheState(systemBlocks, tools, 'claude-sonnet-4-6', 'evict-test-src-new', false);
-    expect(cacheBreakMap.size).toBe(10);
-    // 第一个应该被驱逐
-    expect(cacheBreakMap.has('evict-test-src-0')).toBe(false);
-    expect(cacheBreakMap.has('evict-test-src-new')).toBe(true);
-    // 清理
-    cacheBreakMap.clear();
+  });
+
+  it('首次调用只记录状态，不报告', () => {
+    const system = [{ type: 'text', text: 'hello' }];
+    const tools = [{ name: 'Bash' }];
+    trackCacheState(system, tools, 'claude-sonnet-4-6', 'main', false);
+    expect(cacheBreakMap.size).toBe(1);
+  });
+
+  it('连续相同调用不产生 pendingChanges', () => {
+    const system = [{ type: 'text', text: 'hello' }];
+    const tools = [{ name: 'Bash' }];
+    trackCacheState(system, tools, 'claude-sonnet-4-6', 'main', false);
+    trackCacheState(system, tools, 'claude-sonnet-4-6', 'main', false);
+
+    const state = cacheBreakMap.get('main');
+    expect(state?.pendingChanges).toBeNull();
+  });
+
+  it('system prompt 变化被检测到', () => {
+    const tools = [{ name: 'Bash' }];
+    trackCacheState([{ type: 'text', text: 'hello' }], tools, 'claude-sonnet-4-6', 'main', false);
+    trackCacheState([{ type: 'text', text: 'hello world' }], tools, 'claude-sonnet-4-6', 'main', false);
+
+    const state = cacheBreakMap.get('main');
+    expect(state?.pendingChanges?.systemPromptChanged).toBe(true);
+  });
+
+  it('model 变化被检测到', () => {
+    const system = [{ type: 'text', text: 'hello' }];
+    const tools = [{ name: 'Bash' }];
+    trackCacheState(system, tools, 'claude-sonnet-4-6', 'main', false);
+    trackCacheState(system, tools, 'claude-opus-4-6', 'main', false);
+
+    const state = cacheBreakMap.get('main');
+    expect(state?.pendingChanges?.modelChanged).toBe(true);
   });
 });

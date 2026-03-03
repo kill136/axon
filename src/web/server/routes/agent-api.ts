@@ -49,81 +49,81 @@ function getAgentMetadata(): AgentMetadata[] {
       case 'Explore':
         metadata.thoroughnessLevels = ['quick', 'medium', 'very thorough'];
         metadata.examples = [
-          '搜索所有 API 端点',
-          '找到处理用户认证的文件',
-          '分析 src/components 目录结构',
+          'Search all API endpoints',
+          'Find files handling user authentication',
+          'Analyze src/components directory structure',
         ];
         metadata.features = [
-          '文件模式搜索 (glob)',
-          '代码内容搜索 (grep)',
-          '语义搜索 (文件名+内容)',
-          '结构分析 (导出/导入/类/函数)',
+          'File pattern search (glob)',
+          'Code content search (grep)',
+          'Semantic search (filename + content)',
+          'Structure analysis (exports/imports/classes/functions)',
         ];
         break;
 
       case 'general-purpose':
         metadata.examples = [
-          '研究复杂的架构问题',
-          '多步骤代码搜索和分析',
-          '跨文件重构规划',
+          'Research complex architectural issues',
+          'Multi-step code search and analysis',
+          'Cross-file refactoring planning',
         ];
         metadata.features = [
-          '访问所有工具',
-          '多轮对话能力',
-          '复杂任务分解',
+          'Access to all tools',
+          'Multi-turn conversation capability',
+          'Complex task decomposition',
         ];
         break;
 
       case 'Plan':
         metadata.examples = [
-          '设计新功能的实现方案',
-          '评估技术方案的权衡',
-          '规划代码重构步骤',
+          'Design implementation plans for new features',
+          'Evaluate trade-offs of technical approaches',
+          'Plan code refactoring steps',
         ];
         metadata.features = [
-          '架构设计思维',
-          '方案对比分析',
-          '风险评估',
+          'Architectural design thinking',
+          'Approach comparison analysis',
+          'Risk assessment',
         ];
         break;
 
       case 'code-analyzer':
         metadata.examples = [
-          '分析文件的导出和依赖关系',
-          '提取目录的模块结构',
-          '生成代码的语义摘要',
+          'Analyze file exports and dependencies',
+          'Extract module structure of directories',
+          'Generate semantic summaries of code',
         ];
         metadata.features = [
-          '快速 Opus 模型',
-          'LSP 工具支持',
-          '结构化 JSON 输出',
-          '语义分析缓存',
+          'Fast Opus model',
+          'LSP tool support',
+          'Structured JSON output',
+          'Semantic analysis cache',
         ];
         break;
 
       case 'blueprint-worker':
         metadata.examples = [
-          'TDD 方式实现功能',
-          '先写测试后写代码',
-          '确保测试通过',
+          'Implement features using TDD',
+          'Write tests first, then code',
+          'Ensure tests pass',
         ];
         metadata.features = [
           'Test-Driven Development',
-          '仅被 Queen Agent 调用',
-          '完整的工具访问',
+          'Only invoked by Queen Agent',
+          'Full tool access',
         ];
         break;
 
       case 'claude-code-guide':
         metadata.examples = [
-          'Axon CLI 功能说明',
-          'Anthropic API 使用方法',
-          'MCP 服务器配置',
+          'Axon CLI feature guide',
+          'Anthropic API usage',
+          'MCP server configuration',
         ];
         metadata.features = [
-          'Web 搜索能力',
-          '文档检索',
-          'API 参考查询',
+          'Web search capability',
+          'Documentation retrieval',
+          'API reference lookup',
         ];
         break;
     }

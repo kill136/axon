@@ -14,17 +14,17 @@ import { execSync } from 'child_process';
  * MCP 服务器配置 Schema (基础对象)
  */
 const baseMcpServerConfigSchema = z.object({
-  type: z.enum(['stdio', 'sse', 'http']).describe('服务器类型'),
-  command: z.string().optional().describe('命令路径 (stdio)'),
-  args: z.array(z.string()).optional().describe('命令参数'),
-  env: z.record(z.string()).optional().describe('环境变量'),
-  url: z.string().url().optional().describe('服务器 URL (sse/http)'),
-  headers: z.record(z.string()).optional().describe('HTTP 请求头'),
+  type: z.enum(['stdio', 'sse', 'http']).describe('server type'),
+  command: z.string().optional().describe('command path (stdio)'),
+  args: z.array(z.string()).optional().describe('command arguments'),
+  env: z.record(z.string()).optional().describe('environment variables'),
+  url: z.string().url().optional().describe('server URL (sse/http)'),
+  headers: z.record(z.string()).optional().describe('HTTP headers'),
   // v2.1.30: OAuth client credentials for servers that don't support Dynamic Client Registration
   oauth: z.object({
     clientId: z.string().describe('OAuth client ID'),
     callbackPort: z.number().optional().describe('Fixed port for OAuth callback redirect URI'),
-  }).optional().describe('OAuth 配置'),
+  }).optional().describe('OAuth configuration'),
   clientSecret: z.string().optional().describe('OAuth client secret'),
 });
 
@@ -44,7 +44,7 @@ export const McpServerConfigSchema = baseMcpServerConfigSchema.refine(
     return true;
   },
   {
-    message: 'stdio 类型需要 command 字段, http/sse 类型需要 url 字段',
+    message: 'stdio type requires command field, http/sse type requires url field',
   }
 );
 
@@ -53,9 +53,9 @@ export const McpServerConfigSchema = baseMcpServerConfigSchema.refine(
  */
 export const ExtendedMcpServerConfigSchema = baseMcpServerConfigSchema
   .extend({
-    enabled: z.boolean().optional().default(true).describe('是否启用'),
-    timeout: z.number().int().positive().optional().default(30000).describe('超时时间(ms)'),
-    retries: z.number().int().min(0).max(10).optional().default(3).describe('重试次数'),
+    enabled: z.boolean().optional().default(true).describe('whether enabled'),
+    timeout: z.number().int().positive().optional().default(30000).describe('timeout (ms)'),
+    retries: z.number().int().min(0).max(10).optional().default(3).describe('retry count'),
   })
   .refine(
     (data) => {
@@ -70,7 +70,7 @@ export const ExtendedMcpServerConfigSchema = baseMcpServerConfigSchema
       return true;
     },
     {
-      message: 'stdio 类型需要 command 字段, http/sse 类型需要 url 字段',
+      message: 'stdio type requires command field, http/sse type requires url field',
     }
   );
 
@@ -249,7 +249,7 @@ export class McpConfigManager {
     // 验证配置
     const validation = this.validateServerConfig(config);
     if (!validation.valid) {
-      throw new Error(`无效的服务器配置: ${validation.errors?.message}`);
+      throw new Error(`Invalid server configuration: ${validation.errors?.message}`);
     }
 
     // 添加到项目配置
@@ -269,13 +269,13 @@ export class McpConfigManager {
   async updateServer(name: string, config: Partial<ExtendedMcpServerConfig>): Promise<void> {
     const existing = this.getServer(name);
     if (!existing) {
-      throw new Error(`服务器不存在: ${name}`);
+      throw new Error(`Server does not exist: ${name}`);
     }
 
     const updated = { ...existing, ...config };
     const validation = this.validateServerConfig(updated);
     if (!validation.valid) {
-      throw new Error(`无效的服务器配置: ${validation.errors?.message}`);
+      throw new Error(`Invalid server configuration: ${validation.errors?.message}`);
     }
 
     // 更新到项目配置
@@ -403,7 +403,7 @@ export class McpConfigManager {
     if (this.validateCommands && config.type === 'stdio' && config.command) {
       result.commandExists = this.checkCommandExists(config.command);
       if (!result.commandExists) {
-        result.warnings?.push(`命令不存在或不可执行: ${config.command}`);
+        result.warnings?.push(`Command does not exist or is not executable: ${config.command}`);
       }
     }
 
@@ -411,7 +411,7 @@ export class McpConfigManager {
     if (config.env) {
       for (const [key, value] of Object.entries(config.env)) {
         if (!value) {
-          result.warnings?.push(`环境变量 ${key} 为空`);
+          result.warnings?.push(`Environment variable ${key} is empty`);
         }
       }
     }
@@ -476,7 +476,7 @@ export class McpConfigManager {
         'utf-8'
       );
     } catch (error) {
-      throw new Error(`保存配置失败: ${filePath} - ${error}`);
+      throw new Error(`Failed to save configuration: ${filePath} - ${error}`);
     }
   }
 
@@ -493,7 +493,7 @@ export class McpConfigManager {
       }
       return backupPath;
     } catch (error) {
-      throw new Error(`备份配置失败: ${error}`);
+      throw new Error(`Failed to backup configuration: ${error}`);
     }
   }
 
@@ -503,13 +503,13 @@ export class McpConfigManager {
   async restore(backupPath: string): Promise<void> {
     try {
       if (!fs.existsSync(backupPath)) {
-        throw new Error(`备份文件不存在: ${backupPath}`);
+        throw new Error(`Backup file does not exist: ${backupPath}`);
       }
 
       await fs.promises.copyFile(backupPath, this.projectConfigPath);
       await this.reload();
     } catch (error) {
-      throw new Error(`恢复配置失败: ${error}`);
+      throw new Error(`Failed to restore configuration: ${error}`);
     }
   }
 
@@ -635,7 +635,7 @@ export class McpConfigManager {
 
       this.notifyChange();
     } catch (error) {
-      throw new Error(`导入配置失败: ${error}`);
+      throw new Error(`Failed to import configuration: ${error}`);
     }
   }
 

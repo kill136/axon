@@ -968,6 +968,12 @@ ${taskSummary}
 
       console.log(`[LeadAgent] User interjection: ${message.substring(0, 50)}${message.length > 50 ? '...' : ''}`);
 
+      // v10.2: 软中断当前 API 请求，让 Loop 在下一轮 turn 读取插嘴消息
+      // 注意：如果 LeadAgent 当前正在 await DispatchWorker（Worker 在执行），
+      // 软中断不会影响 Worker，因为 LeadAgent 的 Loop 在工具执行阶段不持有 API 请求
+      // 只有当 LeadAgent 本身在等待 API 响应时才会有效
+      this.loop.softInterrupt();
+
       // 发射流式事件通知前端显示插嘴消息
       this.emit('lead:stream', {
         blueprintId: this.blueprint.id,

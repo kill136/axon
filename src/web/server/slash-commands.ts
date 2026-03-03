@@ -88,7 +88,7 @@ export class SlashCommandRegistry {
     if (!command) {
       return {
         success: false,
-        message: `未知命令: /${commandName}\n\n使用 /help 查看所有可用命令。`,
+        message: `Unknown command: /${commandName}\n\nUse /help to see all available commands.`,
         dialogType: 'text',
       };
     }
@@ -99,7 +99,7 @@ export class SlashCommandRegistry {
     } catch (error) {
       return {
         success: false,
-        message: `执行 /${commandName} 时出错: ${error instanceof Error ? error.message : String(error)}`,
+        message: `Error executing /${commandName}: ${error instanceof Error ? error.message : String(error)}`,
         dialogType: 'text',
       };
     }
@@ -107,15 +107,15 @@ export class SlashCommandRegistry {
 
   getHelp(): string {
     const categories: Record<string, string> = {
-      general: '通用命令',
-      session: '会话管理',
-      config: '配置',
-      utility: '工具',
-      auth: '认证',
+      general: 'General',
+      session: 'Session Management',
+      config: 'Configuration',
+      utility: 'Utilities',
+      auth: 'Authentication',
     };
     const categoryOrder = ['general', 'session', 'config', 'utility', 'auth'];
 
-    let help = '可用命令\n';
+    let help = 'Available Commands\n';
     help += '='.repeat(50) + '\n\n';
 
     for (const category of categoryOrder) {
@@ -134,7 +134,7 @@ export class SlashCommandRegistry {
       help += '\n';
     }
 
-    help += '使用 /help <命令> 查看特定命令的详细信息。\n';
+    help += 'Use /help <command> for details on a specific command.\n';
     return help;
   }
 }
@@ -145,8 +145,8 @@ export class SlashCommandRegistry {
 const helpCommand: SlashCommand = {
   name: 'help',
   aliases: ['?'],
-  description: '显示所有可用命令',
-  usage: '/help [命令名]',
+  description: 'Show all available commands',
+  usage: '/help [command]',
   category: 'general',
   execute: (ctx: ExtendedCommandContext): CommandResult => {
     const { args } = ctx;
@@ -158,12 +158,12 @@ const helpCommand: SlashCommand = {
         let helpText = `/${cmd.name}\n`;
         helpText += '='.repeat(cmd.name.length + 1) + '\n\n';
         helpText += `${cmd.description}\n\n`;
-        if (cmd.usage) helpText += `用法:\n  ${cmd.usage}\n\n`;
-        if (cmd.aliases?.length) helpText += `别名:\n  ${cmd.aliases.map(a => '/' + a).join(', ')}\n\n`;
-        helpText += `类别: ${cmd.category}\n`;
+        if (cmd.usage) helpText += `Usage:\n  ${cmd.usage}\n\n`;
+        if (cmd.aliases?.length) helpText += `Aliases:\n  ${cmd.aliases.map(a => '/' + a).join(', ')}\n\n`;
+        helpText += `Category: ${cmd.category}\n`;
         return { success: true, message: helpText, dialogType: 'text' };
       } else {
-        return { success: false, message: `未知命令: /${cmdName}\n\n使用 /help 查看所有可用命令。`, dialogType: 'text' };
+        return { success: false, message: `Unknown command: /${cmdName}\n\nUse /help to see all available commands.`, dialogType: 'text' };
       }
     }
 
@@ -175,34 +175,34 @@ const helpCommand: SlashCommand = {
 const clearCommand: SlashCommand = {
   name: 'clear',
   aliases: ['reset', 'new'],
-  description: '清除对话历史',
+  description: 'Clear conversation history',
   category: 'general',
   execute: (ctx: CommandContext): CommandResult => {
     ctx.conversationManager.clearHistory(ctx.sessionId);
-    return { success: true, message: '对话已清除。上下文已释放。', action: 'clear', dialogType: 'text' };
+    return { success: true, message: 'Conversation cleared. Context released.', action: 'clear', dialogType: 'text' };
   },
 };
 
 // /status
 const statusCommand: SlashCommand = {
   name: 'status',
-  description: '显示系统状态',
+  description: 'Show system status',
   category: 'general',
   execute: (ctx: ExtendedCommandContext): CommandResult => {
     const history = ctx.conversationManager.getHistory(ctx.sessionId);
     const apiKeySet = !!(process.env.ANTHROPIC_API_KEY || process.env.AXON_API_KEY);
 
-    let message = 'Axon WebUI 状态\n\n';
-    message += '会话信息:\n';
-    message += `  会话 ID: ${ctx.sessionId.slice(0, 8)}\n`;
-    message += `  消息数: ${history.length}\n`;
-    message += `  模型: ${ctx.model}\n\n`;
-    message += 'API 连接:\n';
-    message += `  状态: ${apiKeySet ? '✓ 已连接' : '✗ 未连接'}\n`;
-    message += `  API Key: ${apiKeySet ? '✓ 已配置' : '✗ 未配置'}\n\n`;
-    message += '环境:\n';
-    message += `  工作目录: ${ctx.cwd}\n`;
-    message += `  平台: ${process.platform}\n`;
+    let message = 'Axon WebUI Status\n\n';
+    message += 'Session Info:\n';
+    message += `  Session ID: ${ctx.sessionId.slice(0, 8)}\n`;
+    message += `  Messages: ${history.length}\n`;
+    message += `  Model: ${ctx.model}\n\n`;
+    message += 'API Connection:\n';
+    message += `  Status: ${apiKeySet ? '✓ Connected' : '✗ Not connected'}\n`;
+    message += `  API Key: ${apiKeySet ? '✓ Configured' : '✗ Not configured'}\n\n`;
+    message += 'Environment:\n';
+    message += `  Working Directory: ${ctx.cwd}\n`;
+    message += `  Platform: ${process.platform}\n`;
     message += `  Node.js: ${process.version}\n`;
 
     return { success: true, message, dialogType: 'text' };
@@ -213,7 +213,7 @@ const statusCommand: SlashCommand = {
 const modelCommand: SlashCommand = {
   name: 'model',
   aliases: ['m'],
-  description: '查看或切换当前模型',
+  description: 'View or switch current model',
   usage: '/model [opus|sonnet|haiku]',
   category: 'config',
   execute: (ctx: ExtendedCommandContext): CommandResult => {
@@ -221,34 +221,34 @@ const modelCommand: SlashCommand = {
 
     if (!args || args.length === 0) {
       const modelMap: Record<string, string> = {
-        opus: 'Claude Opus 4.6 (最强大)',
-        sonnet: 'Claude Sonnet 4.5 (平衡)',
-        haiku: 'Claude Haiku 4.5 (快速)',
+        opus: 'Claude Opus 4.6 (Most powerful)',
+        sonnet: 'Claude Sonnet 4.5 (Balanced)',
+        haiku: 'Claude Haiku 4.5 (Fast)',
       };
-      let message = `当前模型: ${modelMap[ctx.model] || ctx.model}\n\n`;
-      message += '可用模型:\n';
-      message += '  opus   - Claude Opus 4.6 (最强大，适合复杂任务)\n';
-      message += '  sonnet - Claude Sonnet 4.5 (平衡，适合日常任务)\n';
-      message += '  haiku  - Claude Haiku 4.5 (快速，适合简单任务)\n\n';
-      message += '使用 /model <模型名> 切换模型';
+      let message = `Current model: ${modelMap[ctx.model] || ctx.model}\n\n`;
+      message += 'Available models:\n';
+      message += '  opus   - Claude Opus 4.6 (Most powerful, for complex tasks)\n';
+      message += '  sonnet - Claude Sonnet 4.5 (Balanced, for everyday tasks)\n';
+      message += '  haiku  - Claude Haiku 4.5 (Fast, for simple tasks)\n\n';
+      message += 'Use /model <name> to switch models';
       return { success: true, message, dialogType: 'text' };
     }
 
     const newModel = args[0].toLowerCase();
     const validModels = ['opus', 'sonnet', 'haiku'];
     if (!validModels.includes(newModel)) {
-      return { success: false, message: `无效的模型: ${newModel}\n\n可用模型: opus, sonnet, haiku`, dialogType: 'text' };
+      return { success: false, message: `Invalid model: ${newModel}\n\nAvailable models: opus, sonnet, haiku`, dialogType: 'text' };
     }
 
     ctx.conversationManager.setModel(ctx.sessionId, newModel);
-    return { success: true, message: `已切换到 ${newModel} 模型`, dialogType: 'text' };
+    return { success: true, message: `Switched to ${newModel} model`, dialogType: 'text' };
   },
 };
 
 // /cost
 const costCommand: SlashCommand = {
   name: 'cost',
-  description: '显示当前会话费用',
+  description: 'Show current session cost',
   category: 'session',
   execute: (ctx: ExtendedCommandContext): CommandResult => {
     const history = ctx.conversationManager.getHistory(ctx.sessionId);
@@ -272,15 +272,15 @@ const costCommand: SlashCommand = {
     const outputCost = (totalOutput / 1000000) * pricing.output;
     const totalCost = inputCost + outputCost;
 
-    let message = '会话费用统计\n\n';
-    message += '当前会话:\n';
-    message += `  消息数: ${history.length}\n`;
-    message += `  输入 tokens: ${totalInput.toLocaleString()}\n`;
-    message += `  输出 tokens: ${totalOutput.toLocaleString()}\n`;
-    message += `  估算费用: $${totalCost.toFixed(4)}\n\n`;
-    message += `定价参考 (${pricing.name}):\n`;
-    message += `  输入: $${pricing.input} / 1M tokens\n`;
-    message += `  输出: $${pricing.output} / 1M tokens`;
+    let message = 'Session Cost Summary\n\n';
+    message += 'Current Session:\n';
+    message += `  Messages: ${history.length}\n`;
+    message += `  Input tokens: ${totalInput.toLocaleString()}\n`;
+    message += `  Output tokens: ${totalOutput.toLocaleString()}\n`;
+    message += `  Estimated cost: ${totalCost.toFixed(4)}\n\n`;
+    message += `Pricing reference (${pricing.name}):\n`;
+    message += `  Input: ${pricing.input} / 1M tokens\n`;
+    message += `  Output: ${pricing.output} / 1M tokens`;
 
     return { success: true, message, dialogType: 'text' };
   },
@@ -290,18 +290,18 @@ const costCommand: SlashCommand = {
 const configCommand: SlashCommand = {
   name: 'config',
   aliases: ['settings'],
-  description: '显示当前配置',
+  description: 'Show current configuration',
   category: 'config',
   execute: (ctx: ExtendedCommandContext): CommandResult => {
     const apiKeySet = !!(process.env.ANTHROPIC_API_KEY || process.env.AXON_API_KEY);
-    let message = '当前配置\n\n';
-    message += `会话 ID: ${ctx.sessionId}\n`;
-    message += `模型: ${ctx.model}\n`;
-    message += `工作目录: ${ctx.cwd}\n`;
-    message += `平台: ${process.platform}\n`;
+    let message = 'Current Configuration\n\n';
+    message += `Session ID: ${ctx.sessionId}\n`;
+    message += `Model: ${ctx.model}\n`;
+    message += `Working Directory: ${ctx.cwd}\n`;
+    message += `Platform: ${process.platform}\n`;
     message += `Node.js: ${process.version}\n\n`;
-    message += `API 状态:\n`;
-    message += `  API Key: ${apiKeySet ? '✓ 已配置' : '✗ 未配置'}\n`;
+    message += `API Status:\n`;
+    message += `  API Key: ${apiKeySet ? '✓ Configured' : '✗ Not configured'}\n`;
     return { success: true, message, dialogType: 'text' };
   },
 };
@@ -310,7 +310,7 @@ const configCommand: SlashCommand = {
 const compactCommand: SlashCommand = {
   name: 'compact',
   aliases: ['c'],
-  description: '压缩对话历史以释放上下文',
+  description: 'Compact conversation history to free up context',
   category: 'session',
   execute: async (ctx: ExtendedCommandContext): Promise<CommandResult> => {
     const result = await ctx.conversationManager.compactSession(ctx.sessionId);
@@ -318,15 +318,15 @@ const compactCommand: SlashCommand = {
     if (!result.success) {
       return {
         success: false,
-        message: result.error || '压缩失败',
+        message: result.error || 'Compaction failed',
         dialogType: 'compact-result',
       };
     }
 
-    let message = '上下文压缩完成\n\n';
-    message += `节省 tokens: ~${result.savedTokens?.toLocaleString() || '未知'}\n`;
-    message += `压缩前消息数: ${result.messagesBefore || '未知'}\n`;
-    message += `压缩后消息数: ${result.messagesAfter || '未知'}`;
+    let message = 'Context compaction complete\n\n';
+    message += `Tokens saved: ~${result.savedTokens?.toLocaleString() || 'unknown'}\n`;
+    message += `Messages before: ${result.messagesBefore || 'unknown'}\n`;
+    message += `Messages after: ${result.messagesAfter || 'unknown'}`;
 
     return {
       success: true,
@@ -341,7 +341,7 @@ const compactCommand: SlashCommand = {
 const resumeCommand: SlashCommand = {
   name: 'resume',
   aliases: ['continue'],
-  description: '恢复之前的对话',
+  description: 'Resume a previous conversation',
   usage: '/resume [session-id]',
   category: 'session',
   execute: async (ctx: ExtendedCommandContext): Promise<CommandResult> => {
@@ -361,14 +361,14 @@ const resumeCommand: SlashCommand = {
       if (filteredSessions.length === 0) {
         return {
           success: true,
-          message: '没有可恢复的历史会话。',
+          message: 'No resumable history sessions.',
           dialogType: 'text',
         };
       }
 
       return {
         success: true,
-        message: '选择要恢复的会话',
+        message: 'Select a session to resume',
         dialogType: 'session-list',
         data: {
           sessions: filteredSessions.map(s => ({
@@ -392,14 +392,14 @@ const resumeCommand: SlashCommand = {
     if (!success) {
       return {
         success: false,
-        message: `会话 ${targetSessionId} 不存在或恢复失败。`,
+        message: `Session ${targetSessionId} does not exist or failed to resume.`,
         dialogType: 'text',
       };
     }
 
     return {
       success: true,
-      message: `会话已恢复: ${targetSessionId.slice(0, 8)}...`,
+      message: `Session resumed: ${targetSessionId.slice(0, 8)}...`,
       dialogType: 'text',
       data: { switchToSessionId: targetSessionId },
     };
@@ -410,7 +410,7 @@ const resumeCommand: SlashCommand = {
 const tasksCommand: SlashCommand = {
   name: 'tasks',
   aliases: ['bashes'],
-  description: '列出和管理后台 Agent 任务',
+  description: 'List and manage background Agent tasks',
   usage: '/tasks [list|cancel <id>|output <id>]',
   category: 'utility',
   execute: async (ctx: ExtendedCommandContext): Promise<CommandResult> => {
@@ -418,33 +418,33 @@ const tasksCommand: SlashCommand = {
 
     const taskManager = conversationManager.getTaskManager(sessionId);
     if (!taskManager) {
-      return { success: false, message: '任务管理器未初始化。', dialogType: 'text' };
+      return { success: false, message: 'Task manager not initialized.', dialogType: 'text' };
     }
 
     const formatTaskDetail = (task: ReturnType<typeof taskManager.getTask>) => {
       if (!task) return '';
-      let message = `任务详情: ${task.description}\n`;
+      let message = `Task details: ${task.description}\n`;
       message += '='.repeat(50) + '\n\n';
       message += `ID: ${task.id}\n`;
-      message += `类型: ${task.agentType}\n`;
-      message += `状态: ${task.status}\n`;
-      message += `开始时间: ${task.startTime.toLocaleString('zh-CN')}\n`;
+      message += `Type: ${task.agentType}\n`;
+      message += `Status: ${task.status}\n`;
+      message += `Start time: ${task.startTime.toLocaleString()}\n`;
       if (task.endTime) {
         const duration = ((task.endTime.getTime() - task.startTime.getTime()) / 1000).toFixed(1);
-        message += `结束时间: ${task.endTime.toLocaleString('zh-CN')}\n`;
-        message += `耗时: ${duration}s\n`;
+        message += `End time: ${task.endTime.toLocaleString()}\n`;
+        message += `Duration: ${duration}s\n`;
       }
       if (task.progress) {
-        message += `\n进度: ${task.progress.current}/${task.progress.total}\n`;
-        if (task.progress.message) message += `消息: ${task.progress.message}\n`;
+        message += `\nProgress: ${task.progress.current}/${task.progress.total}\n`;
+        if (task.progress.message) message += `Message: ${task.progress.message}\n`;
       }
       const output = taskManager.getTaskOutput(task.id);
       if (output) {
-        message += `\n输出:\n${'-'.repeat(50)}\n${output}\n`;
+        message += `\nOutput:\n${'-'.repeat(50)}\n${output}\n`;
       } else if (task.status === 'running') {
-        message += '\n任务正在运行中，暂无输出。\n';
+        message += '\nTask is running, no output yet.\n';
       } else if (task.error) {
-        message += `\n错误:\n${task.error}\n`;
+        message += `\nError:\n${task.error}\n`;
       }
       return message;
     };
@@ -452,51 +452,51 @@ const tasksCommand: SlashCommand = {
     if (!args || args.length === 0) {
       const tasks = taskManager.listTasks();
       if (tasks.length === 0) {
-        return { success: true, message: '没有后台任务。', dialogType: 'text' };
+        return { success: true, message: 'No background tasks.', dialogType: 'text' };
       }
       if (tasks.length === 1) {
         return { success: true, message: formatTaskDetail(tasks[0]), dialogType: 'text' };
       }
 
-      let message = '后台任务列表\n\n';
+      let message = 'Background Tasks\n\n';
       tasks.forEach((task, idx) => {
         const duration = task.endTime
           ? ((task.endTime.getTime() - task.startTime.getTime()) / 1000).toFixed(1) + 's'
-          : '运行中...';
+          : 'running...';
         const statusEmoji = { running: '⏳', completed: '✅', failed: '❌', cancelled: '🚫' }[task.status] || '?';
         message += `${idx + 1}. ${statusEmoji} ${task.description}\n`;
         message += `   ID: ${task.id.slice(0, 8)}\n`;
-        message += `   状态: ${task.status} | 时长: ${duration}\n`;
+        message += `   Status: ${task.status} | Duration: ${duration}\n`;
         if (task.progress) {
-          message += `   进度: ${task.progress.current}/${task.progress.total}`;
+          message += `   Progress: ${task.progress.current}/${task.progress.total}`;
           if (task.progress.message) message += ` - ${task.progress.message}`;
           message += '\n';
         }
         message += '\n';
       });
-      message += '使用 /tasks output <id> 查看任务输出\n';
-      message += '使用 /tasks cancel <id> 取消运行中的任务';
+      message += 'Use /tasks output <id> to view task output\n';
+      message += 'Use /tasks cancel <id> to cancel a running task';
       return { success: true, message, dialogType: 'text' };
     }
 
     const subcommand = args[0].toLowerCase();
 
     if (subcommand === 'cancel') {
-      if (args.length < 2) return { success: false, message: '用法: /tasks cancel <task-id>', dialogType: 'text' };
+      if (args.length < 2) return { success: false, message: 'Usage: /tasks cancel <task-id>', dialogType: 'text' };
       const taskId = args[1];
       const task = taskManager.getTask(taskId);
-      if (!task) return { success: false, message: `任务 ${taskId} 不存在`, dialogType: 'text' };
+      if (!task) return { success: false, message: `Task ${taskId} does not exist`, dialogType: 'text' };
       const success = taskManager.cancelTask(taskId);
       return success
-        ? { success: true, message: `任务 ${taskId.slice(0, 8)} 已取消`, dialogType: 'text' }
-        : { success: false, message: `无法取消任务 ${taskId.slice(0, 8)}（可能已经完成）`, dialogType: 'text' };
+        ? { success: true, message: `Task ${taskId.slice(0, 8)} cancelled`, dialogType: 'text' }
+        : { success: false, message: `Cannot cancel task ${taskId.slice(0, 8)} (may have already completed)`, dialogType: 'text' };
     }
 
     if (subcommand === 'output' || subcommand === 'o') {
-      if (args.length < 2) return { success: false, message: '用法: /tasks output <task-id>', dialogType: 'text' };
+      if (args.length < 2) return { success: false, message: 'Usage: /tasks output <task-id>', dialogType: 'text' };
       const taskId = args[1];
       const task = taskManager.getTask(taskId);
-      if (!task) return { success: false, message: `任务 ${taskId} 不存在`, dialogType: 'text' };
+      if (!task) return { success: false, message: `Task ${taskId} does not exist`, dialogType: 'text' };
       return { success: true, message: formatTaskDetail(task), dialogType: 'text' };
     }
 
@@ -506,7 +506,7 @@ const tasksCommand: SlashCommand = {
 
     return {
       success: false,
-      message: `未知子命令: ${subcommand}\n\n用法:\n  /tasks          - 列出所有任务\n  /tasks cancel <id>  - 取消任务\n  /tasks output <id>  - 查看任务输出`,
+      message: `Unknown subcommand: ${subcommand}\n\nUsage:\n  /tasks          - List all tasks\n  /tasks cancel <id>  - Cancel a task\n  /tasks output <id>  - View task output`,
       dialogType: 'text',
     };
   },
@@ -515,7 +515,7 @@ const tasksCommand: SlashCommand = {
 // /doctor
 const doctorCommand: SlashCommand = {
   name: 'doctor',
-  description: '运行系统诊断检查',
+  description: 'Run system diagnostic checks',
   usage: '/doctor [verbose]',
   category: 'utility',
   execute: async (ctx: ExtendedCommandContext): Promise<CommandResult> => {
@@ -535,7 +535,7 @@ const doctorCommand: SlashCommand = {
     } catch (error) {
       return {
         success: false,
-        message: `运行诊断失败: ${error instanceof Error ? error.message : '未知错误'}`,
+        message: `Failed to run diagnostics: ${error instanceof Error ? error.message : 'unknown error'}`,
         dialogType: 'text',
       };
     }
@@ -545,8 +545,8 @@ const doctorCommand: SlashCommand = {
 // /mcp
 const mcpCommand: SlashCommand = {
   name: 'mcp',
-  description: '管理 MCP 服务器',
-  usage: '/mcp [list|add|remove|toggle] [参数]',
+  description: 'Manage MCP servers',
+  usage: '/mcp [list|add|remove|toggle] [args]',
   category: 'config',
   execute: async (ctx: ExtendedCommandContext): Promise<CommandResult> => {
     const { args, conversationManager } = ctx;
@@ -555,69 +555,69 @@ const mcpCommand: SlashCommand = {
       try {
         const servers = conversationManager.listMcpServers();
         if (servers.length === 0) {
-          return { success: true, message: '没有配置 MCP 服务器。\n\n使用 /mcp add <name> <command> 添加服务器。', dialogType: 'text' };
+          return { success: true, message: 'No MCP servers configured.\n\nUse /mcp add <name> <command> to add a server.', dialogType: 'text' };
         }
 
-        let message = 'MCP 服务器列表\n\n';
+        let message = 'MCP Server List\n\n';
         servers.forEach((server, idx) => {
           const statusIcon = server.enabled ? '✓' : '✗';
           message += `${idx + 1}. ${statusIcon} ${server.name}\n`;
-          message += `   类型: ${server.type}\n`;
+          message += `   Type: ${server.type}\n`;
           if (server.type === 'stdio' && server.command) {
-            message += `   命令: ${server.command}${server.args?.length ? ' ' + server.args.join(' ') : ''}\n`;
+            message += `   Command: ${server.command}${server.args?.length ? ' ' + server.args.join(' ') : ''}\n`;
           } else if (server.url) {
             message += `   URL: ${server.url}\n`;
           }
           message += '\n';
         });
-        message += '命令: /mcp add|remove|toggle <name>';
+        message += 'Commands: /mcp add|remove|toggle <name>';
         return { success: true, message, dialogType: 'text' };
       } catch (error) {
-        return { success: false, message: `列出 MCP 服务器失败: ${error instanceof Error ? error.message : String(error)}`, dialogType: 'text' };
+        return { success: false, message: `Failed to list MCP servers: ${error instanceof Error ? error.message : String(error)}`, dialogType: 'text' };
       }
     }
 
     const sub = args[0].toLowerCase();
 
     if (sub === 'add') {
-      if (args.length < 3) return { success: false, message: '用法: /mcp add <name> <command> [args...]', dialogType: 'text' };
+      if (args.length < 3) return { success: false, message: 'Usage: /mcp add <name> <command> [args...]', dialogType: 'text' };
       const name = args[1], command = args[2], cmdArgs = args.slice(3);
       try {
         const success = await conversationManager.addMcpServer(name, { type: 'stdio', command, args: cmdArgs.length > 0 ? cmdArgs : undefined, enabled: true });
         return success
-          ? { success: true, message: `已添加 MCP 服务器: ${name}`, dialogType: 'text' }
-          : { success: false, message: `添加 MCP 服务器 ${name} 失败`, dialogType: 'text' };
+          ? { success: true, message: `MCP server added: ${name}`, dialogType: 'text' }
+          : { success: false, message: `Failed to add MCP server ${name}`, dialogType: 'text' };
       } catch (error) {
-        return { success: false, message: `添加失败: ${error instanceof Error ? error.message : String(error)}`, dialogType: 'text' };
+        return { success: false, message: `Failed to add: ${error instanceof Error ? error.message : String(error)}`, dialogType: 'text' };
       }
     }
 
     if (sub === 'remove') {
-      if (args.length < 2) return { success: false, message: '用法: /mcp remove <name>', dialogType: 'text' };
+      if (args.length < 2) return { success: false, message: 'Usage: /mcp remove <name>', dialogType: 'text' };
       try {
         const success = await conversationManager.removeMcpServer(args[1]);
         return success
-          ? { success: true, message: `已删除 MCP 服务器: ${args[1]}`, dialogType: 'text' }
-          : { success: false, message: `MCP 服务器 ${args[1]} 不存在`, dialogType: 'text' };
+          ? { success: true, message: `MCP server removed: ${args[1]}`, dialogType: 'text' }
+          : { success: false, message: `MCP server ${args[1]} does not exist`, dialogType: 'text' };
       } catch (error) {
-        return { success: false, message: `删除失败: ${error instanceof Error ? error.message : String(error)}`, dialogType: 'text' };
+        return { success: false, message: `Failed to remove: ${error instanceof Error ? error.message : String(error)}`, dialogType: 'text' };
       }
     }
 
     if (sub === 'toggle' || sub === 'enable' || sub === 'disable') {
-      if (args.length < 2) return { success: false, message: `用法: /mcp ${sub} <name>`, dialogType: 'text' };
+      if (args.length < 2) return { success: false, message: `Usage: /mcp ${sub} <name>`, dialogType: 'text' };
       const enabled = sub === 'enable' ? true : sub === 'disable' ? false : undefined;
       try {
         const result = await conversationManager.toggleMcpServer(args[1], enabled);
         return result.success
-          ? { success: true, message: `MCP 服务器 ${args[1]} 已${result.enabled ? '启用' : '禁用'}`, dialogType: 'text' }
-          : { success: false, message: `MCP 服务器 ${args[1]} 不存在`, dialogType: 'text' };
+          ? { success: true, message: `MCP server ${args[1]} ${result.enabled ? 'enabled' : 'disabled'}`, dialogType: 'text' }
+          : { success: false, message: `MCP server ${args[1]} does not exist`, dialogType: 'text' };
       } catch (error) {
-        return { success: false, message: `操作失败: ${error instanceof Error ? error.message : String(error)}`, dialogType: 'text' };
+        return { success: false, message: `Operation failed: ${error instanceof Error ? error.message : String(error)}`, dialogType: 'text' };
       }
     }
 
-    return { success: false, message: '可用命令: list, add, remove, toggle', dialogType: 'text' };
+    return { success: false, message: 'Available commands: list, add, remove, toggle', dialogType: 'text' };
   },
 };
 
@@ -625,8 +625,8 @@ const mcpCommand: SlashCommand = {
 const pluginCommand: SlashCommand = {
   name: 'plugin',
   aliases: ['plugins'],
-  description: '管理 Axon 插件',
-  usage: '/plugin [list|info|enable|disable|uninstall] [参数]',
+  description: 'Manage Axon plugins',
+  usage: '/plugin [list|info|enable|disable|uninstall] [args]',
   category: 'config',
   execute: async (ctx: ExtendedCommandContext): Promise<CommandResult> => {
     const { args, conversationManager } = ctx;
@@ -635,20 +635,20 @@ const pluginCommand: SlashCommand = {
       try {
         const plugins = await conversationManager.listPlugins();
         if (plugins.length === 0) {
-          return { success: true, message: '没有安装插件。\n\n插件安装在: ~/.axon/plugins/', dialogType: 'text' };
+          return { success: true, message: 'No plugins installed.\n\nPlugins are installed in: ~/.axon/plugins/', dialogType: 'text' };
         }
 
-        let message = '插件列表\n\n';
+        let message = 'Plugin List\n\n';
         plugins.forEach((plugin, idx) => {
           const statusIcon = plugin.loaded ? '✓' : plugin.enabled ? '○' : '✗';
           message += `${idx + 1}. ${statusIcon} ${plugin.name} v${plugin.version}\n`;
           if (plugin.description) message += `   ${plugin.description}\n`;
-          message += `   状态: ${plugin.loaded ? '已加载' : plugin.enabled ? '已启用' : '已禁用'}\n\n`;
+          message += `   Status: ${plugin.loaded ? 'Loaded' : plugin.enabled ? 'Enabled' : 'Disabled'}\n\n`;
         });
-        message += '命令: /plugin info|enable|disable|uninstall <name>';
+        message += 'Commands: /plugin info|enable|disable|uninstall <name>';
         return { success: true, message, dialogType: 'text' };
       } catch (error) {
-        return { success: false, message: `列出插件失败: ${error instanceof Error ? error.message : String(error)}`, dialogType: 'text' };
+        return { success: false, message: `Failed to list plugins: ${error instanceof Error ? error.message : String(error)}`, dialogType: 'text' };
       }
     }
 
@@ -657,15 +657,15 @@ const pluginCommand: SlashCommand = {
     if (sub === 'info' && args.length >= 2) {
       try {
         const plugin = await conversationManager.getPluginInfo(args[1]);
-        if (!plugin) return { success: false, message: `插件 ${args[1]} 不存在`, dialogType: 'text' };
+        if (!plugin) return { success: false, message: `Plugin ${args[1]} does not exist`, dialogType: 'text' };
         let message = `${plugin.name} v${plugin.version}\n`;
         if (plugin.description) message += `${plugin.description}\n`;
-        if (plugin.author) message += `作者: ${plugin.author}\n`;
-        message += `状态: ${plugin.loaded ? '已加载' : plugin.enabled ? '已启用' : '已禁用'}\n`;
-        if (plugin.path) message += `路径: ${plugin.path}\n`;
+        if (plugin.author) message += `Author: ${plugin.author}\n`;
+        message += `Status: ${plugin.loaded ? 'Loaded' : plugin.enabled ? 'Enabled' : 'Disabled'}\n`;
+        if (plugin.path) message += `Path: ${plugin.path}\n`;
         return { success: true, message, dialogType: 'text' };
       } catch (error) {
-        return { success: false, message: `获取插件信息失败: ${error instanceof Error ? error.message : String(error)}`, dialogType: 'text' };
+        return { success: false, message: `Failed to get plugin info: ${error instanceof Error ? error.message : String(error)}`, dialogType: 'text' };
       }
     }
 
@@ -673,10 +673,10 @@ const pluginCommand: SlashCommand = {
       try {
         const success = await conversationManager.enablePlugin(args[1]);
         return success
-          ? { success: true, message: `已启用插件: ${args[1]}`, dialogType: 'text' }
-          : { success: false, message: `启用插件 ${args[1]} 失败`, dialogType: 'text' };
+          ? { success: true, message: `Plugin enabled: ${args[1]}`, dialogType: 'text' }
+          : { success: false, message: `Failed to enable plugin ${args[1]}`, dialogType: 'text' };
       } catch (error) {
-        return { success: false, message: `启用失败: ${error instanceof Error ? error.message : String(error)}`, dialogType: 'text' };
+        return { success: false, message: `Failed to enable: ${error instanceof Error ? error.message : String(error)}`, dialogType: 'text' };
       }
     }
 
@@ -684,10 +684,10 @@ const pluginCommand: SlashCommand = {
       try {
         const success = await conversationManager.disablePlugin(args[1]);
         return success
-          ? { success: true, message: `已禁用插件: ${args[1]}`, dialogType: 'text' }
-          : { success: false, message: `禁用插件 ${args[1]} 失败`, dialogType: 'text' };
+          ? { success: true, message: `Plugin disabled: ${args[1]}`, dialogType: 'text' }
+          : { success: false, message: `Failed to disable plugin ${args[1]}`, dialogType: 'text' };
       } catch (error) {
-        return { success: false, message: `禁用失败: ${error instanceof Error ? error.message : String(error)}`, dialogType: 'text' };
+        return { success: false, message: `Failed to disable: ${error instanceof Error ? error.message : String(error)}`, dialogType: 'text' };
       }
     }
 
@@ -695,14 +695,14 @@ const pluginCommand: SlashCommand = {
       try {
         const success = await conversationManager.uninstallPlugin(args[1]);
         return success
-          ? { success: true, message: `已卸载插件: ${args[1]}`, dialogType: 'text' }
-          : { success: false, message: `卸载插件 ${args[1]} 失败`, dialogType: 'text' };
+          ? { success: true, message: `Plugin uninstalled: ${args[1]}`, dialogType: 'text' }
+          : { success: false, message: `Failed to uninstall plugin ${args[1]}`, dialogType: 'text' };
       } catch (error) {
-        return { success: false, message: `卸载失败: ${error instanceof Error ? error.message : String(error)}`, dialogType: 'text' };
+        return { success: false, message: `Failed to uninstall: ${error instanceof Error ? error.message : String(error)}`, dialogType: 'text' };
       }
     }
 
-    return { success: false, message: '可用命令: list, info, enable, disable, uninstall', dialogType: 'text' };
+    return { success: false, message: 'Available commands: list, info, enable, disable, uninstall', dialogType: 'text' };
   },
 };
 
@@ -710,7 +710,7 @@ const pluginCommand: SlashCommand = {
 const loginCommand: SlashCommand = {
   name: 'login',
   aliases: ['auth'],
-  description: '管理认证和 API 密钥',
+  description: 'Manage authentication and API keys',
   usage: '/login [status|set <key>|clear]',
   category: 'auth',
   execute: async (ctx: ExtendedCommandContext): Promise<CommandResult> => {
@@ -721,14 +721,14 @@ const loginCommand: SlashCommand = {
       try {
         const status = webAuth.getStatus();
         const maskedKey = webAuth.getMaskedApiKey();
-        let message = '认证状态\n\n';
-        message += `认证: ${status.authenticated ? '✓ 已认证' : '✗ 未认证'}\n`;
-        message += `类型: ${status.type === 'api_key' ? 'API密钥' : status.type === 'oauth' ? 'OAuth' : '无'}\n`;
-        if (maskedKey) message += `API密钥: ${maskedKey}\n`;
-        message += '\n命令: /login set <key> | /login clear | /logout';
+        let message = 'Authentication Status\n\n';
+        message += `Auth: ${status.authenticated ? '✓ Authenticated' : '✗ Not authenticated'}\n`;
+        message += `Type: ${status.type === 'api_key' ? 'API Key' : status.type === 'oauth' ? 'OAuth' : 'None'}\n`;
+        if (maskedKey) message += `API Key: ${maskedKey}\n`;
+        message += '\nCommands: /login set <key> | /login clear | /logout';
         return { success: true, message, dialogType: 'text' };
       } catch (error) {
-        return { success: false, message: `获取认证状态失败: ${error instanceof Error ? error.message : String(error)}`, dialogType: 'text' };
+        return { success: false, message: `Failed to get auth status: ${error instanceof Error ? error.message : String(error)}`, dialogType: 'text' };
       }
     }
 
@@ -739,31 +739,31 @@ const loginCommand: SlashCommand = {
         const apiKey = args.slice(1).join(' ');
         const success = webAuth.setApiKey(apiKey);
         if (success) {
-          return { success: true, message: `API密钥已设置: ${webAuth.getMaskedApiKey()}`, dialogType: 'text' };
+          return { success: true, message: `API key set: ${webAuth.getMaskedApiKey()}`, dialogType: 'text' };
         }
-        return { success: false, message: '设置API密钥失败，请检查格式。', dialogType: 'text' };
+        return { success: false, message: 'Failed to set API key, please check the format.', dialogType: 'text' };
       } catch (error) {
-        return { success: false, message: `设置失败: ${error instanceof Error ? error.message : String(error)}`, dialogType: 'text' };
+        return { success: false, message: `Failed to set: ${error instanceof Error ? error.message : String(error)}`, dialogType: 'text' };
       }
     }
 
     if (sub === 'clear') {
       try {
         webAuth.clearAll();
-        return { success: true, message: '认证已清除。', dialogType: 'text' };
+        return { success: true, message: 'Authentication cleared.', dialogType: 'text' };
       } catch (error) {
-        return { success: false, message: `清除失败: ${error instanceof Error ? error.message : String(error)}`, dialogType: 'text' };
+        return { success: false, message: `Failed to clear: ${error instanceof Error ? error.message : String(error)}`, dialogType: 'text' };
       }
     }
 
-    return { success: false, message: '可用命令: status, set <key>, clear', dialogType: 'text' };
+    return { success: false, message: 'Available commands: status, set <key>, clear', dialogType: 'text' };
   },
 };
 
 // /logout
 const logoutCommand: SlashCommand = {
   name: 'logout',
-  description: '登出（清除 API 密钥）',
+  description: 'Log out (clear API key)',
   category: 'auth',
   execute: async (ctx: ExtendedCommandContext): Promise<CommandResult> => {
     return loginCommand.execute({ ...ctx, args: ['clear'] });

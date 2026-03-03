@@ -28,7 +28,7 @@ export class ConnectionManager {
         return new MongoDriver();
       }
       default:
-        throw new Error(`不支持的数据库类型: ${(config as any).type}`);
+        throw new Error(`Unsupported database type: ${(config as any).type}`);
     }
   }
 
@@ -44,14 +44,14 @@ export class ConnectionManager {
 
   async disconnect(name: string): Promise<void> {
     const entry = this.connections.get(name);
-    if (!entry) throw new Error(`连接不存在: ${name}`);
+    if (!entry) throw new Error(`Connection not found: ${name}`);
     await entry.driver.disconnect();
     this.connections.delete(name);
   }
 
   async query(name: string, sql: string, maxRows: number, timeout: number): Promise<QueryResult> {
     const entry = this.connections.get(name);
-    if (!entry) throw new Error(`连接不存在: ${name}`);
+    if (!entry) throw new Error(`Connection not found: ${name}`);
     const result = await entry.driver.query(sql, timeout);
     // 截断行数
     if (result.rows.length > maxRows) {
@@ -75,19 +75,19 @@ export class ConnectionManager {
 
   async listDatabases(name: string): Promise<string[]> {
     const entry = this.connections.get(name);
-    if (!entry) throw new Error(`连接不存在: ${name}`);
+    if (!entry) throw new Error(`Connection not found: ${name}`);
     return entry.driver.listDatabases();
   }
 
   async listTables(name: string, database?: string): Promise<string[]> {
     const entry = this.connections.get(name);
-    if (!entry) throw new Error(`连接不存在: ${name}`);
+    if (!entry) throw new Error(`Connection not found: ${name}`);
     return entry.driver.listTables(database);
   }
 
   async describeTable(name: string, table: string): Promise<ColumnInfo[]> {
     const entry = this.connections.get(name);
-    if (!entry) throw new Error(`连接不存在: ${name}`);
+    if (!entry) throw new Error(`Connection not found: ${name}`);
     return entry.driver.describeTable(table);
   }
 

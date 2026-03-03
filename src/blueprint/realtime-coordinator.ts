@@ -790,6 +790,19 @@ export class RealtimeCoordinator extends EventEmitter {
         this.pauseResolve();
         this.pauseResolve = null;
       }
+      // v10.2: 先中止所有活跃的 Worker（它们可能正在阻塞 LeadAgent 的 DispatchWorker 工具调用）
+      // 必须先于 LeadAgent.stop()，否则 LeadAgent 会等 Worker 完成后才真正退出
+      if (this.activeWorkerExecutors.size > 0) {
+        console.log(`[RealtimeCoordinator] Canceling execution: aborting ${this.activeWorkerExecutors.size} active Worker(s)`);
+        for (const [workerId, worker] of this.activeWorkerExecutors) {
+          try {
+            worker.abort();
+            console.log(`[RealtimeCoordinator] Worker ${workerId} aborted`);
+          } catch (e) {
+            console.error(`[RealtimeCoordinator] Failed to abort Worker ${workerId}:`, e);
+          }
+        }
+      }
       // v9.1: 中止 LeadAgent 的 ConversationLoop
       if (this.currentLeadAgent) {
         console.log('[RealtimeCoordinator] Canceling execution: aborting LeadAgent');

@@ -14,7 +14,7 @@ export class PostgresDriver implements DriverInterface {
       const mod = await import('pg');
       pg = mod.default ?? mod;
     } catch {
-      throw new Error('请安装 pg 包：npm install pg');
+      throw new Error('Please install pg package: npm install pg');
     }
 
     this.config = config;
@@ -36,10 +36,10 @@ export class PostgresDriver implements DriverInterface {
   }
 
   async query(sql: string, timeout: number): Promise<QueryResult> {
-    if (!this.client) throw new Error('未连接到数据库');
+    if (!this.client) throw new Error('Not connected to database');
 
     if (this.config?.readonly && WRITE_KEYWORDS.test(sql)) {
-      throw new Error('只读模式：不允许执行写操作');
+      throw new Error('Read-only mode: write operations not allowed');
     }
 
     const start = Date.now();

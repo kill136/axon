@@ -29,45 +29,45 @@ import type {
  */
 export class UpdateTaskPlanTool extends BaseTool<TaskPlanUpdateInput, ToolResult> {
   name = 'UpdateTaskPlan';
-  description = `更新执行计划中的任务状态（LeadAgent 专用）
+  description = `Update task status in execution plan (LeadAgent exclusive)
 
-## 使用时机
-当你开始执行、完成、跳过一个任务时，调用此工具同步状态到前端。
+## When to Use
+When you start executing, complete, or skip a task, call this tool to sync status to the frontend.
 
-## 操作类型
+## Operation Types
 
-### start_task - 标记任务开始
-调用时机：你开始自己执行某个任务之前
+### start_task - Mark task as started
+When to call: Before you begin executing a task yourself
 \`\`\`json
 { "action": "start_task", "taskId": "task_1", "executionMode": "lead-agent" }
 \`\`\`
-注意：使用 DispatchWorker 派发任务时**无需**手动调用 start_task，DispatchWorker 会自动更新状态。
+Note: When using DispatchWorker to dispatch tasks, there is **no need** to manually call start_task, DispatchWorker will automatically update status.
 
-### complete_task - 标记任务完成
-调用时机：你自己执行完一个任务后
+### complete_task - Mark task as completed
+When to call: After you finish executing a task yourself
 \`\`\`json
-{ "action": "complete_task", "taskId": "task_1", "summary": "完成了数据库schema设计..." }
+{ "action": "complete_task", "taskId": "task_1", "summary": "Completed database schema design..." }
 \`\`\`
-注意：DispatchWorker 完成后会自动标记，无需手动调用。
+Note: DispatchWorker will automatically mark completion, no manual call needed.
 
-### fail_task - 标记任务失败
+### fail_task - Mark task as failed
 \`\`\`json
-{ "action": "fail_task", "taskId": "task_1", "error": "依赖安装失败" }
-\`\`\`
-
-### skip_task - 跳过任务
-\`\`\`json
-{ "action": "skip_task", "taskId": "task_3", "reason": "经探索发现此功能已存在" }
+{ "action": "fail_task", "taskId": "task_1", "error": "Dependency installation failed" }
 \`\`\`
 
-### add_task - 动态新增任务
-调用时机：探索代码库后发现需要额外任务
+### skip_task - Skip task
+\`\`\`json
+{ "action": "skip_task", "taskId": "task_3", "reason": "Upon exploration, found this feature already exists" }
+\`\`\`
+
+### add_task - Dynamically add task
+When to call: After exploring codebase and discovering additional tasks needed
 \`\`\`json
 {
   "action": "add_task",
   "taskId": "task_new_migration",
-  "name": "数据库迁移脚本",
-  "description": "发现需要新增数据库迁移...",
+  "name": "Database migration script",
+  "description": "Found that a new database migration is needed...",
   "complexity": "simple",
   "type": "code",
   "files": ["src/migrations/001.ts"]
@@ -105,56 +105,56 @@ export class UpdateTaskPlanTool extends BaseTool<TaskPlanUpdateInput, ToolResult
         action: {
           type: 'string',
           enum: ['start_task', 'complete_task', 'fail_task', 'skip_task', 'add_task'],
-          description: '操作类型',
+          description: 'Operation type',
         },
         taskId: {
           type: 'string',
-          description: '任务 ID（ExecutionPlan 中的 ID，或 add_task 时自定义新 ID）',
+          description: 'Task ID (ID from ExecutionPlan, or custom new ID for add_task)',
         },
         executionMode: {
           type: 'string',
           enum: ['worker', 'lead-agent'],
-          description: '执行模式（start_task 时指定，标记是自己做还是派给Worker）',
+          description: 'Execution mode (specified for start_task, indicates self-execution or dispatched to Worker)',
         },
         summary: {
           type: 'string',
-          description: '完成摘要（complete_task 时使用）',
+          description: 'Completion summary (used for complete_task)',
         },
         error: {
           type: 'string',
-          description: '错误信息（fail_task 时使用）',
+          description: 'Error message (used for fail_task)',
         },
         reason: {
           type: 'string',
-          description: '跳过原因（skip_task 时使用）',
+          description: 'Skip reason (used for skip_task)',
         },
         name: {
           type: 'string',
-          description: '新任务名称（add_task 时使用）',
+          description: 'New task name (used for add_task)',
         },
         description: {
           type: 'string',
-          description: '新任务描述（add_task 时使用）',
+          description: 'New task description (used for add_task)',
         },
         complexity: {
           type: 'string',
           enum: ['trivial', 'simple', 'moderate', 'complex'],
-          description: '新任务复杂度（add_task 时使用）',
+          description: 'New task complexity (used for add_task)',
         },
         type: {
           type: 'string',
           enum: ['code', 'config', 'test', 'refactor', 'docs', 'integrate', 'verify'],
-          description: '新任务类型（add_task 时使用）',
+          description: 'New task type (used for add_task)',
         },
         files: {
           type: 'array',
           items: { type: 'string' },
-          description: '新任务预期修改文件（add_task 时使用）',
+          description: 'Expected files to modify for new task (used for add_task)',
         },
         dependencies: {
           type: 'array',
           items: { type: 'string' },
-          description: '新任务依赖的其他任务 ID（add_task 时使用）',
+          description: 'Other task IDs that the new task depends on (used for add_task)',
         },
       },
       required: ['action', 'taskId'],

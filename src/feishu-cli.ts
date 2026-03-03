@@ -41,63 +41,63 @@ const isWebUIMode = process.argv.includes('--webui');
 
 async function main() {
   console.log(chalk.cyan('╔══════════════════════════════════════════╗'));
-  console.log(chalk.cyan('║      Axon × 飞书 Bot             ║'));
+  console.log(chalk.cyan('║      Axon × Feishu Bot                  ║'));
   console.log(chalk.cyan('║      Feishu (Lark) Integration          ║'));
   console.log(chalk.cyan('╚══════════════════════════════════════════╝'));
 
   if (isWebUIMode) {
-    console.log(chalk.yellow('\n  模式: WebUI 桥接（同进程）'));
+    console.log(chalk.yellow('\n  Mode: WebUI Bridge (same process)'));
   }
 
   // 初始化认证（Anthropic API）
   initAuth();
 
   if (!isAuthenticated()) {
-    console.error(chalk.red('\n✗ 错误: 未找到有效的 Anthropic 认证凭据'));
-    console.error(chalk.yellow('\n请使用以下任一方式认证:'));
-    console.error(chalk.gray('  1. OAuth 订阅账户: 先运行 claude login 完成登录'));
-    console.error(chalk.gray('  2. API Key: 设置环境变量 ANTHROPIC_API_KEY'));
+    console.error(chalk.red('\n✗ Error: No valid Anthropic authentication credentials found'));
+    console.error(chalk.yellow('\nPlease authenticate using one of the following methods:'));
+    console.error(chalk.gray('  1. OAuth subscription: Run claude login to complete authentication'));
+    console.error(chalk.gray('  2. API Key: Set the environment variable ANTHROPIC_API_KEY'));
     process.exit(1);
   }
 
   const authType = getAuthType();
   const auth = getAuth();
   const authDisplay = authType === 'oauth'
-    ? `OAuth 订阅 (${auth?.email || auth?.userId || 'unknown'})`
+    ? `OAuth Subscription (${auth?.email || auth?.userId || 'unknown'})`
     : `API Key (${auth?.apiKey?.slice(0, 12)}...)`;
-  console.log(chalk.green(`\n✓ Anthropic 认证: ${authDisplay}`));
+  console.log(chalk.green(`\n✓ Anthropic Auth: ${authDisplay}`));
 
   // 加载飞书配置
   const config = loadConfigFromEnv(getDefaultConfig());
 
   // 校验飞书凭据
   if (!config.appId || !config.appSecret) {
-    console.error(chalk.red('\n✗ 错误: 缺少飞书应用凭据'));
-    console.error(chalk.yellow('\n请设置以下环境变量:'));
-    console.error(chalk.gray('  FEISHU_APP_ID       - 飞书应用 App ID'));
-    console.error(chalk.gray('  FEISHU_APP_SECRET   - 飞书应用 App Secret'));
-    console.error(chalk.yellow('\n获取方式:'));
-    console.error(chalk.gray('  1. 访问 https://open.feishu.cn/app 创建应用'));
-    console.error(chalk.gray('  2. 在应用详情页获取 App ID 和 App Secret'));
-    console.error(chalk.gray('  3. 开通权限: im:message、im:message.receive_v1'));
-    console.error(chalk.gray('  4. 发布应用'));
+    console.error(chalk.red('\n✗ Error: Missing Feishu app credentials'));
+    console.error(chalk.yellow('\nPlease set the following environment variables:'));
+    console.error(chalk.gray('  FEISHU_APP_ID       - Feishu App ID'));
+    console.error(chalk.gray('  FEISHU_APP_SECRET   - Feishu App Secret'));
+    console.error(chalk.yellow('\nHow to obtain:'));
+    console.error(chalk.gray('  1. Visit https://open.feishu.cn/app to create an app'));
+    console.error(chalk.gray('  2. Get App ID and App Secret from the app details page'));
+    console.error(chalk.gray('  3. Enable permissions: im:message, im:message.receive_v1'));
+    console.error(chalk.gray('  4. Publish the app'));
     process.exit(1);
   }
 
   // 打印配置摘要
-  console.log(chalk.gray('\n配置:'));
+  console.log(chalk.gray('\nConfiguration:'));
   console.log(chalk.gray(`  App ID:      ${config.appId.slice(0, 8)}...`));
-  console.log(chalk.gray(`  连接模式:    ${config.connectionMode}`));
+  console.log(chalk.gray(`  Connection:  ${config.connectionMode}`));
   if (config.connectionMode === 'webhook') {
     console.log(chalk.gray(`  Webhook:     http://0.0.0.0:${config.webhookPort}${config.webhookPath}`));
   }
-  console.log(chalk.gray(`  模型:        ${config.model}`));
-  console.log(chalk.gray(`  工作目录:    ${config.workingDir}`));
-  console.log(chalk.gray(`  速率限制:    ${config.rateLimitPerMinute} 次/分钟`));
-  console.log(chalk.gray(`  每日预算:    $${config.dailyBudgetUSD}`));
-  console.log(chalk.gray(`  允许工具:    ${config.allowedTools.join(', ')}`));
-  console.log(chalk.gray(`  私聊响应:    ${config.respondToPrivate ? '是' : '否'}`));
-  console.log(chalk.gray(`  会话超时:    ${config.sessionTimeout / 1000}s`));
+  console.log(chalk.gray(`  Model:       ${config.model}`));
+  console.log(chalk.gray(`  Working Dir: ${config.workingDir}`));
+  console.log(chalk.gray(`  Rate Limit:  ${config.rateLimitPerMinute} req/min`));
+  console.log(chalk.gray(`  Daily Budget: ${config.dailyBudgetUSD}`));
+  console.log(chalk.gray(`  Allowed Tools: ${config.allowedTools.join(', ')}`));
+  console.log(chalk.gray(`  Private Chat: ${config.respondToPrivate ? 'Yes' : 'No'}`));
+  console.log(chalk.gray(`  Session TTL: ${config.sessionTimeout / 1000}s`));
 
   let bot: FeishuBot;
 

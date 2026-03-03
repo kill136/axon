@@ -268,7 +268,7 @@ export class TaskExecutor {
       if (fs.existsSync(experiencePath)) {
         const content = fs.readFileSync(experiencePath, 'utf-8').trim();
         if (content) {
-          parts.push('## 用户信息（你的记忆）');
+          parts.push('## User Information (Your Memory)');
           parts.push(content);
         }
       }
@@ -287,7 +287,7 @@ export class TaskExecutor {
           if (fs.existsSync(projectMdPath)) {
             const content = fs.readFileSync(projectMdPath, 'utf-8').trim();
             if (content) {
-              parts.push('## 项目信息');
+              parts.push('## Project Information');
               parts.push(content);
             }
           }
@@ -296,17 +296,17 @@ export class TaskExecutor {
     } catch { /* 读取失败不影响执行 */ }
 
     // 3. 任务上下文
-    parts.push('## 定时任务信息');
-    parts.push(`任务名称：${task.name}`);
+    parts.push('## Scheduled Task Information');
+    parts.push(`Task name: ${task.name}`);
 
     if ('context' in task && task.context) {
-      parts.push(`创建时的对话背景：${task.context}`);
+      parts.push(`Conversation context at creation: ${task.context}`);
     }
 
     // 4. 历史执行记录
     if ('executionMemory' in task && task.executionMemory && task.executionMemory.length > 0) {
       parts.push('');
-      parts.push('### 历史执行记录');
+      parts.push('### Execution History');
       for (const mem of task.executionMemory) {
         parts.push(`- ${mem}`);
       }
@@ -314,7 +314,7 @@ export class TaskExecutor {
 
     // 5. 最后是实际任务指令
     parts.push('');
-    parts.push('## 请执行以下任务');
+    parts.push('## Please Execute the Following Task');
     parts.push(basePrompt);
 
     return parts.join('\n');

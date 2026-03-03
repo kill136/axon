@@ -49,6 +49,12 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
     });
   });
 
+  // 版本更新检查 - 返回后台更新检查的缓存结果
+  app.get('/api/update-check', (req: Request, res: Response) => {
+    const info = (globalThis as any).__axon_update_info;
+    res.json(info ?? { hasUpdate: false, current: '2.1.4', latest: '2.1.4' });
+  });
+
   // 获取可用工具列表
   app.get('/api/tools', (req: Request, res: Response) => {
     const tools = toolRegistry.getAll().map(tool => ({
@@ -70,19 +76,19 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
         {
           id: 'opus',
           name: 'Claude Opus 4.6',
-          description: '最强大的模型，适合复杂任务 (最新)',
+          description: 'Most powerful model, suitable for complex tasks (latest)',
           modelId: 'claude-opus-4-6',
         },
         {
           id: 'sonnet',
           name: 'Claude Sonnet 4.5',
-          description: '平衡性能和速度',
+          description: 'Balanced performance and speed',
           modelId: 'claude-sonnet-4-5-20250929',
         },
         {
           id: 'haiku',
           name: 'Claude Haiku 4.5',
-          description: '最快速的模型',
+          description: 'Fastest model',
           modelId: 'claude-haiku-4-5-20251001',
         },
       ],
@@ -108,7 +114,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
 
     res.json({
       success: true,
-      message: '会话已清除',
+      message: 'Session cleared',
     });
   });
 
@@ -156,8 +162,8 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
     } catch (error) {
       console.error('[API] Failed to get sessions list:', error);
       res.status(500).json({
-        error: '获取会话列表失败',
-        message: error instanceof Error ? error.message : '未知错误',
+        error: 'Failed to get session list',
+        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -171,7 +177,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
 
       if (!session) {
         res.status(404).json({
-          error: '会话不存在',
+          error: 'Session does not exist',
           sessionId: id,
         });
         return;
@@ -196,8 +202,8 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
     } catch (error) {
       console.error('[API] Failed to get session details:', error);
       res.status(500).json({
-        error: '获取会话详情失败',
-        message: error instanceof Error ? error.message : '未知错误',
+        error: 'Failed to get session details',
+        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -212,21 +218,21 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
         res.json({
           success: true,
           sessionId: id,
-          message: '会话已删除',
+          message: 'Session deleted',
         });
       } else {
         res.status(404).json({
           success: false,
           sessionId: id,
-          error: '会话不存在',
+          error: 'Session does not exist',
         });
       }
     } catch (error) {
       console.error('[API] Failed to delete session:', error);
       res.status(500).json({
         success: false,
-        error: '删除会话失败',
-        message: error instanceof Error ? error.message : '未知错误',
+        error: 'Failed to delete session',
+        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -239,7 +245,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
 
       if (!name || typeof name !== 'string') {
         res.status(400).json({
-          error: '无效的会话名称',
+          error: 'Invalid session name',
         });
         return;
       }
@@ -251,20 +257,20 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
           success: true,
           sessionId: id,
           name,
-          message: '会话已重命名',
+          message: 'Session renamed',
         });
       } else {
         res.status(404).json({
           success: false,
-          error: '会话不存在',
+          error: 'Session does not exist',
         });
       }
     } catch (error) {
       console.error('[API] Failed to rename session:', error);
       res.status(500).json({
         success: false,
-        error: '重命名会话失败',
-        message: error instanceof Error ? error.message : '未知错误',
+        error: 'Failed to rename session',
+        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -279,7 +285,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
 
       if (!content) {
         res.status(404).json({
-          error: '会话不存在或导出失败',
+          error: 'Session does not exist or export failed',
         });
         return;
       }
@@ -297,8 +303,8 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
     } catch (error) {
       console.error('[API] Failed to export session:', error);
       res.status(500).json({
-        error: '导出会话失败',
-        message: error instanceof Error ? error.message : '未知错误',
+        error: 'Failed to export session',
+        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -314,21 +320,21 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
         res.json({
           success: true,
           sessionId: id,
-          message: '会话已恢复',
+          message: 'Session restored',
           history,
         });
       } else {
         res.status(404).json({
           success: false,
-          error: '会话不存在',
+          error: 'Session does not exist',
         });
       }
     } catch (error) {
       console.error('[API] Failed to restore session:', error);
       res.status(500).json({
         success: false,
-        error: '恢复会话失败',
-        message: error instanceof Error ? error.message : '未知错误',
+        error: 'Failed to restore session',
+        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -341,7 +347,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
       const sessionId = req.query.sessionId as string;
       if (!sessionId) {
         res.status(400).json({
-          error: '缺少 sessionId 参数',
+          error: 'Missing sessionId parameter',
         });
         return;
       }
@@ -356,8 +362,8 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
     } catch (error) {
       console.error('[API] Failed to get tool filter config:', error);
       res.status(500).json({
-        error: '获取工具过滤配置失败',
-        message: error instanceof Error ? error.message : '未知错误',
+        error: 'Failed to get tool filter configuration',
+        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -369,14 +375,14 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
 
       if (!sessionId) {
         res.status(400).json({
-          error: '缺少 sessionId',
+          error: 'Missing sessionId',
         });
         return;
       }
 
       if (!config || !config.mode) {
         res.status(400).json({
-          error: '无效的工具过滤配置',
+          error: 'Invalid tool filter configuration',
         });
         return;
       }
@@ -391,8 +397,8 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
       console.error('[API] Failed to update tool filter config:', error);
       res.status(500).json({
         success: false,
-        error: '更新工具过滤配置失败',
-        message: error instanceof Error ? error.message : '未知错误',
+        error: 'Failed to update tool filter configuration',
+        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -403,7 +409,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
       const sessionId = req.query.sessionId as string;
       if (!sessionId) {
         res.status(400).json({
-          error: '缺少 sessionId 参数',
+          error: 'Missing sessionId parameter',
         });
         return;
       }
@@ -429,8 +435,8 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
     } catch (error) {
       console.error('[API] Failed to get available tools list:', error);
       res.status(500).json({
-        error: '获取可用工具列表失败',
-        message: error instanceof Error ? error.message : '未知错误',
+        error: 'Failed to get available tools list',
+        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -445,8 +451,8 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
     } catch (error) {
       console.error('[API] Failed to get API status:', error);
       res.status(500).json({
-        error: '获取API状态失败',
-        message: error instanceof Error ? error.message : '未知错误',
+        error: 'Failed to get API status',
+        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -459,8 +465,8 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
     } catch (error) {
       console.error('[API] API test failed:', error);
       res.status(500).json({
-        error: 'API测试失败',
-        message: error instanceof Error ? error.message : '未知错误',
+        error: 'API test failed',
+        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -473,8 +479,8 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
     } catch (error) {
       console.error('[API] Failed to get provider info:', error);
       res.status(500).json({
-        error: '获取Provider信息失败',
-        message: error instanceof Error ? error.message : '未知错误',
+        error: 'Failed to get provider information',
+        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -487,8 +493,8 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
     } catch (error) {
       console.error('[API] Failed to get token status:', error);
       res.status(500).json({
-        error: '获取Token状态失败',
-        message: error instanceof Error ? error.message : '未知错误',
+        error: 'Failed to get token status',
+        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -511,8 +517,8 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
       console.error('[API] Failed to get system prompt:', error);
       res.status(500).json({
         success: false,
-        error: '获取系统提示失败',
-        message: error instanceof Error ? error.message : '未知错误',
+        error: 'Failed to get system prompt',
+        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -525,7 +531,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
       if (!config || typeof config !== 'object') {
         res.status(400).json({
           success: false,
-          error: '无效的配置',
+          error: 'Invalid configuration',
         });
         return;
       }
@@ -537,21 +543,21 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
         const result = await conversationManager.getSystemPrompt(targetSessionId);
         res.json({
           success: true,
-          message: '系统提示已更新',
+          message: 'System prompt updated',
           ...result,
         });
       } else {
         res.status(404).json({
           success: false,
-          error: '会话不存在',
+          error: 'Session does not exist',
         });
       }
     } catch (error) {
       console.error('[API] Failed to update system prompt:', error);
       res.status(500).json({
         success: false,
-        error: '更新系统提示失败',
-        message: error instanceof Error ? error.message : '未知错误',
+        error: 'Failed to update system prompt',
+        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -572,8 +578,8 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
     } catch (error) {
       console.error('[API] Failed to get MCP servers list:', error);
       res.status(500).json({
-        error: '获取 MCP 服务器列表失败',
-        message: error instanceof Error ? error.message : '未知错误',
+        error: 'Failed to get MCP server list',
+        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -585,8 +591,8 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
 
       if (!name || !config) {
         res.status(400).json({
-          error: '缺少必要参数',
-          message: '请提供 name 和 config 参数',
+          error: 'Missing required parameters',
+          message: 'Please provide name and config parameters',
         });
         return;
       }
@@ -597,20 +603,20 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
         res.json({
           success: true,
           name,
-          message: `MCP 服务器 ${name} 已添加`,
+          message: `MCP server ${name} added`,
         });
       } else {
         res.status(500).json({
           success: false,
-          error: '添加 MCP 服务器失败',
+          error: 'Failed to add MCP server',
         });
       }
     } catch (error) {
       console.error('[API] Failed to add MCP server:', error);
       res.status(500).json({
         success: false,
-        error: '添加 MCP 服务器失败',
-        message: error instanceof Error ? error.message : '未知错误',
+        error: 'Failed to add MCP server',
+        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -626,12 +632,12 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
         res.json({
           success: true,
           name,
-          message: `MCP 服务器 ${name} 已删除`,
+          message: `MCP server ${name} deleted`,
         });
       } else {
         res.status(404).json({
           success: false,
-          error: '服务器不存在',
+          error: 'Server does not exist',
           name,
         });
       }
@@ -639,8 +645,8 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
       console.error('[API] Failed to delete MCP server:', error);
       res.status(500).json({
         success: false,
-        error: '删除 MCP 服务器失败',
-        message: error instanceof Error ? error.message : '未知错误',
+        error: 'Failed to delete MCP server',
+        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -658,12 +664,12 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
           success: true,
           name,
           enabled: result.enabled,
-          message: `MCP 服务器 ${name} 已${result.enabled ? '启用' : '禁用'}`,
+          message: `MCP server ${name} ${result.enabled ? 'enabled' : 'disabled'}`,
         });
       } else {
         res.status(404).json({
           success: false,
-          error: '服务器不存在',
+          error: 'Server does not exist',
           name,
         });
       }
@@ -671,8 +677,8 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
       console.error('[API] Failed to toggle MCP server:', error);
       res.status(500).json({
         success: false,
-        error: '切换 MCP 服务器失败',
-        message: error instanceof Error ? error.message : '未知错误',
+        error: 'Failed to toggle MCP server',
+        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -705,8 +711,8 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
       console.error('[API] Failed to run diagnostics:', error);
       res.status(500).json({
         success: false,
-        error: '运行诊断失败',
-        message: error instanceof Error ? error.message : '未知错误',
+        error: 'Failed to run diagnostics',
+        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -739,8 +745,8 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
       console.error('[API] Failed to get diagnostic report:', error);
       res.status(500).json({
         success: false,
-        error: '获取诊断报告失败',
-        message: error instanceof Error ? error.message : '未知错误',
+        error: 'Failed to get diagnostic report',
+        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -785,8 +791,8 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
     } catch (error) {
       console.error('[API] Failed to get checkpoints list:', error);
       res.status(500).json({
-        error: '获取检查点列表失败',
-        message: error instanceof Error ? error.message : '未知错误',
+        error: 'Failed to get checkpoint list',
+        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -798,7 +804,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
 
       if (!description || !filePaths || filePaths.length === 0) {
         res.status(400).json({
-          error: '创建检查点需要提供描述和文件列表',
+          error: 'Creating a checkpoint requires description and file list',
         });
         return;
       }
@@ -820,8 +826,8 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
     } catch (error) {
       console.error('[API] Failed to create checkpoint:', error);
       res.status(500).json({
-        error: '创建检查点失败',
-        message: error instanceof Error ? error.message : '未知错误',
+        error: 'Failed to create checkpoint',
+        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -847,8 +853,8 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
     } catch (error) {
       console.error('[API] Failed to restore checkpoint:', error);
       res.status(500).json({
-        error: '恢复检查点失败',
-        message: error instanceof Error ? error.message : '未知错误',
+        error: 'Failed to restore checkpoint',
+        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -863,20 +869,20 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
         res.json({
           checkpointId: id,
           success: true,
-          message: '检查点已删除',
+          message: 'Checkpoint deleted',
         });
       } else {
         res.status(404).json({
           checkpointId: id,
           success: false,
-          error: '检查点不存在',
+          error: 'Checkpoint does not exist',
         });
       }
     } catch (error) {
       console.error('[API] Failed to delete checkpoint:', error);
       res.status(500).json({
-        error: '删除检查点失败',
-        message: error instanceof Error ? error.message : '未知错误',
+        error: 'Failed to delete checkpoint',
+        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -902,8 +908,8 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
     } catch (error) {
       console.error('[API] Failed to compare checkpoint:', error);
       res.status(500).json({
-        error: '比较检查点失败',
-        message: error instanceof Error ? error.message : '未知错误',
+        error: 'Failed to compare checkpoints',
+        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -916,13 +922,13 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
       res.json({
         success: true,
         count,
-        message: `已清除 ${count} 个检查点`,
+        message: `Cleared ${count} checkpoints`,
       });
     } catch (error) {
       console.error('[API] Failed to cleanup checkpoints:', error);
       res.status(500).json({
-        error: '清除检查点失败',
-        message: error instanceof Error ? error.message : '未知错误',
+        error: 'Failed to clear checkpoints',
+        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -941,8 +947,8 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
     } catch (error) {
       console.error('[API] Failed to get plugins list:', error);
       res.status(500).json({
-        error: '获取插件列表失败',
-        message: error instanceof Error ? error.message : '未知错误',
+        error: 'Failed to get plugin list',
+        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -956,7 +962,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
 
       if (!plugin) {
         res.status(404).json({
-          error: '插件不存在',
+          error: 'Plugin does not exist',
           name,
         });
         return;
@@ -968,8 +974,8 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
     } catch (error) {
       console.error('[API] Failed to get plugin details:', error);
       res.status(500).json({
-        error: '获取插件详情失败',
-        message: error instanceof Error ? error.message : '未知错误',
+        error: 'Failed to get plugin details',
+        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -985,12 +991,12 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
         res.json({
           success: true,
           name,
-          message: `插件 ${name} 已启用`,
+          message: `Plugin ${name} enabled`,
         });
       } else {
         res.status(404).json({
           success: false,
-          error: '插件不存在',
+          error: 'Plugin does not exist',
           name,
         });
       }
@@ -998,8 +1004,8 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
       console.error('[API] Failed to enable plugin:', error);
       res.status(500).json({
         success: false,
-        error: '启用插件失败',
-        message: error instanceof Error ? error.message : '未知错误',
+        error: 'Failed to enable plugin',
+        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -1015,12 +1021,12 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
         res.json({
           success: true,
           name,
-          message: `插件 ${name} 已禁用`,
+          message: `Plugin ${name} disabled`,
         });
       } else {
         res.status(404).json({
           success: false,
-          error: '插件不存在',
+          error: 'Plugin does not exist',
           name,
         });
       }
@@ -1028,8 +1034,8 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
       console.error('[API] Failed to disable plugin:', error);
       res.status(500).json({
         success: false,
-        error: '禁用插件失败',
-        message: error instanceof Error ? error.message : '未知错误',
+        error: 'Failed to disable plugin',
+        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -1045,12 +1051,12 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
         res.json({
           success: true,
           name,
-          message: `插件 ${name} 已卸载`,
+          message: `Plugin ${name} uninstalled`,
         });
       } else {
         res.status(404).json({
           success: false,
-          error: '插件不存在',
+          error: 'Plugin does not exist',
           name,
         });
       }
@@ -1058,8 +1064,8 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
       console.error('[API] Failed to uninstall plugin:', error);
       res.status(500).json({
         success: false,
-        error: '卸载插件失败',
-        message: error instanceof Error ? error.message : '未知错误',
+        error: 'Failed to uninstall plugin',
+        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -1104,8 +1110,8 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
     } catch (error) {
       console.error('[API] Failed to get auth status:', error);
       res.status(500).json({
-        error: '获取认证状态失败',
-        message: error instanceof Error ? error.message : '未知错误',
+        error: 'Failed to get authentication status',
+        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -1118,7 +1124,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
       if (!apiKey || typeof apiKey !== 'string') {
         res.status(400).json({
           success: false,
-          error: '无效的API密钥',
+          error: 'Invalid API key',
         });
         return;
       }
@@ -1129,21 +1135,21 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
         const status = webAuth.getStatus();
         res.json({
           success: true,
-          message: 'API密钥已设置',
+          message: 'API key set',
           status,
         });
       } else {
         res.status(500).json({
           success: false,
-          error: '设置API密钥失败',
+          error: 'Failed to set API key',
         });
       }
     } catch (error) {
       console.error('[API] Failed to set API key:', error);
       res.status(500).json({
         success: false,
-        error: '设置API密钥失败',
-        message: error instanceof Error ? error.message : '未知错误',
+        error: 'Failed to set API key',
+        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -1156,15 +1162,15 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
 
       res.json({
         success: true,
-        message: '认证已清除',
+        message: 'Authentication cleared',
         status,
       });
     } catch (error) {
       console.error('[API] Failed to clear auth:', error);
       res.status(500).json({
         success: false,
-        error: '清除认证失败',
-        message: error instanceof Error ? error.message : '未知错误',
+        error: 'Failed to clear authentication',
+        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });
@@ -1177,7 +1183,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
       if (!apiKey || typeof apiKey !== 'string') {
         res.status(400).json({
           valid: false,
-          message: '无效的API密钥格式',
+          message: 'Invalid API key format',
         });
         return;
       }
@@ -1186,14 +1192,14 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
 
       res.json({
         valid,
-        message: valid ? 'API密钥有效' : 'API密钥无效',
+        message: valid ? 'API key is valid' : 'API key is invalid',
       });
     } catch (error) {
       console.error('[API] Failed to validate API key:', error);
       res.status(500).json({
         valid: false,
-        error: '验证API密钥失败',
-        message: error instanceof Error ? error.message : '未知错误',
+        error: 'Failed to validate API key',
+        message: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   });

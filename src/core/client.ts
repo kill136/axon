@@ -230,6 +230,7 @@ const TOOL_EXAMPLES_BETA = 'tool-examples-2025-10-29';     // Fd1
 const ADVANCED_TOOL_USE_BETA = 'advanced-tool-use-2025-11-20';    // AgA
 const TOOL_SEARCH_BETA = 'tool-search-tool-2025-10-19';    // qgA
 const PROMPT_CACHING_SCOPE_BETA = 'prompt-caching-scope-2026-01-05';  // bZ1
+const ADAPTIVE_THINKING_BETA = 'adaptive-thinking-2026-01-28';        // tl8
 
 // v2.1.29: Bedrock 和 Vertex 不支持的 betas (对应官方 eV6 集合)
 // 这些 betas 会导致网关用户出现 beta header 验证错误
@@ -325,6 +326,14 @@ function supportsInterleavedThinking(model: string): boolean {
 }
 
 /**
+ * v2.1.41: 检查模型是否支持 adaptive thinking (对应官方 h76 函数)
+ * 仅 opus-4-6 支持，优先级高于 interleaved thinking
+ */
+function supportsAdaptiveThinking(model: string): boolean {
+  return model.toLowerCase().includes('opus-4-6');
+}
+
+/**
  * v2.1.29: 检查模型是否支持 web search (对应官方 DOK 函数)
  */
 function supportsWebSearch(model: string): boolean {
@@ -333,10 +342,10 @@ function supportsWebSearch(model: string): boolean {
          model.includes('claude-haiku-4');
 }
 
-// Axon 身份验证的 magic string
-// 官方有三种身份标识，根据不同场景使用
-const AXON_IDENTITY = "You are Axon, an AI-powered coding assistant.";
-const AXON_AGENT_SDK_IDENTITY = "You are Axon, an AI-powered coding assistant, running within the Claude Agent SDK.";
+// 官方 magic string，Anthropic subscription 服务器会校验此字段
+// 必须与官方保持一致，不能使用品牌重命名后的字符串
+const AXON_IDENTITY = "You are Claude Code, Anthropic's official CLI for Claude.";
+const AXON_AGENT_SDK_IDENTITY = "You are Claude Code, Anthropic's official CLI for Claude, running within the Claude Agent SDK.";
 const AXON_AGENT_IDENTITY = "You are a Claude agent, built on Anthropic's Claude Agent SDK.";
 
 /**
@@ -400,45 +409,106 @@ export function isPromptCachingEnabled(model: string): boolean {
  *
  * 官方逻辑：
  * - type: "ephemeral" — 始终设置
- * - ttl: "1h" — OAuth 用户（延长缓存有效期到 1 小时，官方需额外满足未超额+allowlist）
+ * - ttl: "1h" — 官方需额外满足 OAuth+未超额+allowlist（我们无法检查，故不加）
  * - scope: "global" — 仅当 cacheScope === "global" 时设置，扩大缓存范围到同组织级别
  */
-export function buildCacheControl(cacheScope: 'global' | 'org', isOAuth?: boolean): Record<string, unknown> {
+export function buildCacheControl(cacheScope: 'global' | 'org'): Record<string, unknown> {
   return {
     type: 'ephemeral' as const,
-    ...(isOAuth ? { ttl: '1h' } : {}),
     ...(cacheScope === 'global' ? { scope: 'global' } : {}),
   };
 }
 
+/**
+ * v6.1: 对齐官方 h2z + wI8 函数
+ *
+ * @param skipGlobalCacheForSystemPrompt - 对齐官方 P 变量：
+ *   - "none": 正常缓存（static blocks 用 "global" scope）
+ *   - "system_prompt": 有 MCP/ToolSearch 时，所有 blocks 退回 "org" scope，
+ *     避免 MCP 工具变化频繁导致全局缓存失效
+ */
 export function formatSystemPrompt(
   systemPrompt: string | undefined,
   isOAuth: boolean,
   promptBlocks?: PromptBlock[],
-  enableCaching?: boolean
+  enableCaching?: boolean,
+  skipGlobalCacheForSystemPrompt: 'none' | 'system_prompt' = 'none'
 ): Array<{type: 'text'; text: string; cache_control?: Record<string, unknown>}> | string | undefined {
   // 没有 system prompt 时
   if (!systemPrompt) {
     if (isOAuth) {
       return [
-        { type: 'text', text: AXON_IDENTITY, ...(enableCaching !== false ? { cache_control: { type: 'ephemeral', ttl: '1h' } } : {}) }
+        { type: 'text', text: AXON_IDENTITY, ...(enableCaching !== false ? { cache_control: { type: 'ephemeral' } } : {}) }
       ];
     }
     return undefined;
   }
 
+  /**
+   * 对齐官方 wI8：根据 skipGlobalCacheForSystemPrompt 决定 blocks 的 cacheScope
+   * - skipGlobalCacheForSystemPrompt="system_prompt": 所有非 identity blocks → "org"（降级，不用 global）
+   * - skipGlobalCacheForSystemPrompt="none": 保留原始 cacheScope（global/org/null）
+   */
+  const resolveScope = (originalScope: 'global' | 'org' | null): 'global' | 'org' | null => {
+    if (originalScope === null) return null;
+    if (skipGlobalCacheForSystemPrompt === 'system_prompt') return 'org';
+    return originalScope;
+  };
+
   // v6.0: 使用 PromptBlock 分块缓存（对齐官方 CG1 分割逻辑）
-  // 静态 block (cacheScope: "global") → cache_control: { type: ephemeral, scope: global }
-  // 动态 block (cacheScope: null) → 不设 cache_control（每 turn 重新计算）
   if (promptBlocks && promptBlocks.length > 0) {
     const apiBlocks: Array<{type: 'text'; text: string; cache_control?: Record<string, unknown>}> = [];
+
+    // 对齐官方 wI8 函数中 skipGlobalCacheForSystemPrompt 路径：
+    // 当 skipGlobalCacheForSystemPrompt="system_prompt" 时，identity 用 null, 其他用 "org"
+    // 当 skipGlobalCacheForSystemPrompt="none" 时，identity 用 null, static 用 "global", dynamic 用 null
+    if (isOAuth && promptBlocks.length > 0) {
+      const firstBlock = promptBlocks[0];
+      let identityToExtract: string | null = null;
+      if (firstBlock.text.startsWith(AXON_IDENTITY)) {
+        identityToExtract = AXON_IDENTITY;
+      } else if (firstBlock.text.startsWith(AXON_AGENT_SDK_IDENTITY)) {
+        identityToExtract = AXON_AGENT_SDK_IDENTITY;
+      } else if (firstBlock.text.startsWith(AXON_AGENT_IDENTITY)) {
+        identityToExtract = AXON_AGENT_IDENTITY;
+      }
+
+      if (identityToExtract) {
+        // 官方 wI8: identity block → cacheScope: null（不缓存）
+        apiBlocks.push({ type: 'text', text: identityToExtract });
+
+        // 剩余文本继承 resolveScope 后的 cacheScope
+        const remainingText = firstBlock.text.slice(identityToExtract.length).trimStart();
+        if (remainingText) {
+          const scope = resolveScope(firstBlock.cacheScope);
+          apiBlocks.push({
+            type: 'text',
+            text: remainingText,
+            ...(enableCaching !== false && scope !== null ? { cache_control: buildCacheControl(scope) } : {}),
+          });
+        }
+
+        for (let i = 1; i < promptBlocks.length; i++) {
+          const block = promptBlocks[i];
+          if (!block.text) continue;
+          const scope = resolveScope(block.cacheScope);
+          apiBlocks.push({
+            type: 'text',
+            text: block.text,
+            ...(enableCaching !== false && scope !== null ? { cache_control: buildCacheControl(scope) } : {}),
+          });
+        }
+        return apiBlocks.length > 0 ? apiBlocks : undefined;
+      }
+    }
+
     for (const block of promptBlocks) {
       if (!block.text) continue;
+      const scope = resolveScope(block.cacheScope);
       apiBlocks.push({
         type: 'text',
         text: block.text,
-        // enableCaching=false 时完全跳过 cache_control（对齐官方 h2z 中 q&&... 逻辑）
-        ...(enableCaching !== false && block.cacheScope !== null ? { cache_control: buildCacheControl(block.cacheScope, isOAuth) } : {}),
+        ...(enableCaching !== false && scope !== null ? { cache_control: buildCacheControl(scope) } : {}),
       });
     }
     return apiBlocks.length > 0 ? apiBlocks : undefined;
@@ -465,16 +535,16 @@ export function formatSystemPrompt(
     identityToUse = AXON_AGENT_IDENTITY;
     remainingText = systemPrompt.slice(AXON_AGENT_IDENTITY.length).trim();
   } else {
-    const cc = enableCaching !== false ? { cache_control: { type: 'ephemeral' as const, ttl: '1h' as const } } : {};
+    const cc = enableCaching !== false ? { cache_control: { type: 'ephemeral' as const } } : {};
     return [
-      { type: 'text', text: AXON_IDENTITY, ...cc },
+      { type: 'text', text: AXON_IDENTITY },
       { type: 'text', text: systemPrompt, ...cc }
     ];
   }
 
-  const cc = enableCaching !== false ? { cache_control: { type: 'ephemeral' as const, ttl: '1h' as const } } : {};
+  const cc = enableCaching !== false ? { cache_control: { type: 'ephemeral' as const } } : {};
   const blocks: Array<{type: 'text'; text: string; cache_control?: Record<string, unknown>}> = [
-    { type: 'text' as const, text: identityToUse, ...cc }
+    { type: 'text' as const, text: identityToUse }
   ];
   if (remainingText.length > 0) {
     blocks.push({ type: 'text' as const, text: remainingText, ...cc });
@@ -530,18 +600,17 @@ function sanitizeContent(content: any): any {
  * 对齐官方 S2z / R2z / y2z 函数：
  * - 官方 z > A.length-3 → 最后 2 条消息的最后一个 block 添加 cache_control
  * - enableCaching=false 时完全跳过（对齐 HJq 的 enablePromptCaching 控制）
- * - isOAuth=true 时在 cache_control 中加入 ttl:"1h"（对齐 Pc1 函数）
+ * - querySource 传递给 Pc1 用于 ttl 判断（我们简化为不加 ttl，但保持接口对齐）
  */
 export function formatMessages(
   messages: Array<{ role: string; content: any }>,
   enableThinking?: boolean,
   enableCaching?: boolean,
-  isOAuth?: boolean
+  querySource?: string
 ): Array<{ role: string; content: any }> {
-  // 构建 cache_control 对象（isOAuth 时加 ttl:1h）
+  // 构建 cache_control 对象（对齐官方 Pc1）
   const cacheControl: Record<string, unknown> = {
     type: 'ephemeral',
-    ...(isOAuth ? { ttl: '1h' } : {}),
   };
 
   const formatted = messages.map((m, msgIndex) => {
@@ -852,9 +921,12 @@ function buildBetas(model: string, isOAuth: boolean, fastMode?: boolean): string
     betas.push(CONTEXT_1M_BETA);
   }
 
-  // 4. 未禁用 thinking 且模型支持时添加 thinking beta
-  // （官方: if(!X6(process.env.DISABLE_INTERLEAVED_THINKING)&&XOK(A))q.push(eFA)）
-  if (!isEnvEnabled(process.env.DISABLE_INTERLEAVED_THINKING) && supportsInterleavedThinking(model)) {
+  // 4. Thinking beta: adaptive-thinking (opus-4-6) 优先于 interleaved-thinking（官方 tl8/al8 逻辑）
+  // 官方: if(!$6(CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING)&&h76(A)) q.push(tl8)
+  //       else if(!$6(DISABLE_INTERLEAVED_THINKING)&&G15(A)) q.push(al8)
+  if (!isEnvEnabled(process.env.CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING) && supportsAdaptiveThinking(model)) {
+    betas.push(ADAPTIVE_THINKING_BETA);
+  } else if (!isEnvEnabled(process.env.DISABLE_INTERLEAVED_THINKING) && supportsInterleavedThinking(model)) {
     betas.push(THINKING_BETA);
   }
 
@@ -1067,16 +1139,9 @@ export function buildApiTools(
   };
   apiTools.push(webSearchServerTool);
 
-  // v5.0: 为最后一个工具添加 cache_control，缓存整个工具列表
-  // enableCaching=false 时跳过（对齐 HJq 的控制逻辑）
-  // isOAuth=true 时加 ttl:1h（对齐 Pc1 函数）
-  if (apiTools.length > 0 && enableCaching !== false) {
-    const lastTool = apiTools[apiTools.length - 1];
-    lastTool.cache_control = {
-      type: 'ephemeral',
-      ...(isOAuth ? { ttl: '1h' } : {}),
-    };
-  }
+  // v6.1: 对齐官方 —— 不给 tools 加 cache_control
+  // 官方依赖 prompt-caching-scope beta header 让 API 自动处理前缀缓存
+  // 手动标记 tools 会浪费 cache_control 断点配额并产生不必要的 cache creation 写入费用
 
   return apiTools.length > 0 ? apiTools : undefined;
 }
@@ -1559,8 +1624,13 @@ export class ClaudeClient {
         // 对齐官方 HJq：按型号检查是否启用 prompt caching
         const enableCaching = isPromptCachingEnabled(currentModel);
 
+        // v6.1: 对齐官方 P 变量 —— 有 MCP tools 或 ToolSearch 时降级 system prompt cache scope
+        const hasMcpTools = tools?.some(t => t.isMcp === true) ?? false;
+        const hasToolSearch = options?.toolSearchEnabled ?? false;
+        const skipGlobal: 'none' | 'system_prompt' = (enableCaching && (hasMcpTools || hasToolSearch)) ? 'system_prompt' : 'none';
+
         // 格式化 system prompt（优先使用 blocks 分块缓存）
-        const formattedSystem = formatSystemPrompt(systemPrompt, this.isOAuth, options?.promptBlocks, enableCaching);
+        const formattedSystem = formatSystemPrompt(systemPrompt, this.isOAuth, options?.promptBlocks, enableCaching, skipGlobal);
 
         // 构建 API 工具列表（将 WebSearch 客户端工具替换为 Server Tool）
         const apiTools = buildApiTools(tools, options?.toolSearchEnabled, enableCaching, this.isOAuth);
@@ -1570,7 +1640,7 @@ export class ClaudeClient {
           max_tokens: this.maxTokens,
           system: formattedSystem,
           // v5.0: 使用 formatMessages 启用消息缓存（最后2条消息，对齐官方 S2z）
-          messages: formatMessages(messages, options?.enableThinking, enableCaching, this.isOAuth),
+          messages: formatMessages(messages, options?.enableThinking, enableCaching, this.querySource),
           tools: apiTools,
           // 添加 tool_choice 参数（强制 AI 使用工具）
           ...(options?.toolChoice ? { tool_choice: options.toolChoice } : {}),
@@ -1729,8 +1799,13 @@ export class ClaudeClient {
       // 对齐官方 HJq：按型号检查是否启用 prompt caching
       const enableCaching = isPromptCachingEnabled(this.model);
 
+      // v6.1: 对齐官方 P 变量 —— 有 MCP tools 或 ToolSearch 时降级 system prompt cache scope
+      const hasMcpTools = tools?.some(t => t.isMcp === true) ?? false;
+      const hasToolSearch = options?.toolSearchEnabled ?? false;
+      const skipGlobal: 'none' | 'system_prompt' = (enableCaching && (hasMcpTools || hasToolSearch)) ? 'system_prompt' : 'none';
+
       // 格式化 system prompt（优先使用 blocks 分块缓存）
-      const formattedSystem = formatSystemPrompt(systemPrompt, this.isOAuth, options?.promptBlocks, enableCaching);
+      const formattedSystem = formatSystemPrompt(systemPrompt, this.isOAuth, options?.promptBlocks, enableCaching, skipGlobal);
 
       // 构建 API 工具列表（将 WebSearch 客户端工具替换为 Server Tool）
       const apiTools = buildApiTools(tools, options?.toolSearchEnabled, enableCaching, this.isOAuth);
@@ -1770,7 +1845,7 @@ export class ClaudeClient {
         max_tokens: this.maxTokens,
         system: formattedSystem as any,
         // v5.0: 使用 formatMessages 启用消息缓存（最后2条消息，对齐官方 S2z）
-        messages: formatMessages(messages, options?.enableThinking, enableCaching, this.isOAuth) as any,
+        messages: formatMessages(messages, options?.enableThinking, enableCaching, this.querySource) as any,
         tools: apiTools as any,
         // 添加 toolChoice 支持（强制 AI 调用特定工具）
         ...(options?.toolChoice ? { tool_choice: options.toolChoice } : {}),

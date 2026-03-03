@@ -2,7 +2,7 @@
 
 > 从零开始，手把手教你使用 Axon — 开源 AI 编程平台
 
-[![Live Demo](https://img.shields.io/badge/在线体验-voicegpt.site:3456-orange?style=flat-square)](http://voicegpt.site:3456/)
+[![Live Demo](https://img.shields.io/badge/在线体验-voicegpt.site:3456-orange?style=flat-square)](http://voicegpt.site/)
 [![GitHub](https://img.shields.io/badge/GitHub-axon-blue?style=flat-square)](https://github.com/kill136/axon)
 
 ---
@@ -623,7 +623,7 @@ https://your-proxy.com/v1
 
 - **GitHub Issues**: [提交问题](https://github.com/kill136/axon/issues)
 - **Discord 社区**: [加入讨论](https://discord.gg/bNyJKk6PVZ)
-- **在线体验**: [Live Demo](http://voicegpt.site:3456/)
+- **在线体验**: [Live Demo](http://voicegpt.site/)
 - **项目官网**: [chatbi.site](https://www.chatbi.site)
 
 ---

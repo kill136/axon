@@ -11,7 +11,7 @@ export class RedisDriver implements DriverInterface {
       const mod = await import('ioredis');
       Redis = mod.default ?? mod;
     } catch {
-      throw new Error('请安装 ioredis 包：npm install ioredis');
+      throw new Error('Please install ioredis package: npm install ioredis');
     }
 
     this.config = config;
@@ -37,13 +37,13 @@ export class RedisDriver implements DriverInterface {
   }
 
   async query(sql: string, timeout: number): Promise<QueryResult> {
-    if (!this.client) throw new Error('未连接到数据库');
+    if (!this.client) throw new Error('Not connected to database');
 
     if (this.config?.readonly) {
       const cmd = sql.trim().split(/\s+/)[0].toUpperCase();
       const writeCmds = new Set(['SET', 'DEL', 'HSET', 'HMSET', 'LPUSH', 'RPUSH', 'SADD', 'ZADD', 'INCR', 'DECR', 'EXPIRE', 'PERSIST', 'RENAME', 'FLUSHDB', 'FLUSHALL']);
       if (writeCmds.has(cmd)) {
-        throw new Error('只读模式：不允许执行写操作');
+        throw new Error('Read-only mode: write operations not allowed');
       }
     }
 
@@ -77,13 +77,13 @@ export class RedisDriver implements DriverInterface {
   }
 
   async listTables(database?: string): Promise<string[]> {
-    if (!this.client) throw new Error('未连接到数据库');
+    if (!this.client) throw new Error('Not connected to database');
     const keys = await this.client.keys('*');
     return keys;
   }
 
   async describeTable(table: string): Promise<ColumnInfo[]> {
-    if (!this.client) throw new Error('未连接到数据库');
+    if (!this.client) throw new Error('Not connected to database');
     const type = await this.client.type(table);
     let encoding = 'unknown';
     try {

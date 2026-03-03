@@ -42,7 +42,7 @@
 
 - GitHub：https://github.com/kill136/axon
 - 官网：https://www.chatbi.site
-- 在线体验：http://voicegpt.site:3456/
+- 在线体验：http://voicegpt.site/
 - Discord：https://discord.gg/bNyJKk6PVZ
 
 ### 技术栈

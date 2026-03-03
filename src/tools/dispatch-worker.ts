@@ -46,36 +46,36 @@ interface LeadAgentContext {
  */
 export class DispatchWorkerTool extends BaseTool<DispatchWorkerInput, ToolResult> {
   name = 'DispatchWorker';
-  description = `派发任务给 Worker 执行（LeadAgent 专用）
+  description = `Dispatch task to Worker for execution (LeadAgent exclusive)
 
-## 使用时机
-当你决定将一个独立的任务派给 Worker 执行时使用此工具。
+## When to Use
+Use this tool when you decide to dispatch an independent task to a Worker.
 
-## 参数说明
-- taskId: 任务的唯一标识（你自己定义，如 "task_user_api"）
-- brief: **详细的上下文简报**（这是最重要的参数！）
-  - 包含：前置任务的关键信息、命名规范、接口定义、文件路径
-  - 越详细越好，Worker 看到 brief 就能直接干活，不需要自己探索
-- targetFiles: 预期修改的文件列表
-- constraints: 约束条件（可选）
-- model: 使用的模型（可选，默认 sonnet）
+## Parameters
+- taskId: Unique task identifier (you define it, e.g. "task_user_api")
+- brief: **Detailed context brief** (this is the most important parameter!)
+  - Contains: key info from prerequisite tasks, naming conventions, interface definitions, file paths
+  - The more detailed the better, Worker should be able to work directly from the brief without exploring
+- targetFiles: List of files expected to be modified
+- constraints: Constraints (optional)
+- model: Model to use (optional, default sonnet)
 
-## Brief 写作示例
-好的 brief:
-"实现用户注册API。数据库schema在schema.prisma，User模型有id/email/passwordHash/name/createdAt字段。
-路由入口在src/routes/index.ts，请按照authRoutes的模式添加userRoutes。
-验证用zod（已安装）。命名用camelCase，返回类型用ApiResponse<T>。
-错误处理使用src/middleware/error.ts中的AppError类。"
+## Brief Writing Examples
+Good brief:
+"Implement user registration API. Database schema is in schema.prisma, User model has id/email/passwordHash/name/createdAt fields.
+Route entry is in src/routes/index.ts, please add userRoutes following the authRoutes pattern.
+Validation uses zod (already installed). Use camelCase naming, return type ApiResponse<T>.
+Error handling uses AppError class from src/middleware/error.ts."
 
-差的 brief:
-"实现用户管理API"
+Bad brief:
+"Implement user management API"
 
-## 返回值
-Worker 执行的完整结果，包括：
-- 是否成功
-- 创建/修改的文件列表
-- 测试是否运行和通过
-- Worker 的完整执行摘要`;
+## Return Value
+Complete Worker execution results, including:
+- Whether successful
+- List of created/modified files
+- Whether tests ran and passed
+- Worker's complete execution summary`;
 
   // 静态上下文 - 由 LeadAgent 在启动前设置
   private static context: LeadAgentContext | null = null;
@@ -100,26 +100,26 @@ Worker 执行的完整结果，包括：
       properties: {
         taskId: {
           type: 'string',
-          description: '任务的唯一标识',
+          description: 'Unique task identifier',
         },
         brief: {
           type: 'string',
-          description: 'LeadAgent 写的详细上下文简报（越详细越好）',
+          description: 'Detailed context brief written by LeadAgent (the more detailed the better)',
         },
         targetFiles: {
           type: 'array',
           items: { type: 'string' },
-          description: '预期修改的文件列表',
+          description: 'List of files expected to be modified',
         },
         constraints: {
           type: 'array',
           items: { type: 'string' },
-          description: '约束条件（可选）',
+          description: 'Constraints (optional)',
         },
         model: {
           type: 'string',
           enum: ['haiku', 'sonnet', 'opus'],
-          description: '使用的模型（可选，默认 sonnet）',
+          description: 'Model to use (optional, default sonnet)',
         },
       },
       required: ['taskId', 'brief', 'targetFiles'],
@@ -255,8 +255,19 @@ Worker 执行的完整结果，包括：
     });
 
     try {
-      // v10.0: 对齐 TaskTool 模式 — 执行 Worker 并获取完整输出
-      const result = await worker.execute(task, workerContext);
+      // v10.2: Worker 执行超时保护
+      // 防止 Worker 卡死导致 LeadAgent 永久阻塞
+      const workerTimeout = ctx.swarmConfig.workerTimeout || 1800000; // 默认 30 分钟
+      const result = await Promise.race([
+        worker.execute(task, workerContext),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => {
+            // 超时时先 abort Worker，再 reject
+            worker.abort();
+            reject(new Error(`Worker execution timed out (${Math.round(workerTimeout / 60000)} minutes), forcibly aborted`));
+          }, workerTimeout);
+        }),
+      ]);
 
       // 保存结果（供前端展示）
       const fullResult: TaskResult = {
@@ -270,7 +281,7 @@ Worker 执行的完整结果，包括：
         action: result.success ? 'complete_task' : 'fail_task',
         taskId,
         summary: result.rawResponse?.substring(0, 500) || '',
-        error: result.success ? undefined : (result.error || 'Worker 执行失败'),
+        error: result.success ? undefined : (result.error || 'Worker execution failed'),
       });
 
       // v10.1: 完全对齐 TaskTool — 直接返回 Worker 的 raw text
@@ -281,7 +292,7 @@ Worker 执行的完整结果，包括：
 
       return {
         success: result.success,
-        output: rawResponse || `Worker ${taskId} 执行完成，无文本输出。`,
+        output: rawResponse || `Worker ${taskId} execution completed, no text output.`,
       };
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);

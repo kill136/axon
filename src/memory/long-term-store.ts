@@ -81,10 +81,10 @@ export class LongTermStore {
   private async _init(dbPath: string): Promise<void> {
     const mod = await import('better-sqlite3').catch(e => {
       throw new Error(
-        'better-sqlite3 模块加载失败。请确保已安装编译依赖：\n' +
+        'Failed to load better-sqlite3 module. Please ensure build dependencies are installed:\n' +
         '  Ubuntu/Debian: apt-get install python3 make g++\n' +
-        '  然后重新运行: npm install better-sqlite3\n' +
-        '原始错误: ' + (e.message)
+        '  Then re-run: npm install better-sqlite3\n' +
+        'Original error: ' + (e.message)
       );
     });
     this.db = new mod.default(dbPath);

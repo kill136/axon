@@ -340,10 +340,15 @@ export interface GrepInput {
   "-A"?: number;
 
   /**
+   * Alias for context.
+   */
+  "-C"?: number;
+
+  /**
    * Number of lines to show before and after each match (rg -C). Requires
    * output_mode: "content", ignored otherwise.
    */
-  "-C"?: number;
+  context?: number;
 
   /**
    * Show line numbers in output (rg -n). Requires output_mode: "content",

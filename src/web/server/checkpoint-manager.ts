@@ -198,7 +198,7 @@ export class CheckpointManager {
     }
 
     if (files.length === 0) {
-      throw new Error('没有有效的文件可以创建检查点');
+      throw new Error('No valid files available to create checkpoint');
     }
 
     const checkpoint: Checkpoint = {
@@ -275,7 +275,7 @@ export class CheckpointManager {
     const checkpoint = this.checkpoints.get(id);
 
     if (!checkpoint) {
-      throw new Error(`检查点 ${id} 不存在`);
+      throw new Error(`Checkpoint ${id} does not exist`);
     }
 
     const restored: string[] = [];
@@ -326,8 +326,8 @@ export class CheckpointManager {
     const success = failed.length === 0;
 
     console.log(
-      `[CheckpointManager] 恢复检查点 ${id}: ` +
-      `成功 ${restored.length}/${checkpoint.files.length} 个文件`
+      `[CheckpointManager] Restore checkpoint ${id}: ` +
+      `${restored.length}/${checkpoint.files.length} files succeeded`
     );
 
     return {
@@ -381,7 +381,7 @@ export class CheckpointManager {
     const checkpoint = this.checkpoints.get(id);
 
     if (!checkpoint) {
-      throw new Error(`检查点 ${id} 不存在`);
+      throw new Error(`Checkpoint ${id} does not exist`);
     }
 
     const diffs: FileDiff[] = [];

@@ -104,7 +104,7 @@ function createClient(): ClaudeClient | null {
       baseUrl: process.env.ANTHROPIC_BASE_URL,
     });
   } catch (error) {
-    console.error('[AI Hover] 初始化客户端失败:', error);
+    console.error('[AI Hover] Failed to initialize client:', error);
     return null;
   }
 }
@@ -119,7 +119,7 @@ async function generateHoverDoc(req: AIHoverRequest): Promise<AIHoverResult> {
   if (!client) {
     return {
       success: false,
-      error: 'API 客户端未初始化，请检查 API Key 配置',
+      error: 'API client not initialized, please check API Key configuration',
     };
   }
 
@@ -149,13 +149,13 @@ async function generateHoverDoc(req: AIHoverRequest): Promise<AIHoverResult> {
 
     return {
       success: false,
-      error: '无法解析 AI 响应',
+      error: 'Failed to parse AI response',
     };
   } catch (error: any) {
-    console.error('[AI Hover] API 调用失败:', error);
+    console.error('[AI Hover] API call failed:', error);
     return {
       success: false,
-      error: error.message || 'API 调用失败',
+      error: error.message || 'API call failed',
     };
   }
 }
@@ -165,42 +165,42 @@ async function generateHoverDoc(req: AIHoverRequest): Promise<AIHoverResult> {
  */
 function buildPrompt(req: AIHoverRequest): string {
   const parts: string[] = [
-    `你是一个专业的代码文档生成器。请分析下方代码上下文中用 >>> 标记的那一行代码，生成简洁但信息丰富的文档说明。`,
+    `You are a professional code documentation generator. Please analyze the line of code marked with >>> in the code context below, and generate concise but informative documentation.`,
     ``,
-    `## 目标行信息`,
-    `- 行号: 第 ${req.line || '?'} 行`,
-    `- 代码: \`${req.symbolName}\``,
+    `## Target Line Info`,
+    `- Line: line ${req.line || '?'}`,
+    `- Code: \`${req.symbolName}\``,
   ];
 
   if (req.symbolKind) {
-    parts.push(`- 类型: ${req.symbolKind}`);
+    parts.push(`- Kind: ${req.symbolKind}`);
   }
   if (req.language) {
-    parts.push(`- 语言: ${req.language}`);
+    parts.push(`- Language: ${req.language}`);
   }
   if (req.typeSignature) {
-    parts.push(`- 类型签名: \`${req.typeSignature}\``);
+    parts.push(`- Type signature: \`${req.typeSignature}\``);
   }
   if (req.filePath) {
-    parts.push(`- 文件: ${req.filePath}`);
+    parts.push(`- File: ${req.filePath}`);
   }
 
   parts.push(``);
-  parts.push(`## 代码上下文（>>> 标记的是目标行，其他行是上下文）`);
+  parts.push(`## Code context (>>> marks the target line, other lines are context)`);
   parts.push('```' + (req.language || 'typescript'));
   parts.push(req.codeContext);
   parts.push('```');
   parts.push(``);
-  parts.push(`## 输出要求`);
-  parts.push(`请只针对 >>> 标记的那一行代码，用 JSON 格式输出：`);
-  parts.push(`- brief: 一句话简短描述（必填，中文，说明这行代码做什么）`);
-  parts.push(`- detail: 详细说明（可选，中文，2-3句话）`);
-  parts.push(`- params: 参数说明数组（如果是函数/方法，每个参数包含 name, type, description）`);
-  parts.push(`- returns: 返回值说明（如果有，包含 type, description）`);
-  parts.push(`- examples: 使用示例数组（1-2个简短示例代码）`);
-  parts.push(`- notes: 注意事项数组（可选，重要的使用注意点）`);
+  parts.push(`## Output requirements`);
+  parts.push(`Please only analyze the line marked with >>>, and output in JSON format:`);
+  parts.push(`- brief: One-sentence short description (required, describe what this line of code does)`);
+  parts.push(`- detail: Detailed explanation (optional, 2-3 sentences)`);
+  parts.push(`- params: Parameter description array (for functions/methods, each parameter includes name, type, description)`);
+  parts.push(`- returns: Return value description (if any, includes type, description)`);
+  parts.push(`- examples: Usage examples array (1-2 short code examples)`);
+  parts.push(`- notes: Notes array (optional, important usage notes)`);
   parts.push(``);
-  parts.push(`只输出 JSON，不要有其他内容。保持简洁，只分析 >>> 标记的那一行。`);
+  parts.push(`Only output JSON, no other content. Keep it concise, only analyze the line marked with >>>.`);
 
   return parts.join('\n');
 }
@@ -215,7 +215,7 @@ function parseAIResponse(text: string): AIHoverResult {
     if (!jsonMatch) {
       return {
         success: true,
-        brief: text.trim().split('\n')[0] || '无法解析文档',
+        brief: text.trim().split('\n')[0] || 'Unable to parse documentation',
       };
     }
 
@@ -234,7 +234,7 @@ function parseAIResponse(text: string): AIHoverResult {
     // JSON 解析失败，直接返回文本
     return {
       success: true,
-      brief: text.trim().split('\n')[0] || '无法解析文档',
+      brief: text.trim().split('\n')[0] || 'Unable to parse documentation',
       detail: text.trim(),
     };
   }
@@ -251,7 +251,7 @@ router.post('/generate', async (req: Request, res: Response) => {
     if (!hoverReq.symbolName || !hoverReq.codeContext) {
       return res.status(400).json({
         success: false,
-        error: '缺少必需参数: symbolName 和 codeContext',
+        error: 'Missing required parameters: symbolName and codeContext',
       });
     }
 
@@ -286,10 +286,10 @@ router.post('/generate', async (req: Request, res: Response) => {
       pendingRequests.delete(cacheKey);
     }
   } catch (error: any) {
-    console.error('[AI Hover] 请求处理失败:', error);
+    console.error('[AI Hover] Request processing failed:', error);
     res.status(500).json({
       success: false,
-      error: error.message || '服务器内部错误',
+      error: error.message || 'Internal server error',
     });
   }
 });
@@ -299,7 +299,7 @@ router.post('/generate', async (req: Request, res: Response) => {
  */
 router.post('/clear-cache', (req: Request, res: Response) => {
   hoverCache.clear();
-  res.json({ success: true, message: '缓存已清空' });
+  res.json({ success: true, message: 'Cache cleared' });
 });
 
 /**
@@ -311,7 +311,7 @@ router.get('/cache-stats', (req: Request, res: Response) => {
     data: {
       size: hoverCache.size,
       maxSize: 500,
-      ttl: '15分钟',
+      ttl: '15 minutes',
     },
   });
 });

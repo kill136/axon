@@ -15,8 +15,6 @@ import {
   getCoreIdentity,
   TASK_MANAGEMENT,
   EXECUTING_WITH_CARE,
-  PROACTIVE_SKILL_CREATION,
-  PROACTIVE_TOOL_DISCOVERY,
   getCodingGuidelines,
   getToolGuidelines,
   getToneAndStyle,
@@ -29,9 +27,7 @@ import { PromptCache, promptCache, generateCacheKey } from './cache.js';
 import * as os from 'os';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
-import { getNotebookManager } from '../memory/notebook.js';
 import { estimateTokens } from '../utils/token-estimate.js';
-import { logger } from '../utils/logger.js';
 
 /**
  * 默认选项
@@ -76,11 +72,7 @@ export class SystemPromptBuilder {
     const opts = { ...DEFAULT_OPTIONS, ...options };
 
     // 检查缓存
-    // 注意：当 context 含有每轮变化的动态字段（如 contextUsage）时，
-    // 本地缓存会返回过期数据且错误地标记为 cacheScope: 'global'，
-    // 必须跳过。API 层的 prompt caching 通过 cache_control 独立处理。
-    const hasDynamicFields = !!context.contextUsage;
-    if (opts.enableCache && !hasDynamicFields) {
+    if (opts.enableCache) {
       const cacheKey = generateCacheKey(context);
       const cached = this.cache.get(cacheKey);
       if (cached) {
@@ -177,40 +169,11 @@ You have access to the ${askTool} tool to ask the user questions when you need c
     // 9. 谨慎操作 (N2z) - 告知 AI 对高风险操作需谨慎确认
     staticParts.push(EXECUTING_WITH_CARE);
 
-    // 9.5 主动创建 Skill 规则 - 检测重复模式和复杂工作流时提议创建 skill
-    staticParts.push(PROACTIVE_SKILL_CREATION);
-
-    // 9.6 主动工具发现规则 - 遇到不擅长的任务时自动搜索互联网上的 MCP/Skill
-    staticParts.push(PROACTIVE_TOOL_DISCOVERY);
-
     // 10. 安全规则 (BV6) — 已包含在 CORE_IDENTITY 中，不再重复 push
 
     // 11. TodoWrite 强制使用提醒 (bqz)
     if (toolNames.has(todoWriteTool)) {
       staticParts.push(`IMPORTANT: Always use the ${todoWriteTool} tool to plan and track tasks throughout the conversation.`);
-    }
-
-    // 11.5 NotebookWrite 主动调用规则
-    if (toolNames.has('NotebookWrite')) {
-      staticParts.push(`# Memory Persistence Rules
-
-CRITICAL: When a user shares personal information (name, role, preferences, contact info), you MUST IMMEDIATELY call the NotebookWrite tool to persist it to the experience notebook in the SAME response. Do NOT just say "I'll remember that" — verbal acknowledgment without tool invocation is NOT remembering. The only real memory is what's written to notebooks via NotebookWrite.
-
-Similarly, when you discover important project-specific knowledge (gotchas, hidden dependencies, non-obvious patterns) during work, persist it to the project notebook immediately.
-
-Failing to write important information to notebooks is a critical error — it means the information will be lost when the conversation ends.`);
-    }
-
-    // 11.6 MemorySearch 长期记忆搜索提示
-    if (toolNames.has('MemorySearch')) {
-      staticParts.push(`# Long-term Memory Search
-
-You have access to a MemorySearch tool that searches past session history and memory files beyond the current notebook. Use it when:
-- The current notebook (experience.md + project.md) doesn't have the information you need
-- You want to recall past decisions, patterns, or lessons from previous sessions
-- Looking for historical context about a file, function, or topic
-
-The tool returns results with source attribution (file path, line numbers, timestamps, age) to help you judge relevance and freshness. This is a supplementary search layer — your primary knowledge source is still the fully-loaded notebook.`);
     }
 
     // 12. 代码引用格式 (uqz)
@@ -224,9 +187,10 @@ assistant: Clients are marked as failed in the \`connectToServer\` function in s
 </example>`);
 
     // ===== [CG1] 缓存边界 =====
-    // 以下是动态上下文部分（每次会话/每轮对话可能变化）
+    // 以上：跨会话共享缓存（scope: "global"），所有项目/用户相同
+    // 以下：会话级缓存（ephemeral only），因项目/用户/配置而异
 
-    // 13. 环境信息
+    // 13. 环境信息（因项目而异：workingDir, model, todayDate）
     dynamicParts.push(
       getEnvironmentInfo({
         workingDir: context.workingDir,
@@ -238,92 +202,36 @@ assistant: Clients are marked as failed in the \`connectToServer\` function in s
       })
     );
 
-    // 12.5 自我认知 - 告知主 Agent 自身源码位置和记忆文件位置
-    const selfDir = path.dirname(fileURLToPath(import.meta.url));  // prompt/ 或 dist/prompt/
-    const srcRoot = path.resolve(selfDir, '..');                    // src/ 或 dist/
-    const codeProjectRoot = path.resolve(srcRoot, '..');            // 项目根目录
+    // 14. 自我感知（因安装路径而异）
+    const codeProjectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
     const claudeConfigDir = process.env.AXON_CONFIG_DIR || path.join(os.homedir(), '.axon');
+    const selfEvolve = process.env.AXON_EVOLVE_ENABLED === '1'
+      ? `\nSelf-Evolve: ENABLED. Edit .ts files under project root → SelfEvolve({ reason }) → auto-restart.`
+      : '';
+    dynamicParts.push(`# Self-Awareness
+You are an AI assistant whose own source code is located at: ${codeProjectRoot}
+You can read and modify your own .ts source files to improve yourself.
+Config dir: ${claudeConfigDir}${selfEvolve}`);
 
-    // 从 NotebookManager 获取精确的记忆文件路径
-    const notebookMgr = getNotebookManager();
-    let memoryPaths = '';
-    if (notebookMgr) {
-      const stats = notebookMgr.getStats();
-      memoryPaths = `
-### Memory files (your persistent memory across conversations)
-- Experience notebook: ${stats.experience.path} (~4K tokens max, cross-project knowledge)
-- Project notebook: ${stats.project.path} (~8K tokens max, project-specific discoveries)
-- Session memories: ${claudeConfigDir}/projects/ (past session summaries, searchable via Grep)
-- Sessions data: ${claudeConfigDir}/sessions/ (conversation history, 30-day expiry)`;
-    } else {
-      memoryPaths = `
-### Memory files (your persistent memory across conversations)
-- Experience notebook: ${claudeConfigDir}/memory/experience.md (~4K tokens max)
-- Project notebooks: ${claudeConfigDir}/memory/projects/ (per-project knowledge)
-- Session memories: ${claudeConfigDir}/projects/ (past session summaries)
-- Sessions data: ${claudeConfigDir}/sessions/ (conversation history)`;
-    }
-
-    dynamicParts.push(`# Self-Awareness (your own source code and memory)
-Hot-reload version: v0.5.0-hot-test
-
-Your runtime source code is located at the following paths. You can Read these files to understand your own behavior, or Edit them to improve yourself when needed:
-你可以给自己增加skills，去网络上寻找MCP并安装，可以修改自己的提示词，可以增加删除自己的工具，可以调整自己的UI,甚至自己的执行架构，从而不断完善进化自己
-### Source code
-- Project root: ${codeProjectRoot}
-- Core engine: ${srcRoot}/core/ (loop.ts, client.ts, session.ts - conversation orchestration)
-- Prompt system: ${selfDir}/ (builder.ts, templates.ts - YOUR system prompt is assembled here)
-- Tool system: ${srcRoot}/tools/ (all 25+ tools you can use)
-- Blueprint/Swarm: ${srcRoot}/blueprint/ (lead-agent.ts, smart-planner.ts, autonomous-worker.ts)
-- Agent configs: ${srcRoot}/agents/tools.ts (tool permissions for each agent type)
-- Config system: ${srcRoot}/config/ (settings management)
-- Entry point: ${codeProjectRoot}/package.json (project metadata and scripts)
-${memoryPaths}
-
-### Self-Evolve (自我进化)
-${process.env.AXON_EVOLVE_ENABLED === '1' ? `- Status: ENABLED (running with --evolve flag)
-- You can modify your own source code and call the SelfEvolve tool to restart with the new code
-- Flow: Edit .ts files → SelfEvolve({ reason: "..." }) → tsc check → auto-restart → session restored
-- Evolve log: ${claudeConfigDir}/evolve-log.jsonl
-- IMPORTANT: Always use dryRun first to verify compilation before actual restart` : `- Status: DISABLED (not running with --evolve flag)
-- To enable: start the server with claude-web --evolve instead of claude-web`}
-
-### Runtime Logs (运行日志)
-- Log file: ${claudeConfigDir}/runtime.log (JSONL, auto-rotated, Read this file to inspect runtime errors)
-- Use /analyze-logs skill for comprehensive log analysis
-${getLogStatsSummary()}`);
-
-    // 12.6 上下文使用率仪表盘（让 AI 感知自己的上下文消耗）
-    if (context.contextUsage) {
-      const u = context.contextUsage;
-      const pct = u.percentage.toFixed(0);
-      const level = u.percentage >= 80 ? 'HIGH' : u.percentage >= 50 ? 'MODERATE' : 'LOW';
-      dynamicParts.push(`# Context Awareness
-Context usage: ${pct}% (${u.used.toLocaleString()}/${u.total.toLocaleString()} tokens) [${level}]${u.compressionCount > 0 ? `\nCompressions: ${u.compressionCount} times, saved ${u.savedTokens.toLocaleString()} tokens` : ''}${u.percentage >= 70 ? '\nWARNING: Context is filling up. Be concise. Prioritize writing important discoveries to Notebook before they are compressed away.' : ''}`);
-    }
-
-    // 13. 语言设置
+    // 15. 语言设置（因用户配置而异）
     if (context.language) {
       dynamicParts.push(`# Language
 Always respond in ${context.language}. Use ${context.language} for all explanations, comments, and communications with the user. Technical terms and code identifiers should remain in their original form.`);
     }
 
-    // 14. 输出样式（如果有自定义样式）
+    // 16. 输出样式（因用户配置而异）
     const outputStylePrompt = getOutputStylePrompt(outputStyle);
     if (outputStylePrompt) {
       dynamicParts.push(outputStylePrompt);
     }
 
-    // 15. MCP 指令
+    // 17. MCP 指令（因安装的 MCP 服务器而异）
     const mcpInstructions = getMcpInstructions(context.mcpServers);
     if (mcpInstructions) {
       dynamicParts.push(mcpInstructions);
     }
 
-    // 16. Scratchpad 信息（如果有）
-    // 由附件系统处理
-
-    // 17. 附件内容
+    // 18. 附件内容（CLAUDE.md 等，因项目而异）
     for (const attachment of attachments) {
       if (attachment.content) {
         dynamicParts.push(attachment.content);
@@ -368,8 +276,8 @@ Always respond in ${context.language}. Use ${context.language} for all explanati
     // 计算哈希
     const hashInfo = this.cache.computeHash(content);
 
-    // 缓存结果（有动态字段时不缓存，避免返回过期数据）
-    if (opts.enableCache && !hasDynamicFields) {
+    // 缓存结果
+    if (opts.enableCache) {
       const cacheKey = generateCacheKey(context);
       this.cache.set(cacheKey, content, hashInfo);
     }
@@ -467,38 +375,6 @@ Always respond in ${context.language}. Use ${context.language} for all explanati
     this.cache.clear();
   }
 
-}
-
-/**
- * 获取运行日志统计 + 最近错误摘要（用于系统提示词）
- * 统计行 + 最近 5 分钟内的 error 详情（最多 5 条）
- * 这样 AI 每轮对话都能感知到新出现的错误
- */
-function getLogStatsSummary(): string {
-  try {
-    const stats = logger.getStats(1); // 最近 1 小时
-    const lines: string[] = [];
-
-    if (stats.errors > 0 || stats.warns > 0) {
-      lines.push(`- Last 1h: ${stats.errors} errors, ${stats.warns} warns`);
-    } else {
-      lines.push('- Last 1h: no errors');
-    }
-
-    // 注入最近 5 分钟内的 error 摘要，让 AI 实时感知
-    const recentErrors = logger.getRecentErrors(5 * 60 * 1000, 5);
-    if (recentErrors.length > 0) {
-      lines.push('- **Recent errors (last 5min):**');
-      for (const err of recentErrors) {
-        const ago = Math.round((Date.now() - new Date(err.ts).getTime()) / 1000);
-        lines.push(`  ${ago}s ago [${err.module}] ${err.msg.slice(0, 120)}`);
-      }
-    }
-
-    return lines.join('\n');
-  } catch {
-    return '- Stats: unavailable';
-  }
 }
 
 /**

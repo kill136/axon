@@ -12,7 +12,7 @@ export class MySQLDriver implements DriverInterface {
       // @ts-ignore - 可选依赖，未安装时给出友好提示
       mysql = await import('mysql2/promise');
     } catch {
-      throw new Error('请安装 mysql2 包：npm install mysql2');
+      throw new Error('Please install mysql2 package: npm install mysql2');
     }
 
     this.config = config;
@@ -33,10 +33,10 @@ export class MySQLDriver implements DriverInterface {
   }
 
   async query(sql: string, timeout: number): Promise<QueryResult> {
-    if (!this.conn) throw new Error('未连接到数据库');
+    if (!this.conn) throw new Error('Not connected to database');
 
     if (this.config?.readonly && WRITE_KEYWORDS.test(sql)) {
-      throw new Error('只读模式：不允许执行写操作');
+      throw new Error('Read-only mode: write operations not allowed');
     }
 
     const start = Date.now();

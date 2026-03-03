@@ -64,7 +64,7 @@ export class TypeScriptLSPAnalyzer {
     this.program = ts.createProgram(files, compilerOptions);
     this.checker = this.program.getTypeChecker();
 
-    console.log(`[LSP] Program 已初始化，包含 ${files.length} 个文件`);
+    console.log(`[LSP] Program initialized with ${files.length} files`);
   }
 
   /**
@@ -77,7 +77,7 @@ export class TypeScriptLSPAnalyzer {
     types: TypeNode[];
   } {
     if (!this.program || !this.checker) {
-      throw new Error('LSP Program 未初始化');
+      throw new Error('LSP Program not initialized');
     }
 
     const sourceFile = this.program.getSourceFile(filePath);
@@ -472,34 +472,34 @@ export class AICallGraphAnalyzer {
       ])
     ];
 
-    const prompt = `分析以下 TypeScript 代码的函数调用关系。
+    const prompt = `Analyze the function call relationships in the following TypeScript code.
 
-代码文件：${path.basename(filePath)}
+Code file: ${path.basename(filePath)}
 
-可用符号列表：
+Available symbol list:
 ${symbolList.join('\n')}
 
-代码内容：
+Code content:
 \`\`\`typescript
 ${fileContent}
 \`\`\`
 
-请分析并返回 JSON 格式的调用关系：
+Please analyze and return the call relationships in JSON format:
 {
   "calls": [
     {
-      "from": "函数A",
-      "to": "函数B",
+      "from": "FunctionA",
+      "to": "FunctionB",
       "type": "direct|callback|async|dynamic",
-      "reason": "调用原因说明"
+      "reason": "Reason for the call"
     }
   ]
 }
 
-注意：
-1. 只包含代码中实际存在的调用
-2. type: direct(直接调用), callback(回调), async(异步), dynamic(动态)
-3. reason 简短说明为什么调用（如"初始化配置"、"处理用户输入"）
+Notes:
+1. Only include calls that actually exist in the code
+2. type: direct (direct call), callback (callback), async (async), dynamic (dynamic)
+3. reason: briefly explain why the call is made (e.g. "initialize configuration", "handle user input")
 `;
 
     try {
@@ -523,7 +523,7 @@ ${fileContent}
 
       return { calls: [] };
     } catch (error) {
-      console.error('[AI分析] 失败:', error);
+      console.error('[AI Analysis] Failed:', error);
       return { calls: [] };
     }
   }
