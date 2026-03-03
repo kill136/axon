@@ -1,12 +1,13 @@
 /**
  * LogView - Git Commit 历史视图（集成 Graph）
- * 显示 commit graph + commit 列表，支持搜索/过滤、ref 标签显示
+ * 显示 commit graph + commit 列表，支持搜索/过滤、ref 标签显示、右键菜单
  */
 
 import { useState, useEffect, useMemo } from 'react';
 import { useLanguage } from '../../i18n';
 import { GitCommit } from './index';
 import { CommitGraph } from './CommitGraph';
+import { ContextMenu, type ContextMenuEntry } from './ContextMenu';
 import { computeGraphLayout, GRAPH_COLORS } from './graph-utils';
 
 interface LogViewProps {
@@ -16,7 +17,7 @@ interface LogViewProps {
   projectPath?: string;
   selectedHash: string | null;
   onSelectCommit: (hash: string) => void;
-  filterBranch?: string | null;  // 从分支树选择的筛选分支
+  filterBranch?: string | null;
 }
 
 /**
@@ -67,6 +68,14 @@ export function LogView({ commits, send, addMessageHandler, projectPath, selecte
   const [since, setSince] = useState('');
   const [until, setUntil] = useState('');
 
+  // 右键菜单状态
+  const [contextMenu, setContextMenu] = useState<{
+    show: boolean;
+    x: number;
+    y: number;
+    commit: GitCommit;
+  } | null>(null);
+
   // 计算 graph layout
   const layout = useMemo(() => {
     if (commits.length === 0) return null;
@@ -94,7 +103,6 @@ export function LogView({ commits, send, addMessageHandler, projectPath, selecte
     setAuthor('');
     setSince('');
     setUntil('');
-    // 重新获取默认 log
     if (projectPath) {
       send({
         type: 'git:get_log',
@@ -108,19 +116,193 @@ export function LogView({ commits, send, addMessageHandler, projectPath, selecte
     if (!projectPath) return;
     
     if (filterBranch) {
-      // 请求特定分支的 log
       send({
         type: 'git:get_log',
         payload: { projectPath, limit: 200, branch: filterBranch },
       });
     } else {
-      // 请求所有分支的 log（--all 显示完整 graph）
       send({
         type: 'git:get_log',
         payload: { projectPath, limit: 200, all: true },
       });
     }
   }, [filterBranch, projectPath, send]);
+
+  // 右键菜单处理
+  const handleContextMenu = (e: React.MouseEvent, commit: GitCommit) => {
+    e.preventDefault();
+    setContextMenu({
+      show: true,
+      x: e.clientX,
+      y: e.clientY,
+      commit,
+    });
+  };
+
+  // 生成 commit 右键菜单项
+  const getContextMenuItems = (): ContextMenuEntry[] => {
+    if (!contextMenu) return [];
+
+    const { commit } = contextMenu;
+    const items: ContextMenuEntry[] = [];
+
+    // 查看详情
+    items.push({
+      label: t('git.viewDetail'),
+      icon: '🔍',
+      onClick: () => onSelectCommit(commit.hash),
+    });
+
+    items.push({ separator: true });
+
+    // Cherry-pick
+    items.push({
+      label: 'Cherry-pick',
+      icon: '🍒',
+      onClick: () => {
+        if (!projectPath) return;
+        if (window.confirm(`Cherry-pick commit ${commit.shortHash}?\n\n${commit.message}`)) {
+          send({
+            type: 'git:cherry_pick',
+            payload: { projectPath, hash: commit.hash },
+          });
+        }
+      },
+    });
+
+    // Revert
+    items.push({
+      label: 'Revert',
+      icon: '↩',
+      onClick: () => {
+        if (!projectPath) return;
+        if (window.confirm(`Revert commit ${commit.shortHash}?\n\n${commit.message}`)) {
+          send({
+            type: 'git:revert_commit',
+            payload: { projectPath, hash: commit.hash },
+          });
+        }
+      },
+    });
+
+    items.push({ separator: true });
+
+    // Reset 操作
+    items.push({
+      label: 'Reset --soft',
+      icon: '⟲',
+      onClick: () => {
+        if (!projectPath) return;
+        if (window.confirm(`Reset (soft) to ${commit.shortHash}?\nKeeps all changes staged.`)) {
+          send({
+            type: 'git:reset',
+            payload: { projectPath, commit: commit.hash, mode: 'soft' },
+          });
+        }
+      },
+    });
+
+    items.push({
+      label: 'Reset --mixed',
+      icon: '⟲',
+      onClick: () => {
+        if (!projectPath) return;
+        if (window.confirm(`Reset (mixed) to ${commit.shortHash}?\nKeeps changes but unstaged.`)) {
+          send({
+            type: 'git:reset',
+            payload: { projectPath, commit: commit.hash, mode: 'mixed' },
+          });
+        }
+      },
+    });
+
+    items.push({
+      label: 'Reset --hard',
+      icon: '⟲',
+      onClick: () => {
+        if (!projectPath) return;
+        if (window.confirm(`Reset (hard) to ${commit.shortHash}?\n\nWARNING: This will DISCARD all uncommitted changes!`)) {
+          send({
+            type: 'git:reset',
+            payload: { projectPath, commit: commit.hash, mode: 'hard' },
+          });
+        }
+      },
+      danger: true,
+    });
+
+    items.push({ separator: true });
+
+    // 从此 commit 创建分支
+    items.push({
+      label: t('git.createBranchFrom'),
+      icon: '🌿',
+      onClick: () => {
+        const name = window.prompt(t('git.branchName'));
+        if (name && name.trim() && projectPath) {
+          send({
+            type: 'git:create_branch',
+            payload: { projectPath, name: name.trim(), startPoint: commit.hash },
+          });
+        }
+      },
+    });
+
+    // 从此 commit 创建 tag
+    items.push({
+      label: t('git.createTagFrom'),
+      icon: '🏷️',
+      onClick: () => {
+        const name = window.prompt(t('git.tagName'));
+        if (name && name.trim() && projectPath) {
+          send({
+            type: 'git:create_tag',
+            payload: { projectPath, name: name.trim(), commit: commit.hash, type: 'lightweight' },
+          });
+        }
+      },
+    });
+
+    items.push({ separator: true });
+
+    // AI 解释
+    items.push({
+      label: t('git.explainCommit'),
+      icon: '🤖',
+      onClick: () => {
+        if (!projectPath) return;
+        send({
+          type: 'git:explain_commit',
+          payload: { projectPath, hash: commit.hash },
+        });
+      },
+    });
+
+    items.push({ separator: true });
+
+    // 复制 hash
+    items.push({
+      label: t('git.copyHash'),
+      icon: '📋',
+      onClick: () => navigator.clipboard.writeText(commit.hash),
+    });
+
+    // 复制 short hash
+    items.push({
+      label: t('git.copyShortHash'),
+      icon: '📋',
+      onClick: () => navigator.clipboard.writeText(commit.shortHash),
+    });
+
+    // 复制 commit message
+    items.push({
+      label: t('git.copyMessage'),
+      icon: '📝',
+      onClick: () => navigator.clipboard.writeText(commit.message),
+    });
+
+    return items;
+  };
 
   // 无 commits 提示
   if (commits.length === 0) {
@@ -200,7 +382,7 @@ export function LogView({ commits, send, addMessageHandler, projectPath, selecte
           </div>
         )}
         <div className="git-log-commits">
-          {commits.map((commit, idx) => {
+          {commits.map((commit) => {
             const isSelected = selectedHash === commit.hash;
             
             return (
@@ -209,6 +391,7 @@ export function LogView({ commits, send, addMessageHandler, projectPath, selecte
                 className={`git-commit-row ${isSelected ? 'git-commit-row--selected' : ''}`}
                 style={{ height: rowHeight }}
                 onClick={() => onSelectCommit(commit.hash)}
+                onContextMenu={(e) => handleContextMenu(e, commit)}
               >
                 <div className="git-commit-row-main">
                   <span className="git-commit-hash">{commit.shortHash}</span>
@@ -245,6 +428,16 @@ export function LogView({ commits, send, addMessageHandler, projectPath, selecte
           })}
         </div>
       </div>
+
+      {/* 右键菜单 */}
+      {contextMenu && (
+        <ContextMenu
+          items={getContextMenuItems()}
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
     </div>
   );
 }

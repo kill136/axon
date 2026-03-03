@@ -1598,7 +1598,7 @@ async function handleClientMessage(
       break;
 
     case 'git:create_branch':
-      await handleGitCreateBranch(client, message.payload.name, conversationManager);
+      await handleGitCreateBranch(client, message.payload.name, conversationManager, message.payload.startPoint);
       break;
 
     case 'git:delete_branch':
@@ -1703,7 +1703,7 @@ async function handleClientMessage(
       break;
 
     case 'git:create_tag':
-      await handleGitCreateTag(client, message.payload.name, message.payload.message, message.payload.type, conversationManager);
+      await handleGitCreateTag(client, message.payload.name, message.payload.message, message.payload.type, conversationManager, message.payload.commit);
       break;
 
     case 'git:delete_tag':
@@ -2191,6 +2191,14 @@ async function handleClientMessage(
       }
       break;
     }
+
+    // ======================== IM 通道管理 ========================
+    case 'channel:list':
+    case 'channel:start':
+    case 'channel:stop':
+    case 'channel:config_update':
+      await handleChannelMessage(client, message as any);
+      break;
 
     default:
       console.warn('[WebSocket] Unknown message type:', (message as any).type);
@@ -6732,6 +6740,82 @@ async function handleAskUserResponse(
       type: 'error',
       payload: {
         message: error instanceof Error ? error.message : 'Failed to handle response',
+      },
+    });
+  }
+}
+
+// ============================================================================
+// IM 通道管理
+// ============================================================================
+
+/** ChannelManager 实例（由 index.ts 在启动后注入） */
+let _channelManager: import('./channels/index.js').ChannelManager | null = null;
+
+/**
+ * 注入 ChannelManager 实例
+ * 在 Web Server 启动时调用
+ */
+export function setChannelManager(cm: import('./channels/index.js').ChannelManager): void {
+  _channelManager = cm;
+}
+
+/**
+ * 处理 channel:* WebSocket 消息
+ */
+async function handleChannelMessage(
+  client: ClientConnection,
+  message: { type: string; payload?: any }
+): Promise<void> {
+  const { ws } = client;
+
+  if (!_channelManager) {
+    sendMessage(ws, {
+      type: 'channel:error',
+      payload: { channelId: '', error: 'ChannelManager not initialized' },
+    });
+    return;
+  }
+
+  try {
+    switch (message.type) {
+      case 'channel:list': {
+        const channels = _channelManager.getAllStatus();
+        sendMessage(ws, { type: 'channel:list', payload: { channels } });
+        break;
+      }
+
+      case 'channel:start': {
+        const { channelId } = message.payload;
+        await _channelManager.startChannel(channelId);
+        const channels = _channelManager.getAllStatus();
+        sendMessage(ws, { type: 'channel:list', payload: { channels } });
+        break;
+      }
+
+      case 'channel:stop': {
+        const { channelId } = message.payload;
+        await _channelManager.stopChannel(channelId);
+        const channels = _channelManager.getAllStatus();
+        sendMessage(ws, { type: 'channel:list', payload: { channels } });
+        break;
+      }
+
+      case 'channel:config_update': {
+        const { channelId, config } = message.payload;
+        await _channelManager.updateChannelConfig(channelId, config);
+        const channels = _channelManager.getAllStatus();
+        sendMessage(ws, { type: 'channel:list', payload: { channels } });
+        break;
+      }
+    }
+  } catch (error) {
+    const channelId = message.payload?.channelId || '';
+    sendMessage(ws, {
+      type: 'channel:error',
+      payload: {
+        channelId,
+        error: error instanceof Error ? error.message : String(error),
       },
     });
   }

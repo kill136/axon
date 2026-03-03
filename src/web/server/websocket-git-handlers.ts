@@ -250,10 +250,11 @@ export async function handleGitCheckout(
 export async function handleGitCreateBranch(
   client: ClientConnection,
   name: string,
-  conversationManager: ConversationManager
+  conversationManager: ConversationManager,
+  startPoint?: string,
 ): Promise<void> {
   const git = getGitManager(client);
-  const result = git.createBranch(name);
+  const result = git.createBranch(name, startPoint);
   sendMessage(client.ws, {
     type: 'git:operation_result',
     payload: { operation: 'create_branch', ...result },
@@ -835,10 +836,11 @@ export async function handleGitCreateTag(
   name: string,
   message: string | undefined,
   type: 'lightweight' | 'annotated',
-  conversationManager: ConversationManager
+  conversationManager: ConversationManager,
+  commit?: string,
 ): Promise<void> {
   const git = getGitManager(client);
-  const result = git.createTag(name, message, type);
+  const result = git.createTag(name, message, type, commit);
   sendMessage(client.ws, {
     type: 'git:operation_result',
     payload: { operation: 'create_tag', ...result },

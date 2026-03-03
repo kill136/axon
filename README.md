@@ -3,7 +3,7 @@
 ### Free & Open Source Axon with Web IDE, Multi-Agent, and Self-Evolution
 
 [![npm](https://img.shields.io/npm/v/axon?style=flat-square&color=CB3837)](https://www.npmjs.com/package/axon)
-[![GitHub Stars](https://img.shields.io/github/stars/kill136/axon?style=flat-square)](https://github.com/kill136/axon)
+[![GitHub Stars](https://img.shields.io/github/stars/kill136/claude-code-open?style=flat-square)](https://github.com/kill136/claude-code-open)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 [![Node](https://img.shields.io/badge/Node.js-%3E%3D18.0.0-brightgreen?style=flat-square)](https://nodejs.org)
 [![Discord](https://img.shields.io/discord/1454020463486566432?style=flat-square&label=Discord&color=5865F2)](https://discord.gg/bNyJKk6PVZ)
@@ -16,7 +16,7 @@
 <img src="demo-screenshots/demo.gif" width="720" alt="Axon Demo">
 </a>
 
-<sub><a href="https://youtu.be/OQ29pIgp5AI">Watch on YouTube</a> | <a href="https://github.com/kill136/axon/releases/download/v2.1.37/promo-video.mp4">Download video</a> | <a href="https://voicegpt.site">Try Live Demo</a></sub>
+<sub><a href="https://youtu.be/OQ29pIgp5AI">Watch on YouTube</a> | <a href="https://github.com/kill136/claude-code-open/releases/download/v2.1.37/promo-video.mp4">Download video</a> | <a href="https://voicegpt.site">Try Live Demo</a></sub>
 
 </div>
 
@@ -54,16 +54,16 @@ That's it. Open `http://localhost:3456` for the Web IDE.
 <details>
 <summary>One-click installer (no Node.js required)</summary>
 
-**Windows:** Download [install.bat](https://github.com/kill136/axon/releases/latest/download/install.bat) and double-click.
+**Windows:** Download [install.bat](https://github.com/kill136/claude-code-open/releases/latest/download/install.bat) and double-click.
 
 **macOS / Linux:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/kill136/axon/private_web_ui/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/kill136/claude-code-open/private_web_ui/install.sh | bash
 ```
 
 **China mirror:**
 ```bash
-curl -fsSL https://gitee.com/lubanbbs/axon/raw/private_web_ui/install.sh | bash
+curl -fsSL https://gitee.com/lubanbbs/claude-code-open/raw/private_web_ui/install.sh | bash
 ```
 </details>
 
@@ -92,7 +92,7 @@ docker run -it \
 <summary>From source</summary>
 
 ```bash
-git clone https://github.com/kill136/axon.git
+git clone https://github.com/kill136/claude-code-open.git
 cd axon
 npm install && npm run build
 node dist/cli.js        # CLI
@@ -170,6 +170,7 @@ Claude: *writes the tool, compiles, restarts itself, tool is now available*
 | `ANTHROPIC_API_KEY` | API key (required) | - |
 | `ANTHROPIC_BASE_URL` | Custom API endpoint | `https://api.anthropic.com` |
 | `AXON_LANG` | Language (`en`/`zh`) | auto-detect |
+| `AXON_CONFIG_DIR` | Custom config/data directory | `~/.axon` |
 
 ### MCP Protocol
 

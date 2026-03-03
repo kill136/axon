@@ -4,9 +4,10 @@ import ConnectorsPanel from './ConnectorsPanel';
 import SkillsPanel from './SkillsPanel';
 import McpServerPanel from './McpServerPanel';
 import SchedulePage from '../SchedulePage';
+import ChannelsPanel from '../../components/ChannelsPanel';
 import styles from './CustomizePage.module.css';
 
-type ActiveSection = 'skills' | 'mcp' | 'connectors' | 'schedule';
+type ActiveSection = 'skills' | 'mcp' | 'connectors' | 'channels' | 'schedule';
 
 interface CustomizePageProps {
   onNavigateBack?: () => void;
@@ -41,6 +42,15 @@ const ConnectorsIcon = () => (
     <path d="M10 2h3v3M6 14H3v-3" />
     <path d="M14 2l-5.5 5.5M2 14l5.5-5.5" />
     <circle cx="8.5" cy="7.5" r="1" fill="currentColor" />
+  </svg>
+);
+
+const ChannelsIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M2 4h3l2 8h2l2-8h3" />
+    <circle cx="4" cy="4" r="1.5" />
+    <circle cx="12" cy="4" r="1.5" />
+    <circle cx="8" cy="12" r="1.5" />
   </svg>
 );
 
@@ -113,6 +123,16 @@ export default function CustomizePage({
           </button>
 
           <button
+            className={`${styles.navItem} ${activeSection === 'channels' ? styles.active : ''}`}
+            onClick={() => setActiveSection('channels')}
+          >
+            <span className={styles.navIcon}>
+              <ChannelsIcon />
+            </span>
+            <span className={styles.navLabel}>{t('customize.channels') || 'IM Channels'}</span>
+          </button>
+
+          <button
             className={`${styles.navItem} ${activeSection === 'schedule' ? styles.active : ''}`}
             onClick={() => setActiveSection('schedule')}
           >
@@ -140,6 +160,12 @@ export default function CustomizePage({
         )}
         {activeSection === 'connectors' && (
           <ConnectorsPanel />
+        )}
+        {activeSection === 'channels' && (
+          <ChannelsPanel
+            onSendMessage={onSendMessage}
+            addMessageHandler={addMessageHandler}
+          />
         )}
         {activeSection === 'schedule' && (
           <SchedulePage />

@@ -214,7 +214,7 @@ export type ClientMessage =
   | { type: 'git:push' }
   | { type: 'git:pull' }
   | { type: 'git:checkout'; payload: { branch: string } }
-  | { type: 'git:create_branch'; payload: { name: string } }
+  | { type: 'git:create_branch'; payload: { name: string; startPoint?: string } }
   | { type: 'git:delete_branch'; payload: { name: string } }
   | { type: 'git:stash_save'; payload: { message?: string } }
   | { type: 'git:stash_pop'; payload: { index?: number } }
@@ -241,7 +241,7 @@ export type ClientMessage =
   | { type: 'git:revert_commit'; payload: { hash: string } }
   | { type: 'git:cherry_pick'; payload: { hash: string } }
   | { type: 'git:get_tags' }
-  | { type: 'git:create_tag'; payload: { name: string; message?: string; type: GitTagType } }
+  | { type: 'git:create_tag'; payload: { name: string; message?: string; type: GitTagType; commit?: string } }
   | { type: 'git:delete_tag'; payload: { name: string } }
   | { type: 'git:push_tags' }
   | { type: 'git:get_remotes' }
@@ -253,7 +253,12 @@ export type ClientMessage =
   | { type: 'git:get_blame'; payload: { file: string } }
   | { type: 'git:compare_branches'; payload: { base: string; target: string } }
   | { type: 'git:get_merge_status' }
-  | { type: 'git:get_conflicts'; payload: { file: string } };
+  | { type: 'git:get_conflicts'; payload: { file: string } }
+  // IM 通道管理消息
+  | { type: 'channel:list' }
+  | { type: 'channel:start'; payload: { channelId: string } }
+  | { type: 'channel:stop'; payload: { channelId: string } }
+  | { type: 'channel:config_update'; payload: { channelId: string; config: Record<string, any> } };
 
 /**
  * 服务端发送的消息类型
@@ -426,7 +431,26 @@ export type ServerMessage =
   | { type: 'logs:tail'; payload: { entries: LogEntry[] } }
   // Rewind 消息
   | { type: 'rewind_preview'; payload: { success: boolean; preview?: any } }
-  | { type: 'rewind_success'; payload: { success: boolean; result?: any; messages?: any[] } };
+  | { type: 'rewind_success'; payload: { success: boolean; result?: any; messages?: any[] } }
+  // IM 通道管理消息
+  | { type: 'channel:list'; payload: { channels: ChannelStatusInfo[] } }
+  | { type: 'channel:status_update'; payload: ChannelStatusInfo }
+  | { type: 'channel:message'; payload: { channel: string; direction: 'inbound' | 'outbound'; senderName: string; text: string; timestamp: number } }
+  | { type: 'channel:error'; payload: { channelId: string; error: string } };
+
+// ============ IM 通道状态类型 ============
+
+export interface ChannelStatusInfo {
+  id: string;
+  name: string;
+  status: 'disconnected' | 'connecting' | 'connected' | 'error';
+  enabled: boolean;
+  configured: boolean;
+  configureHint?: string;
+  error?: string;
+  lastActiveAt?: number;
+  messageCount?: number;
+}
 
 // ============ 消息负载类型 ============
 

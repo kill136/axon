@@ -5,7 +5,7 @@
 
 import { useState } from 'react';
 import { useLanguage } from '../../i18n';
-import { ContextMenu, type ContextMenuItem } from './ContextMenu';
+import { ContextMenu, type ContextMenuItem, type ContextMenuEntry } from './ContextMenu';
 import type { GitStatus } from './index';
 
 interface StatusViewProps {

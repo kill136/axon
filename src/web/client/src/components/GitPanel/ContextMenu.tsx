@@ -12,10 +12,17 @@ export interface ContextMenuItem {
   onClick: () => void;
   disabled?: boolean;
   danger?: boolean;
+  separator?: undefined;
 }
 
+export interface ContextMenuSeparator {
+  separator: true;
+}
+
+export type ContextMenuEntry = ContextMenuItem | ContextMenuSeparator;
+
 interface ContextMenuProps {
-  items: ContextMenuItem[];
+  items: ContextMenuEntry[];
   x: number;
   y: number;
   onClose: () => void;
@@ -94,18 +101,25 @@ export function ContextMenu({ items, x, y, onClose }: ContextMenuProps) {
       className="git-context-menu"
       style={{ left: x, top: y }}
     >
-      {items.map((item, index) => (
-        <div
-          key={index}
-          className={`git-context-menu-item ${item.disabled ? 'git-context-menu-item--disabled' : ''} ${
-            item.danger ? 'git-context-menu-item--danger' : ''
-          }`}
-          onClick={() => handleItemClick(item)}
-        >
-          {item.icon && <span className="git-context-menu-item-icon">{item.icon}</span>}
-          <span className="git-context-menu-item-label">{item.label}</span>
-        </div>
-      ))}
+      {items.map((item, index) => {
+        if ('separator' in item && item.separator) {
+          return <div key={index} className="git-context-menu-separator" />;
+        }
+
+        const menuItem = item as ContextMenuItem;
+        return (
+          <div
+            key={index}
+            className={`git-context-menu-item ${menuItem.disabled ? 'git-context-menu-item--disabled' : ''} ${
+              menuItem.danger ? 'git-context-menu-item--danger' : ''
+            }`}
+            onClick={() => handleItemClick(menuItem)}
+          >
+            {menuItem.icon && <span className="git-context-menu-item-icon">{menuItem.icon}</span>}
+            <span className="git-context-menu-item-label">{menuItem.label}</span>
+          </div>
+        );
+      })}
     </div>,
     document.body
   );

@@ -510,7 +510,7 @@ export class GitManager {
   /**
    * 创建分支
    */
-  createBranch(name: string): GitResult {
+  createBranch(name: string, startPoint?: string): GitResult {
     try {
       if (!name || !name.trim()) {
         return {
@@ -519,7 +519,10 @@ export class GitManager {
         };
       }
 
-      this.execGit(`branch "${name}"`);
+      const cmd = startPoint
+        ? `branch "${name}" "${startPoint}"`
+        : `branch "${name}"`;
+      this.execGit(cmd);
 
       return {
         success: true,
@@ -1448,7 +1451,7 @@ export class GitManager {
   /**
    * 创建 Tag
    */
-  createTag(name: string, message?: string, type: 'lightweight' | 'annotated' = 'lightweight'): GitResult {
+  createTag(name: string, message?: string, type: 'lightweight' | 'annotated' = 'lightweight', commit?: string): GitResult {
     try {
       if (!name || !name.trim()) {
         return {
@@ -1457,6 +1460,8 @@ export class GitManager {
         };
       }
 
+      const target = commit ? ` "${commit}"` : '';
+
       if (type === 'annotated') {
         if (!message) {
           return {
@@ -1464,9 +1469,9 @@ export class GitManager {
             error: 'Annotated tag requires a message',
           };
         }
-        this.execGit(`tag -a "${name}" -m "${message.replace(/"/g, '\\"')}"`);
+        this.execGit(`tag -a "${name}" -m "${message.replace(/"/g, '\\"')}"${target}`);
       } else {
-        this.execGit(`tag "${name}"`);
+        this.execGit(`tag "${name}"${target}`);
       }
 
       return { success: true };
