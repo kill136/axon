@@ -352,7 +352,7 @@ export class GitManager {
       if (files.length === 0) {
         return {
           success: false,
-          error: '没有指定要暂存的文件',
+          error: 'No files specified to stage',
         };
       }
 
@@ -391,7 +391,7 @@ export class GitManager {
       if (files.length === 0) {
         return {
           success: false,
-          error: '没有指定要取消暂存的文件',
+          error: 'No files specified to unstage',
         };
       }
 
@@ -417,7 +417,7 @@ export class GitManager {
       if (!message || !message.trim()) {
         return {
           success: false,
-          error: '提交信息不能为空',
+          error: 'Commit message cannot be empty',
         };
       }
 
@@ -487,7 +487,7 @@ export class GitManager {
       if (!branch || !branch.trim()) {
         return {
           success: false,
-          error: '分支名不能为空',
+          error: 'Branch name cannot be empty',
         };
       }
 
@@ -512,7 +512,7 @@ export class GitManager {
       if (!name || !name.trim()) {
         return {
           success: false,
-          error: '分支名不能为空',
+          error: 'Branch name cannot be empty',
         };
       }
 
@@ -537,7 +537,7 @@ export class GitManager {
       if (!name || !name.trim()) {
         return {
           success: false,
-          error: '分支名不能为空',
+          error: 'Branch name cannot be empty',
         };
       }
 
@@ -658,7 +658,7 @@ export class GitManager {
       if (!hash || !hash.trim()) {
         return {
           success: false,
-          error: 'commit hash 不能为空',
+          error: 'Commit hash cannot be empty',
         };
       }
 
@@ -670,7 +670,7 @@ export class GitManager {
       if (lines.length < 7) {
         return {
           success: false,
-          error: '无法获取 commit 信息',
+          error: 'Failed to get commit info',
         };
       }
 
@@ -709,7 +709,7 @@ export class GitManager {
   getCommitFiles(hash: string): GitResult<{ files: { status: string; file: string }[] }> {
     try {
       if (!hash || !hash.trim()) {
-        return { success: false, error: 'commit hash 不能为空' };
+        return { success: false, error: 'Commit hash cannot be empty' };
       }
       const output = this.execGit(`diff-tree --no-commit-id --name-status -r "${hash}"`);
       const files = output.split('\n').filter(Boolean).map(line => {
@@ -728,10 +728,10 @@ export class GitManager {
   getCommitFileDiff(hash: string, file: string): GitResult<{ content: string; file: string }> {
     try {
       if (!hash || !hash.trim()) {
-        return { success: false, error: 'commit hash 不能为空' };
+        return { success: false, error: 'Commit hash cannot be empty' };
       }
       if (!file || !file.trim()) {
-        return { success: false, error: '文件路径不能为空' };
+        return { success: false, error: 'File path cannot be empty' };
       }
       const output = this.execGit(`diff "${hash}~1" "${hash}" -- "${file}"`);
       return { success: true, data: { content: output, file } };
@@ -758,7 +758,7 @@ export class GitManager {
       if (!branch || !branch.trim()) {
         return {
           success: false,
-          error: '分支名不能为空',
+          error: 'Branch name cannot be empty',
         };
       }
 
@@ -786,7 +786,7 @@ export class GitManager {
       if (!branch || !branch.trim()) {
         return {
           success: false,
-          error: '分支名不能为空',
+          error: 'Branch name cannot be empty',
         };
       }
 
@@ -846,7 +846,7 @@ export class GitManager {
       if (!commit || !commit.trim()) {
         return {
           success: false,
-          error: 'Commit hash 不能为空',
+          error: 'Commit hash cannot be empty',
         };
       }
 
@@ -865,7 +865,7 @@ export class GitManager {
       if (!file || !file.trim()) {
         return {
           success: false,
-          error: '文件名不能为空',
+          error: 'Filename cannot be empty',
         };
       }
 
@@ -912,7 +912,7 @@ export class GitManager {
       if (!message || !message.trim()) {
         return {
           success: false,
-          error: '提交信息不能为空',
+          error: 'Commit message cannot be empty',
         };
       }
 
@@ -943,7 +943,7 @@ export class GitManager {
       if (!hash || !hash.trim()) {
         return {
           success: false,
-          error: 'Commit hash 不能为空',
+          error: 'Commit hash cannot be empty',
         };
       }
 
@@ -962,7 +962,7 @@ export class GitManager {
       if (!hash || !hash.trim()) {
         return {
           success: false,
-          error: 'Commit hash 不能为空',
+          error: 'Commit hash cannot be empty',
         };
       }
 
@@ -981,7 +981,7 @@ export class GitManager {
       if (!file || !file.trim()) {
         return {
           success: false,
-          error: '文件名不能为空',
+          error: 'Filename cannot be empty',
         };
       }
 
@@ -1163,7 +1163,7 @@ export class GitManager {
       if (!file || !file.trim()) {
         return {
           success: false,
-          error: '文件名不能为空',
+          error: 'Filename cannot be empty',
         };
       }
 
@@ -1231,7 +1231,7 @@ export class GitManager {
       if (!file || !file.trim()) {
         return {
           success: false,
-          error: '文件名不能为空',
+          error: 'Filename cannot be empty',
         };
       }
 
@@ -1316,7 +1316,7 @@ export class GitManager {
       if (!base || !target) {
         return {
           success: false,
-          error: '分支名不能为空',
+          error: 'Branch name cannot be empty',
         };
       }
 
@@ -1450,7 +1450,7 @@ export class GitManager {
       if (!name || !name.trim()) {
         return {
           success: false,
-          error: 'Tag 名称不能为空',
+          error: 'Tag name cannot be empty',
         };
       }
 
@@ -1458,7 +1458,7 @@ export class GitManager {
         if (!message) {
           return {
             success: false,
-            error: 'Annotated tag 必须提供 message',
+            error: 'Annotated tag requires a message',
           };
         }
         this.execGit(`tag -a "${name}" -m "${message.replace(/"/g, '\\"')}"`);
@@ -1480,7 +1480,7 @@ export class GitManager {
       if (!name || !name.trim()) {
         return {
           success: false,
-          error: 'Tag 名称不能为空',
+          error: 'Tag name cannot be empty',
         };
       }
 
@@ -1565,13 +1565,13 @@ export class GitManager {
       if (!name || !name.trim()) {
         return {
           success: false,
-          error: 'Remote 名称不能为空',
+          error: 'Remote name cannot be empty',
         };
       }
       if (!url || !url.trim()) {
         return {
           success: false,
-          error: 'Remote URL 不能为空',
+          error: 'Remote URL cannot be empty',
         };
       }
 
@@ -1590,7 +1590,7 @@ export class GitManager {
       if (!name || !name.trim()) {
         return {
           success: false,
-          error: 'Remote 名称不能为空',
+          error: 'Remote name cannot be empty',
         };
       }
 

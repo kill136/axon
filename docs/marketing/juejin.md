@@ -97,7 +97,7 @@ npm run web  # 打开 http://localhost:3456
 
 - **GitHub**: https://github.com/kill136/axon
 - **官网**: https://www.chatbi.site
-- **在线体验**: http://voicegpt.site:3456/
+- **在线体验**: http://voicegpt.site/
 - **Discord**: https://discord.gg/bNyJKk6PVZ
 
 MIT 协议，完全开源。欢迎 Star、Fork、提 Issue。

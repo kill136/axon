@@ -29,7 +29,7 @@ export class DebugManager extends EventEmitter {
 
   // 启动调试会话
   async launch(input: DebuggerInput): Promise<DebugSession> {
-    if (!input.program) throw new Error('launch 需要提供 program 参数');
+    if (!input.program) throw new Error('launch requires program parameter');
     const id = `session-${Date.now()}`;
     const runtime = input.runtime || 'node';
     const port = await this.getAvailablePort();
@@ -56,7 +56,7 @@ export class DebugManager extends EventEmitter {
         });
         proc.on('exit', (code) => {
           clearTimeout(timeout);
-          reject(new Error(`进程意外退出，exit code: ${code}`));
+          reject(new Error(`Process exited unexpectedly, exit code: ${code}`));
         });
       });
 
@@ -273,7 +273,7 @@ export class DebugManager extends EventEmitter {
   // 设置断点
   async setBreakpoint(sessionId: string, file: string, line: number, condition?: string, hitCondition?: string): Promise<Breakpoint> {
     const session = this.sessions.get(sessionId);
-    if (!session) throw new Error(`会话 ${sessionId} 不存在`);
+    if (!session) throw new Error(`Session ${sessionId} not found`);
 
     const bp: Breakpoint = {
       id: this.breakpointIdCounter++,
@@ -295,7 +295,7 @@ export class DebugManager extends EventEmitter {
         bp.verified = true;
         bp.message = `CDP breakpointId: ${result.breakpointId}`;
       } catch (e: any) {
-        bp.message = `设置失败: ${e.message}`;
+        bp.message = `Failed to set: ${e.message}`;
       }
     } else if (session.runtime === 'python' && session.client) {
       try {
@@ -307,12 +307,12 @@ export class DebugManager extends EventEmitter {
           bp.verified = result.breakpoints[0].verified;
         }
       } catch (e: any) {
-        bp.message = `设置失败: ${e.message}`;
+        bp.message = `Failed to set: ${e.message}`;
       }
     } else {
       // 无活跃连接，记录为 pending
       session.pendingBreakpoints.push({ file, line, condition, hitCondition });
-      bp.message = '已记录，将在连接后应用';
+      bp.message = 'Recorded, will be applied after connection';
     }
 
     session.breakpoints.push(bp);
@@ -322,7 +322,7 @@ export class DebugManager extends EventEmitter {
   // 移除断点
   removeBreakpoint(sessionId: string, breakpointId: number): boolean {
     const session = this.sessions.get(sessionId);
-    if (!session) throw new Error(`会话 ${sessionId} 不存在`);
+    if (!session) throw new Error(`Session ${sessionId} not found`);
     const idx = session.breakpoints.findIndex((b) => b.id === breakpointId);
     if (idx === -1) return false;
     session.breakpoints.splice(idx, 1);
@@ -332,7 +332,7 @@ export class DebugManager extends EventEmitter {
   // 获取调用栈
   async getStackTrace(sessionId: string, frameId?: number): Promise<StackFrame[]> {
     const session = this.sessions.get(sessionId);
-    if (!session) throw new Error(`会话 ${sessionId} 不存在`);
+    if (!session) throw new Error(`Session ${sessionId} not found`);
 
     if (session.runtime === 'node' && session.client) {
       try {
@@ -369,7 +369,7 @@ export class DebugManager extends EventEmitter {
   // 获取作用域
   async getScopes(sessionId: string, frameId: number): Promise<Scope[]> {
     const session = this.sessions.get(sessionId);
-    if (!session) throw new Error(`会话 ${sessionId} 不存在`);
+    if (!session) throw new Error(`Session ${sessionId} not found`);
 
     if (session.runtime === 'python' && session.client) {
       try {
@@ -389,7 +389,7 @@ export class DebugManager extends EventEmitter {
   // 获取变量
   async getVariables(sessionId: string, variablesReference: number): Promise<Variable[]> {
     const session = this.sessions.get(sessionId);
-    if (!session) throw new Error(`会话 ${sessionId} 不存在`);
+    if (!session) throw new Error(`Session ${sessionId} not found`);
 
     if (session.runtime === 'python' && session.client) {
       try {
@@ -427,7 +427,7 @@ export class DebugManager extends EventEmitter {
   // 执行表达式
   async evaluate(sessionId: string, expression: string, frameId?: number): Promise<string> {
     const session = this.sessions.get(sessionId);
-    if (!session) throw new Error(`会话 ${sessionId} 不存在`);
+    if (!session) throw new Error(`Session ${sessionId} not found`);
 
     if (session.runtime === 'node' && session.client) {
       try {
@@ -460,7 +460,7 @@ export class DebugManager extends EventEmitter {
   // 继续执行
   async continueExecution(sessionId: string): Promise<void> {
     const session = this.sessions.get(sessionId);
-    if (!session) throw new Error(`会话 ${sessionId} 不存在`);
+    if (!session) throw new Error(`Session ${sessionId} not found`);
     session.state = 'running';
 
     if (session.runtime === 'node' && session.client) {
@@ -475,7 +475,7 @@ export class DebugManager extends EventEmitter {
   // 单步跳过
   async stepOver(sessionId: string): Promise<void> {
     const session = this.sessions.get(sessionId);
-    if (!session) throw new Error(`会话 ${sessionId} 不存在`);
+    if (!session) throw new Error(`Session ${sessionId} not found`);
 
     if (session.runtime === 'node' && session.client) {
       await session.client.send('Debugger.stepOver');
@@ -489,7 +489,7 @@ export class DebugManager extends EventEmitter {
   // 单步进入
   async stepInto(sessionId: string): Promise<void> {
     const session = this.sessions.get(sessionId);
-    if (!session) throw new Error(`会话 ${sessionId} 不存在`);
+    if (!session) throw new Error(`Session ${sessionId} not found`);
 
     if (session.runtime === 'node' && session.client) {
       await session.client.send('Debugger.stepInto');
@@ -503,7 +503,7 @@ export class DebugManager extends EventEmitter {
   // 单步跳出
   async stepOut(sessionId: string): Promise<void> {
     const session = this.sessions.get(sessionId);
-    if (!session) throw new Error(`会话 ${sessionId} 不存在`);
+    if (!session) throw new Error(`Session ${sessionId} not found`);
 
     if (session.runtime === 'node' && session.client) {
       await session.client.send('Debugger.stepOut');
@@ -517,7 +517,7 @@ export class DebugManager extends EventEmitter {
   // 暂停执行
   async pauseExecution(sessionId: string): Promise<void> {
     const session = this.sessions.get(sessionId);
-    if (!session) throw new Error(`会话 ${sessionId} 不存在`);
+    if (!session) throw new Error(`Session ${sessionId} not found`);
     session.state = 'paused';
 
     if (session.runtime === 'node' && session.client) {
@@ -532,7 +532,7 @@ export class DebugManager extends EventEmitter {
   // 获取线程列表
   async getThreads(sessionId: string): Promise<Array<{ id: number; name: string }>> {
     const session = this.sessions.get(sessionId);
-    if (!session) throw new Error(`会话 ${sessionId} 不存在`);
+    if (!session) throw new Error(`Session ${sessionId} not found`);
 
     if (session.runtime === 'python' && session.client) {
       try {
@@ -549,7 +549,7 @@ export class DebugManager extends EventEmitter {
   // 断开连接并清理
   async disconnect(sessionId: string): Promise<void> {
     const session = this.sessions.get(sessionId);
-    if (!session) throw new Error(`会话 ${sessionId} 不存在`);
+    if (!session) throw new Error(`Session ${sessionId} not found`);
 
     try {
       if (session.runtime === 'node' && session.client) {

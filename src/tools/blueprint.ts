@@ -116,7 +116,7 @@ class ExecutionStateManager {
           // 获取当前蓝图的上下文
           const blueprint = executionState.getCurrentBlueprint();
           if (!blueprint) {
-            throw new Error('没有活跃的蓝图');
+            throw new Error('No active blueprint');
           }
 
           // 构建 Worker 上下文
@@ -226,28 +226,28 @@ const executionState = new ExecutionStateManager();
 
 export class BlueprintTool extends BaseTool<BlueprintToolInput, ToolResult> {
   name = 'Blueprint';
-  description = `蜂群架构 v2.0 - 智能项目规划与执行工具
+  description = `Swarm Architecture v2.0 - Intelligent project planning and execution tool
 
-核心功能：
-1. plan - 开始需求对话，智能生成蓝图和执行计划
-2. execute - 启动自治 Worker 并行执行任务
-3. status - 实时查看执行状态和进度
-4. pause - 暂停执行（可随时恢复）
-5. resume - 恢复暂停的执行
-6. cancel - 取消执行
+Core features:
+1. plan - Start requirements conversation, intelligently generate blueprint and execution plan
+2. execute - Launch autonomous Workers for parallel task execution
+3. status - View real-time execution status and progress
+4. pause - Pause execution (can resume at any time)
+5. resume - Resume paused execution
+6. cancel - Cancel execution
 
-使用流程：
-1. 调用 plan 开始需求对话
-2. 回答几个关键问题（约2-3轮对话）
-3. 确认后自动生成蓝图和任务分解
-4. 调用 execute 开始执行
-5. 使用 status 监控进度
+Workflow:
+1. Call plan to start requirements conversation
+2. Answer a few key questions (about 2-3 rounds of conversation)
+3. After confirmation, automatically generate blueprint and task breakdown
+4. Call execute to start execution
+5. Use status to monitor progress
 
-蜂群特性：
-- 自治 Worker：无需逐步批准，自主决策
-- 智能测试：AI 判断是否需要测试
-- Git 并发：分支代替文件锁
-- 自动重试：失败任务自动修复重试`;
+Swarm features:
+- Autonomous Workers: No step-by-step approval needed, self-directed decisions
+- Smart testing: AI determines if testing is needed
+- Git concurrency: Branches replace file locks
+- Auto-retry: Failed tasks automatically fixed and retried`;
 
   getInputSchema(): ToolDefinition['inputSchema'] {
     return {
@@ -256,36 +256,36 @@ export class BlueprintTool extends BaseTool<BlueprintToolInput, ToolResult> {
         action: {
           type: 'string',
           enum: ['plan', 'execute', 'status', 'pause', 'resume', 'cancel'],
-          description: '要执行的操作',
+          description: 'The operation to perform',
         },
         projectPath: {
           type: 'string',
-          description: '项目路径（plan时使用，默认为当前目录）',
+          description: 'Project path (used for plan, defaults to current directory)',
         },
         userInput: {
           type: 'string',
-          description: '用户输入（plan对话时使用）',
+          description: 'User input (used for plan conversation)',
         },
         sessionId: {
           type: 'string',
-          description: '会话ID（继续已有对话时使用）',
+          description: 'Session ID (used when continuing an existing conversation)',
         },
         blueprintId: {
           type: 'string',
-          description: '蓝图ID（execute时使用）',
+          description: 'Blueprint ID (used for execute)',
         },
         planId: {
           type: 'string',
-          description: '执行计划ID（execute时使用）',
+          description: 'Execution plan ID (used for execute)',
         },
         config: {
           type: 'object',
-          description: '蜂群配置（可选）',
+          description: 'Swarm configuration (optional)',
           properties: {
-            maxWorkers: { type: 'number', description: '最大并发Worker数' },
-            maxRetries: { type: 'number', description: '最大重试次数' },
-            autoTest: { type: 'boolean', description: '是否自动判断测试需求' },
-            maxCost: { type: 'number', description: '最大成本限制（美元）' },
+            maxWorkers: { type: 'number', description: 'Maximum concurrent workers' },
+            maxRetries: { type: 'number', description: 'Maximum retry count' },
+            autoTest: { type: 'boolean', description: 'Whether to automatically determine testing needs' },
+            maxCost: { type: 'number', description: 'Maximum cost limit (USD)' },
           },
         },
       },

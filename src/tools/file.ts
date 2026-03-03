@@ -827,7 +827,7 @@ Usage:
                 content: [
                   {
                     type: 'text',
-                    text: `[Jupyter Notebook 图片输出 - Cell ${idx + 1}]`,
+                    text: `[Jupyter Notebook image output - Cell ${idx + 1}]`,
                   },
                   {
                     type: 'image',
@@ -840,13 +840,13 @@ Usage:
                 ],
               });
             }
-            output += `\n🖼️ [${cellOutputs.images.length} 张图片输出 - 请查看下方图片]\n`;
+            output += `\n🖼️ [${cellOutputs.images.length} image output(s) - see images below]\n`;
           }
         }
       });
 
       output += `\n${'═'.repeat(60)}\n`;
-      output += `📊 Notebook 统计: ${cells.length} 个单元格\n`;
+      output += `📊 Notebook stats: ${cells.length} cells\n`;
 
       // 构建结果
       const result: FileResult = {
@@ -917,7 +917,7 @@ Usage:
               const html = Array.isArray(data['text/html'])
                 ? data['text/html'].join('')
                 : data['text/html'];
-              textOutput += `[HTML 输出]\n${this.sanitizeHtmlForTerminal(html)}\n`;
+              textOutput += `[HTML output]\n${this.sanitizeHtmlForTerminal(html)}\n`;
             }
             // 其次显示 Markdown
             else if (data['text/markdown']) {

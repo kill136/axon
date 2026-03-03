@@ -41,7 +41,7 @@ Hi Anthropic community! I built an open-source AI coding platform that extends t
 One-click install for Windows/macOS/Linux.
 
 **GitHub:** https://github.com/kill136/axon
-**Live Demo:** http://voicegpt.site:3456/
+**Live Demo:** http://voicegpt.site/
 **Discord:** https://discord.gg/bNyJKk6PVZ
 
 Would love feedback from fellow Claude developers!`
@@ -67,7 +67,7 @@ Instead of a desktop app, it runs as a **Web IDE** accessible from any browser �
 
 Works with Anthropic API, AWS Bedrock, and Google Vertex AI.
 
-**Try it:** http://voicegpt.site:3456/
+**Try it:** http://voicegpt.site/
 **GitHub:** https://github.com/kill136/axon
 **Discord:** https://discord.gg/bNyJKk6PVZ`
   },
@@ -90,7 +90,7 @@ Sharing my open-source project: a full AI coding platform with Web IDE and multi
 
 Fully MIT licensed, 129 stars, actively maintained.
 
-**Live Demo:** http://voicegpt.site:3456/
+**Live Demo:** http://voicegpt.site/
 **GitHub:** https://github.com/kill136/axon
 **Our Discord:** https://discord.gg/bNyJKk6PVZ
 
@@ -116,7 +116,7 @@ Hey Continue community! Built something you might find interesting — an open-s
 Built with TypeScript, React, Express, WebSocket. 129⭐ 50 forks.
 
 **GitHub:** https://github.com/kill136/axon
-**Try it:** http://voicegpt.site:3456/`
+**Try it:** http://voicegpt.site/`
   },
   {
     id: 'huggingface',
@@ -140,7 +140,7 @@ Web IDE with Monaco editor, multi-provider (Anthropic/Bedrock/Vertex), MIT licen
 129 stars, actively developed.
 
 **GitHub:** https://github.com/kill136/axon
-**Live Demo:** http://voicegpt.site:3456/`
+**Live Demo:** http://voicegpt.site/`
   },
   {
     id: 'n8n',
@@ -162,7 +162,7 @@ Think of it as an AI coding assistant with n8n-like automation capabilities buil
 MIT licensed, 129⭐ on GitHub.
 
 **GitHub:** https://github.com/kill136/axon
-**Demo:** http://voicegpt.site:3456/`
+**Demo:** http://voicegpt.site/`
   },
 ];
 

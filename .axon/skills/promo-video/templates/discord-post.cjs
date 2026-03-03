@@ -30,7 +30,7 @@ Built an open-source AI coding platform that goes beyond just CLI:
 126 stars on GitHub, actively maintained.
 
 GitHub: https://github.com/kill136/axon
-Live Demo: http://voicegpt.site:3456/
+Live Demo: http://voicegpt.site/
 Discord: https://discord.gg/bNyJKk6PVZ
 
 Feedback welcome!`;

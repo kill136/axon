@@ -208,7 +208,7 @@ export class WebConfigService {
     try {
       return this.configManager.getAll();
     } catch (error) {
-      console.error('[WebConfigService] 获取所有配置失败:', error);
+      console.error('[WebConfigService] Failed to get all config:', error);
       throw new Error(`获取配置失败: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
@@ -238,7 +238,7 @@ export class WebConfigService {
         authPriority: (config as any).authPriority || 'auto',
       };
     } catch (error) {
-      console.error('[WebConfigService] 获取 API 配置失败:', error);
+      console.error('[WebConfigService] Failed to get API config:', error);
       throw new Error(`获取 API 配置失败: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
@@ -251,7 +251,7 @@ export class WebConfigService {
       const config = this.configManager.getAll();
       return config.permissions || {};
     } catch (error) {
-      console.error('[WebConfigService] 获取权限配置失败:', error);
+      console.error('[WebConfigService] Failed to get permissions config:', error);
       throw new Error(`获取权限配置失败: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
@@ -265,7 +265,7 @@ export class WebConfigService {
       // ConfigManager 不直接存储 hooks，返回空配置
       return {};
     } catch (error) {
-      console.error('[WebConfigService] 获取 Hooks 配置失败:', error);
+      console.error('[WebConfigService] Failed to get hooks config:', error);
       throw new Error(`获取 Hooks 配置失败: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
@@ -280,7 +280,7 @@ export class WebConfigService {
         level: 'info',
       };
     } catch (error) {
-      console.error('[WebConfigService] 获取日志配置失败:', error);
+      console.error('[WebConfigService] Failed to get logging config:', error);
       throw new Error(`获取日志配置失败: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
@@ -293,7 +293,7 @@ export class WebConfigService {
       const config = this.configManager.getAll();
       return config.proxy || {};
     } catch (error) {
-      console.error('[WebConfigService] 获取代理配置失败:', error);
+      console.error('[WebConfigService] Failed to get proxy config:', error);
       throw new Error(`获取代理配置失败: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
@@ -307,7 +307,7 @@ export class WebConfigService {
       const config = this.configManager.getAll();
       return config.security || { allowSandboxEscape: false };
     } catch (error) {
-      console.error('[WebConfigService] 获取安全配置失败:', error);
+      console.error('[WebConfigService] Failed to get security config:', error);
       throw new Error(`获取安全配置失败: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
@@ -320,7 +320,7 @@ export class WebConfigService {
       const config = this.configManager.getAll();
       return config.terminal || {};
     } catch (error) {
-      console.error('[WebConfigService] 获取终端配置失败:', error);
+      console.error('[WebConfigService] Failed to get terminal config:', error);
       throw new Error(`获取终端配置失败: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
@@ -337,7 +337,7 @@ export class WebConfigService {
         editMode: config.editMode,
       };
     } catch (error) {
-      console.error('[WebConfigService] 获取 UI 配置失败:', error);
+      console.error('[WebConfigService] Failed to get UI config:', error);
       throw new Error(`获取 UI 配置失败: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
@@ -353,7 +353,7 @@ export class WebConfigService {
         attribution: config.attribution,
       };
     } catch (error) {
-      console.error('[WebConfigService] 获取 Git 配置失败:', error);
+      console.error('[WebConfigService] Failed to get Git config:', error);
       throw new Error(`获取 Git 配置失败: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
@@ -369,7 +369,7 @@ export class WebConfigService {
         disallowedTools: config.disallowedTools,
       };
     } catch (error) {
-      console.error('[WebConfigService] 获取工具过滤配置失败:', error);
+      console.error('[WebConfigService] Failed to get tool filter config:', error);
       throw new Error(`获取工具过滤配置失败: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
@@ -402,7 +402,7 @@ export class WebConfigService {
       }
       return true;
     } catch (error) {
-      console.error('[WebConfigService] 更新 API 配置失败:', error);
+      console.error('[WebConfigService] Failed to update API config:', error);
       return false;
     }
   }
@@ -415,7 +415,7 @@ export class WebConfigService {
       this.configManager.save({ permissions: config });
       return true;
     } catch (error) {
-      console.error('[WebConfigService] 更新权限配置失败:', error);
+      console.error('[WebConfigService] Failed to update permissions config:', error);
       return false;
     }
   }
@@ -426,10 +426,10 @@ export class WebConfigService {
   async updateHooksConfig(config: Partial<HooksConfig>): Promise<boolean> {
     try {
       // ConfigManager 不直接支持 hooks，需要扩展或通过其他方式处理
-      console.warn('[WebConfigService] Hooks 配置更新暂不支持');
+      console.warn('[WebConfigService] Hooks config update not supported yet');
       return false;
     } catch (error) {
-      console.error('[WebConfigService] 更新 Hooks 配置失败:', error);
+      console.error('[WebConfigService] Failed to update hooks config:', error);
       return false;
     }
   }
@@ -442,7 +442,7 @@ export class WebConfigService {
       this.configManager.save({ logging: config });
       return true;
     } catch (error) {
-      console.error('[WebConfigService] 更新日志配置失败:', error);
+      console.error('[WebConfigService] Failed to update logging config:', error);
       return false;
     }
   }
@@ -455,7 +455,7 @@ export class WebConfigService {
       this.configManager.save({ proxy: config });
       return true;
     } catch (error) {
-      console.error('[WebConfigService] 更新代理配置失败:', error);
+      console.error('[WebConfigService] Failed to update proxy config:', error);
       return false;
     }
   }
@@ -468,7 +468,7 @@ export class WebConfigService {
       this.configManager.save({ security: config });
       return true;
     } catch (error) {
-      console.error('[WebConfigService] 更新安全配置失败:', error);
+      console.error('[WebConfigService] Failed to update security config:', error);
       return false;
     }
   }
@@ -481,7 +481,7 @@ export class WebConfigService {
       this.configManager.save({ terminal: config });
       return true;
     } catch (error) {
-      console.error('[WebConfigService] 更新终端配置失败:', error);
+      console.error('[WebConfigService] Failed to update terminal config:', error);
       return false;
     }
   }
@@ -494,7 +494,7 @@ export class WebConfigService {
       this.configManager.save(config);
       return true;
     } catch (error) {
-      console.error('[WebConfigService] 更新 UI 配置失败:', error);
+      console.error('[WebConfigService] Failed to update UI config:', error);
       return false;
     }
   }
@@ -507,7 +507,7 @@ export class WebConfigService {
       this.configManager.save(config);
       return true;
     } catch (error) {
-      console.error('[WebConfigService] 更新 Git 配置失败:', error);
+      console.error('[WebConfigService] Failed to update Git config:', error);
       return false;
     }
   }
@@ -520,7 +520,7 @@ export class WebConfigService {
       this.configManager.save(config);
       return true;
     } catch (error) {
-      console.error('[WebConfigService] 更新工具过滤配置失败:', error);
+      console.error('[WebConfigService] Failed to update tool filter config:', error);
       return false;
     }
   }
@@ -535,7 +535,7 @@ export class WebConfigService {
       const maskSecrets = options.maskSecrets ?? true;
       return this.configManager.export(maskSecrets);
     } catch (error) {
-      console.error('[WebConfigService] 导出配置失败:', error);
+      console.error('[WebConfigService] Failed to export config:', error);
       throw new Error(`导出配置失败: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
@@ -547,7 +547,7 @@ export class WebConfigService {
     try {
       return this.configManager.import(jsonStr);
     } catch (error) {
-      console.error('[WebConfigService] 导入配置失败:', error);
+      console.error('[WebConfigService] Failed to import config:', error);
       return false;
     }
   }
@@ -571,7 +571,7 @@ export class WebConfigService {
         return { valid: false, errors };
       }
     } catch (error) {
-      console.error('[WebConfigService] 验证配置失败:', error);
+      console.error('[WebConfigService] Failed to validate config:', error);
       return {
         valid: false,
         errors: [error instanceof Error ? error.message : String(error)],
@@ -587,7 +587,7 @@ export class WebConfigService {
       this.configManager.reset();
       return true;
     } catch (error) {
-      console.error('[WebConfigService] 重置配置失败:', error);
+      console.error('[WebConfigService] Failed to reset config:', error);
       return false;
     }
   }
@@ -601,7 +601,7 @@ export class WebConfigService {
     try {
       return this.configManager.getConfigSource(key as keyof UserConfig);
     } catch (error) {
-      console.error('[WebConfigService] 获取配置来源失败:', error);
+      console.error('[WebConfigService] Failed to get config source:', error);
       return undefined;
     }
   }
@@ -618,7 +618,7 @@ export class WebConfigService {
       });
       return result;
     } catch (error) {
-      console.error('[WebConfigService] 获取所有配置来源失败:', error);
+      console.error('[WebConfigService] Failed to get all config sources:', error);
       return {};
     }
   }
@@ -630,7 +630,7 @@ export class WebConfigService {
     try {
       return this.configManager.getConfigSourceInfo();
     } catch (error) {
-      console.error('[WebConfigService] 获取配置来源信息失败:', error);
+      console.error('[WebConfigService] Failed to get config source info:', error);
       return [];
     }
   }
@@ -642,7 +642,7 @@ export class WebConfigService {
     try {
       return this.configManager.getAllPossibleSources();
     } catch (error) {
-      console.error('[WebConfigService] 获取所有可能的配置来源失败:', error);
+      console.error('[WebConfigService] Failed to get all possible config sources:', error);
       return [];
     }
   }
@@ -654,7 +654,7 @@ export class WebConfigService {
     try {
       return this.configManager.getAllConfigDetails();
     } catch (error) {
-      console.error('[WebConfigService] 获取配置详情失败:', error);
+      console.error('[WebConfigService] Failed to get config details:', error);
       return [];
     }
   }
@@ -666,7 +666,7 @@ export class WebConfigService {
     try {
       return this.configManager.getConfigHistory(key);
     } catch (error) {
-      console.error('[WebConfigService] 获取配置历史失败:', error);
+      console.error('[WebConfigService] Failed to get config history:', error);
       return [];
     }
   }
@@ -702,7 +702,7 @@ export class WebConfigService {
         };
       });
     } catch (error) {
-      console.error('[WebConfigService] 列出备份失败:', error);
+      console.error('[WebConfigService] Failed to list backups:', error);
       return [];
     }
   }
@@ -714,7 +714,7 @@ export class WebConfigService {
     try {
       return this.configManager.restoreFromBackup(filename, type);
     } catch (error) {
-      console.error('[WebConfigService] 恢复备份失败:', error);
+      console.error('[WebConfigService] Failed to restore backup:', error);
       return false;
     }
   }
@@ -728,7 +728,7 @@ export class WebConfigService {
     try {
       return this.configManager.getMcpServers();
     } catch (error) {
-      console.error('[WebConfigService] 获取 MCP 服务器配置失败:', error);
+      console.error('[WebConfigService] Failed to get MCP server config:', error);
       return {};
     }
   }
@@ -741,7 +741,7 @@ export class WebConfigService {
       this.configManager.addMcpServer(name, config);
       return true;
     } catch (error) {
-      console.error('[WebConfigService] 添加 MCP 服务器失败:', error);
+      console.error('[WebConfigService] Failed to add MCP server:', error);
       return false;
     }
   }
@@ -753,7 +753,7 @@ export class WebConfigService {
     try {
       return this.configManager.removeMcpServer(name);
     } catch (error) {
-      console.error('[WebConfigService] 删除 MCP 服务器失败:', error);
+      console.error('[WebConfigService] Failed to remove MCP server:', error);
       return false;
     }
   }
@@ -765,7 +765,7 @@ export class WebConfigService {
     try {
       return this.configManager.updateMcpServer(name, config);
     } catch (error) {
-      console.error('[WebConfigService] 更新 MCP 服务器失败:', error);
+      console.error('[WebConfigService] Failed to update MCP server:', error);
       return false;
     }
   }
@@ -779,7 +779,7 @@ export class WebConfigService {
     try {
       return this.configManager.getEnterprisePolicy();
     } catch (error) {
-      console.error('[WebConfigService] 获取企业策略失败:', error);
+      console.error('[WebConfigService] Failed to get enterprise policy:', error);
       return undefined;
     }
   }
@@ -791,7 +791,7 @@ export class WebConfigService {
     try {
       return this.configManager.isEnforcedByPolicy(key);
     } catch (error) {
-      console.error('[WebConfigService] 检查企业策略失败:', error);
+      console.error('[WebConfigService] Failed to check enterprise policy:', error);
       return false;
     }
   }
@@ -803,7 +803,7 @@ export class WebConfigService {
     try {
       return this.configManager.isFeatureDisabled(feature);
     } catch (error) {
-      console.error('[WebConfigService] 检查功能禁用状态失败:', error);
+      console.error('[WebConfigService] Failed to check feature disabled status:', error);
       return false;
     }
   }
@@ -817,7 +817,7 @@ export class WebConfigService {
     try {
       return this.configManager.getConfigPaths();
     } catch (error) {
-      console.error('[WebConfigService] 获取配置路径失败:', error);
+      console.error('[WebConfigService] Failed to get config paths:', error);
       return {};
     }
   }
@@ -832,7 +832,7 @@ export class WebConfigService {
       this.configManager.reload();
       return true;
     } catch (error) {
-      console.error('[WebConfigService] 重新加载配置失败:', error);
+      console.error('[WebConfigService] Failed to reload config:', error);
       return false;
     }
   }
@@ -844,7 +844,7 @@ export class WebConfigService {
     try {
       this.configManager.watch(callback);
     } catch (error) {
-      console.error('[WebConfigService] 监听配置失败:', error);
+      console.error('[WebConfigService] Failed to watch config:', error);
     }
   }
 
@@ -855,7 +855,7 @@ export class WebConfigService {
     try {
       this.configManager.unwatch();
     } catch (error) {
-      console.error('[WebConfigService] 停止监听配置失败:', error);
+      console.error('[WebConfigService] Failed to unwatch config:', error);
     }
   }
 
@@ -869,7 +869,7 @@ export class WebConfigService {
       this.configManager.save(config);
       return true;
     } catch (error) {
-      console.error('[WebConfigService] 保存用户配置失败:', error);
+      console.error('[WebConfigService] Failed to save user config:', error);
       return false;
     }
   }
@@ -882,7 +882,7 @@ export class WebConfigService {
       this.configManager.saveProject(config);
       return true;
     } catch (error) {
-      console.error('[WebConfigService] 保存项目配置失败:', error);
+      console.error('[WebConfigService] Failed to save project config:', error);
       return false;
     }
   }
@@ -895,7 +895,7 @@ export class WebConfigService {
       this.configManager.saveLocal(config);
       return true;
     } catch (error) {
-      console.error('[WebConfigService] 保存本地配置失败:', error);
+      console.error('[WebConfigService] Failed to save local config:', error);
       return false;
     }
   }

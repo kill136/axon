@@ -128,7 +128,7 @@ export const BUILTIN_PROVIDERS: ConnectorProvider[] = [
   },
   {
     id: 'feishu',
-    name: '飞书',
+    name: 'Feishu',
     category: 'feishu',
     description: 'Access Feishu/Lark messages, docs, calendar, and more',
     icon: 'feishu',
@@ -149,9 +149,9 @@ export const BUILTIN_PROVIDERS: ConnectorProvider[] = [
   },
   {
     id: 'dingtalk',
-    name: '钉钉',
+    name: 'DingTalk',
     category: 'dingtalk',
-    description: '通讯录、日程、待办、机器人消息、日志、项目管理等',
+    description: 'Contacts, calendar, to-dos, bot messages, logs, project management, and more',
     icon: 'dingtalk',
     credentials: {
       fields: [

@@ -144,6 +144,10 @@ Usage:
         },
         '-C': {
           type: 'number',
+          description: 'Alias for context.',
+        },
+        context: {
+          type: 'number',
           description: 'Number of lines to show before and after each match (rg -C). Requires output_mode: "content", ignored otherwise.',
         },
         multiline: {
@@ -171,7 +175,8 @@ Usage:
       output_mode = 'files_with_matches',
       '-B': beforeContext,
       '-A': afterContext,
-      '-C': context,
+      '-C': cAlias,
+      context: contextParam,
       '-n': showLineNumbers = true,
       '-i': ignoreCase,
       type: fileType,
@@ -179,6 +184,7 @@ Usage:
       offset = 0,
       multiline,
     } = input;
+    const context = contextParam ?? cAlias;
     const searchPath = fromMsysPath(inputSearchPath);
 
     try {

@@ -392,7 +392,7 @@ export class WebScheduler {
     console.log(`[WebScheduler] Creating new session for alarm "${task.name}"`);
 
     const sessionMgr = this.conversationManager.getSessionManager();
-    const title = `⏰ 定时任务: ${task.name.slice(0, 40)}`;
+    const title = `⏰ Scheduled Task: ${task.name.slice(0, 40)}`;
     const newSession = sessionMgr.createSession({
       name: title,
       model: task.model || this.defaultModel,
@@ -462,25 +462,25 @@ export class WebScheduler {
 
   private buildAlarmPrompt(task: ScheduledTask): string {
     const parts: string[] = [];
-    parts.push(`[⏰ 定时提醒] 你之前设了定时任务 "${task.name}"，现在到时间了。`);
+    parts.push(`[⏰ Scheduled Reminder] Your scheduled task "${task.name}" is now due.`);
     parts.push('');
-    parts.push(`**任务目标：** ${task.prompt}`);
+    parts.push(`**Task objective:** ${task.prompt}`);
 
     if (task.context) {
       parts.push('');
-      parts.push(`**创建时的对话背景：** ${task.context}`);
+      parts.push(`**Conversation context when created:** ${task.context}`);
     }
 
     if (task.executionMemory && task.executionMemory.length > 0) {
       parts.push('');
-      parts.push('**历史执行记录：**');
+      parts.push('**Execution history:**');
       for (const mem of task.executionMemory) {
         parts.push(`- ${mem}`);
       }
     }
 
     parts.push('');
-    parts.push('请现在处理这个任务。你可以根据当前对话上下文和你的记忆，自主判断最佳的执行方式。');
+    parts.push('Please handle this task now. You can autonomously determine the best execution approach based on the current conversation context and your memory.');
 
     return parts.join('\n');
   }
@@ -538,7 +538,7 @@ export class WebScheduler {
         });
         this.broadcastFn({
           type: 'status',
-          payload: { status: 'tool_executing', message: `执行 ${toolName}...`, sessionId },
+          payload: { status: 'tool_executing', message: `Executing ${toolName}...`, sessionId },
         });
       },
       onToolUseDelta: (toolUseId: string, partialJson: string) => {

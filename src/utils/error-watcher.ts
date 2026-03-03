@@ -356,18 +356,18 @@ class ErrorWatcher {
 
       const content = fs.readFileSync(notebookPath, 'utf-8');
 
-      const sectionHeader = '## ErrorWatcher 自动检测';
+      const sectionHeader = '## ErrorWatcher Auto Detection';
       if (content.includes(pattern.fingerprint)) return;
 
       const date = new Date().toISOString().slice(0, 10);
       const newEntry = [
         '',
         `### [${date}] ${pattern.description}`,
-        `- 指纹: \`${pattern.fingerprint}\``,
-        `- 分类: ${pattern.category}`,
-        `- 重复次数: ${pattern.count}`,
-        `- 位置: \`${pattern.sourceLocation || 'unknown'}\``,
-        `- 错误: \`${pattern.sample.msg.slice(0, 100)}\``,
+        `- Fingerprint: \`${pattern.fingerprint}\``,
+        `- Category: ${pattern.category}`,
+        `- Occurrences: ${pattern.count}`,
+        `- Location: \`${pattern.sourceLocation || 'unknown'}\``,
+        `- Error: \`${pattern.sample.msg.slice(0, 100)}\``,
         '',
       ].join('\n');
 

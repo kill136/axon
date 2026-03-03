@@ -7,13 +7,13 @@ import { connectionManager } from '../database/index.js';
 function formatTable(result: QueryResult, truncated?: boolean, displayRows?: number): string {
   const { columns, rows, rowCount, duration, command, affectedRows } = result;
 
-  let header = `查询完成 | 行数: ${rowCount} | 耗时: ${duration}ms`;
-  if (command) header += ` | 命令: ${command}`;
+  let header = `Query completed | Rows: ${rowCount} | Duration: ${duration}ms`;
+  if (command) header += ` | Command: ${command}`;
 
   // 非 SELECT 语句
   if (columns.length === 0 || rows.length === 0) {
     if (affectedRows !== undefined) {
-      header += ` | 影响行数: ${affectedRows}`;
+      header += ` | Affected rows: ${affectedRows}`;
     }
     return header;
   }
@@ -43,7 +43,7 @@ function formatTable(result: QueryResult, truncated?: boolean, displayRows?: num
 
   if (truncated && displayRows !== undefined) {
     lines.push('');
-    lines.push(`（显示前 ${displayRows} 行，共 ${rowCount} 行）`);
+    lines.push(`(Showing first ${displayRows} of ${rowCount} rows)`);
   }
 
   return lines.join('\n');
@@ -51,7 +51,7 @@ function formatTable(result: QueryResult, truncated?: boolean, displayRows?: num
 
 // 格式化列描述
 function formatColumns(cols: ColumnInfo[]): string {
-  if (cols.length === 0) return '（无列信息）';
+  if (cols.length === 0) return '(No column info)';
   const widths = [4, 4, 8]; // name, type, nullable 最小宽度
   for (const c of cols) {
     if (c.name.length > widths[0]) widths[0] = c.name.length;
@@ -73,22 +73,22 @@ function formatColumns(cols: ColumnInfo[]): string {
 
 export class DatabaseTool extends BaseTool<DatabaseToolInput, ToolResult> {
   name = 'Database';
-  description = `数据库客户端工具，支持 PostgreSQL、MySQL、SQLite、Redis、MongoDB。
+  description = `Database client tool supporting PostgreSQL, MySQL, SQLite, Redis, MongoDB.
 
-支持的操作：
-- connect: 建立数据库连接（需要 connection 名称和连接参数）
-- disconnect: 断开连接
-- query: 执行 SQL/命令查询
-- list_connections: 列出所有活跃连接
-- list_databases: 列出数据库
-- list_tables: 列出表/集合
-- describe_table: 描述表结构
+Supported operations:
+- connect: Establish a database connection (requires connection name and connection parameters)
+- disconnect: Disconnect
+- query: Execute SQL/command queries
+- list_connections: List all active connections
+- list_databases: List databases
+- list_tables: List tables/collections
+- describe_table: Describe table structure
 
-连接示例：
+Connection examples:
   { "action": "connect", "connection": "mydb", "type": "sqlite", "connectionString": "/path/to/db.sqlite" }
   { "action": "connect", "connection": "pg", "type": "postgres", "connectionString": "postgresql://user:pass@host:5432/db" }
 
-查询示例：
+Query examples:
   { "action": "query", "connection": "mydb", "sql": "SELECT * FROM users LIMIT 10" }
   { "action": "query", "connection": "redis1", "sql": "GET mykey" }
   { "action": "query", "connection": "mongo1", "sql": "{\\"collection\\":\\"users\\",\\"find\\":{},\\"limit\\":10}" }
@@ -101,32 +101,32 @@ export class DatabaseTool extends BaseTool<DatabaseToolInput, ToolResult> {
         action: {
           type: 'string',
           enum: ['connect', 'disconnect', 'query', 'list_connections', 'list_databases', 'list_tables', 'describe_table'],
-          description: '要执行的操作',
+          description: 'The operation to perform',
         },
         connection: {
           type: 'string',
-          description: '连接名称（用于标识连接）',
+          description: 'Connection name (used to identify the connection)',
         },
         connectionString: {
           type: 'string',
-          description: '数据库连接字符串（connect 时使用）',
+          description: 'Database connection string (used for connect)',
         },
         type: {
           type: 'string',
           enum: ['postgres', 'mysql', 'sqlite', 'redis', 'mongo'],
-          description: '数据库类型',
+          description: 'Database type',
         },
-        host: { type: 'string', description: '数据库主机地址' },
-        port: { type: 'number', description: '端口号' },
-        user: { type: 'string', description: '用户名' },
-        password: { type: 'string', description: '密码' },
-        database: { type: 'string', description: '数据库名称' },
-        ssl: { type: 'boolean', description: '是否启用 SSL' },
-        readonly: { type: 'boolean', description: '只读模式（禁止 DML/DDL）' },
-        sql: { type: 'string', description: 'SQL 查询语句（或 Redis 命令、MongoDB JSON）' },
-        table: { type: 'string', description: '表名（describe_table 时使用）' },
-        maxRows: { type: 'number', description: '最大返回行数（默认 100）' },
-        timeout: { type: 'number', description: '查询超时（毫秒，默认 30000）' },
+        host: { type: 'string', description: 'Database host address' },
+        port: { type: 'number', description: 'Port number' },
+        user: { type: 'string', description: 'Username' },
+        password: { type: 'string', description: 'Password' },
+        database: { type: 'string', description: 'Database name' },
+        ssl: { type: 'boolean', description: 'Whether to enable SSL' },
+        readonly: { type: 'boolean', description: 'Read-only mode (disables DML/DDL)' },
+        sql: { type: 'string', description: 'SQL query statement (or Redis command, MongoDB JSON)' },
+        table: { type: 'string', description: 'Table name (used for describe_table)' },
+        maxRows: { type: 'number', description: 'Maximum number of rows to return (default 100)' },
+        timeout: { type: 'number', description: 'Query timeout (milliseconds, default 30000)' },
       },
       required: ['action'],
     };
@@ -136,8 +136,8 @@ export class DatabaseTool extends BaseTool<DatabaseToolInput, ToolResult> {
     try {
       switch (input.action) {
         case 'connect': {
-          if (!input.connection) return this.error('缺少参数: connection（连接名称）');
-          if (!input.type && !input.connectionString) return this.error('缺少参数: type 或 connectionString');
+          if (!input.connection) return this.error('Missing parameter: connection (connection name)');
+          if (!input.type && !input.connectionString) return this.error('Missing parameter: type or connectionString');
 
           // 从连接字符串推断类型
           let dbType = input.type;
@@ -167,18 +167,18 @@ export class DatabaseTool extends BaseTool<DatabaseToolInput, ToolResult> {
           const masked = input.connectionString
             ? connectionManager.maskPassword(input.connectionString)
             : `${dbType}://${input.host ?? 'localhost'}/${input.database ?? ''}`;
-          return this.success(`已连接到 ${input.connection}（${masked}）${input.readonly ? ' [只读]' : ''}`);
+          return this.success(`Connected to ${input.connection} (${masked})${input.readonly ? ' [read-only]' : ''}`);
         }
 
         case 'disconnect': {
-          if (!input.connection) return this.error('缺少参数: connection');
+          if (!input.connection) return this.error('Missing parameter: connection');
           await connectionManager.disconnect(input.connection);
-          return this.success(`已断开连接: ${input.connection}`);
+          return this.success(`Disconnected: ${input.connection}`);
         }
 
         case 'query': {
-          if (!input.connection) return this.error('缺少参数: connection');
-          if (!input.sql) return this.error('缺少参数: sql');
+          if (!input.connection) return this.error('Missing parameter: connection');
+          if (!input.sql) return this.error('Missing parameter: sql');
           const maxRows = input.maxRows ?? 100;
           const timeout = input.timeout ?? 30000;
           const result = await connectionManager.query(input.connection, input.sql, maxRows, timeout);
@@ -189,32 +189,32 @@ export class DatabaseTool extends BaseTool<DatabaseToolInput, ToolResult> {
 
         case 'list_connections': {
           const conns = connectionManager.listConnections();
-          if (conns.length === 0) return this.success('当前无活跃连接');
-          const lines = conns.map(c => `- ${c.name} [${c.type}] ${c.database}${c.readonly ? ' (只读)' : ''}`);
-          return this.success(`活跃连接（${conns.length}）:\n${lines.join('\n')}`);
+          if (conns.length === 0) return this.success('No active connections');
+          const lines = conns.map(c => `- ${c.name} [${c.type}] ${c.database}${c.readonly ? ' (read-only)' : ''}`);
+          return this.success(`Active connections (${conns.length}):\n${lines.join('\n')}`);
         }
 
         case 'list_databases': {
-          if (!input.connection) return this.error('缺少参数: connection');
+          if (!input.connection) return this.error('Missing parameter: connection');
           const dbs = await connectionManager.listDatabases(input.connection);
-          return this.success(`数据库列表:\n${dbs.map(d => `- ${d}`).join('\n')}`);
+          return this.success(`Database list:\n${dbs.map(d => `- ${d}`).join('\n')}`);
         }
 
         case 'list_tables': {
-          if (!input.connection) return this.error('缺少参数: connection');
+          if (!input.connection) return this.error('Missing parameter: connection');
           const tables = await connectionManager.listTables(input.connection, input.database);
-          return this.success(`表/集合列表:\n${tables.map(t => `- ${t}`).join('\n')}`);
+          return this.success(`Table/collection list:\n${tables.map(t => `- ${t}`).join('\n')}`);
         }
 
         case 'describe_table': {
-          if (!input.connection) return this.error('缺少参数: connection');
-          if (!input.table) return this.error('缺少参数: table');
+          if (!input.connection) return this.error('Missing parameter: connection');
+          if (!input.table) return this.error('Missing parameter: table');
           const cols = await connectionManager.describeTable(input.connection, input.table);
-          return this.success(`表结构: ${input.table}\n\n${formatColumns(cols)}`);
+          return this.success(`Table structure: ${input.table}\n\n${formatColumns(cols)}`);
         }
 
         default:
-          return this.error(`未知操作: ${(input as any).action}`);
+          return this.error(`Unknown operation: ${(input as any).action}`);
       }
     } catch (error: any) {
       return this.error(error.message ?? String(error));

@@ -59,20 +59,20 @@ export function readTaskProgress(projectPath: string, taskId: string): TaskProgr
 
 export class UpdateTaskStatusTool extends BaseTool<UpdateTaskStatusInput, ToolResult> {
   name = 'UpdateTaskStatus';
-  description = '任务完成后汇报状态';
+  description = 'Report task completion status';
 
   getInputSchema(): ToolDefinition['inputSchema'] {
     return {
       type: 'object',
       properties: {
-        taskId: { type: 'string', description: '任务 ID' },
+        taskId: { type: 'string', description: 'Task ID' },
         status: {
           type: 'string',
           enum: ['completed', 'failed'],
-          description: '完成状态',
+          description: 'Completion status',
         },
-        summary: { type: 'string', description: '完成摘要（完成时必须提供）' },
-        error: { type: 'string', description: '失败时的错误信息' },
+        summary: { type: 'string', description: 'Completion summary (required when completed)' },
+        error: { type: 'string', description: 'Error message on failure' },
       },
       required: ['taskId', 'status'],
     };
@@ -82,7 +82,7 @@ export class UpdateTaskStatusTool extends BaseTool<UpdateTaskStatusInput, ToolRe
     const { taskId, status, summary, error } = input;
 
     if (status === 'failed' && !error) {
-      return { success: false, error: 'status=failed 时必须提供 error' };
+      return { success: false, error: 'error is required when status=failed' };
     }
 
     const progress: TaskProgress = {
@@ -98,12 +98,12 @@ export class UpdateTaskStatusTool extends BaseTool<UpdateTaskStatusInput, ToolRe
       const projectPath = getCurrentCwd();
       writeTaskProgress(projectPath, progress);
     } catch (err) {
-      return { success: false, error: `写入状态文件失败: ${err}` };
+      return { success: false, error: `Failed to write status file: ${err}` };
     }
 
     return {
       success: true,
-      output: status === 'completed' ? `任务 ${taskId} 已完成` : `任务 ${taskId} 失败: ${error}`,
+      output: status === 'completed' ? `Task ${taskId} completed` : `Task ${taskId} failed: ${error}`,
       data: progress,
     };
   }

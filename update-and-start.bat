@@ -34,6 +34,49 @@ if !errorlevel! neq 0 (
 REM --- Show node version ---
 for /f "tokens=*" %%v in ('node -v 2^>nul') do echo [OK] Node.js %%v
 
+REM --- Auto-update from git ---
+if exist "%INSTALL_DIR%\.git" (
+    echo.
+    echo [INFO] Checking for updates...
+
+    REM Save current commit hash
+    for /f "tokens=*" %%h in ('git rev-parse HEAD 2^>nul') do set "OLD_HASH=%%h"
+
+    REM Discard local changes (protect .node portable directory)
+    git checkout -- . 2>nul
+    git clean -fd --exclude=.node 2>nul
+
+    REM Pull latest code
+    git pull origin private_web_ui 2>nul
+    if !errorlevel! equ 0 (
+        for /f "tokens=*" %%h in ('git rev-parse HEAD 2^>nul') do set "NEW_HASH=%%h"
+
+        if not "!OLD_HASH!"=="!NEW_HASH!" (
+            echo [OK] Updated: !OLD_HASH:~0,8! -^> !NEW_HASH:~0,8!
+            echo [INFO] Source code changed, rebuilding...
+
+            REM Check if remote is gitee (China mirror)
+            for /f "tokens=*" %%u in ('git remote get-url origin 2^>nul') do (
+                echo %%u | findstr /i "gitee" >nul 2>&1
+                if !errorlevel! equ 0 (
+                    npm config set registry https://registry.npmmirror.com
+                )
+            )
+
+            REM Reinstall dependencies and rebuild
+            call npm install --legacy-peer-deps 2>&1 | findstr /n "." | findstr "^[0-9]*:" >nul
+            call npm run build 2>&1 | findstr /n "." | findstr "^[0-9]*:" >nul
+            echo [OK] Rebuild complete!
+        ) else (
+            echo [OK] Already up to date
+        )
+    ) else (
+        echo [WARN] Git pull failed ^(network issue?^), starting with current version...
+    )
+) else (
+    echo [WARN] Not a git repository, skipping update
+)
+
 echo.
 echo [INFO] Starting Axon WebUI...
 echo.

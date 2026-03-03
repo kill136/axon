@@ -534,9 +534,9 @@ export class McpAdapter extends EventEmitter {
     }
 
     if (prompt.arguments && prompt.arguments.length > 0) {
-      systemPrompt += '\n## 参数\n';
+      systemPrompt += '\n## Parameters\n';
       for (const arg of prompt.arguments) {
-        const required = arg.required ? ' (必需)' : ' (可选)';
+        const required = arg.required ? ' (required)' : ' (optional)';
         systemPrompt += `- **${arg.name}**${required}`;
         if (arg.description) {
           systemPrompt += `: ${arg.description}`;

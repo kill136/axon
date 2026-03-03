@@ -57,31 +57,31 @@ export interface GenerateBlueprintInput {
  */
 export class GenerateBlueprintTool extends BaseTool<GenerateBlueprintInput, ToolResult> {
   name = 'GenerateBlueprint';
-  description = `将对话中收集的需求或代码库分析结果结构化为项目蓝图
+  description = `Structure conversation requirements or codebase analysis results into a project blueprint
 
-## 两种模式
+## Two Modes
 
-### 模式1：需求蓝图（新项目）
-用户描述需求后，填写 name/description/requirements/techStack/brief 生成蓝图。
+### Mode 1: Requirements Blueprint (New Project)
+After the user describes requirements, fill in name/description/requirements/techStack/brief to generate a blueprint.
 
-### 模式2：全景蓝图（已有项目）
-用户要求分析已有代码库时，先用 Glob/Grep/Read 探索项目结构，然后填写 modules/businessProcesses/nfrs 生成全景蓝图。
+### Mode 2: Panoramic Blueprint (Existing Project)
+When the user requests analysis of an existing codebase, first use Glob/Grep/Read to explore the project structure, then fill in modules/businessProcesses/nfrs to generate a panoramic blueprint.
 
-## 参数说明
-- name: 项目名称
-- description: 项目描述（1-3句话）
-- requirements: 核心需求列表（需求蓝图用）
-- techStack: 技术栈
-- constraints: 约束条件（可选）
-- brief: **最重要的参数** — 你对需求/项目的深度理解
-- modules: 识别的系统模块（全景蓝图用）
-- businessProcesses: 识别的业务流程（全景蓝图用）
-- nfrs: 非功能需求（全景蓝图用）
+## Parameters
+- name: Project name
+- description: Project description (1-3 sentences)
+- requirements: Core requirements list (for requirements blueprint)
+- techStack: Tech stack
+- constraints: Constraints (optional)
+- brief: **Most important parameter** — your in-depth understanding of the requirements/project
+- modules: Identified system modules (for panoramic blueprint)
+- businessProcesses: Identified business processes (for panoramic blueprint)
+- nfrs: Non-functional requirements (for panoramic blueprint)
 
-## 注意
-- 需求蓝图：在调用前确保已充分了解用户需求
-- 全景蓝图：在调用前必须用工具充分探索代码库
-- 生成后蓝图会保存，用户可在蓝图页面查看`;
+## Notes
+- Requirements blueprint: Ensure user requirements are fully understood before calling
+- Panoramic blueprint: Must use tools to thoroughly explore the codebase before calling
+- Generated blueprints are saved and can be viewed on the blueprint page`;
 
   getInputSchema(): ToolDefinition['inputSchema'] {
     return {
@@ -89,16 +89,16 @@ export class GenerateBlueprintTool extends BaseTool<GenerateBlueprintInput, Tool
       properties: {
         name: {
           type: 'string',
-          description: '项目名称',
+          description: 'Project name',
         },
         description: {
           type: 'string',
-          description: '项目描述（1-3句话概括项目目标）',
+          description: 'Project description (1-3 sentences summarizing the project goal)',
         },
         requirements: {
           type: 'array',
           items: { type: 'string' },
-          description: '核心需求列表（每条一个功能点）',
+          description: 'Core requirements list (one feature per item)',
         },
         techStack: {
           type: 'object',
@@ -109,16 +109,16 @@ export class GenerateBlueprintTool extends BaseTool<GenerateBlueprintInput, Tool
             styling: { type: 'string' },
             testing: { type: 'string' },
           },
-          description: '技术栈选择',
+          description: 'Tech stack selection',
         },
         constraints: {
           type: 'array',
           items: { type: 'string' },
-          description: '约束条件（可选）',
+          description: 'Constraints (optional)',
         },
         brief: {
           type: 'string',
-          description: '关键上下文简报：设计决策、用户偏好、排除项、技术选型理由等（传递给执行引擎）',
+          description: 'Key context brief: design decisions, user preferences, exclusions, tech selection rationale, etc. (passed to execution engine)',
         },
         modules: {
           type: 'array',
@@ -135,7 +135,7 @@ export class GenerateBlueprintTool extends BaseTool<GenerateBlueprintInput, Tool
             },
             required: ['id', 'name', 'type', 'description'],
           },
-          description: '全景蓝图用：识别的系统模块列表',
+          description: 'For panoramic blueprint: identified system modules list',
         },
         businessProcesses: {
           type: 'array',
@@ -150,7 +150,7 @@ export class GenerateBlueprintTool extends BaseTool<GenerateBlueprintInput, Tool
             },
             required: ['id', 'name', 'description'],
           },
-          description: '全景蓝图用：识别的业务流程列表',
+          description: 'For panoramic blueprint: identified business processes list',
         },
         nfrs: {
           type: 'array',
@@ -163,7 +163,7 @@ export class GenerateBlueprintTool extends BaseTool<GenerateBlueprintInput, Tool
             },
             required: ['name', 'category', 'description'],
           },
-          description: '全景蓝图用：非功能需求列表',
+          description: 'For panoramic blueprint: non-functional requirements list',
         },
       },
       required: ['name', 'description', 'brief'],
@@ -175,7 +175,7 @@ export class GenerateBlueprintTool extends BaseTool<GenerateBlueprintInput, Tool
     // 这里仅作为 fallback（CLI 模式或未被拦截时）
     return {
       success: false,
-      output: 'GenerateBlueprint 工具需要通过 Web 聊天界面使用。请在 Chat Tab 中调用。',
+      output: 'GenerateBlueprint tool must be used through the Web chat interface. Please invoke it in the Chat Tab.',
     };
   }
 }

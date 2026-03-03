@@ -166,7 +166,7 @@ export const coordinatorRouter = router({
       const { executionManager, blueprintStore } = await import('../../routes/blueprint-api.js');
 
       const { blueprintId } = input;
-      console.log('[coordinator/start] 收到请求:', { blueprintId });
+      console.log('[coordinator/start] Received request:', { blueprintId });
 
       // 检查是否有现有会话
       const existingSession = executionManager.getSessionByBlueprint(blueprintId);
@@ -184,7 +184,7 @@ export const coordinatorRouter = router({
 
         // 恢复暂停的会话
         (existingSession as any).coordinator?.resume?.();
-        console.log('[coordinator/start] 恢复会话:', existingSession.id);
+        console.log('[coordinator/start] Resuming session:', existingSession.id);
 
         return {
           resumed: true,
@@ -200,7 +200,7 @@ export const coordinatorRouter = router({
         try {
           const recoveredSession = await executionManager.restoreSessionFromState(blueprintId);
           if (recoveredSession) {
-            console.log('[coordinator/start] 从状态恢复会话:', recoveredSession.id);
+            console.log('[coordinator/start] Recovered session from state:', recoveredSession.id);
             return {
               recovered: true,
               blueprintId,
@@ -210,7 +210,7 @@ export const coordinatorRouter = router({
             };
           }
         } catch (recoverError: any) {
-          console.warn('[coordinator/start] 恢复失败，将创建新执行:', recoverError.message);
+          console.warn('[coordinator/start] Recovery failed, creating new execution:', recoverError.message);
         }
       }
 
@@ -225,7 +225,7 @@ export const coordinatorRouter = router({
 
       // 创建新执行
       const session = await executionManager.startExecution(blueprint);
-      console.log('[coordinator/start] 创建新执行:', session.id);
+      console.log('[coordinator/start] Created new execution:', session.id);
 
       return {
         started: true,

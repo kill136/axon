@@ -84,7 +84,7 @@ export async function renderSvgToPng(
   try {
     const Resvg = await getResvg();
     if (!Resvg) {
-      throw new Error('SVG 渲染不可用：resvg-js 和 resvg-wasm 均未安装');
+      throw new Error('SVG rendering unavailable: neither resvg-js nor resvg-wasm is installed');
     }
 
     // 配置 resvg 选项
@@ -164,7 +164,7 @@ export async function renderSvgStringToPng(
   try {
     const Resvg = await getResvg();
     if (!Resvg) {
-      throw new Error('SVG 渲染不可用：resvg-js 和 resvg-wasm 均未安装');
+      throw new Error('SVG rendering unavailable: neither resvg-js nor resvg-wasm is installed');
     }
 
     // 配置 resvg 选项

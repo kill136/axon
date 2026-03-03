@@ -258,7 +258,7 @@ export function setupWebSocket(
             content: buffer.content,
           });
         } catch (err) {
-          console.error('[SwarmLogDB] 刷新缓冲区失败:', err);
+          console.error('[SwarmLogDB] Failed to flush buffer:', err);
         }
       })();
     }
@@ -639,8 +639,8 @@ export function setupWebSocket(
         status: data.success ? 'completed' : 'e2e_failed',
         summary: data.summary,
         message: data.success
-          ? `项目执行完成，E2E 端到端测试全部通过。\n\n${data.summary}`
-          : `项目开发任务已完成，但 E2E 测试存在失败。LeadAgent 正在处理...\n\n${data.summary}`,
+          ? `Project execution complete, all E2E tests passed.\n\n${data.summary}`
+          : `Project development tasks completed, but E2E tests have failures. LeadAgent is handling...\n\n${data.summary}`,
         timestamp: new Date().toISOString(),
       },
     });
@@ -657,7 +657,7 @@ export function setupWebSocket(
       type: 'swarm:planner_update',
       payload: {
         phase: 'exploring',
-        message: '正在探索代码库结构...',
+        message: 'Exploring codebase structure...',
         requirements: data.requirements,
       },
     });
@@ -672,7 +672,7 @@ export function setupWebSocket(
       type: 'swarm:planner_update',
       payload: {
         phase: 'explored',
-        message: `代码库探索完成，发现 ${moduleCount} 个模块`,
+        message: `Codebase exploration complete, found ${moduleCount} modules`,
         exploration: data.exploration,
       },
     });
@@ -685,7 +685,7 @@ export function setupWebSocket(
       type: 'swarm:planner_update',
       payload: {
         phase: 'decomposing',
-        message: '正在分解任务...',
+        message: 'Breaking down tasks...',
       },
     });
   });
@@ -704,7 +704,7 @@ export function setupWebSocket(
         updates: {
           currentAction: {
             type: 'analyze',
-            description: `分析目标文件: ${data.task?.files?.slice(0, 2).join(', ') || '未知'}${data.task?.files?.length > 2 ? '...' : ''}`,
+            description: `Analyzing target files: ${data.task?.files?.slice(0, 2).join(', ') || 'unknown'}${data.task?.files?.length > 2 ? '...' : ''}`,
             startedAt: new Date().toISOString(),
           },
         },
@@ -724,7 +724,7 @@ export function setupWebSocket(
         updates: {
           currentAction: {
             type: 'think',
-            description: '基于分析结果决策执行策略...',
+            description: 'Deciding execution strategy based on analysis...',
             startedAt: new Date().toISOString(),
           },
           // 分析结果摘要
@@ -742,7 +742,7 @@ export function setupWebSocket(
   executionEventEmitter.on('worker:strategy_decided', (data: { blueprintId: string; workerId: string; strategy: any }) => {
     // ExecutionStrategy 接口: shouldWriteTests, testReason, steps, estimatedMinutes, model
     const shouldWriteTests = data.strategy?.shouldWriteTests ?? false;
-    const testReason = data.strategy?.testReason || '未指定';
+    const testReason = data.strategy?.testReason || 'unspecified';
     const steps = data.strategy?.steps || [];
     console.log(`[Swarm v2.0] Worker ${data.workerId} decided strategy: shouldWriteTests=${shouldWriteTests}, steps=${steps.length}`);
     broadcastToSubscribers(data.blueprintId, {
@@ -752,7 +752,7 @@ export function setupWebSocket(
         updates: {
           decisions: [{
             type: 'strategy',
-            description: `测试: ${shouldWriteTests ? '需要' : '跳过'} (${testReason}), 步骤数: ${steps.length}`,
+            description: `Tests: ${shouldWriteTests ? 'required' : 'skipped'} (${testReason}), steps: ${steps.length}`,
             timestamp: new Date().toISOString(),
           }],
         },
@@ -796,7 +796,7 @@ export function setupWebSocket(
             details: data.log.details,
           });
         } catch (err) {
-          console.error('[SwarmLogDB] 存储日志失败:', err);
+          console.error('[SwarmLogDB] Failed to store log:', err);
         }
       })();
     }
@@ -924,7 +924,7 @@ export function setupWebSocket(
           });
         }
       } catch (err) {
-        console.error('[SwarmLogDB] 存储流失败:', err);
+        console.error('[SwarmLogDB] Failed to store stream:', err);
       }
       })();
     }
@@ -989,7 +989,7 @@ export function setupWebSocket(
     // v4.8: 保存 E2E 测试状态，用于刷新浏览器后恢复
     activeE2EState.set(data.blueprintId, {
       status: 'checking_env',
-      message: '正在检查测试环境...',
+      message: 'Checking test environment...',
       e2eTaskId,
     });
 
@@ -998,7 +998,7 @@ export function setupWebSocket(
       type: 'swarm:verification_update',
       payload: {
         status: 'checking_env',
-        message: '正在检查测试环境...',
+        message: 'Checking test environment...',
         e2eTaskId, // 前端可以用这个 ID 显示流式日志
       },
     });
@@ -1091,7 +1091,7 @@ export function setupWebSocket(
           type: 'swarm:verification_update',
           payload: {
             status: 'running_tests',
-            message: `执行测试步骤: ${stepData.stepName || stepData.step}`,
+            message: `Executing test step: ${stepData.stepName || stepData.step}`,
             currentStep: stepData,
             e2eTaskId,
           },
@@ -1103,7 +1103,7 @@ export function setupWebSocket(
           type: 'swarm:verification_update',
           payload: {
             status: 'running_tests',
-            message: `步骤完成: ${stepData.stepName || stepData.step}`,
+            message: `Step complete: ${stepData.stepName || stepData.step}`,
             stepResult: stepData,
             e2eTaskId,
           },
@@ -1138,14 +1138,14 @@ export function setupWebSocket(
       // v4.8: 更新 E2E 测试状态
       activeE2EState.set(data.blueprintId, {
         status: 'running_tests',
-        message: '正在执行 E2E 浏览器测试...',
+        message: 'Running E2E browser tests...',
         e2eTaskId,
       });
       broadcastToSubscribers(data.blueprintId, {
         type: 'swarm:verification_update',
         payload: {
           status: 'running_tests',
-          message: '正在执行 E2E 浏览器测试...',
+          message: 'Running E2E browser tests...',
           e2eTaskId,
         },
       });
@@ -1155,7 +1155,7 @@ export function setupWebSocket(
 
       // 通知前端测试完成
       const finalStatus = result.success ? 'passed' : 'failed';
-      const finalMessage = result.success ? 'E2E 测试全部通过' : `E2E 测试失败: ${result.summary || '部分步骤未通过'}`;
+      const finalMessage = result.success ? 'All E2E tests passed' : `E2E tests failed: ${result.summary || 'Some steps did not pass'}`;
 
       // 修复：传递完整的测试统计数据（前端期望 passedTests/failedTests/skippedTests）
       const finalResult = {
@@ -1174,7 +1174,7 @@ export function setupWebSocket(
         // 失败详情
         failures: result.steps?.filter((s: any) => s.status === 'failed').map((s: any) => ({
           name: s.name,
-          error: s.error || '未知错误',
+          error: s.error || 'Unknown error',
         })) || [],
         // 修复尝试
         fixAttempts: result.fixAttempts || [],
@@ -1210,7 +1210,7 @@ export function setupWebSocket(
       // v4.8: 更新 E2E 测试状态（失败）
       activeE2EState.set(data.blueprintId, {
         status: 'failed',
-        message: `E2E 测试执行失败: ${error.message}`,
+        message: `E2E test execution failed: ${error.message}`,
         e2eTaskId,
       });
       // 30 分钟后自动清理
@@ -1220,7 +1220,7 @@ export function setupWebSocket(
         type: 'swarm:verification_update',
         payload: {
           status: 'failed',
-          message: `E2E 测试执行失败: ${error.message}`,
+          message: `E2E test execution failed: ${error.message}`,
           error: error.message,
           e2eTaskId,
         },
@@ -1251,7 +1251,7 @@ export function setupWebSocket(
 
     clients.set(clientId, client);
 
-    console.log(`[WebSocket] 客户端连接: ${clientId}`);
+    console.log(`[WebSocket] Client connected: ${clientId}`);
 
     // 发送连接确认
     sendMessage(ws, {
@@ -1303,7 +1303,7 @@ export function setupWebSocket(
           } as any);
         }
       }).catch((err) => {
-        console.error('[WebSocket] Skills 加载失败:', err);
+        console.error('[WebSocket] Failed to load skills:', err);
       });
     });
 
@@ -1318,11 +1318,11 @@ export function setupWebSocket(
         const message: ClientMessage = JSON.parse(data.toString());
         await handleClientMessage(client, message, conversationManager, swarmSubscriptions);
       } catch (error) {
-        console.error('[WebSocket] 消息处理错误:', error);
+        console.error('[WebSocket] Message handling error:', error);
         sendMessage(ws, {
           type: 'error',
           payload: {
-            message: error instanceof Error ? error.message : '未知错误',
+            message: error instanceof Error ? error.message : 'Unknown error',
           },
         });
       }
@@ -1330,7 +1330,7 @@ export function setupWebSocket(
 
     // 处理关闭
     ws.on('close', () => {
-      console.log(`[WebSocket] 客户端断开: ${clientId}`);
+      console.log(`[WebSocket] Client disconnected: ${clientId}`);
       // 清理订阅
       cleanupClientSubscriptions(clientId);
       // 清理终端会话
@@ -1346,7 +1346,7 @@ export function setupWebSocket(
 
     // 处理错误（执行与 close 相同的清理，防止 error 后不触发 close 的情况）
     ws.on('error', (error) => {
-      console.error(`[WebSocket] 客户端错误 ${clientId}:`, error);
+      console.error(`[WebSocket] Client error ${clientId}:`, error);
       cleanupClientSubscriptions(clientId);
       const terminals = clientTerminals.get(clientId);
       if (terminals) {
@@ -1376,7 +1376,7 @@ function sendMessage(ws: WebSocket, message: ServerMessage): void {
     if (!closedWsLogged.has(ws)) {
       closedWsLogged.add(ws);
       const sessionId = ('payload' in message ? (message.payload as any)?.sessionId : '') || '';
-      console.warn(`[WebSocket] 连接已关闭 (readyState=${ws.readyState}), 后续消息将静默丢弃. session=${sessionId}, first_dropped=${message.type}`);
+      console.warn(`[WebSocket] Connection closed (readyState=${ws.readyState}), subsequent messages will be silently dropped. session=${sessionId}, first_dropped=${message.type}`);
     }
   }
 }
@@ -1411,7 +1411,7 @@ async function handleClientMessage(
       conversationManager.cancel(client.sessionId);
       sendMessage(ws, {
         type: 'status',
-        payload: { status: 'idle', message: '已取消' },
+        payload: { status: 'idle', message: 'Cancelled' },
       });
       break;
 
@@ -1532,7 +1532,7 @@ async function handleClientMessage(
         );
         sendMessage(client.ws, { type: 'rewind_preview', payload: { success: true, preview } });
       } catch (err: any) {
-        sendMessage(client.ws, { type: 'error', payload: { message: `Rewind preview 失败: ${err.message}` } });
+        sendMessage(client.ws, { type: 'error', payload: { message: `Rewind preview failed: ${err.message}` } });
       }
       break;
 
@@ -1549,7 +1549,7 @@ async function handleClientMessage(
           payload: { success: result.success, result, messages: updatedMessages },
         });
       } catch (err: any) {
-        sendMessage(client.ws, { type: 'error', payload: { message: `Rewind 执行失败: ${err.message}`, source: 'rewind' } });
+        sendMessage(client.ws, { type: 'error', payload: { message: `Rewind execution failed: ${err.message}`, source: 'rewind' } });
       }
       break;
 
@@ -2073,7 +2073,7 @@ async function handleClientMessage(
       } else {
         sendMessage(client.ws, {
           type: 'error',
-          payload: { message: '创建终端失败' },
+          payload: { message: 'Failed to create terminal' },
         });
       }
       break;
@@ -2190,7 +2190,7 @@ async function handleClientMessage(
     }
 
     default:
-      console.warn('[WebSocket] 未知消息类型:', (message as any).type);
+      console.warn('[WebSocket] Unknown message type:', (message as any).type);
   }
 }
 
@@ -2230,7 +2230,7 @@ async function handleChatMessage(
   if (!webAuth.isAuthenticated()) {
     sendMessage(ws, {
       type: 'error',
-      payload: { message: '未配置 API Key。请在设置页面配置 API Key 或登录 OAuth 后再发送消息。' },
+      payload: { message: 'API Key not configured. Please configure an API Key in settings or log in via OAuth before sending messages.' },
     });
     return;
   }
@@ -2250,7 +2250,7 @@ async function handleChatMessage(
     // 当前 sessionId 是临时的（WebSocket 连接时生成的），需要创建持久化会话
     // 官方规范：使用第一条消息的前50个字符作为会话标题
     const firstPrompt = content.substring(0, 50);
-    console.log(`[WebSocket] 临时会话 ${sessionId}，创建持久化会话，标题: ${firstPrompt}, projectPath: ${client.projectPath || 'global'}`);
+    console.log(`[WebSocket] Temporary session ${sessionId}, creating persistent session, title: ${firstPrompt}, projectPath: ${client.projectPath || 'global'}`);
     const newSession = sessionManager.createSession({
       name: firstPrompt,  // 使用 firstPrompt 作为会话标题
       model: model,
@@ -2261,7 +2261,7 @@ async function handleChatMessage(
     client.sessionId = newSession.metadata.id;
     sessionId = newSession.metadata.id;
     isFirstMessage = true;
-    console.log(`[WebSocket] 已创建持久化会话: ${sessionId}`);
+    console.log(`[WebSocket] Created persistent session: ${sessionId}`);
 
     // 通知客户端新会话已创建
     sendMessage(ws, {
@@ -2282,10 +2282,10 @@ async function handleChatMessage(
     isFirstMessage = (existingSession.metadata.messageCount === 0);
 
     // 如果是第一条消息且会话标题是默认的（包含"WebUI 会话"），更新为 firstPrompt
-    if (isFirstMessage && existingSession.metadata.name?.includes('WebUI 会话')) {
+    if (isFirstMessage && existingSession.metadata.name?.includes('WebUI Session')) {
       const firstPrompt = content.substring(0, 50);
       sessionManager.renameSession(sessionId, firstPrompt);
-      console.log(`[WebSocket] 更新会话标题为 firstPrompt: ${firstPrompt}`);
+      console.log(`[WebSocket] Updating session title to firstPrompt: ${firstPrompt}`);
     }
   }
 
@@ -2337,8 +2337,8 @@ async function handleChatMessage(
           processedFiles.push(fileInfo);
         }
       } catch (error) {
-        console.error(`[WebSocket] 处理文件附件失败: ${file.name}`, error);
-        processedFiles.push(`[附件: ${file.name}]\n（处理失败: ${error instanceof Error ? error.message : '未知错误'}）`);
+        console.error(`[WebSocket] Failed to process file attachment: ${file.name}`, error);
+        processedFiles.push(`[Attachment: ${file.name}]\n(Processing failed: ${error instanceof Error ? error.message : 'Unknown error'})`);
       }
     }
     if (processedFiles.length > 0) {
@@ -2411,7 +2411,7 @@ async function handleChatMessage(
         });
         sendMessage(getActiveWs(), {
           type: 'status',
-          payload: { status: 'tool_executing', message: `执行 ${toolName}...`, sessionId: chatSessionId },
+          payload: { status: 'tool_executing', message: `Executing ${toolName}...`, sessionId: chatSessionId },
         });
       },
 
@@ -2451,7 +2451,7 @@ async function handleChatMessage(
         // 检查是否需要重发 history（页面刷新导致客户端丢失了流式上下文）
         // 如果需要，发送完整 history 替代 message_complete，确保客户端显示完整对话
         if (conversationManager.consumeHistoryResendFlag(chatSessionId)) {
-          console.log(`[WebSocket] 会话 ${chatSessionId} 处理完成，重发 history（页面刷新恢复）`);
+          console.log(`[WebSocket] Session ${chatSessionId} processing completed, resending history (page refresh recovery)`);
           const updatedHistory = conversationManager.getHistory(chatSessionId);
           sendMessage(getActiveWs(), {
             type: 'history',
@@ -2520,16 +2520,16 @@ async function handleChatMessage(
         if (phase === 'start') {
           sendMessage(getActiveWs(), {
             type: 'status',
-            payload: { status: 'thinking', message: '正在压缩上下文...', sessionId: chatSessionId },
+            payload: { status: 'thinking', message: 'Compacting context...', sessionId: chatSessionId },
           });
         }
       },
     }, client.projectPath, getActiveWs(), client.permissionMode);  // 传入动态 ws 和权限模式，确保跨会话持久化
   } catch (error) {
-    console.error('[WebSocket] 聊天处理错误:', error);
+    console.error('[WebSocket] Chat handling error:', error);
     sendMessage(getActiveWs(), {
       type: 'error',
-      payload: { message: error instanceof Error ? error.message : '处理失败', sessionId: chatSessionId },
+      payload: { message: error instanceof Error ? error.message : 'Processing failed', sessionId: chatSessionId },
     });
     sendMessage(getActiveWs(), {
       type: 'status',
@@ -2599,7 +2599,7 @@ async function handleSlashCommand(
       const skillName = parts[0];
       const skillArgs = parts.slice(1).join(' ');
 
-      console.log(`[WebSocket] 尝试查找 skill: ${skillName}`);
+      console.log(`[WebSocket] Attempting to find skill: ${skillName}`);
 
       // 确保 skills 已加载（需要 runWithCwd 上下文，因为 initializeSkills 内部使用 getCurrentCwd）
       const skill = await runWithCwd(cwd, async () => {
@@ -2616,7 +2616,7 @@ async function handleSlashCommand(
           skillContent = skillContent.replace(/\$ARGUMENTS/g, skillArgs);
         }
         const messageContent = `[Skill: ${skill.skillName}]\n\n${skillContent}`;
-        console.log(`[WebSocket] 执行 skill ${skill.skillName}, 内容长度: ${skillContent.length}`);
+        console.log(`[WebSocket] Executing skill ${skill.skillName}, content length: ${skillContent.length}`);
         await handleChatMessage(client, messageContent, undefined, conversationManager);
         return;
       }
@@ -2649,7 +2649,7 @@ async function handleSlashCommand(
       });
     }
   } catch (error) {
-    console.error('[WebSocket] 斜杠命令执行错误:', error);
+    console.error('[WebSocket] Slash command execution error:', error);
 
     // 如果是 /compact 命令异常，结束压缩动画
     const isCompactCmd = /^\/(compact|c)(\s|$)/i.test(command.trim());
@@ -2725,7 +2725,7 @@ async function handleSessionList(
       },
     });
   } catch (error) {
-    console.error('[WebSocket] 获取会话列表失败:', error);
+    console.error('[WebSocket] Failed to get session list:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -2772,7 +2772,7 @@ async function handleSessionCreate(
       },
     });
   } catch (error) {
-    console.error('[WebSocket] 创建会话失败:', error);
+    console.error('[WebSocket] Failed to create session:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -2811,7 +2811,7 @@ async function handleSessionNew(
     // 清空内存中的会话状态（如果存在）
     // 不创建持久化会话，等待用户发送第一条消息时再创建
 
-    console.log(`[WebSocket] 新建临时会话: ${tempSessionId}, model: ${model}, projectPath: ${projectPath || 'global'}`);
+    console.log(`[WebSocket] Creating temporary session: ${tempSessionId}, model: ${model}, projectPath: ${projectPath || 'global'}`);
 
     // 通知客户端新会话已就绪
     sendMessage(ws, {
@@ -2823,7 +2823,7 @@ async function handleSessionNew(
       },
     });
   } catch (error) {
-    console.error('[WebSocket] 新建临时会话失败:', error);
+    console.error('[WebSocket] Failed to create temporary session:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -2951,7 +2951,7 @@ async function handleSessionSwitch(
             type: 'permission_request',
             payload: { ...req, sessionId },
           });
-          console.log(`[WebSocket] 重发待处理权限请求: ${req.tool} (${req.requestId})`);
+          console.log(`[WebSocket] Resending pending permission request: ${req.tool} (${req.requestId})`);
         }
 
         const pendingQuestions = conversationManager.getPendingUserQuestions(sessionId);
@@ -2960,12 +2960,12 @@ async function handleSessionSwitch(
             type: 'user_question',
             payload: { ...q, sessionId },
           } as any);
-          console.log(`[WebSocket] 重发待处理用户问题: ${q.header} (${q.requestId})`);
+          console.log(`[WebSocket] Resending pending user question: ${q.header} (${q.requestId})`);
         }
       } else if (conversationManager.needsContinuation(sessionId)) {
         // SelfEvolve 重启等场景：工具结果已保存但模型还没来得及继续回复
         // 自动触发对话继续，让模型接着上次中断的地方回复
-        console.log(`[WebSocket] 会话 ${sessionId} 需要继续对话（最后一条是 tool_result），自动触发`);
+        console.log(`[WebSocket] Session ${sessionId} needs continuation (last message is tool_result), auto-triggering`);
 
         const continueMessageId = randomUUID();
         const chatSessionId = sessionId;
@@ -3015,7 +3015,7 @@ async function handleSessionSwitch(
             });
             sendMessage(getActiveWs(), {
               type: 'status',
-              payload: { status: 'tool_executing', message: `执行 ${toolName}...`, sessionId: chatSessionId },
+              payload: { status: 'tool_executing', message: `Executing ${toolName}...`, sessionId: chatSessionId },
             });
           },
           onToolUseDelta: (toolUseId: string, partialJson: string) => {
@@ -3090,12 +3090,12 @@ async function handleSessionSwitch(
             if (phase === 'start') {
               sendMessage(getActiveWs(), {
                 type: 'status',
-                payload: { status: 'thinking', message: '正在压缩上下文...', sessionId: chatSessionId },
+                payload: { status: 'thinking', message: 'Compacting context...', sessionId: chatSessionId },
               });
             }
           },
         }).catch((err) => {
-          console.error(`[WebSocket] 自动继续对话失败:`, err);
+          console.error(`[WebSocket] Auto-continuation failed:`, err);
           sendMessage(getActiveWs(), {
             type: 'error',
             payload: { message: '自动继续对话失败: ' + (err instanceof Error ? err.message : String(err)), sessionId: chatSessionId },
@@ -3115,7 +3115,7 @@ async function handleSessionSwitch(
       });
     }
   } catch (error) {
-    console.error('[WebSocket] 切换会话失败:', error);
+    console.error('[WebSocket] Failed to switch session:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -3146,7 +3146,7 @@ async function handleSessionDelete(
       },
     });
   } catch (error) {
-    console.error('[WebSocket] 删除会话失败:', error);
+    console.error('[WebSocket] Failed to delete session:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -3179,7 +3179,7 @@ async function handleSessionRename(
       },
     });
   } catch (error) {
-    console.error('[WebSocket] 重命名会话失败:', error);
+    console.error('[WebSocket] Failed to rename session:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -3222,7 +3222,7 @@ async function handleSessionExport(
       });
     }
   } catch (error) {
-    console.error('[WebSocket] 导出会话失败:', error);
+    console.error('[WebSocket] Failed to export session:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -3266,7 +3266,7 @@ async function handleSessionImport(
       });
     }
   } catch (error) {
-    console.error('[WebSocket] 导入会话失败:', error);
+    console.error('[WebSocket] Failed to import session:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -3315,7 +3315,7 @@ async function handleSessionResume(
       });
     }
   } catch (error) {
-    console.error('[WebSocket] 恢复会话失败:', error);
+    console.error('[WebSocket] Failed to restore session:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -3358,7 +3358,7 @@ async function handleToolFilterUpdate(
       },
     });
   } catch (error) {
-    console.error('[WebSocket] 更新工具过滤配置失败:', error);
+    console.error('[WebSocket] Failed to update tool filter config:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -3391,7 +3391,7 @@ async function handleToolListGet(
       },
     });
   } catch (error) {
-    console.error('[WebSocket] 获取工具列表失败:', error);
+    console.error('[WebSocket] Failed to get tool list:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -3430,7 +3430,7 @@ async function handleSystemPromptUpdate(
       });
     }
   } catch (error) {
-    console.error('[WebSocket] 更新系统提示失败:', error);
+    console.error('[WebSocket] Failed to update system prompt:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -3457,7 +3457,7 @@ async function handleSystemPromptGet(
       payload: result,
     });
   } catch (error) {
-    console.error('[WebSocket] 获取系统提示失败:', error);
+    console.error('[WebSocket] Failed to get system prompt:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -3600,7 +3600,7 @@ async function handleDebugGetMessages(
       payload: result,
     });
   } catch (error) {
-    console.error('[WebSocket] 获取调试消息失败:', error);
+    console.error('[WebSocket] Failed to get debug messages:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -3664,7 +3664,7 @@ async function handleTaskList(
       },
     });
   } catch (error) {
-    console.error('[WebSocket] 获取任务列表失败:', error);
+    console.error('[WebSocket] Failed to get task list:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -3721,7 +3721,7 @@ async function handleTaskCancel(
       }
     }
   } catch (error) {
-    console.error('[WebSocket] 取消任务失败:', error);
+    console.error('[WebSocket] Failed to cancel task:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -3776,7 +3776,7 @@ async function handleTaskOutput(
       },
     });
   } catch (error) {
-    console.error('[WebSocket] 获取任务输出失败:', error);
+    console.error('[WebSocket] Failed to get task output:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -3802,7 +3802,7 @@ async function handleApiStatus(
       payload: status,
     });
   } catch (error) {
-    console.error('[WebSocket] 获取API状态失败:', error);
+    console.error('[WebSocket] Failed to get API status:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -3828,7 +3828,7 @@ async function handleApiTest(
       payload: result,
     });
   } catch (error) {
-    console.error('[WebSocket] API测试失败:', error);
+    console.error('[WebSocket] API test failed:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -3854,7 +3854,7 @@ async function handleApiModels(
       payload: { models },
     });
   } catch (error) {
-    console.error('[WebSocket] 获取模型列表失败:', error);
+    console.error('[WebSocket] Failed to get model list:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -3880,7 +3880,7 @@ async function handleApiProvider(
       payload: info,
     });
   } catch (error) {
-    console.error('[WebSocket] 获取Provider信息失败:', error);
+    console.error('[WebSocket] Failed to get provider info:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -3906,7 +3906,7 @@ async function handleApiTokenStatus(
       payload: status,
     });
   } catch (error) {
-    console.error('[WebSocket] 获取Token状态失败:', error);
+    console.error('[WebSocket] Failed to get token status:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -3936,7 +3936,7 @@ async function handleMcpList(
       },
     });
   } catch (error) {
-    console.error('[WebSocket] 获取 MCP 服务器列表失败:', error);
+    console.error('[WebSocket] Failed to get MCP server list:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -4000,7 +4000,7 @@ async function handleMcpAdd(
       });
     }
   } catch (error) {
-    console.error('[WebSocket] 添加 MCP 服务器失败:', error);
+    console.error('[WebSocket] Failed to add MCP server:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -4055,7 +4055,7 @@ async function handleMcpRemove(
       });
     }
   } catch (error) {
-    console.error('[WebSocket] 删除 MCP 服务器失败:', error);
+    console.error('[WebSocket] Failed to remove MCP server:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -4111,7 +4111,7 @@ async function handleMcpToggle(
       });
     }
   } catch (error) {
-    console.error('[WebSocket] 切换 MCP 服务器失败:', error);
+    console.error('[WebSocket] Failed to toggle MCP server:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -4152,7 +4152,7 @@ async function handleDoctorRun(
       },
     });
   } catch (error) {
-    console.error('[WebSocket] 运行诊断失败:', error);
+    console.error('[WebSocket] Failed to run diagnostics:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -4194,7 +4194,7 @@ async function handleCheckpointCreate(
       { tags }
     );
 
-    console.log(`[WebSocket] 创建检查点: ${checkpoint.id} (${checkpoint.files.length} 个文件)`);
+    console.log(`[WebSocket] Creating checkpoint: ${checkpoint.id} (${checkpoint.files.length} files)`);
 
     sendMessage(ws, {
       type: 'checkpoint_created',
@@ -4207,7 +4207,7 @@ async function handleCheckpointCreate(
       },
     });
   } catch (error) {
-    console.error('[WebSocket] 创建检查点失败:', error);
+    console.error('[WebSocket] Failed to create checkpoint:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -4264,7 +4264,7 @@ async function handleCheckpointList(
       },
     });
   } catch (error) {
-    console.error('[WebSocket] 获取检查点列表失败:', error);
+    console.error('[WebSocket] Failed to get checkpoint list:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -4302,8 +4302,8 @@ async function handleCheckpointRestore(
     });
 
     console.log(
-      `[WebSocket] ${dryRun ? '模拟' : ''}恢复检查点: ${checkpointId} ` +
-      `(成功: ${result.restored.length}, 失败: ${result.failed.length})`
+      `[WebSocket] ${dryRun ? 'Dry-run ' : ''}Restoring checkpoint: ${checkpointId} ` +
+      `(success: ${result.restored.length}, failed: ${result.failed.length})`
     );
 
     sendMessage(ws, {
@@ -4317,7 +4317,7 @@ async function handleCheckpointRestore(
       },
     });
   } catch (error) {
-    console.error('[WebSocket] 恢复检查点失败:', error);
+    console.error('[WebSocket] Failed to restore checkpoint:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -4350,7 +4350,7 @@ async function handleCheckpointDelete(
 
     const success = getCheckpointManager().deleteCheckpoint(checkpointId);
 
-    console.log(`[WebSocket] 删除检查点: ${checkpointId} (${success ? '成功' : '失败'})`);
+    console.log(`[WebSocket] Deleting checkpoint: ${checkpointId} (${success ? 'success' : 'failed'})`);
 
     sendMessage(ws, {
       type: 'checkpoint_deleted',
@@ -4360,7 +4360,7 @@ async function handleCheckpointDelete(
       },
     });
   } catch (error) {
-    console.error('[WebSocket] 删除检查点失败:', error);
+    console.error('[WebSocket] Failed to delete checkpoint:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -4401,8 +4401,8 @@ async function handleCheckpointDiff(
     };
 
     console.log(
-      `[WebSocket] 比较检查点: ${checkpointId} ` +
-      `(添加: ${stats.added}, 删除: ${stats.removed}, 修改: ${stats.modified}, 未变: ${stats.unchanged})`
+      `[WebSocket] Comparing checkpoint: ${checkpointId} ` +
+      `(added: ${stats.added}, removed: ${stats.removed}, modified: ${stats.modified}, unchanged: ${stats.unchanged})`
     );
 
     sendMessage(ws, {
@@ -4414,7 +4414,7 @@ async function handleCheckpointDiff(
       },
     });
   } catch (error) {
-    console.error('[WebSocket] 比较检查点失败:', error);
+    console.error('[WebSocket] Failed to compare checkpoint:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -4436,7 +4436,7 @@ async function handleCheckpointClear(
   try {
     const count = getCheckpointManager().clearCheckpoints();
 
-    console.log(`[WebSocket] 清除所有检查点: ${count} 个`);
+    console.log(`[WebSocket] Cleared all checkpoints: ${count}`);
 
     sendMessage(ws, {
       type: 'checkpoint_cleared',
@@ -4445,7 +4445,7 @@ async function handleCheckpointClear(
       },
     });
   } catch (error) {
-    console.error('[WebSocket] 清除检查点失败:', error);
+    console.error('[WebSocket] Failed to clear checkpoints:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -4477,7 +4477,7 @@ async function handlePluginList(
       },
     });
   } catch (error) {
-    console.error('[WebSocket] 获取插件列表失败:', error);
+    console.error('[WebSocket] Failed to get plugin list:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -4504,7 +4504,7 @@ async function handlePluginDiscover(
       payload: data,
     });
   } catch (error) {
-    console.error('[WebSocket] 获取插件市场数据失败:', error);
+    console.error('[WebSocket] Failed to get plugin marketplace data:', error);
     sendMessage(ws, {
       type: 'plugin_discover_response',
       payload: {
@@ -4545,7 +4545,7 @@ async function handlePluginInfo(
       },
     });
   } catch (error) {
-    console.error('[WebSocket] 获取插件详情失败:', error);
+    console.error('[WebSocket] Failed to get plugin details:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -4598,7 +4598,7 @@ async function handlePluginEnable(
       });
     }
   } catch (error) {
-    console.error('[WebSocket] 启用插件失败:', error);
+    console.error('[WebSocket] Failed to enable plugin:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -4651,7 +4651,7 @@ async function handlePluginDisable(
       });
     }
   } catch (error) {
-    console.error('[WebSocket] 禁用插件失败:', error);
+    console.error('[WebSocket] Failed to disable plugin:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -4741,7 +4741,7 @@ async function handlePluginInstall(
     }
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
-    console.error('[WebSocket] 安装插件失败:', errorMsg);
+    console.error('[WebSocket] Failed to install plugin:', errorMsg);
 
     sendMessage(ws, {
       type: 'error',
@@ -4792,7 +4792,7 @@ async function handlePluginUninstall(
       });
     }
   } catch (error) {
-    console.error('[WebSocket] 卸载插件失败:', error);
+    console.error('[WebSocket] Failed to uninstall plugin:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -4942,7 +4942,7 @@ async function handleSkillList(
       },
     });
   } catch (error) {
-    console.error('[WebSocket] 获取 skill 列表失败:', error);
+    console.error('[WebSocket] Failed to get skill list:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -5009,7 +5009,7 @@ async function handleSkillView(
       },
     });
   } catch (error) {
-    console.error('[WebSocket] 查看 skill 失败:', error);
+    console.error('[WebSocket] Failed to view skill:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -5115,7 +5115,7 @@ async function handleSkillDelete(
       },
     });
   } catch (error) {
-    console.error('[WebSocket] 删除 skill 失败:', error);
+    console.error('[WebSocket] Failed to delete skill:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -5166,7 +5166,7 @@ async function handleSkillToggle(
       },
     });
   } catch (error) {
-    console.error('[WebSocket] 切换 skill 状态失败:', error);
+    console.error('[WebSocket] Failed to toggle skill status:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -5205,7 +5205,7 @@ async function handleAuthStatus(
       },
     });
   } catch (error) {
-    console.error('[WebSocket] 获取认证状态失败:', error);
+    console.error('[WebSocket] Failed to get auth status:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -5267,7 +5267,7 @@ async function handleAuthSetKey(
       });
     }
   } catch (error) {
-    console.error('[WebSocket] 设置 API 密钥失败:', error);
+    console.error('[WebSocket] Failed to set API key:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -5304,7 +5304,7 @@ async function handleAuthClear(
       },
     });
   } catch (error) {
-    console.error('[WebSocket] 清除认证失败:', error);
+    console.error('[WebSocket] Failed to clear auth:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -5347,7 +5347,7 @@ async function handleAuthValidate(
       },
     });
   } catch (error) {
-    console.error('[WebSocket] 验证 API 密钥失败:', error);
+    console.error('[WebSocket] Failed to validate API key:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -5395,7 +5395,7 @@ async function handleOAuthLogin(
       return;
     }
 
-    console.log('[WebSocket] 正在交换授权码获取 token...');
+    console.log('[WebSocket] Exchanging authorization code for token...');
 
     // 使用授权码交换 token
     const token = await oauthManager.exchangeCodeForToken(code, redirectUri);
@@ -5409,9 +5409,9 @@ async function handleOAuthLogin(
       },
     });
 
-    console.log('[WebSocket] OAuth 登录成功');
+    console.log('[WebSocket] OAuth login successful');
   } catch (error) {
-    console.error('[WebSocket] OAuth 登录失败:', error);
+    console.error('[WebSocket] OAuth login failed:', error);
     sendMessage(ws, {
       type: 'oauth_login_response',
       payload: {
@@ -5434,7 +5434,7 @@ async function handleOAuthRefresh(
   try {
     const { refreshToken } = payload || {};
 
-    console.log('[WebSocket] 正在刷新 OAuth token...');
+    console.log('[WebSocket] Refreshing OAuth token...');
 
     // 刷新 token（如果没有提供 refreshToken，从配置读取）
     const token = await oauthManager.refreshToken(refreshToken);
@@ -5448,9 +5448,9 @@ async function handleOAuthRefresh(
       },
     });
 
-    console.log('[WebSocket] OAuth token 刷新成功');
+    console.log('[WebSocket] OAuth token refresh successful');
   } catch (error) {
-    console.error('[WebSocket] OAuth token 刷新失败:', error);
+    console.error('[WebSocket] OAuth token refresh failed:', error);
     sendMessage(ws, {
       type: 'oauth_refresh_response',
       payload: {
@@ -5504,7 +5504,7 @@ async function handleOAuthStatus(
       },
     });
   } catch (error) {
-    console.error('[WebSocket] 获取 OAuth 状态失败:', error);
+    console.error('[WebSocket] Failed to get OAuth status:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -5532,9 +5532,9 @@ async function handleOAuthLogout(
       },
     });
 
-    console.log('[WebSocket] OAuth 登出成功');
+    console.log('[WebSocket] OAuth logout successful');
   } catch (error) {
-    console.error('[WebSocket] OAuth 登出失败:', error);
+    console.error('[WebSocket] OAuth logout failed:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -5575,7 +5575,7 @@ async function handleOAuthGetAuthUrl(
       },
     });
   } catch (error) {
-    console.error('[WebSocket] 生成 OAuth 授权 URL 失败:', error);
+    console.error('[WebSocket] Failed to generate OAuth auth URL:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -5625,7 +5625,7 @@ async function processFileAttachment(file: FileAttachment): Promise<string> {
     const buffer = Buffer.from(data, 'base64');
     fs.writeFileSync(tempFilePath, buffer);
 
-    console.log('[WebSocket] 文件附件已保存到临时文件: ' + tempFilePath);
+    console.log('[WebSocket] File attachment saved to temp file: ' + tempFilePath);
 
     // 根据 MIME 类型或扩展名给出提示
     const ext = path.extname(name).toLowerCase();
@@ -5647,7 +5647,7 @@ async function processFileAttachment(file: FileAttachment): Promise<string> {
 
     return '[附件: ' + name + ']\nMIME: ' + mimeType + '\n文件路径: ' + tempFilePath + hint;
   } catch (error) {
-    console.error('[WebSocket] 保存文件附件失败: ' + name, error);
+    console.error('[WebSocket] Failed to save file attachment: ' + name, error);
     throw new Error('保存文件附件失败: ' + (error instanceof Error ? error.message : '未知错误'));
   }
 }
@@ -5684,10 +5684,10 @@ async function handleSwarmSubscribe(
     swarmSubscriptions.get(blueprintId)!.add(clientId);
     client.swarmSubscriptions.add(blueprintId);
 
-    console.log(`[Swarm] 客户端 ${clientId} 订阅 blueprint ${blueprintId}`);
+    console.log(`[Swarm] Client ${clientId} subscribed to blueprint ${blueprintId}`);
 
-    // 发送当前状态
-    let blueprint = blueprintStore.get(blueprintId);
+    // 发送当前状态（传入 projectPath 以支持缓存未命中时从磁盘加载）
+    let blueprint = blueprintStore.get(blueprintId, client.projectPath);
     if (!blueprint) {
       // v12.1: TaskPlan 模式的 tp- 临时蓝图不存入 BlueprintStore，
       // 但 executionManager 中有活跃 session，从 session 构造最小蓝图对象
@@ -5702,7 +5702,7 @@ async function handleSwarmSubscribe(
           createdAt: session.startedAt,
           updatedAt: new Date(),
         };
-        console.log(`[Swarm] tp- 临时蓝图 ${blueprintId} 从 executionManager session 恢复`);
+        console.log(`[Swarm] tp- temporary blueprint ${blueprintId} restored from executionManager session`);
       } else {
         sendMessage(ws, {
           type: 'swarm:error',
@@ -5838,7 +5838,7 @@ async function handleSwarmSubscribe(
         e2eTaskId: e2eState.e2eTaskId,
         result: e2eState.result,
       };
-      console.log(`[Swarm] 恢复 E2E 测试状态: ${e2eState.status}, taskId=${e2eState.e2eTaskId}`);
+      console.log(`[Swarm] Restoring E2E test state: ${e2eState.status}, taskId=${e2eState.e2eTaskId}`);
     }
 
     // v9.2: 获取当前 LeadAgent 状态（用于刷新浏览器后恢复）
@@ -5852,7 +5852,7 @@ async function handleSwarmSubscribe(
         systemPrompt: leadAgentPersist.systemPrompt,
         lastUpdated: leadAgentPersist.lastUpdated,
       };
-      console.log(`[Swarm] 恢复 LeadAgent 状态: phase=${leadAgentPersist.phase}, stream=${leadAgentPersist.stream.length} blocks, events=${leadAgentPersist.events.length}`);
+      console.log(`[Swarm] Restoring LeadAgent state: phase=${leadAgentPersist.phase}, stream=${leadAgentPersist.stream.length} blocks, events=${leadAgentPersist.events.length}`);
     }
 
     // v2.0: 构建完整的响应
@@ -5879,7 +5879,7 @@ async function handleSwarmSubscribe(
       },
     });
   } catch (error) {
-    console.error('[Swarm] 订阅失败:', error);
+    console.error('[Swarm] Subscription failed:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -5914,9 +5914,9 @@ async function handleSwarmUnsubscribe(
     }
     client.swarmSubscriptions.delete(blueprintId);
 
-    console.log(`[Swarm] 客户端 ${clientId} 取消订阅 blueprint ${blueprintId}`);
+    console.log(`[Swarm] Client ${clientId} unsubscribed from blueprint ${blueprintId}`);
   } catch (error) {
-    console.error('[Swarm] 取消订阅失败:', error);
+    console.error('[Swarm] Unsubscription failed:', error);
   }
 }
 
@@ -6021,7 +6021,7 @@ async function handleResumeLead(
       return;
     }
 
-    console.log(`[Swarm v9.4] 恢复 LeadAgent 执行: ${blueprintId}`);
+    console.log(`[Swarm v9.4] Resuming LeadAgent execution: ${blueprintId}`);
 
     // 清除旧的 LeadAgent 状态（让前端从 idle 开始重新追踪）
     activeLeadAgentState.delete(blueprintId);
@@ -6059,7 +6059,7 @@ async function handleResumeLead(
       });
     }
   } catch (error) {
-    console.error('[Swarm v9.4] 恢复 LeadAgent 失败:', error);
+    console.error('[Swarm v9.4] Failed to resume LeadAgent:', error);
     sendMessage(ws, {
       type: 'swarm:error',
       payload: {
@@ -6096,7 +6096,7 @@ async function handleSwarmStop(
       executionManager.cancel(session.id);
     }
 
-    console.log(`[Swarm] 蜂群停止: ${blueprintId}`);
+    console.log(`[Swarm] Swarm stopped: ${blueprintId}`);
 
     // 发送停止确认
     sendMessage(ws, {
@@ -6108,7 +6108,7 @@ async function handleSwarmStop(
       },
     });
   } catch (error) {
-    console.error('[Swarm] 停止失败:', error);
+    console.error('[Swarm] Stop failed:', error);
     sendMessage(ws, {
       type: 'swarm:error',
       payload: {
@@ -6149,7 +6149,7 @@ async function handleTaskRetry(
       return;
     }
 
-    console.log(`[Swarm] 重试任务: ${taskId} (blueprint: ${blueprintId})`);
+    console.log(`[Swarm] Retrying task: ${taskId} (blueprint: ${blueprintId})`);
 
     // 调用 executionManager 的重试方法
     const result = await executionManager.retryTask(blueprintId, taskId);
@@ -6177,7 +6177,7 @@ async function handleTaskRetry(
       });
     }
   } catch (error) {
-    console.error('[Swarm] 任务重试失败:', error);
+    console.error('[Swarm] Task retry failed:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -6243,7 +6243,7 @@ async function handleTaskSkip(
       });
     }
   } catch (error) {
-    console.error('[Swarm] 任务跳过失败:', error);
+    console.error('[Swarm] Task skip failed:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -6274,7 +6274,7 @@ async function handleTaskInterject(
       return;
     }
 
-    console.log(`[Interject] 用户插嘴: blueprintId=${blueprintId}, taskId=${taskId}, message=${message.substring(0, 50)}...`);
+    console.log(`[Interject] User interjection: blueprintId=${blueprintId}, taskId=${taskId}, message=${message.substring(0, 50)}...`);
 
     // v4.5: 首先检查是否是 E2E 测试任务
     if (taskId.startsWith('e2e-test')) {
@@ -6282,7 +6282,7 @@ async function handleTaskInterject(
       if (e2eAgent && typeof e2eAgent.interject === 'function') {
         const success = e2eAgent.interject(message);
         if (success) {
-          console.log(`[Interject] 消息已发送到 E2E Agent`);
+          console.log(`[Interject] Message sent to E2E Agent`);
           sendMessage(ws, {
             type: 'task:interject_success',
             payload: {
@@ -6294,7 +6294,7 @@ async function handleTaskInterject(
             },
           });
         } else {
-          console.warn(`[Interject] E2E Agent 插嘴失败`);
+          console.warn(`[Interject] E2E Agent interjection failed`);
           sendMessage(ws, {
             type: 'task:interject_failed',
             payload: {
@@ -6308,7 +6308,7 @@ async function handleTaskInterject(
         }
         return;
       } else {
-        console.warn(`[Interject] 找不到活跃的 E2E Agent`);
+        console.warn(`[Interject] Active E2E Agent not found`);
         sendMessage(ws, {
           type: 'task:interject_failed',
           payload: {
@@ -6334,7 +6334,7 @@ async function handleTaskInterject(
     }
 
     if (!targetWorker) {
-      console.warn(`[Interject] 找不到执行任务 ${taskId} 的 Worker`);
+      console.warn(`[Interject] Worker executing task ${taskId} not found`);
       sendMessage(ws, {
         type: 'task:interject_failed',
         payload: {
@@ -6351,7 +6351,7 @@ async function handleTaskInterject(
     // 调用 Worker 的插嘴方法
     if (typeof targetWorker.interject === 'function') {
       targetWorker.interject(message);
-      console.log(`[Interject] 消息已发送到 Worker`);
+      console.log(`[Interject] Message sent to Worker`);
 
       sendMessage(ws, {
         type: 'task:interject_success',
@@ -6364,7 +6364,7 @@ async function handleTaskInterject(
         },
       });
     } else {
-      console.warn(`[Interject] Worker 不支持 interject 方法`);
+      console.warn(`[Interject] Worker does not support interject method`);
       sendMessage(ws, {
         type: 'task:interject_failed',
         payload: {
@@ -6377,7 +6377,7 @@ async function handleTaskInterject(
       });
     }
   } catch (error) {
-    console.error('[Interject] 处理插嘴失败:', error);
+    console.error('[Interject] Failed to handle interjection:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -6406,7 +6406,7 @@ async function handleLeadInterject(
       return;
     }
 
-    console.log(`[LeadInterject] 用户向 LeadAgent 插嘴: blueprintId=${blueprintId}, message=${message.substring(0, 50)}...`);
+    console.log(`[LeadInterject] User interjection to LeadAgent: blueprintId=${blueprintId}, message=${message.substring(0, 50)}...`);
 
     // 通过 executionManager 获取当前执行会话
     const session = executionManager.getSessionByBlueprint(blueprintId);
@@ -6441,7 +6441,7 @@ async function handleLeadInterject(
     // 调用 LeadAgent 的插嘴方法
     const success = leadAgent.interject(message);
     if (success) {
-      console.log(`[LeadInterject] 消息已发送到 LeadAgent`);
+      console.log(`[LeadInterject] Message sent to LeadAgent`);
       sendMessage(ws, {
         type: 'lead:interject_success',
         payload: {
@@ -6463,7 +6463,7 @@ async function handleLeadInterject(
       });
     }
   } catch (error) {
-    console.error('[LeadInterject] 处理 LeadAgent 插嘴失败:', error);
+    console.error('[LeadInterject] Failed to handle LeadAgent interjection:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -6529,7 +6529,7 @@ async function handleSwarmDebugAgent(
       payload: debugInfo as AgentDebugPayload,
     });
   } catch (error) {
-    console.error('[Swarm] 获取 Agent 调试信息失败:', error);
+    console.error('[Swarm] Failed to get Agent debug info:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -6575,7 +6575,7 @@ async function handleSwarmDebugAgentList(
       payload: { blueprintId, agents },
     });
   } catch (error) {
-    console.error('[Swarm] 获取活跃 Agent 列表失败:', error);
+    console.error('[Swarm] Failed to get active Agent list:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -6614,7 +6614,7 @@ async function handleSwarmCancel(
     // 调用取消方法
     session.coordinator.cancel();
 
-    console.log(`[Swarm] 执行已取消: ${blueprintId}`);
+    console.log(`[Swarm] Execution cancelled: ${blueprintId}`);
 
     sendMessage(ws, {
       type: 'swarm:cancelled',
@@ -6632,7 +6632,7 @@ async function handleSwarmCancel(
       blueprintStore.save(blueprint);
     }
   } catch (error) {
-    console.error('[Swarm] 取消执行失败:', error);
+    console.error('[Swarm] Failed to cancel execution:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {
@@ -6724,7 +6724,7 @@ async function handleAskUserResponse(
       },
     });
   } catch (error) {
-    console.error('[AskUser] 处理 AskUserQuestion 响应失败:', error);
+    console.error('[AskUser] Failed to handle AskUserQuestion response:', error);
     sendMessage(ws, {
       type: 'error',
       payload: {

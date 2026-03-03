@@ -59,7 +59,7 @@ export class ApiManager {
           success: false,
           latency: 0,
           model: '',
-          error: 'API 客户端未初始化',
+          error: 'API client not initialized',
           timestamp: Date.now(),
         };
       }
@@ -92,7 +92,7 @@ export class ApiManager {
         success: false,
         latency,
         model: '',
-        error: error.message || '未知错误',
+        error: error.message || 'Unknown error',
         timestamp: Date.now(),
       };
     }

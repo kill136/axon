@@ -33,7 +33,7 @@ Hey everyone! I've been working on an open-source AI coding platform called **Ax
 Everything runs locally. MIT licensed. No telemetry. Supports Anthropic API / AWS Bedrock / Google Vertex AI.
 
 - GitHub: https://github.com/kill136/axon
-- Live Demo: http://voicegpt.site:3456/
+- Live Demo: http://voicegpt.site/
 - Website: https://www.chatbi.site
 - Discord: https://discord.gg/bNyJKk6PVZ
 
@@ -59,7 +59,7 @@ Built an open-source platform that extends what Axon can do:
 
 One-click install for Windows/macOS/Linux. Docker deployment. MIT licensed.
 
-Try the live demo: http://voicegpt.site:3456/
+Try the live demo: http://voicegpt.site/
 GitHub: https://github.com/kill136/axon
 
 Star it if you find it useful!
@@ -85,7 +85,7 @@ Star it if you find it useful!
 
 MIT 协议，完全开源，数据不出你的机器。
 
-在线体验：http://voicegpt.site:3456/
+在线体验：http://voicegpt.site/
 GitHub：https://github.com/kill136/axon
 Discord：https://discord.gg/bNyJKk6PVZ
 
@@ -102,7 +102,7 @@ Features: Browser IDE, Blueprint multi-agent, database client, scheduled tasks, 
 MIT licensed. One-click install. Runs locally.
 
 GitHub: https://github.com/kill136/axon
-Demo: http://voicegpt.site:3456/
+Demo: http://voicegpt.site/
 
 ---
 

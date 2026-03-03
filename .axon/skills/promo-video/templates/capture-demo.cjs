@@ -1,7 +1,7 @@
 const { chromium } = require('playwright-core');
 const path = require('path');
 
-const DEMO_URL = 'http://voicegpt.site:3456/';
+const DEMO_URL = 'http://voicegpt.site/';
 const OUT_DIR = path.join(__dirname);
 
 (async () => {

@@ -48,7 +48,7 @@ export class UserInteractionHandler {
    */
   async askQuestion(config: QuestionConfig): Promise<string> {
     if (!this.ws || this.ws.readyState !== 1 /* WebSocket.OPEN */) {
-      throw new Error('WebSocket 连接不可用');
+      throw new Error('WebSocket connection unavailable');
     }
 
     const requestId = randomUUID();
@@ -85,7 +85,7 @@ export class UserInteractionHandler {
           type: 'user_question',
           payload,
         }));
-        console.log(`[UserInteraction] 发送问题: ${config.header} (${requestId})`);
+        console.log(`[UserInteraction] Sending question: ${config.header} (${requestId})`);
       } catch (error) {
         this.cleanup(requestId);
         reject(error instanceof Error ? error : new Error(String(error)));
@@ -100,11 +100,11 @@ export class UserInteractionHandler {
     const pending = this.pendingQuestions.get(requestId);
 
     if (!pending) {
-      console.warn(`[UserInteraction] 未找到待处理的问题: ${requestId}`);
+      console.warn(`[UserInteraction] Pending question not found: ${requestId}`);
       return;
     }
 
-    console.log(`[UserInteraction] 收到回答: ${requestId} -> ${answer}`);
+    console.log(`[UserInteraction] Received answer: ${requestId} -> ${answer}`);
 
     // 清理超时定时器
     this.cleanup(requestId);
@@ -123,13 +123,13 @@ export class UserInteractionHandler {
       return;
     }
 
-    console.warn(`[UserInteraction] 问题超时: ${requestId}`);
+    console.warn(`[UserInteraction] Question timed out: ${requestId}`);
 
     // 清理
     this.cleanup(requestId);
 
     // 拒绝 Promise
-    pending.reject(new Error('用户回答超时'));
+    pending.reject(new Error('User answer timed out'));
   }
 
   /**
@@ -153,7 +153,7 @@ export class UserInteractionHandler {
       if (pending.timeoutId) {
         clearTimeout(pending.timeoutId);
       }
-      pending.reject(new Error('操作已取消'));
+      pending.reject(new Error('Operation cancelled'));
     }
     this.pendingQuestions.clear();
   }

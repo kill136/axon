@@ -28,7 +28,7 @@ It's MIT licensed and runs entirely locally. Your data never leaves your machine
 
 - Website: https://www.chatbi.site
 - GitHub: https://github.com/kill136/axon
-- Live Demo: http://voicegpt.site:3456/
+- Live Demo: http://voicegpt.site/
 - Discord: https://discord.gg/bNyJKk6PVZ
 
 Would love feedback on the architecture and any feature suggestions.

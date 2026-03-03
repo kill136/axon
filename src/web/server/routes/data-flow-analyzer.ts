@@ -49,7 +49,7 @@ export class DataFlowAnalyzer {
 
     const sourceFile = program.getSourceFile(filePath);
     if (!sourceFile) {
-      throw new Error(`无法读取文件: ${filePath}`);
+      throw new Error(`Cannot read file: ${filePath}`);
     }
 
     const reads: LocationInfo[] = [];
@@ -256,7 +256,7 @@ export class DataFlowAnalyzer {
       const id = `write-${i}`;
       nodes.push({
         id,
-        label: `写入 (${write.line}:${write.column})`,
+        label: `Write (${write.line}:${write.column})`,
         type: 'write',
       });
       edges.push({ source: id, target: 'center' });
@@ -267,7 +267,7 @@ export class DataFlowAnalyzer {
       const id = `read-${i}`;
       nodes.push({
         id,
-        label: `读取 (${read.line}:${read.column})`,
+        label: `Read (${read.line}:${read.column})`,
         type: 'read',
       });
       edges.push({ source: 'center', target: id });

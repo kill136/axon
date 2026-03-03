@@ -178,11 +178,11 @@ class BlueprintStore {
             this.blueprints.set(blueprint.id, blueprint);
           }
         } catch (e) {
-          console.error(`[BlueprintStore] 读取蓝图失败: ${file}`, e);
+          console.error(`[BlueprintStore] Failed to read blueprint: ${file}`, e);
         }
       }
     } catch (e) {
-      console.error(`[BlueprintStore] 扫描蓝图目录失败: ${blueprintDir}`, e);
+      console.error(`[BlueprintStore] Failed to scan blueprint directory: ${blueprintDir}`, e);
     }
 
     return blueprints;
@@ -219,7 +219,7 @@ class BlueprintStore {
               };
             }
           } catch (e) {
-            console.warn(`[BlueprintStore] 无法加载设计图文件: ${img.filePath}`, e);
+            console.warn(`[BlueprintStore] Failed to load design image file: ${img.filePath}`, e);
           }
         }
         return img;
@@ -359,7 +359,7 @@ class BlueprintStore {
           this.blueprints.set(id, blueprint);
           return blueprint;
         } catch (e) {
-          console.error(`[BlueprintStore] 读取蓝图失败: ${filePath}`, e);
+          console.error(`[BlueprintStore] Failed to read blueprint: ${filePath}`, e);
         }
       }
     }
@@ -451,13 +451,13 @@ class BlueprintStore {
           this.writeRetryCount.set(blueprintId, retryCount);
 
           if (retryCount <= this.MAX_WRITE_RETRIES) {
-            console.warn(`[BlueprintStore] 写入失败，将重试 (${retryCount}/${this.MAX_WRITE_RETRIES}): ${blueprintId}`, error);
+            console.warn(`[BlueprintStore] Write failed, will retry (${retryCount}/${this.MAX_WRITE_RETRIES}): ${blueprintId}`, error);
             // 重新加入队列
             this.pendingWrites.set(blueprintId, blueprint);
             // 短暂延迟后继续
             await new Promise(resolve => setTimeout(resolve, this.WRITE_RETRY_DELAY));
           } else {
-            console.error(`[BlueprintStore] 写入失败，已达最大重试次数: ${blueprintId}`, error);
+            console.error(`[BlueprintStore] Write failed, max retries reached: ${blueprintId}`, error);
             this.writeRetryCount.delete(blueprintId);
           }
         }
@@ -633,7 +633,7 @@ class RealTaskExecutor implements TaskExecutor {
   async execute(task: SmartTask, workerId: string): Promise<TaskResult> {
     // 防御性检查：确保 task 对象有效
     if (!task || typeof task !== 'object') {
-      console.error(`[RealTaskExecutor] 任务对象无效:`, task);
+      console.error(`[RealTaskExecutor] Invalid task object:`, task);
       return {
         success: false,
         changes: [],
@@ -642,7 +642,7 @@ class RealTaskExecutor implements TaskExecutor {
       };
     }
     if (!task.name) {
-      console.error(`[RealTaskExecutor] 任务缺少 name 属性:`, JSON.stringify(task, null, 2));
+      console.error(`[RealTaskExecutor] Task missing name property:`, JSON.stringify(task, null, 2));
       return {
         success: false,
         changes: [],
@@ -651,7 +651,7 @@ class RealTaskExecutor implements TaskExecutor {
       };
     }
 
-    console.log(`[RealTaskExecutor] 开始执行任务: ${task.name} (Worker: ${workerId})`);
+    console.log(`[RealTaskExecutor] Starting task execution: ${task.name} (Worker: ${workerId})`);
 
     // 获取或创建 Worker
     let worker = this.workerPool.get(workerId);
@@ -903,7 +903,7 @@ class RealTaskExecutor implements TaskExecutor {
       // 串行执行，直接使用主项目路径
       // 关键检查：确保 projectPath 存在，避免回退到 process.cwd()
       if (!this.blueprint.projectPath) {
-        console.error(`[RealTaskExecutor] 蓝图缺少 projectPath:`, {
+        console.error(`[RealTaskExecutor] Blueprint missing projectPath:`, {
           blueprintId: this.blueprint.id,
           blueprintName: this.blueprint.name,
         });
@@ -915,7 +915,7 @@ class RealTaskExecutor implements TaskExecutor {
         };
       }
       const effectiveProjectPath = this.blueprint.projectPath;
-      console.log(`[RealTaskExecutor] 执行任务: ${task.name}, 工作目录: ${effectiveProjectPath}`);
+      console.log(`[RealTaskExecutor] Executing task: ${task.name}, working directory: ${effectiveProjectPath}`);
 
       // 收集依赖任务的产出
       const dependencyOutputs: DependencyOutput[] = [];
@@ -1023,7 +1023,7 @@ class RealTaskExecutor implements TaskExecutor {
         });
       }
 
-      console.log(`[RealTaskExecutor] 任务完成: ${task.name}, 成功: ${result.success}`);
+      console.log(`[RealTaskExecutor] Task completed: ${task.name}, success: ${result.success}`);
 
       // v2.1: 发送任务完成日志
       executionEventEmitter.emit('worker:log', {
@@ -1046,7 +1046,7 @@ class RealTaskExecutor implements TaskExecutor {
       return result;
 
     } catch (error: any) {
-      console.error(`[RealTaskExecutor] 任务执行失败: ${task.name}`, error);
+      console.error(`[RealTaskExecutor] Task execution failed: ${task.name}`, error);
 
       // v2.1: 发送错误日志
       executionEventEmitter.emit('worker:log', {
@@ -1083,7 +1083,7 @@ class RealTaskExecutor implements TaskExecutor {
   abort(workerId: string): void {
     const worker = this.workerPool.get(workerId);
     if (worker) {
-      console.log(`[RealTaskExecutor] 中止 Worker: ${workerId}`);
+      console.log(`[RealTaskExecutor] Aborting Worker: ${workerId}`);
 
       // 调用 Worker 的 abort 方法
       worker.abort();
@@ -1116,7 +1116,7 @@ class RealTaskExecutor implements TaskExecutor {
         this.coordinator.unregisterWorkerExecutor(workerId);
       }
     } else {
-      console.warn(`[RealTaskExecutor] 无法中止 Worker ${workerId}：未找到 Worker 实例`);
+      console.warn(`[RealTaskExecutor] Cannot abort Worker ${workerId}: Worker instance not found`);
     }
   }
 
@@ -1127,7 +1127,7 @@ class RealTaskExecutor implements TaskExecutor {
     // v5.7: 先中止所有正在执行的 Worker
     this.workerPool.forEach((worker, workerId) => {
       if (worker.isExecuting()) {
-        console.log(`[RealTaskExecutor] 清理时中止 Worker: ${workerId}`);
+        console.log(`[RealTaskExecutor] Aborting Worker during cleanup: ${workerId}`);
         worker.abort();
       }
       // v8.4: 从 Coordinator 注销 Worker
@@ -1266,7 +1266,7 @@ class ExecutionManager {
 
     // v13.0: 如果有 LeadAgent 正在运行，排队等待
     if (this.isExecuting) {
-      console.log(`[ExecutionQueue] 排队等待: ${blueprint.name || blueprint.id} (队列长度: ${this.executionQueue.length + 1})`);
+      console.log(`[ExecutionQueue] Queued: ${blueprint.name || blueprint.id} (queue length: ${this.executionQueue.length + 1})`);
       return new Promise<ExecutionSession>((resolve, reject) => {
         this.executionQueue.push({ blueprint, onEvent, options, resolve, reject });
         executionEventEmitter.emit('queue:enqueued', {
@@ -1679,7 +1679,7 @@ class ExecutionManager {
     // v13.0: .finally() 释放执行锁并触发队列中下一个任务
     session.executionPromise = this.runExecution(session, blueprint, executor)
       .catch(error => {
-        console.error('[ExecutionManager] 执行失败:', error);
+        console.error('[ExecutionManager] Execution failed:', error);
         // v2.2: 确保外层异常也设置 completedAt，避免僵尸会话
         if (!session.completedAt) {
           session.completedAt = new Date();
@@ -1706,7 +1706,7 @@ class ExecutionManager {
     if (this.isExecuting) return;
 
     const next = this.executionQueue.shift()!;
-    console.log(`[ExecutionQueue] 出队执行: ${next.blueprint.name || next.blueprint.id} (剩余队列: ${this.executionQueue.length})`);
+    console.log(`[ExecutionQueue] Dequeued for execution: ${next.blueprint.name || next.blueprint.id} (remaining queue: ${this.executionQueue.length})`);
 
     executionEventEmitter.emit('queue:dequeued', {
       blueprintId: next.blueprint.id,
@@ -1784,7 +1784,7 @@ class ExecutionManager {
       }
 
       // 失败时状态已保存到蓝图文件
-      console.log(`[ExecutionManager] 执行失败，状态已保存到蓝图文件: ${blueprint.id}`);
+      console.log(`[ExecutionManager] Execution failed, state saved to blueprint file: ${blueprint.id}`);
 
       // 清理 Worker 分支
       await executor.cleanup();
@@ -1794,6 +1794,9 @@ class ExecutionManager {
   /**
    * 阻塞等待执行完成（v10.1: Planner Agent 双向通信）
    * Planner 通过 StartLeadAgent 工具调用此方法，等待 LeadAgent 完整执行完成后获取结果
+   *
+   * v10.2: 增加超时保护，防止 LeadAgent 卡死导致 Planner 永久阻塞
+   * 超时后会强制停止 LeadAgent 并返回部分结果
    */
   async waitForCompletion(executionId: string): Promise<ExecutionResult> {
     const session = this.sessions.get(executionId);
@@ -1806,9 +1809,57 @@ class ExecutionManager {
       return session.result;
     }
 
-    // 等待 executionPromise 完成
+    // v10.2: 带超时的等待，默认 60 分钟（整个 LeadAgent 执行周期的上限）
+    const LEAD_AGENT_TIMEOUT = 60 * 60 * 1000; // 60 分钟
     if (session.executionPromise) {
-      await session.executionPromise;
+      const timeoutPromise = new Promise<'timeout'>((resolve) => {
+        setTimeout(() => resolve('timeout'), LEAD_AGENT_TIMEOUT);
+      });
+
+      const raceResult = await Promise.race([
+        session.executionPromise.then(() => 'done' as const),
+        timeoutPromise,
+      ]);
+
+      if (raceResult === 'timeout') {
+        console.error(`[ExecutionManager] waitForCompletion TIMEOUT after ${LEAD_AGENT_TIMEOUT / 60000} minutes, force-stopping LeadAgent`);
+        // 强制停止 LeadAgent
+        try {
+          const leadAgent = session.coordinator.getLeadAgent();
+          if (leadAgent) {
+            leadAgent.stop();
+          }
+        } catch (e) {
+          console.error('[ExecutionManager] Failed to stop LeadAgent on timeout:', e);
+        }
+
+        // 构建超时结果
+        const finalPlan = session.coordinator.getCurrentPlan();
+        const completedTasks = finalPlan?.tasks.filter(t => t.status === 'completed') || [];
+        const failedTasks = finalPlan?.tasks.filter(t => t.status === 'failed' || t.status === 'running') || [];
+        const skippedTasks = finalPlan?.tasks.filter(t => t.status === 'pending') || [];
+
+        return {
+          success: false,
+          planId: session.plan.id,
+          blueprintId: session.blueprintId,
+          taskResults: new Map(),
+          totalDuration: Date.now() - session.startedAt.getTime(),
+          totalCost: 0,
+          completedCount: completedTasks.length,
+          failedCount: failedTasks.length,
+          skippedCount: skippedTasks.length,
+          rawResponse: `LeadAgent 执行超时 (${LEAD_AGENT_TIMEOUT / 60000} 分钟)，已强制终止。`,
+          issues: [{
+            id: `timeout-${Date.now()}`,
+            taskId: '',
+            type: 'timeout' as const,
+            description: `LeadAgent 执行超时 (${LEAD_AGENT_TIMEOUT / 60000} 分钟)`,
+            timestamp: new Date(),
+            resolved: false,
+          }],
+        };
+      }
     }
 
     // 执行完成后，构建结果
@@ -1878,7 +1929,7 @@ class ExecutionManager {
       // LeadAgent 模式：暂停时 LeadAgent 已被 abort，需要重启
       const blueprint = blueprintStore.get(session.blueprintId);
       if (blueprint) {
-        console.log(`[ExecutionManager] LeadAgent 暂停恢复：以 isResume 模式重启执行`);
+        console.log(`[ExecutionManager] LeadAgent pause recovery: restarting execution in isResume mode`);
         const executor = new RealTaskExecutor(blueprint);
         executor.setCoordinator(session.coordinator);
         session.coordinator.setTaskExecutor(executor);
@@ -1887,7 +1938,7 @@ class ExecutionManager {
         blueprintStore.save(blueprint);
 
         this.runExecution(session, blueprint, executor, { isResume: true }).catch(error => {
-          console.error('[ExecutionManager] 暂停恢复执行失败:', error);
+          console.error('[ExecutionManager] Pause recovery execution failed:', error);
           if (!session.completedAt) {
             session.completedAt = new Date();
             blueprint.status = 'failed';
@@ -1923,7 +1974,7 @@ class ExecutionManager {
           blueprint.status = 'executing';
           blueprintStore.save(blueprint);
           this.runExecution(session, blueprint, executor, { isResume: true }).catch(error => {
-            console.error('[ExecutionManager] resumeLeadAgent 恢复失败:', error);
+            console.error('[ExecutionManager] resumeLeadAgent recovery failed:', error);
           });
         }
       }
@@ -1971,7 +2022,7 @@ class ExecutionManager {
       }
     }
 
-    console.log(`[ExecutionManager] 恢复 LeadAgent 执行: ${pendingTasks.length} 个待执行任务`);
+    console.log(`[ExecutionManager] Resuming LeadAgent execution: ${pendingTasks.length} pending tasks`);
 
     // 清理旧 session
     if (session) {
@@ -2023,7 +2074,7 @@ class ExecutionManager {
 
     // 以 resume 模式启动
     this.runExecution(newSession, blueprint, executor, { isResume: true }).catch(error => {
-      console.error('[ExecutionManager] resumeLeadAgent 执行失败:', error);
+      console.error('[ExecutionManager] resumeLeadAgent execution failed:', error);
       if (!newSession.completedAt) {
         newSession.completedAt = new Date();
         blueprint.status = 'failed';
@@ -2111,7 +2162,7 @@ class ExecutionManager {
     const blueprint = blueprintStore.getByProjectPath(projectPath);
 
     if (!blueprint) {
-      console.log(`[ExecutionManager] 找不到项目路径对应的蓝图: ${projectPath}`);
+      console.log(`[ExecutionManager] No blueprint found for project path: ${projectPath}`);
       return null;
     }
 
@@ -2124,7 +2175,7 @@ class ExecutionManager {
    * 应该在服务器启动时调用
    */
   async initRecovery(): Promise<void> {
-    console.log('[ExecutionManager] 检查可恢复的执行状态...');
+    console.log('[ExecutionManager] Checking for recoverable execution states...');
 
     // 获取所有蓝图
     const blueprints = blueprintStore.getAll();
@@ -2133,15 +2184,15 @@ class ExecutionManager {
       // 检查是否有可恢复的状态（使用新方法）
       if (this.hasRecoverableState(blueprint.id)) {
         try {
-          console.log(`[ExecutionManager] 发现可恢复的执行: ${blueprint.name} (${blueprint.id})`);
+          console.log(`[ExecutionManager] Found recoverable execution: ${blueprint.name} (${blueprint.id})`);
 
           // 尝试恢复
           const session = await this.restoreSessionFromState(blueprint.id);
           if (session) {
-            console.log(`[ExecutionManager] 成功恢复执行: ${blueprint.name}`);
+            console.log(`[ExecutionManager] Successfully recovered execution: ${blueprint.name}`);
           }
         } catch (error) {
-          console.error(`[ExecutionManager] 恢复执行失败 (${blueprint.name}):`, error);
+          console.error(`[ExecutionManager] Failed to recover execution (${blueprint.name}):`, error);
           // 恢复失败，将蓝图状态设置为 paused
           blueprint.status = 'paused';
           blueprintStore.save(blueprint);
@@ -2149,7 +2200,7 @@ class ExecutionManager {
       }
     }
 
-    console.log('[ExecutionManager] 恢复检查完成');
+    console.log('[ExecutionManager] Recovery check completed');
   }
 
   /**
@@ -2212,43 +2263,43 @@ class ExecutionManager {
    * @returns 重试结果
    */
   async retryTask(blueprintId: string, taskId: string): Promise<{ success: boolean; error?: string }> {
-    console.log(`[ExecutionManager] retryTask 开始: blueprintId=${blueprintId}, taskId=${taskId}`);
+    console.log(`[ExecutionManager] retryTask started: blueprintId=${blueprintId}, taskId=${taskId}`);
 
     // 查找会话
     let session = this.getSessionByBlueprint(blueprintId);
 
     // 如果会话不存在，尝试从保存的状态恢复
     if (!session) {
-      console.log(`[ExecutionManager] 会话不存在，尝试从保存的状态恢复...`);
+      console.log(`[ExecutionManager] Session does not exist, attempting to restore from saved state...`);
 
       try {
         session = await this.restoreSessionFromState(blueprintId);
         if (session) {
-          console.log(`[ExecutionManager] 会话恢复成功`);
+          console.log(`[ExecutionManager] Session restored successfully`);
         }
       } catch (restoreError: any) {
-        console.error(`[ExecutionManager] 恢复会话失败:`, restoreError);
+        console.error(`[ExecutionManager] Failed to restore session:`, restoreError);
       }
     }
 
     if (!session) {
-      console.log(`[ExecutionManager] 找不到会话且无法恢复，当前会话列表:`, Array.from(this.sessions.keys()));
+      console.log(`[ExecutionManager] Session not found and cannot be restored, current sessions:`, Array.from(this.sessions.keys()));
       return { success: false, error: '找不到该蓝图的执行会话，请重新开始执行' };
     }
 
-    console.log(`[ExecutionManager] 找到会话，检查协调器...`);
+    console.log(`[ExecutionManager] Session found, checking coordinator...`);
 
     if (!session.coordinator) {
-      console.log(`[ExecutionManager] 协调器不存在`);
+      console.log(`[ExecutionManager] Coordinator does not exist`);
       return { success: false, error: '执行协调器不可用' };
     }
 
-    console.log(`[ExecutionManager] 协调器存在，开始重试任务...`);
+    console.log(`[ExecutionManager] Coordinator exists, starting task retry...`);
 
     try {
       // 调用协调器的重试方法
       const result = await session.coordinator.retryTask(taskId);
-      console.log(`[ExecutionManager] 协调器重试结果: ${result}`);
+      console.log(`[ExecutionManager] Coordinator retry result: ${result}`);
 
       if (result) {
         // LeadAgent 正在运行且已收到重试指令
@@ -2259,7 +2310,7 @@ class ExecutionManager {
           if (currentPlan) {
             blueprint.lastExecutionPlan = this.serializeExecutionPlan(currentPlan);
             blueprintStore.save(blueprint);
-            console.log(`[ExecutionManager] 已同步更新 blueprint.lastExecutionPlan`);
+            console.log(`[ExecutionManager] Synced update to blueprint.lastExecutionPlan`);
           }
         }
         return { success: true };
@@ -2268,7 +2319,7 @@ class ExecutionManager {
       // v9.1: LeadAgent 未在执行中，需要重启执行
       // coordinator.retryTask() 已重置任务状态，现在需要启动新的 LeadAgent 恢复执行
       if (!session.coordinator.isActive()) {
-        console.log(`[ExecutionManager] LeadAgent 未在执行中，启动恢复执行...`);
+        console.log(`[ExecutionManager] LeadAgent not executing, starting recovery execution...`);
 
         const blueprint = blueprintStore.get(blueprintId);
         if (!blueprint) {
@@ -2295,7 +2346,7 @@ class ExecutionManager {
 
         // 异步启动恢复执行（不阻塞当前请求）
         this.runExecution(session, blueprint, executor, { isResume: true }).catch(error => {
-          console.error('[ExecutionManager] 重试恢复执行失败:', error);
+          console.error('[ExecutionManager] Retry recovery execution failed:', error);
           if (!session.completedAt) {
             session.completedAt = new Date();
             blueprint.status = 'failed';
@@ -2308,7 +2359,7 @@ class ExecutionManager {
 
       return { success: false, error: '协调器重试失败' };
     } catch (error: any) {
-      console.error(`[ExecutionManager] 重试任务失败:`, error);
+      console.error(`[ExecutionManager] Task retry failed:`, error);
       return { success: false, error: error.message || '重试任务时发生错误' };
     }
   }
@@ -2337,12 +2388,12 @@ class ExecutionManager {
     // 获取蓝图
     const blueprint = blueprintStore.get(blueprintId);
     if (!blueprint) {
-      console.log(`[ExecutionManager] 恢复失败：找不到蓝图 ${blueprintId}`);
+      console.log(`[ExecutionManager] Recovery failed: blueprint not found ${blueprintId}`);
       return null;
     }
 
     if (!blueprint.projectPath) {
-      console.log(`[ExecutionManager] 恢复失败：蓝图没有项目路径`);
+      console.log(`[ExecutionManager] Recovery failed: blueprint has no project path`);
       return null;
     }
 
@@ -2351,11 +2402,11 @@ class ExecutionManager {
     const executionState = (blueprint as any).executionState;
 
     if (!lastPlan) {
-      console.log(`[ExecutionManager] 恢复失败：蓝图没有 lastExecutionPlan`);
+      console.log(`[ExecutionManager] Recovery failed: blueprint has no lastExecutionPlan`);
       return null;
     }
 
-    console.log(`[ExecutionManager] 从蓝图文件恢复执行状态: ${blueprint.id}`);
+    console.log(`[ExecutionManager] Restoring execution state from blueprint file: ${blueprint.id}`);
 
     // 创建协调器（串行执行）
     const coordinator = createRealtimeCoordinator({
@@ -2405,7 +2456,7 @@ class ExecutionManager {
       // 从协调器获取恢复后的计划
       const restoredPlan = coordinator.getCurrentPlan();
       if (!restoredPlan) {
-        console.log(`[ExecutionManager] 恢复失败：协调器没有计划`);
+        console.log(`[ExecutionManager] Recovery failed: coordinator has no plan`);
         return null;
       }
 
@@ -2423,7 +2474,7 @@ class ExecutionManager {
       // 保存会话
       this.sessions.set(session.id, session);
 
-      console.log(`[ExecutionManager] 会话恢复成功，包含 ${lastPlan.tasks.length} 个任务，从第 ${savedState.currentGroupIndex + 1} 组继续执行`);
+      console.log(`[ExecutionManager] Session restored successfully, containing ${lastPlan.tasks.length} tasks, continuing from group ${savedState.currentGroupIndex + 1}`);
 
       // v9.0: 使用 runExecution（与正常启动流程一致），LeadAgent 模式不支持 continueExecution
       // 传递 isResume: true，让 LeadAgent 知道这是恢复执行，不要重新生成任务树
@@ -2431,7 +2482,7 @@ class ExecutionManager {
       blueprintStore.save(blueprint);
 
       this.runExecution(session, blueprint, executor, { isResume: true }).catch(error => {
-        console.error('[ExecutionManager] 恢复执行失败:', error);
+        console.error('[ExecutionManager] Failed to recover execution:', error);
         if (!session.completedAt) {
           session.completedAt = new Date();
           blueprint.status = 'failed';
@@ -2442,7 +2493,7 @@ class ExecutionManager {
       return session;
 
     } catch (error: any) {
-      console.error(`[ExecutionManager] 恢复会话失败:`, error);
+      console.error(`[ExecutionManager] Failed to restore session:`, error);
       return null;
     }
   }
@@ -2694,7 +2745,7 @@ class ExecutionManager {
         };
 
         blueprintStore.save(blueprint);
-        console.log(`[ExecutionManager] 状态已同步到蓝图文件: ${blueprint.id}`);
+        console.log(`[ExecutionManager] State synced to blueprint file: ${blueprint.id}`);
       }
     });
   }
@@ -3021,7 +3072,7 @@ ${blueprint.modules?.map((m: any) => `- ${m.name}: ${m.description || ''}`).join
     architectureGraphCache.set(cacheKey, graphData);
     res.json({ success: true, data: graphData });
   } catch (error: any) {
-    console.error('[architecture-graph] 错误:', error);
+    console.error('[architecture-graph] Error:', error);
     res.status(500).json({ success: false, error: error.message || 'AI 生成失败' });
   }
 });
@@ -3718,7 +3769,7 @@ router.post('/coordinator/stop', (_req: Request, res: Response) => {
 router.post('/coordinator/start', async (req: Request, res: Response) => {
   try {
     const { blueprintId } = req.body;
-    console.log('[coordinator/start] 收到请求:', { blueprintId });
+    console.log('[coordinator/start] Received request:', { blueprintId });
 
     if (blueprintId) {
       // 检查是否有现有会话
@@ -3730,7 +3781,7 @@ router.post('/coordinator/start', async (req: Request, res: Response) => {
         if (isActive) {
           // 会话还在运行中，取消暂停
           // v9.1: 通过 ExecutionManager.resume() 统一处理（内含 LeadAgent 重启逻辑）
-          console.log('[coordinator/start] 恢复活跃会话:', existingSession.id, '暂停状态:', existingSession.coordinator.paused);
+          console.log('[coordinator/start] Resuming active session:', existingSession.id, 'paused:', existingSession.coordinator.paused);
           executionManager.resume(existingSession.id);
           return res.json({
             success: true,
@@ -3744,7 +3795,7 @@ router.post('/coordinator/start', async (req: Request, res: Response) => {
         } else {
           // v2.3: 会话不活跃，检查是否为僵尸状态
           const isZombie = existingSession.coordinator.isZombie();
-          console.log('[coordinator/start] 检测到非活跃会话:', existingSession.id, '僵尸状态:', isZombie);
+          console.log('[coordinator/start] Detected inactive session:', existingSession.id, 'zombie:', isZombie);
           // 标记会话为已完成
           existingSession.completedAt = new Date();
           // 继续后面的逻辑（检查文件状态或创建新执行）
@@ -3754,7 +3805,7 @@ router.post('/coordinator/start', async (req: Request, res: Response) => {
       // 没有现有会话，检查是否有可恢复的文件状态
       const blueprint = blueprintStore.get(blueprintId);
       if (!blueprint) {
-        console.log('[coordinator/start] 蓝图不存在:', blueprintId);
+        console.log('[coordinator/start] Blueprint not found:', blueprintId);
         return res.status(404).json({
           success: false,
           error: '蓝图不存在',
@@ -3763,11 +3814,11 @@ router.post('/coordinator/start', async (req: Request, res: Response) => {
 
       // v3.0: 使用统一的恢复状态检查方法
       if (executionManager.hasRecoverableState(blueprintId)) {
-        console.log('[coordinator/start] 发现可恢复的执行状态，尝试从蓝图恢复...');
+        console.log('[coordinator/start] Found recoverable execution state, attempting to restore from blueprint...');
         try {
           const recoveredSession = await executionManager.restoreSessionFromState(blueprintId);
           if (recoveredSession) {
-            console.log('[coordinator/start] 成功恢复执行:', {
+            console.log('[coordinator/start] Successfully recovered execution:', {
               executionId: recoveredSession.id,
               blueprintId: recoveredSession.blueprintId,
             });
@@ -3783,7 +3834,7 @@ router.post('/coordinator/start', async (req: Request, res: Response) => {
             });
           }
         } catch (recoverErr) {
-          console.warn('[coordinator/start] 恢复执行失败，将创建新执行:', recoverErr);
+          console.warn('[coordinator/start] Failed to recover execution, will create new execution:', recoverErr);
           // 恢复失败，继续创建新执行
         }
       }
@@ -3791,7 +3842,7 @@ router.post('/coordinator/start', async (req: Request, res: Response) => {
       // 检查蓝图状态（允许 executing 以便处理会话丢失的情况，允许 completed 以便重新执行）
       const allowedStatuses = ['confirmed', 'approved', 'draft', 'paused', 'failed', 'executing', 'completed'];
       if (!allowedStatuses.includes(blueprint.status)) {
-        console.log('[coordinator/start] 蓝图状态不允许执行:', blueprint.status);
+        console.log('[coordinator/start] Blueprint status does not allow execution:', blueprint.status);
         return res.status(400).json({
           success: false,
           error: `蓝图状态 "${blueprint.status}" 不允许执行`,
@@ -3800,13 +3851,13 @@ router.post('/coordinator/start', async (req: Request, res: Response) => {
 
       // 如果是重新执行已完成的蓝图，记录日志
       if (blueprint.status === 'completed') {
-        console.log('[coordinator/start] 重新执行已完成的蓝图:', blueprintId);
+        console.log('[coordinator/start] Re-executing completed blueprint:', blueprintId);
       }
 
       // V2.0: 开始新的执行
-      console.log('[coordinator/start] 开始创建执行计划...');
+      console.log('[coordinator/start] Creating execution plan...');
       const session = await executionManager.startExecution(blueprint);
-      console.log('[coordinator/start] 执行计划创建完成:', {
+      console.log('[coordinator/start] Execution plan created:', {
         executionId: session.id,
         planId: session.plan.id,
         totalTasks: session.plan.tasks.length,
@@ -3841,7 +3892,7 @@ router.post('/coordinator/start', async (req: Request, res: Response) => {
       data: { resumedSessions: resumedCount },
     });
   } catch (error: any) {
-    console.error('[coordinator/start] 执行失败:', error);
+    console.error('[coordinator/start] Execution failed:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -4167,7 +4218,7 @@ router.post('/design/generate', async (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error('[Blueprint API] 生成设计图失败:', error);
+    console.error('[Blueprint API] Failed to generate design image:', error);
     res.status(500).json({
       success: false,
       error: error.message || '生成设计图时发生错误',
@@ -4299,7 +4350,7 @@ function loadRecentProjects(): RecentProject[] {
     const content = fs.readFileSync(filePath, 'utf-8');
     return JSON.parse(content) as RecentProject[];
   } catch (error) {
-    console.error('[Recent Projects] 读取失败:', error);
+    console.error('[Recent Projects] Read failed:', error);
     return [];
   }
 }
@@ -4316,7 +4367,7 @@ function saveRecentProjects(projects: RecentProject[]): void {
     const filePath = getRecentProjectsPath();
     fs.writeFileSync(filePath, JSON.stringify(projects, null, 2), 'utf-8');
   } catch (error) {
-    console.error('[Recent Projects] 保存失败:', error);
+    console.error('[Recent Projects] Save failed:', error);
     throw error;
   }
 }
@@ -4553,7 +4604,7 @@ if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
       const hasDisplay = !!process.env.DISPLAY || !!process.env.WAYLAND_DISPLAY;
       
       if (!hasDisplay) {
-        console.log('[POST /projects/browse] Linux 环境无 DISPLAY，回退到 Web 端目录浏览器');
+        console.log('[POST /projects/browse] Linux environment has no DISPLAY, falling back to web directory browser');
         return res.json({
           success: true,
           data: { noGui: true },
@@ -4578,7 +4629,7 @@ if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
       }
 
       if (!dialogTool) {
-        console.log('[POST /projects/browse] Linux 环境未安装 zenity 或 kdialog，回退到 Web 端目录浏览器');
+        console.log('[POST /projects/browse] Linux environment has no zenity or kdialog installed, falling back to web directory browser');
         return res.json({
           success: true,
           data: { noGui: true },
@@ -5270,7 +5321,7 @@ router.post('/files/rename', (req: Request, res: Response) => {
 router.get('/project-map', async (req: Request, res: Response) => {
   try {
     const projectRoot = process.cwd();
-    console.log('[Project Map] 开始生成项目地图...');
+    console.log('[Project Map] Starting project map generation...');
 
     // 1. 扫描 TypeScript 文件
     const tsFiles: string[] = [];
@@ -5295,7 +5346,7 @@ router.get('/project-map', async (req: Request, res: Response) => {
     };
 
     scanDir(srcPath);
-    console.log(`[Project Map] 扫描到 ${tsFiles.length} 个 TypeScript 文件`);
+    console.log(`[Project Map] Scanned ${tsFiles.length} TypeScript files`);
 
     // 2. 模块统计
     let totalLines = 0;
@@ -5322,7 +5373,7 @@ router.get('/project-map', async (req: Request, res: Response) => {
       languages: { typescript: tsFiles.length },
     };
 
-    console.log(`[Project Map] 模块统计: ${moduleStats.totalFiles} 文件, ${moduleStats.totalLines} 行代码`);
+    console.log(`[Project Map] Module stats: ${moduleStats.totalFiles} files, ${moduleStats.totalLines} lines of code`);
 
     // 3. 入口点检测
     const entryPoints: string[] = [];
@@ -5334,7 +5385,7 @@ router.get('/project-map', async (req: Request, res: Response) => {
       }
     }
 
-    console.log(`[Project Map] 检测到 ${entryPoints.length} 个入口点`);
+    console.log(`[Project Map] Detected ${entryPoints.length} entry points`);
 
     // 4. 核心符号（简化版本）
     const coreSymbols = {
@@ -5342,14 +5393,14 @@ router.get('/project-map', async (req: Request, res: Response) => {
       functions: [] as string[],
     };
 
-    console.log('[Project Map] 项目地图生成完成!');
+    console.log('[Project Map] Project map generation completed!');
 
     res.json({
       success: true,
       data: { moduleStats, layers: null, entryPoints, coreSymbols },
     });
   } catch (error: any) {
-    console.error('[Project Map] 错误:', error);
+    console.error('[Project Map] Error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -5363,7 +5414,7 @@ router.get('/treemap', async (req: Request, res: Response) => {
     const { maxDepth = '4' } = req.query;
     const projectRoot = process.cwd();
 
-    console.log('[Treemap] 开始生成 Treemap 数据...');
+    console.log('[Treemap] Starting Treemap data generation...');
 
     // 动态导入 treemap 生成函数（如果存在）
     try {
@@ -5374,7 +5425,7 @@ router.get('/treemap', async (req: Request, res: Response) => {
         ['node_modules', '.git', 'dist', 'build', '.next', 'coverage', '__pycache__'],
         false
       );
-      console.log('[Treemap] Treemap 数据生成完成!');
+      console.log('[Treemap] Treemap data generation completed!');
       res.json({
         success: true,
         data: treemapData,
@@ -5392,7 +5443,7 @@ router.get('/treemap', async (req: Request, res: Response) => {
       });
     }
   } catch (error: any) {
-    console.error('[Treemap] 错误:', error);
+    console.error('[Treemap] Error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -5413,7 +5464,7 @@ router.get('/layered-treemap', async (req: Request, res: Response) => {
     const zoomLevel = parseInt(level as string, 10);
     const loadDepth = parseInt(depth as string, 10);
 
-    console.log(`[LayeredTreemap] 加载数据: level=${zoomLevel}, path=${focusPath}, depth=${loadDepth}`);
+    console.log(`[LayeredTreemap] Loading data: level=${zoomLevel}, path=${focusPath}, depth=${loadDepth}`);
 
     try {
       const { generateLayeredTreemapData, ZoomLevel } = await import('./project-map-generator.js');
@@ -5433,7 +5484,7 @@ router.get('/layered-treemap', async (req: Request, res: Response) => {
         ['node_modules', '.git', 'dist', 'build', '.next', 'coverage', '__pycache__']
       );
 
-      console.log(`[LayeredTreemap] 数据加载完成: ${result.stats.childCount} 个子节点`);
+      console.log(`[LayeredTreemap] Data loading completed: ${result.stats.childCount} child nodes`);
 
       res.json({
         success: true,
@@ -5449,7 +5500,7 @@ router.get('/layered-treemap', async (req: Request, res: Response) => {
       });
     }
   } catch (error: any) {
-    console.error('[LayeredTreemap] 错误:', error);
+    console.error('[LayeredTreemap] Error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -5475,7 +5526,7 @@ router.get('/layered-treemap/children', async (req: Request, res: Response) => {
     const projectRoot = process.cwd();
     const zoomLevel = parseInt(level as string, 10);
 
-    console.log(`[LayeredTreemap] 懒加载子节点: path=${nodePath}, level=${zoomLevel}`);
+    console.log(`[LayeredTreemap] Lazy loading child nodes: path=${nodePath}, level=${zoomLevel}`);
 
     try {
       const { loadNodeChildren, ZoomLevel } = await import('./project-map-generator.js');
@@ -5487,7 +5538,7 @@ router.get('/layered-treemap/children', async (req: Request, res: Response) => {
         ['node_modules', '.git', 'dist', 'build', '.next', 'coverage', '__pycache__']
       );
 
-      console.log(`[LayeredTreemap] 加载完成: ${children.length} 个子节点`);
+      console.log(`[LayeredTreemap] Loading completed: ${children.length} child nodes`);
 
       res.json({
         success: true,
@@ -5500,7 +5551,7 @@ router.get('/layered-treemap/children', async (req: Request, res: Response) => {
       });
     }
   } catch (error: any) {
-    console.error('[LayeredTreemap] 懒加载错误:', error);
+    console.error('[LayeredTreemap] Lazy loading error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -5874,13 +5925,13 @@ router.post('/analyze-node', async (req: Request, res: Response) => {
     const isFile = stats.isFile();
     const name = path.basename(nodePath);
 
-    console.log(`[Analyze Node] 开始分析: ${nodePath} (${isFile ? '文件' : '目录'})`);
+    console.log(`[Analyze Node] Starting analysis: ${nodePath} (${isFile ? 'file' : 'directory'})`);
 
     // 检查缓存
     if (analysisCache) {
       const cachedAnalysis = analysisCache.get(absolutePath, isFile);
       if (cachedAnalysis) {
-        console.log(`[Analyze Node] 使用缓存结果: ${nodePath}`);
+        console.log(`[Analyze Node] Using cached result: ${nodePath}`);
 
         let reverseDeps: Array<{path: string, imports: string[]}> = [];
         if (isFile) {
@@ -5898,7 +5949,7 @@ router.post('/analyze-node', async (req: Request, res: Response) => {
       }
     }
 
-    console.log(`[Analyze Node] 缓存未命中，调用 AI 分析...`);
+    console.log(`[Analyze Node] Cache miss, calling AI analysis...`);
 
     // 使用 getDefaultClient() 获取已认证的客户端
     const { getDefaultClient } = await import('../../../core/client.js');
@@ -5953,7 +6004,7 @@ ${contentInfo}
       }
     }
 
-    console.log(`[Analyze Node] AI 返回结果长度: ${analysisText.length}`);
+    console.log(`[Analyze Node] AI response length: ${analysisText.length}`);
 
     // 提取 JSON
     let analysis: Record<string, any>;
@@ -5987,7 +6038,7 @@ ${contentInfo}
       analysisCache.set(absolutePath, isFile, analysis);
     }
 
-    console.log(`[Analyze Node] 分析完成: ${nodePath}`);
+    console.log(`[Analyze Node] Analysis complete: ${nodePath}`);
 
     res.json({
       success: true,
@@ -6061,22 +6112,22 @@ router.get('/analyze/status', (req: Request, res: Response) => {
 router.post('/generate', async (req: Request, res: Response) => {
   const startTime = Date.now();
   console.log('\n========================================');
-  console.log('[Blueprint Generate v2.0] 🚀 开始生成蓝图');
+  console.log('[Blueprint Generate v2.0] 🚀 Starting blueprint generation');
   console.log('========================================');
 
   try {
     const { projectRoot = '.', name, description, requirements = [] } = req.body;
     const absoluteRoot = path.resolve(process.cwd(), projectRoot);
 
-    console.log(`[Blueprint Generate v2.0] 📁 项目根目录: ${absoluteRoot}`);
+    console.log(`[Blueprint Generate v2.0] 📁 Project root: ${absoluteRoot}`);
 
     // v2.0: 使用 SmartPlanner 创建蓝图
     const planner = createSmartPlanner();
 
     // 检查是否有足够的需求信息
     if (!name && requirements.length === 0) {
-      console.log('[Blueprint Generate v2.0] ⚠️  需求信息不足，需要对话式调研');
-      console.log(`[Blueprint Generate v2.0] 总耗时: ${Date.now() - startTime}ms`);
+      console.log('[Blueprint Generate v2.0] ⚠️  Insufficient requirements, dialog-based investigation needed');
+      console.log(`[Blueprint Generate v2.0] Total time: ${Date.now() - startTime}ms`);
       console.log('========================================\n');
 
       return res.json({
@@ -6094,7 +6145,7 @@ router.post('/generate', async (req: Request, res: Response) => {
     // 检查该项目路径是否已存在蓝图（防止重复创建）
     const existingBlueprint = blueprintStore.getByProjectPath(absoluteRoot);
     if (existingBlueprint) {
-      console.log(`[Blueprint Generate v2.0] ⚠️  该项目路径已存在蓝图: ${existingBlueprint.name}`);
+      console.log(`[Blueprint Generate v2.0] ⚠️  Blueprint already exists for this project path: ${existingBlueprint.name}`);
       return res.status(409).json({
         success: false,
         error: `该项目路径已存在蓝图: "${existingBlueprint.name}" (ID: ${existingBlueprint.id})`,
@@ -6127,8 +6178,8 @@ router.post('/generate', async (req: Request, res: Response) => {
     // 保存蓝图
     blueprintStore.save(blueprint);
 
-    console.log('[Blueprint Generate v2.0] ✅ 蓝图创建成功！');
-    console.log(`[Blueprint Generate v2.0] 总耗时: ${Date.now() - startTime}ms`);
+    console.log('[Blueprint Generate v2.0] ✅ Blueprint created successfully!');
+    console.log(`[Blueprint Generate v2.0] Total time: ${Date.now() - startTime}ms`);
     console.log('========================================\n');
 
     res.json({
@@ -6151,10 +6202,10 @@ router.post('/generate', async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('\n========================================');
-    console.error('[Blueprint Generate v2.0] ❌ 生成蓝图失败！');
+    console.error('[Blueprint Generate v2.0] ❌ Blueprint generation failed!');
     console.error('========================================');
-    console.error(`[Blueprint Generate v2.0] 错误信息: ${error.message}`);
-    console.error(`[Blueprint Generate v2.0] 总耗时: ${Date.now() - startTime}ms`);
+    console.error(`[Blueprint Generate v2.0] Error: ${error.message}`);
+    console.error(`[Blueprint Generate v2.0] Total time: ${Date.now() - startTime}ms`);
     console.error('========================================\n');
     res.status(500).json({ success: false, error: error.message });
   }
@@ -6561,7 +6612,7 @@ router.get('/logs/task/:taskId', async (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error('[LogsAPI] 获取任务日志失败:', error);
+    console.error('[LogsAPI] Failed to get task logs:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -6602,7 +6653,7 @@ router.get('/logs/blueprint/:blueprintId', async (req: Request, res: Response) =
       },
     });
   } catch (error: any) {
-    console.error('[LogsAPI] 获取蓝图日志失败:', error);
+    console.error('[LogsAPI] Failed to get blueprint logs:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -6627,7 +6678,7 @@ router.delete('/logs/task/:taskId', async (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error('[LogsAPI] 清空任务日志失败:', error);
+    console.error('[LogsAPI] Failed to clear task logs:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -6649,7 +6700,7 @@ router.get('/logs/stats', async (_req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error('[LogsAPI] 获取统计信息失败:', error);
+    console.error('[LogsAPI] Failed to get statistics:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -6671,7 +6722,7 @@ router.post('/logs/cleanup', async (_req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error('[LogsAPI] 清理日志失败:', error);
+    console.error('[LogsAPI] Failed to cleanup logs:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });

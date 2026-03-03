@@ -195,7 +195,7 @@ export class UpdateManager extends EventEmitter {
     return new Promise((resolve, reject) => {
       const url = `${this.config.registryUrl}/${this.packageName}`;
 
-      https.get(url, (res) => {
+      const req = https.get(url, { timeout: 8000 }, (res) => {
         let data = '';
         res.on('data', (chunk) => data += chunk);
         res.on('end', () => {
@@ -224,7 +224,9 @@ export class UpdateManager extends EventEmitter {
             reject(err);
           }
         });
-      }).on('error', reject);
+      });
+      req.on('timeout', () => { req.destroy(new Error('Update check timed out')); });
+      req.on('error', reject);
     });
   }
 
@@ -233,7 +235,7 @@ export class UpdateManager extends EventEmitter {
     return new Promise((resolve, reject) => {
       const url = `${this.config.registryUrl}/${this.packageName}/${version}`;
 
-      https.get(url, (res) => {
+      const req = https.get(url, { timeout: 8000 }, (res) => {
         let data = '';
         res.on('data', (chunk) => data += chunk);
         res.on('end', () => {
@@ -253,7 +255,9 @@ export class UpdateManager extends EventEmitter {
             reject(err);
           }
         });
-      }).on('error', reject);
+      });
+      req.on('timeout', () => { req.destroy(new Error('Update check timed out')); });
+      req.on('error', reject);
     });
   }
 
@@ -392,7 +396,7 @@ export class UpdateManager extends EventEmitter {
     return new Promise((resolve, reject) => {
       const url = `${this.config.registryUrl}/${this.packageName}`;
 
-      https.get(url, (res) => {
+      const req = https.get(url, { timeout: 8000 }, (res) => {
         let data = '';
         res.on('data', (chunk) => data += chunk);
         res.on('end', () => {
@@ -404,7 +408,9 @@ export class UpdateManager extends EventEmitter {
             reject(err);
           }
         });
-      }).on('error', reject);
+      });
+      req.on('timeout', () => { req.destroy(new Error('Update check timed out')); });
+      req.on('error', reject);
     });
   }
 
@@ -504,7 +510,7 @@ export class UpdateManager extends EventEmitter {
   // 辅助方法：获取 JSON
   private fetchJson(url: string): Promise<Record<string, unknown>> {
     return new Promise((resolve, reject) => {
-      https.get(url, (res) => {
+      const req = https.get(url, { timeout: 8000 }, (res) => {
         let data = '';
         res.on('data', (chunk) => data += chunk);
         res.on('end', () => {
@@ -514,7 +520,9 @@ export class UpdateManager extends EventEmitter {
             reject(err);
           }
         });
-      }).on('error', reject);
+      });
+      req.on('timeout', () => { req.destroy(new Error('Update check timed out')); });
+      req.on('error', reject);
     });
   }
 }

@@ -2691,7 +2691,7 @@ JSON 格式要求：
       try {
         return JSON.parse(jsonMatch[1]);
       } catch (e) {
-        console.error('[StreamingBlueprintGenerator] JSON 解析失败 (代码块):', e);
+        console.error('[StreamingBlueprintGenerator] JSON parse failed (code block):', e);
       }
     }
 
@@ -2701,7 +2701,7 @@ JSON 格式要求：
       try {
         return JSON.parse(directMatch[0]);
       } catch (e) {
-        console.error('[StreamingBlueprintGenerator] JSON 解析失败 (直接匹配):', e);
+        console.error('[StreamingBlueprintGenerator] JSON parse failed (direct match):', e);
       }
     }
 

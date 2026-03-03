@@ -25,7 +25,7 @@ const cwdStorage = new AsyncLocalStorage<string>();
 export function runWithCwd<T>(cwd: string, fn: () => T): T {
   // 关键验证：确保 cwd 是有效的路径，禁止传入 undefined 或空字符串
   if (!cwd) {
-    throw new Error('runWithCwd: cwd 参数不能为空，请确保传入有效的工作目录');
+    throw new Error('runWithCwd: cwd parameter cannot be empty, please provide a valid working directory');
   }
   return cwdStorage.run(cwd, fn);
 }
@@ -51,11 +51,11 @@ export function getCurrentCwd(): string {
   }
 
   throw new Error(
-    'getCurrentCwd: 未在工作目录上下文中。\n' +
-    '可能原因：\n' +
-    '1. 忘记使用 runWithCwd() 包装调用\n' +
-    '2. Worker/SubAgent 未正确传递 workingDir\n' +
-    '解决方法：确保在 runWithCwd(cwd, fn) 内部调用此函数'
+    'getCurrentCwd: Not inside a working directory context.\n' +
+    'Possible causes:\n' +
+    '1. Forgot to wrap the call with runWithCwd()\n' +
+    '2. Worker/SubAgent did not properly pass workingDir\n' +
+    'Solution: Ensure this function is called inside runWithCwd(cwd, fn)'
   );
 }
 
@@ -95,7 +95,7 @@ export async function* runGeneratorWithCwd<T>(
 ): AsyncGenerator<T, void, undefined> {
   // 关键验证：确保 cwd 是有效的路径，禁止传入 undefined 或空字符串
   if (!cwd) {
-    throw new Error('runGeneratorWithCwd: cwd 参数不能为空，请确保传入有效的工作目录');
+    throw new Error('runGeneratorWithCwd: cwd parameter cannot be empty, please provide a valid working directory');
   }
 
   try {

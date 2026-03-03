@@ -595,7 +595,7 @@ function fixConsecutiveAssistantMessages(messages: Message[]): Message[] {
       insertAfterIdx.set(i, collectedResults);
       console.log(
         chalk.yellow(
-          `[validateToolResults] 检测到连续 assistant 消息，修正 ${collectedResults.length} 个 tool_result 位置 (assistant[${i}] → assistant[${i + 1}])`
+          `[validateToolResults] Detected consecutive assistant messages, fixed ${collectedResults.length} tool_result position(s) (assistant[${i}] → assistant[${i + 1}])`
         )
       );
     }
@@ -1416,7 +1416,7 @@ async function trySessionMemoryCompact(
     if (autoCompactThreshold !== undefined && finalTokenCount >= autoCompactThreshold) {
       console.log(
         chalk.yellow(
-          `[TJ1] 压缩后token数 (${finalTokenCount.toLocaleString()}) 仍超过阈值 (${autoCompactThreshold.toLocaleString()})，跳过压缩`
+          `[TJ1] Post-compaction token count (${finalTokenCount.toLocaleString()}) still exceeds threshold (${autoCompactThreshold.toLocaleString()}), skipping compaction`
         )
       );
       return null;
@@ -1445,7 +1445,7 @@ async function trySessionMemoryCompact(
   } catch (error) {
     // 捕获所有异常，返回null（对齐官方实现）
     console.log(
-      chalk.yellow(`[TJ1] Session Memory压缩失败: ${error instanceof Error ? error.message : String(error)}`)
+      chalk.yellow(`[TJ1] Session Memory compaction failed: ${error instanceof Error ? error.message : String(error)}`)
     );
     return null;
   }
@@ -1574,7 +1574,7 @@ async function tryConversationSummary(
 
   } catch (error) {
     console.log(
-      chalk.red(`[NJ1] 对话摘要压缩失败: ${error instanceof Error ? error.message : String(error)}`)
+      chalk.red(`[NJ1] Conversation summary compaction failed: ${error instanceof Error ? error.message : String(error)}`)
     );
     return null;
   }
@@ -1880,6 +1880,8 @@ export class ConversationLoop {
 
   // ESC 中断支持
   private abortController: AbortController | null = null;
+  // v10.2: 软中断标志（插嘴用），区分 abort() 的硬中断和 softInterrupt() 的软中断
+  private _softInterrupted = false;
 
   // 工具循环检测 — 对标官方 maxTurns，增加重复调用模式检测
   private toolCallHistory: Array<{ name: string; inputHash: string }> = [];
@@ -2195,7 +2197,7 @@ export class ConversationLoop {
     let effectiveWorkingDir: string;
     if (options.isSubAgent) {
       if (!options.workingDir) {
-        throw new Error('SubAgent 必须指定 workingDir，禁止使用程序启动目录');
+        throw new Error('SubAgent must specify workingDir, falling back to process start directory is not allowed');
       }
       effectiveWorkingDir = options.workingDir;
     } else {
@@ -2632,7 +2634,7 @@ export class ConversationLoop {
           // 从最后一条 assistant 消息中提取摘要
           const messages = this.session.getMessages();
           const lastAssistant = [...messages].reverse().find(m => m.role === 'assistant');
-          let summary = '(已在前台会话中执行)';
+          let summary = '(executed in foreground session)';
           if (lastAssistant && typeof lastAssistant.content === 'string') {
             summary = lastAssistant.content.slice(0, 200);
           }
@@ -3254,6 +3256,22 @@ Guidelines:
       } catch (streamError: any) {
         // 检查是否是因为中断导致的错误
         if (this.abortController?.signal.aborted || streamError.name === 'AbortError') {
+          // v10.2: 区分软中断和硬中断
+          if (this._softInterrupted) {
+            // 软中断（插嘴触发）：保存已收集内容，重建 controller，continue 到下一轮 turn
+            this._softInterrupted = false;
+            if (assistantContent.length > 0) {
+              const normalizedContent = this.normalizeAssistantContent(assistantContent);
+              this.session.addMessage({
+                role: 'assistant',
+                content: normalizedContent,
+              });
+            }
+            this.abortController = new AbortController();
+            continue; // 不 break，继续下一轮 turn（新消息已在 Session 中）
+          }
+
+          // 硬中断（ESC / abort）：终止整个 loop
           // 保存已收集的 assistant 内容（如果有）
           if (assistantContent.length > 0) {
             const normalizedContent = this.normalizeAssistantContent(assistantContent);
@@ -3642,7 +3660,7 @@ Guidelines:
    */
   getDebugInfo(): { systemPrompt: string; messages: unknown[]; tools: unknown[]; model: string; messageCount: number } {
     return {
-      systemPrompt: this.options.systemPrompt || '(动态构建)',
+      systemPrompt: this.options.systemPrompt || '(dynamically built)',
       messages: this.session.getMessages(),
       tools: this.tools.map(t => ({ name: t.name, description: t.description, inputSchema: t.inputSchema })),
       model: this.getModel(),
@@ -3651,13 +3669,31 @@ Guidelines:
   }
 
   /**
-   * 中断当前正在进行的请求
+   * 中断当前正在进行的请求（硬中断）
    * ESC 键触发时调用此方法
+   * 会终止整个 processMessageStream 循环
    */
   abort(): void {
     if (this.abortController) {
       this.abortController.abort();
       this.abortController = null;
+    }
+  }
+
+  /**
+   * v10.2: 软中断 — 中断当前 API 请求但不终止 Loop
+   * 用于"插嘴"场景：用户注入消息后需要打断当前请求，
+   * 让 Loop 在下一轮 turn 重新发起请求（此时新消息已在 Session 中）
+   *
+   * 与 abort() 的区别：
+   * - abort(): 硬中断，终止整个 processMessageStream 循环（yield interrupted + break）
+   * - softInterrupt(): 软中断，只中断当前请求，Loop 继续下一轮 turn（continue）
+   */
+  softInterrupt(): void {
+    this._softInterrupted = true;
+    if (this.abortController) {
+      this.abortController.abort();
+      // 不清空 abortController，catch 块会重建它
     }
   }
 

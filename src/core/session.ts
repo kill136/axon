@@ -487,16 +487,16 @@ export class Session {
     }
 
     return `
-会话摘要:
+Session Summary:
 ────────────────────────────────────────
-总成本:            $${this.state.totalCostUSD.toFixed(4)}
-API 总时长:        ${this.state.totalAPIDuration}ms
-API 时长(无重试):  ${this.state.totalAPIDurationWithoutRetries || 0}ms
-工具执行时长:      ${this.state.totalToolDuration || 0}ms
-会话总时长:        ${minutes}m ${seconds}s
-代码修改:          +${linesAdded} -${linesRemoved} (${linesAdded + linesRemoved} 行总变化)
-消息数量:          ${this.messages.length}
-${modelUsageStr ? '\n模型使用统计:' + modelUsageStr : ''}
+Total Cost:              ${this.state.totalCostUSD.toFixed(4)}
+API Total Duration:      ${this.state.totalAPIDuration}ms
+API Duration (no retry): ${this.state.totalAPIDurationWithoutRetries || 0}ms
+Tool Execution Duration: ${this.state.totalToolDuration || 0}ms
+Session Duration:        ${minutes}m ${seconds}s
+Code Changes:            +${linesAdded} -${linesRemoved} (${linesAdded + linesRemoved} total lines changed)
+Message Count:           ${this.messages.length}
+${modelUsageStr ? '\nModel Usage Stats:' + modelUsageStr : ''}
 ────────────────────────────────────────
 `;
   }

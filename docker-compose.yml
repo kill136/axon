@@ -1,3 +1,7 @@
+# To update to the latest version:
+#   docker compose pull && docker compose up -d
+# Or add to crontab for daily auto-update:
+#   0 6 * * * cd /path/to/axon && docker compose pull && docker compose up -d
 services:
   axon:
     image: wbj66/axon:latest

@@ -202,7 +202,7 @@ ${techInfo ? `技术栈: ${techInfo}` : ''}
       const cacheKey = this.generateCacheKey(options);
       const cachedImage = this.getFromCache(cacheKey);
       if (cachedImage) {
-        console.log('[GeminiImageService] 使用缓存的设计图');
+        console.log('[GeminiImageService] Using cached design image');
         return {
           success: true,
           imageUrl: cachedImage,
@@ -211,8 +211,8 @@ ${techInfo ? `技术栈: ${techInfo}` : ''}
 
       // 构建提示词
       const prompt = this.buildPrompt(options);
-      console.log('[GeminiImageService] 开始生成设计图...');
-      console.log('[GeminiImageService] 提示词:', prompt.substring(0, 200) + '...');
+      console.log('[GeminiImageService] Starting design image generation...');
+      console.log('[GeminiImageService] Prompt:', prompt.substring(0, 200) + '...');
 
       // 调用 Gemini API
       const response = await this.ai!.models.generateContent({
@@ -254,14 +254,14 @@ ${techInfo ? `技术栈: ${techInfo}` : ''}
       // 保存到缓存
       this.saveToCache(cacheKey, imageData);
 
-      console.log('[GeminiImageService] 设计图生成成功');
+      console.log('[GeminiImageService] Design image generated successfully');
       return {
         success: true,
         imageUrl: imageData,
         generatedText,
       };
     } catch (error) {
-      console.error('[GeminiImageService] 生成设计图失败:', error);
+      console.error('[GeminiImageService] Failed to generate design image:', error);
 
       const errorMessage = error instanceof Error ? error.message : '未知错误';
 
@@ -305,15 +305,15 @@ ${techInfo ? `技术栈: ${techInfo}` : ''}
       const cacheKey = crypto.createHash('md5').update(fullPrompt).digest('hex');
       const cachedImage = this.getFromCache(cacheKey);
       if (cachedImage) {
-        console.log('[GeminiImageService] 使用缓存的图片');
+        console.log('[GeminiImageService] Using cached image');
         return {
           success: true,
           imageUrl: cachedImage,
         };
       }
 
-      console.log('[GeminiImageService] 开始生成图片...');
-      console.log('[GeminiImageService] 提示词:', fullPrompt.substring(0, 200) + '...');
+      console.log('[GeminiImageService] Starting image generation...');
+      console.log('[GeminiImageService] Prompt:', fullPrompt.substring(0, 200) + '...');
 
       // 调用 Gemini API
       const response = await this.ai!.models.generateContent({
@@ -355,14 +355,14 @@ ${techInfo ? `技术栈: ${techInfo}` : ''}
       // 保存到缓存
       this.saveToCache(cacheKey, imageData);
 
-      console.log('[GeminiImageService] 图片生成成功');
+      console.log('[GeminiImageService] Image generated successfully');
       return {
         success: true,
         imageUrl: imageData,
         generatedText,
       };
     } catch (error) {
-      console.error('[GeminiImageService] 生成图片失败:', error);
+      console.error('[GeminiImageService] Failed to generate image:', error);
 
       const errorMessage = error instanceof Error ? error.message : '未知错误';
 

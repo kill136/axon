@@ -98,7 +98,7 @@ function createClient(): ClaudeClient | null {
       model: 'claude-haiku-4-5-20251001', // AI 补全使用 haiku 以节省成本
     });
   } catch (error) {
-    console.error('[AutoComplete] 初始化客户端失败:', error);
+    console.error('[AutoComplete] Failed to initialize client:', error);
     return null;
   }
 }
@@ -111,7 +111,7 @@ async function callClaude(prompt: string): Promise<string | null> {
   await webAuth.ensureValidToken();
   const client = createClient();
   if (!client) {
-    throw new Error('API 客户端未初始化，请检查 API Key 配置');
+    throw new Error('API client not initialized, please check API Key configuration');
   }
 
   try {
@@ -136,7 +136,7 @@ async function callClaude(prompt: string): Promise<string | null> {
 
     return null;
   } catch (error: any) {
-    console.error('[AutoComplete] API 调用失败:', error);
+    console.error('[AutoComplete] API call failed:', error);
     throw error;
   }
 }
@@ -156,7 +156,7 @@ router.post('/complete-path', async (req: Request, res: Response) => {
       return res.status(400).json({
         success: false,
         items: [],
-        error: '缺少必需参数: filePath 和 prefix',
+        error: 'Missing required parameters: filePath and prefix',
       });
     }
 
@@ -173,7 +173,7 @@ router.post('/complete-path', async (req: Request, res: Response) => {
         return res.status(400).json({
           success: false,
           items: [],
-          error: '@/ 路径需要提供 root 参数',
+          error: '@/ path requires root parameter',
         });
       }
       const relPath = prefix.substring(2); // 去掉 @/
@@ -252,7 +252,7 @@ router.post('/complete-path', async (req: Request, res: Response) => {
       return res.status(500).json({
         success: false,
         items: [],
-        error: `读取目录失败: ${error.message}`,
+        error: `Failed to read directory: ${error.message}`,
       });
     }
 
@@ -261,11 +261,11 @@ router.post('/complete-path', async (req: Request, res: Response) => {
       items,
     });
   } catch (error: any) {
-    console.error('[AutoComplete] /complete-path 请求处理失败:', error);
+    console.error('[AutoComplete] /complete-path request processing failed:', error);
     res.status(500).json({
       success: false,
       items: [],
-      error: error.message || '服务器内部错误',
+      error: error.message || 'Internal server error',
     });
   }
 });
@@ -280,7 +280,7 @@ router.post('/inline-complete', async (req: Request, res: Response) => {
     if (!filePath || !language || !currentLine || cursorColumn === undefined) {
       return res.status(400).json({
         success: false,
-        error: '缺少必需参数: filePath, language, currentLine, cursorColumn',
+        error: 'Missing required parameters: filePath, language, currentLine, cursorColumn',
       });
     }
 
@@ -300,36 +300,36 @@ router.post('/inline-complete', async (req: Request, res: Response) => {
 
     // 创建新请求
     const requestPromise = (async (): Promise<InlineCompleteResponse> => {
-      const prompt = `你是一个代码补全引擎。根据上下文代码，预测用户接下来要输入的代码。
+      const prompt = `You are a code completion engine. Based on the code context, predict the code the user is about to type next.
 
-文件: ${filePath}
-语言: ${language}
+File: ${filePath}
+Language: ${language}
 
-代码上下文（光标前）:
+Code context (before cursor):
 \`\`\`${language}
 ${prefix}
 \`\`\`
 
-代码上下文（光标后）:
+Code context (after cursor):
 \`\`\`${language}
 ${suffix}
 \`\`\`
 
-当前行: ${currentLine}
-光标位置: 第 ${cursorColumn} 列
+Current line: ${currentLine}
+Cursor position: column ${cursorColumn}
 
-要求：
-- 只输出补全的代码文本，不要任何解释
-- 从光标位置开始补全，不要重复已有的代码
-- 补全内容应该自然地接在已有代码之后
-- 保持与周围代码一致的风格（缩进、命名等）
-- 如果无法确定应该补全什么，返回空字符串
-- 补全 1-3 行代码即可，不要太长`;
+Requirements:
+- Only output the completion code text, no explanations
+- Start completion from the cursor position, do not repeat existing code
+- Completion should naturally follow the existing code
+- Maintain consistent style with surrounding code (indentation, naming, etc.)
+- If unsure what to complete, return an empty string
+- Complete 1-3 lines of code, no more`;
 
       try {
         const response = await callClaude(prompt);
         if (!response) {
-          return { success: false, error: '无法获取 AI 响应' };
+          return { success: false, error: 'Failed to get AI response' };
         }
 
         // 后处理：去掉 markdown 代码块标记
@@ -347,7 +347,7 @@ ${suffix}
       } catch (error: any) {
         return {
           success: false,
-          error: error.message || 'AI 补全失败',
+          error: error.message || 'AI completion failed',
         };
       }
     })();
@@ -367,10 +367,10 @@ ${suffix}
       pendingRequests.delete(cacheKey);
     }
   } catch (error: any) {
-    console.error('[AutoComplete] /inline-complete 请求处理失败:', error);
+    console.error('[AutoComplete] /inline-complete request processing failed:', error);
     res.status(500).json({
       success: false,
-      error: error.message || '服务器内部错误',
+      error: error.message || 'Internal server error',
     });
   }
 });

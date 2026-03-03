@@ -37,13 +37,13 @@ Saying "I'll remember" without calling this tool is a LIE — conversation memor
 ## IMPORTANT: project notebook vs AXON.md
 AXON.md contains the user's project instructions and documentation. Do NOT duplicate its content into project notebook.
 Only write things you discovered during work that AXON.md does not cover:
-- "改 types.ts 后要同步改 attachments.ts"
-- "session.sessionId 是 getter 不是方法，别用 getId()"
-- "compress() 有逻辑 bug，CORE 分支不可达"
+- "After changing types.ts, also update attachments.ts"
+- "session.sessionId is a getter not a method, don't use getId()"
+- "compress() has a logic bug, CORE branch is unreachable"
 
 ## Guidelines
 - Write in markdown, keep it concise
-- Add dates for time-sensitive info: "偏好 React (2026-02)"
+- Add dates for time-sensitive info: "Prefers React (2026-02)"
 - Record patterns, not volatile facts (facts go stale, patterns don't)
 - When new info contradicts your notes, update the notes
 - Stay within token budgets — prune stale content when needed
@@ -72,21 +72,21 @@ Pass empty string as content to read the current notebook.`;
   async execute(input: NotebookWriteInput): Promise<ToolResult> {
     const manager = getNotebookManager();
     if (!manager) {
-      return this.error('NotebookManager 未初始化。');
+      return this.error('NotebookManager not initialized.');
     }
 
     const { notebook, content } = input;
 
     // 验证笔记本类型
     if (!['experience', 'project'].includes(notebook)) {
-      return this.error(`无效的笔记本类型: ${notebook}。可选: experience, project`);
+      return this.error(`Invalid notebook type: ${notebook}. Options: experience, project`);
     }
 
     // 读取模式
     if (!content || content.trim() === '') {
       const existing = manager.read(notebook);
       if (!existing.trim()) {
-        return this.success(`[${notebook}] 笔记本为空。`);
+        return this.success(`[${notebook}] Notebook is empty.`);
       }
       return this.success(existing);
     }
@@ -98,7 +98,7 @@ Pass empty string as content to read the current notebook.`;
     }
 
     return this.success(
-      `✓ 已更新 ${notebook} 笔记本 (${result.tokens} tokens)\n路径: ${result.path}`
+      `\u2713 Updated ${notebook} notebook (${result.tokens} tokens)\nPath: ${result.path}`
     );
   }
 }

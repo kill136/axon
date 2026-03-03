@@ -1175,7 +1175,7 @@ async function runTextInterface(
       if (input.toLowerCase() === 'exit' || input.toLowerCase() === 'quit') {
         console.log(chalk.yellow(`\n${t('cli.misc.goodbye')}`));
         // 自动记忆：提取本次对话值得记住的信息
-        console.error(chalk.gray('[AutoMemory] 正在保存对话记忆...'));
+        console.error(chalk.gray('[AutoMemory] Saving conversation memory...'));
         await loop.autoMemorize();
         // SessionEnd hooks
         try {
@@ -3022,7 +3022,7 @@ async function handleSlashCommand(input: string, loop: ConversationLoop): Promis
     case 'exit':
     case 'quit':
       console.log(chalk.yellow(`\n${t('cli.misc.goodbye')}`));
-      console.error(chalk.gray('[AutoMemory] 正在保存对话记忆...'));
+      console.error(chalk.gray('[AutoMemory] Saving conversation memory...'));
       await loop.autoMemorize();
       // SessionEnd hooks
       try {

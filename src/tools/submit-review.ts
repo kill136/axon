@@ -28,31 +28,31 @@ export interface SubmitReviewInput {
  */
 export class SubmitReviewTool extends BaseTool<SubmitReviewInput, ToolResult> {
   name = 'SubmitReview';
-  description = `提交任务审查结果（Reviewer 专用工具）
+  description = `Submit task review results (Reviewer exclusive tool)
 
-## 使用时机
-完成任务验证后，必须调用此工具提交审查结论。
+## When to Use
+After completing task verification, you must call this tool to submit review conclusions.
 
-## 参数说明
-- verdict: 审查结论
-  - "passed": 任务成功完成，代码符合要求
-  - "failed": 任务失败，存在严重问题
-  - "needs_revision": 任务部分完成，需要修改
-- confidence: 置信度
-  - "high": 你已充分验证（如检查了 Git 提交和核心文件）
-  - "medium": 基于部分验证
-  - "low": 信息不足，需要更多验证
-- reasoning: 判断理由（简洁明了）
-- verified: 你实际验证过的内容（可选）
-- issues: 发现的问题列表（verdict 为 failed 或 needs_revision 时应提供）
-- suggestions: 改进建议（verdict 为 needs_revision 时建议提供）
+## Parameters
+- verdict: Review conclusion
+  - "passed": Task successfully completed, code meets requirements
+  - "failed": Task failed, serious issues exist
+  - "needs_revision": Task partially completed, modifications needed
+- confidence: Confidence level
+  - "high": You have fully verified (e.g., checked Git commits and core files)
+  - "medium": Based on partial verification
+  - "low": Insufficient information, more verification needed
+- reasoning: Judgment rationale (concise and clear)
+- verified: What you actually verified (optional)
+- issues: List of discovered issues (should be provided when verdict is failed or needs_revision)
+- suggestions: Improvement suggestions (recommended when verdict is needs_revision)
 
-## 示例
+## Example
 {
   "verdict": "passed",
   "confidence": "high",
-  "reasoning": "Git 提交已验证，健康检查服务实现正确",
-  "verified": ["Git 提交状态", "src/services/health.ts 代码质量"],
+  "reasoning": "Git commits verified, health check service implementation is correct",
+  "verified": ["Git commit status", "src/services/health.ts code quality"],
   "issues": [],
   "suggestions": []
 }`;
@@ -67,31 +67,31 @@ export class SubmitReviewTool extends BaseTool<SubmitReviewInput, ToolResult> {
         verdict: {
           type: 'string',
           enum: ['passed', 'failed', 'needs_revision'],
-          description: '审查结论：passed=通过，failed=失败，needs_revision=需要修改',
+          description: 'Review verdict: passed=approved, failed=rejected, needs_revision=needs modification',
         },
         confidence: {
           type: 'string',
           enum: ['high', 'medium', 'low'],
-          description: '置信度：high=高度确信，medium=中等确信，low=低确信',
+          description: 'Confidence level: high=highly confident, medium=moderately confident, low=low confidence',
         },
         reasoning: {
           type: 'string',
-          description: '判断理由（简洁明了，1-2句话）',
+          description: 'Judgment rationale (concise and clear, 1-2 sentences)',
         },
         verified: {
           type: 'array',
           items: { type: 'string' },
-          description: '实际验证过的内容列表（如：Git提交状态、核心文件代码质量）',
+          description: 'List of actually verified items (e.g., Git commit status, core file code quality)',
         },
         issues: {
           type: 'array',
           items: { type: 'string' },
-          description: '发现的问题列表（failed 或 needs_revision 时必填）',
+          description: 'List of discovered issues (required for failed or needs_revision)',
         },
         suggestions: {
           type: 'array',
           items: { type: 'string' },
-          description: '改进建议（needs_revision 时建议提供）',
+          description: 'Improvement suggestions (recommended for needs_revision)',
         },
       },
       required: ['verdict', 'confidence', 'reasoning'],
@@ -106,16 +106,16 @@ export class SubmitReviewTool extends BaseTool<SubmitReviewInput, ToolResult> {
     const emoji = input.verdict === 'passed' ? '✅' :
                   input.verdict === 'failed' ? '❌' : '⚠️';
 
-    const output = `${emoji} 审查结果已提交
+    const output = `${emoji} Review results submitted
 
-结论: ${input.verdict}
-置信度: ${input.confidence}
-理由: ${input.reasoning}
-${input.verified?.length ? `已验证: ${input.verified.join(', ')}` : ''}
-${input.issues?.length ? `问题数: ${input.issues.length}` : ''}
-${input.suggestions?.length ? `建议数: ${input.suggestions.length}` : ''}
+Verdict: ${input.verdict}
+Confidence: ${input.confidence}
+Reasoning: ${input.reasoning}
+${input.verified?.length ? `Verified: ${input.verified.join(', ')}` : ''}
+${input.issues?.length ? `Issues: ${input.issues.length}` : ''}
+${input.suggestions?.length ? `Suggestions: ${input.suggestions.length}` : ''}
 
-审查流程已完成。`;
+Review process completed.`;
 
     return {
       success: true,

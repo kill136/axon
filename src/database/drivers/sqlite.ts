@@ -11,10 +11,10 @@ async function getDatabase(): Promise<any> {
       _Database = mod.default;
     } catch (e) {
       throw new Error(
-        'better-sqlite3 模块加载失败。请确保已安装编译依赖：\n' +
+        'Failed to load better-sqlite3 module. Please ensure build dependencies are installed:\n' +
         '  Ubuntu/Debian: apt-get install python3 make g++\n' +
-        '  然后重新运行: npm install better-sqlite3\n' +
-        '原始错误: ' + (e as Error).message
+        '  Then re-run: npm install better-sqlite3\n' +
+        'Original error: ' + (e as Error).message
       );
     }
   }
@@ -37,10 +37,10 @@ export class SQLiteDriver implements DriverInterface {
   }
 
   async query(sql: string, timeout: number): Promise<QueryResult> {
-    if (!this.db) throw new Error('未连接到数据库');
+    if (!this.db) throw new Error('Not connected to database');
 
     if (this.config?.readonly && WRITE_KEYWORDS.test(sql)) {
-      throw new Error('只读模式：不允许执行写操作');
+      throw new Error('Read-only mode: write operations not allowed');
     }
 
     const start = Date.now();
@@ -72,13 +72,13 @@ export class SQLiteDriver implements DriverInterface {
   }
 
   async listTables(database?: string): Promise<string[]> {
-    if (!this.db) throw new Error('未连接到数据库');
+    if (!this.db) throw new Error('Not connected to database');
     const rows = this.db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as { name: string }[];
     return rows.map(r => r.name);
   }
 
   async describeTable(table: string): Promise<ColumnInfo[]> {
-    if (!this.db) throw new Error('未连接到数据库');
+    if (!this.db) throw new Error('Not connected to database');
     const rows = this.db.prepare(`PRAGMA table_info(${table})`).all() as any[];
     return rows.map(r => ({
       name: r.name,

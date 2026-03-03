@@ -12,7 +12,7 @@ export class MongoDriver implements DriverInterface {
       const mod = await import('mongodb');
       MongoClient = mod.MongoClient;
     } catch {
-      throw new Error('请安装 mongodb 包：npm install mongodb');
+      throw new Error('Please install mongodb package: npm install mongodb');
     }
 
     this.config = config;
@@ -27,19 +27,19 @@ export class MongoDriver implements DriverInterface {
   }
 
   async query(sql: string, timeout: number): Promise<QueryResult> {
-    if (!this.db) throw new Error('未连接到数据库');
+    if (!this.db) throw new Error('Not connected to database');
 
     // sql 字段解析为 JSON 命令
     let cmd: any;
     try {
       cmd = JSON.parse(sql);
     } catch {
-      throw new Error('MongoDB 查询必须是 JSON 格式，例如：{"collection":"users","find":{},"limit":10}');
+      throw new Error('MongoDB query must be in JSON format, e.g.: {"collection":"users","find":{},"limit":10}');
     }
 
     if (this.config?.readonly) {
       if (cmd.insert || cmd.update || cmd.delete || cmd.drop || cmd.create) {
-        throw new Error('只读模式：不允许执行写操作');
+        throw new Error('Read-only mode: write operations not allowed');
       }
     }
 
@@ -70,7 +70,7 @@ export class MongoDriver implements DriverInterface {
       const count = await collection.countDocuments(cmd.count ?? {});
       rows = [{ count }];
     } else {
-      throw new Error('不支持的 MongoDB 命令，支持：find, aggregate, count');
+      throw new Error('Unsupported MongoDB command. Supported: find, aggregate, count');
     }
 
     const duration = Date.now() - start;
@@ -80,21 +80,21 @@ export class MongoDriver implements DriverInterface {
   }
 
   async listDatabases(): Promise<string[]> {
-    if (!this.mongoClient) throw new Error('未连接到数据库');
+    if (!this.mongoClient) throw new Error('Not connected to database');
     const admin = this.mongoClient.db().admin();
     const result = await admin.listDatabases();
     return result.databases.map((d: any) => d.name);
   }
 
   async listTables(database?: string): Promise<string[]> {
-    if (!this.db) throw new Error('未连接到数据库');
+    if (!this.db) throw new Error('Not connected to database');
     const db = database ? this.mongoClient.db(database) : this.db;
     const collections = await db.listCollections().toArray();
     return collections.map((c: any) => c.name);
   }
 
   async describeTable(table: string): Promise<ColumnInfo[]> {
-    if (!this.db) throw new Error('未连接到数据库');
+    if (!this.db) throw new Error('Not connected to database');
     const doc = await this.db.collection(table).findOne({});
     if (!doc) return [];
     return Object.entries(doc).map(([key, val]) => ({

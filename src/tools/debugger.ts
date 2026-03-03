@@ -164,49 +164,49 @@ SUPPORTED RUNTIMES:
       switch (input.action) {
         case 'launch': {
           if (!input.program) {
-            return this.error('launch 需要提供 program 参数');
+            return this.error('launch requires program parameter');
           }
           const session = await Promise.race([
             debugManager.launch(input),
             new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error('launch 操作超时')), timeout)
+              setTimeout(() => reject(new Error('launch operation timed out')), timeout)
             ),
           ]);
           return this.success(
-            `已启动调试会话\n` +
-            `  会话 ID: ${session.id}\n` +
-            `  程序: ${session.program}\n` +
+            `Debug session started\n` +
+            `  Session ID: ${session.id}\n` +
+            `  Program: ${session.program}\n` +
             `  PID: ${session.pid || 'N/A'}\n` +
-            `  运行时: ${session.runtime}\n` +
-            `  状态: ${session.state}（等待 continue 继续执行）\n` +
-            `\n使用 "continue" 继续执行，或先用 "set_breakpoint" 设置断点。`
+            `  Runtime: ${session.runtime}\n` +
+            `  Status: ${session.state} (waiting for continue)\n` +
+            `\nUse "continue" to resume execution, or use "set_breakpoint" to set breakpoints first.`
           );
         }
 
         case 'attach': {
           if (!input.host || !input.port) {
-            return this.error('attach 需要提供 host 和 port 参数');
+            return this.error('attach requires host and port parameters');
           }
           // attach 模式：直接连接现有调试适配器
-          return this.error('attach 模式暂未实现，请使用 launch 启动新的调试会话');
+          return this.error('attach mode not yet implemented, please use launch to start a new debug session');
         }
 
         case 'disconnect': {
           const session = debugManager.getSession();
           if (!session) {
-            return this.error('没有活跃的调试会话');
+            return this.error('No active debug session');
           }
           await debugManager.disconnect(session.id);
-          return this.success(`已断开调试会话 ${session.id}，程序已终止。`);
+          return this.success(`Debug session ${session.id} disconnected, program terminated.`);
         }
 
         case 'set_breakpoint': {
           if (!input.file || !input.line) {
-            return this.error('set_breakpoint 需要提供 file 和 line 参数');
+            return this.error('set_breakpoint requires file and line parameters');
           }
           const session = debugManager.getSession();
           if (!session) {
-            return this.error('没有活跃的调试会话，请先使用 launch 启动调试');
+            return this.error('No active debug session, please use launch to start debugging first');
           }
           const bp = await debugManager.setBreakpoint(
             session.id,
@@ -215,207 +215,207 @@ SUPPORTED RUNTIMES:
             input.condition,
             input.hitCondition
           );
-          const status = bp.verified ? '已验证' : '待验证';
-          const condInfo = bp.condition ? `\n  条件: ${bp.condition}` : '';
-          const hitInfo = bp.hitCondition ? `\n  命中条件: ${bp.hitCondition}` : '';
+          const status = bp.verified ? 'verified' : 'pending';
+          const condInfo = bp.condition ? `\n  Condition: ${bp.condition}` : '';
+          const hitInfo = bp.hitCondition ? `\n  Hit condition: ${bp.hitCondition}` : '';
           return this.success(
-            `断点已设置\n` +
+            `Breakpoint set\n` +
             `  ID: ${bp.id}\n` +
-            `  文件: ${bp.file}\n` +
-            `  行号: ${bp.line}\n` +
-            `  状态: ${status}${condInfo}${hitInfo}` +
-            (bp.message ? `\n  消息: ${bp.message}` : '')
+            `  File: ${bp.file}\n` +
+            `  Line: ${bp.line}\n` +
+            `  Status: ${status}${condInfo}${hitInfo}` +
+            (bp.message ? `\n  Message: ${bp.message}` : '')
           );
         }
 
         case 'remove_breakpoint': {
           if (input.breakpointId === undefined) {
-            return this.error('remove_breakpoint 需要提供 breakpointId 参数');
+            return this.error('remove_breakpoint requires breakpointId parameter');
           }
           const session = debugManager.getSession();
           if (!session) {
-            return this.error('没有活跃的调试会话');
+            return this.error('No active debug session');
           }
           const removed = debugManager.removeBreakpoint(session.id, input.breakpointId);
           if (!removed) {
-            return this.error(`断点 ${input.breakpointId} 不存在`);
+            return this.error(`Breakpoint ${input.breakpointId} does not exist`);
           }
-          return this.success(`断点 ${input.breakpointId} 已移除`);
+          return this.success(`Breakpoint ${input.breakpointId} removed`);
         }
 
         case 'list_breakpoints': {
           const session = debugManager.getSession();
           if (!session) {
-            return this.error('没有活跃的调试会话');
+            return this.error('No active debug session');
           }
           if (session.breakpoints.length === 0) {
-            return this.success('当前会话没有断点');
+            return this.success('No breakpoints in current session');
           }
           const list = session.breakpoints
             .map((bp) => {
               const verified = bp.verified ? '✓' : '○';
-              const cond = bp.condition ? ` [条件: ${bp.condition}]` : '';
+              const cond = bp.condition ? ` [condition: ${bp.condition}]` : '';
               return `  [${bp.id}] ${verified} ${bp.file}:${bp.line}${cond}`;
             })
             .join('\n');
-          return this.success(`断点列表（${session.breakpoints.length} 个）:\n${list}`);
+          return this.success(`Breakpoint list (${session.breakpoints.length}):\n${list}`);
         }
 
         case 'continue': {
           const session = debugManager.getSession();
           if (!session) {
-            return this.error('没有活跃的调试会话');
+            return this.error('No active debug session');
           }
           await debugManager.continueExecution(session.id);
-          return this.success('已继续执行，程序运行中...');
+          return this.success('Continued execution, program running...');
         }
 
         case 'step_over': {
           const session = debugManager.getSession();
           if (!session) {
-            return this.error('没有活跃的调试会话');
+            return this.error('No active debug session');
           }
           await debugManager.stepOver(session.id);
-          return this.success('单步跳过（Step Over）已执行');
+          return this.success('Step Over executed');
         }
 
         case 'step_into': {
           const session = debugManager.getSession();
           if (!session) {
-            return this.error('没有活跃的调试会话');
+            return this.error('No active debug session');
           }
           await debugManager.stepInto(session.id);
-          return this.success('单步进入（Step Into）已执行');
+          return this.success('Step Into executed');
         }
 
         case 'step_out': {
           const session = debugManager.getSession();
           if (!session) {
-            return this.error('没有活跃的调试会话');
+            return this.error('No active debug session');
           }
           await debugManager.stepOut(session.id);
-          return this.success('单步跳出（Step Out）已执行');
+          return this.success('Step Out executed');
         }
 
         case 'pause': {
           const session = debugManager.getSession();
           if (!session) {
-            return this.error('没有活跃的调试会话');
+            return this.error('No active debug session');
           }
           await debugManager.pauseExecution(session.id);
-          return this.success('程序已暂停');
+          return this.success('Program paused');
         }
 
         case 'threads': {
           const session = debugManager.getSession();
           if (!session) {
-            return this.error('没有活跃的调试会话');
+            return this.error('No active debug session');
           }
           const threads = await debugManager.getThreads(session.id);
           if (threads.length === 0) {
-            return this.success('没有活跃线程');
+            return this.success('No active threads');
           }
           const list = threads.map((t) => `  [${t.id}] ${t.name}`).join('\n');
-          return this.success(`线程列表（${threads.length} 个）:\n${list}`);
+          return this.success(`Thread list (${threads.length}):\n${list}`);
         }
 
         case 'stack_trace': {
           const session = debugManager.getSession();
           if (!session) {
-            return this.error('没有活跃的调试会话');
+            return this.error('No active debug session');
           }
           const frames = await Promise.race([
             debugManager.getStackTrace(session.id, input.frameId),
             new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error('stack_trace 操作超时')), timeout)
+              setTimeout(() => reject(new Error('stack_trace operation timed out')), timeout)
             ),
           ]);
           if (frames.length === 0) {
-            return this.success('调用栈为空（程序可能正在运行或已终止）');
+            return this.success('Call stack is empty (program may be running or terminated)');
           }
           const list = frames
             .map((f, i) => `  ${i === 0 ? '▶' : ' '} [${f.id}] ${f.name}\n      ${f.file}:${f.line}:${f.column}`)
             .join('\n');
-          return this.success(`调用栈（${frames.length} 帧）:\n${list}`);
+          return this.success(`Call stack (${frames.length} frames):\n${list}`);
         }
 
         case 'scopes': {
           if (input.frameId === undefined) {
-            return this.error('scopes 需要提供 frameId 参数（从 stack_trace 结果获取）');
+            return this.error('scopes requires frameId parameter (obtain from stack_trace results)');
           }
           const session = debugManager.getSession();
           if (!session) {
-            return this.error('没有活跃的调试会话');
+            return this.error('No active debug session');
           }
           const scopes = await debugManager.getScopes(session.id, input.frameId);
           if (scopes.length === 0) {
-            return this.success('没有可用的变量作用域');
+            return this.success('No variable scopes available');
           }
           const list = scopes
-            .map((s) => `  ${s.name} (variablesReference: ${s.variablesReference}${s.expensive ? ', 开销大' : ''})`)
+            .map((s) => `  ${s.name} (variablesReference: ${s.variablesReference}${s.expensive ? ', expensive' : ''})`)
             .join('\n');
-          return this.success(`作用域列表:\n${list}\n\n使用 "variables" 并提供 variablesReference 查看具体变量。`);
+          return this.success(`Scope list:\n${list}\n\nUse "variables" with variablesReference to view specific variables.`);
         }
 
         case 'variables': {
           if (input.variablesReference === undefined) {
-            return this.error('variables 需要提供 variablesReference 参数（从 scopes 结果获取）');
+            return this.error('variables requires variablesReference parameter (obtain from scopes results)');
           }
           const session = debugManager.getSession();
           if (!session) {
-            return this.error('没有活跃的调试会话');
+            return this.error('No active debug session');
           }
           const vars = await Promise.race([
             debugManager.getVariables(session.id, input.variablesReference),
             new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error('variables 操作超时')), timeout)
+              setTimeout(() => reject(new Error('variables operation timed out')), timeout)
             ),
           ]);
           if (vars.length === 0) {
-            return this.success('没有变量');
+            return this.success('No variables');
           }
-          // 格式化为对齐的表格
+          // Format as aligned table
           const maxNameLen = Math.max(...vars.map((v) => v.name.length), 4);
           const maxTypeLen = Math.max(...vars.map((v) => (v.type || '').length), 4);
-          const header = `  ${'名称'.padEnd(maxNameLen)}  ${'类型'.padEnd(maxTypeLen)}  值`;
+          const header = `  ${'Name'.padEnd(maxNameLen)}  ${'Type'.padEnd(maxTypeLen)}  Value`;
           const divider = `  ${'-'.repeat(maxNameLen)}  ${'-'.repeat(maxTypeLen)}  ${'-'.repeat(20)}`;
           const rows = vars
             .map((v) => {
-              const expandable = v.variablesReference > 0 ? ' [可展开]' : '';
+              const expandable = v.variablesReference > 0 ? ' [expandable]' : '';
               return `  ${v.name.padEnd(maxNameLen)}  ${(v.type || '').padEnd(maxTypeLen)}  ${v.value}${expandable}`;
             })
             .join('\n');
-          return this.success(`变量列表（${vars.length} 个）:\n${header}\n${divider}\n${rows}`);
+          return this.success(`Variable list (${vars.length}):\n${header}\n${divider}\n${rows}`);
         }
 
         case 'evaluate': {
           if (!input.expression) {
-            return this.error('evaluate 需要提供 expression 参数');
+            return this.error('evaluate requires expression parameter');
           }
           const session = debugManager.getSession();
           if (!session) {
-            return this.error('没有活跃的调试会话');
+            return this.error('No active debug session');
           }
           const result = await Promise.race([
             debugManager.evaluate(session.id, input.expression, input.frameId),
             new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error('evaluate 操作超时')), timeout)
+              setTimeout(() => reject(new Error('evaluate operation timed out')), timeout)
             ),
           ]);
-          return this.success(`表达式: ${input.expression}\n结果: ${result}`);
+          return this.success(`Expression: ${input.expression}\nResult: ${result}`);
         }
 
         default:
-          return this.error(`未知的 action: ${(input as any).action}`);
+          return this.error(`Unknown action: ${(input as any).action}`);
       }
     } catch (error: any) {
       if (error.message?.includes('Cannot find module') && error.message?.includes('ws')) {
-        return this.error('ws 模块未安装，请运行: npm install ws');
+        return this.error('ws module not installed, please run: npm install ws');
       }
       if (error.message?.includes('Cannot find module') && error.message?.includes('debugpy')) {
-        return this.error('debugpy 未安装，请运行: pip install debugpy');
+        return this.error('debugpy not installed, please run: pip install debugpy');
       }
-      return this.error(`调试器错误: ${error.message || String(error)}`);
+      return this.error(`Debugger error: ${error.message || String(error)}`);
     }
   }
 }

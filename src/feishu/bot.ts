@@ -109,7 +109,7 @@ export class FeishuBot {
         try {
           await this.handleMessageEvent(data);
         } catch (err) {
-          console.error(chalk.red('[Error] 消息处理失败:'), err);
+          console.error(chalk.red('[Error] Message processing failed:'), err);
         }
       },
     });
@@ -208,7 +208,7 @@ export class FeishuBot {
         await this.sendReply(chatId, 'Conversation history cleared.', messageId);
         return;
       }
-      if (builtinResponse === '状态查询已触发') {
+      if (builtinResponse === 'Status query triggered') {
         const modeLabel = this.isWebUIMode ? 'WebUI Bridge' : 'Standalone';
         const sessionCount = this.sessionManager?.getActiveSessionCount() ?? 'N/A (WebUI)';
         const status = [

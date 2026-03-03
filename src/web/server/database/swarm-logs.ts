@@ -96,10 +96,10 @@ export class SwarmLogDB {
     const instance = new SwarmLogDB(retentionDays);
     const mod = await import('better-sqlite3').catch(e => {
       throw new Error(
-        'better-sqlite3 模块加载失败。请确保已安装编译依赖：\n' +
+        'Failed to load better-sqlite3 module. Please ensure build dependencies are installed:\n' +
         '  Ubuntu/Debian: apt-get install python3 make g++\n' +
-        '  然后重新运行: npm install better-sqlite3\n' +
-        '原始错误: ' + e.message
+        '  Then re-run: npm install better-sqlite3\n' +
+        'Original error: ' + e.message
       );
     });
     const defaultPath = path.join(os.homedir(), '.axon', 'swarm-logs.db');
@@ -111,7 +111,7 @@ export class SwarmLogDB {
     instance.db.pragma('synchronous = NORMAL');
     instance.initTables();
     instance.startCleanupScheduler();
-    console.log(`[SwarmLogDB] 数据库初始化完成: ${actualPath}`);
+    console.log(`[SwarmLogDB] Database initialized: ${actualPath}`);
     return instance;
   }
 
@@ -125,7 +125,7 @@ export class SwarmLogDB {
     }
     this.db.close();
     SwarmLogDB.instance = null;
-    console.log('[SwarmLogDB] 数据库已关闭');
+    console.log('[SwarmLogDB] Database closed');
   }
 
   /**
@@ -202,7 +202,7 @@ export class SwarmLogDB {
       CREATE INDEX IF NOT EXISTS idx_streams_created ON worker_streams(created_at);
     `);
 
-    console.log('[SwarmLogDB] 表结构初始化完成');
+    console.log('[SwarmLogDB] Table schema initialized');
   }
 
   // ============================================================================
@@ -546,7 +546,7 @@ export class SwarmLogDB {
       deletedCount = logsDeleted.changes + streamsDeleted.changes;
     }
 
-    console.log(`[SwarmLogDB] 清空任务 ${taskId} 的日志，删除 ${deletedCount} 条记录`);
+    console.log(`[SwarmLogDB] Cleared logs for task ${taskId}, deleted ${deletedCount} records`);
     return deletedCount;
   }
 
@@ -575,7 +575,7 @@ export class SwarmLogDB {
     const totalDeleted = logsDeleted.changes + streamsDeleted.changes + execsDeleted.changes;
 
     if (totalDeleted > 0) {
-      console.log(`[SwarmLogDB] 清理过期日志: ${totalDeleted} 条 (${this.retentionDays} 天前)`);
+      console.log(`[SwarmLogDB] Cleaned up expired logs: ${totalDeleted} records (older than ${this.retentionDays} days)`);
       // 执行 VACUUM 压缩数据库
       this.db.exec('VACUUM');
     }
