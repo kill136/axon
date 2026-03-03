@@ -1066,7 +1066,8 @@ export function buildApiTools(
   tools?: ToolDefinition[],
   toolSearchEnabled?: boolean,
   enableCaching?: boolean,
-  isOAuth?: boolean
+  isOAuth?: boolean,
+  isThirdParty?: boolean
 ): any[] | undefined {
   const apiTools: any[] = [];
 
@@ -1132,12 +1133,15 @@ export function buildApiTools(
     });
   }
 
-  // 始终添加 WebSearch Server Tool（对齐官方实现）
-  const webSearchServerTool: WebSearchTool20250305 = {
-    name: 'web_search',
-    type: 'web_search_20250305',
-  };
-  apiTools.push(webSearchServerTool);
+  // 仅在官方 Anthropic API 下添加 WebSearch Server Tool
+  // 第三方兼容 API（如 MiniMax）不支持 web_search_20250305 类型
+  if (!isThirdParty) {
+    const webSearchServerTool: WebSearchTool20250305 = {
+      name: 'web_search',
+      type: 'web_search_20250305',
+    };
+    apiTools.push(webSearchServerTool);
+  }
 
   // v6.1: 对齐官方 —— 不给 tools 加 cache_control
   // 官方依赖 prompt-caching-scope beta header 让 API 自动处理前缀缓存
@@ -1159,6 +1163,7 @@ export class ClaudeClient {
   /** v2.1.36: fast mode 状态 */
   private fastMode: boolean = false;
   private isOAuth: boolean = false;  // 是否使用 OAuth 模式
+  private isThirdParty: boolean = false;  // 是否使用第三方兼容 API（非 Anthropic 官方）
   /** 请求来源标识，用于缓存破裂追踪（对齐官方 querySource） */
   private querySource: string = 'main';
   private totalUsage: UsageStats = {
@@ -1240,6 +1245,10 @@ export class ClaudeClient {
 
     this.client = new Anthropic(anthropicConfig);
     this.debug = config.debug ?? false;
+
+    // 检测是否使用第三方兼容 API（非 Anthropic 官方）
+    const effectiveBaseUrl = config.baseUrl || 'https://api.anthropic.com';
+    this.isThirdParty = !effectiveBaseUrl.includes('api.anthropic.com') && !effectiveBaseUrl.includes('anthropic.com');
 
     // 解析模型别名
     const resolvedModel = modelConfig.resolveAlias(config.model || 'sonnet');
@@ -1633,7 +1642,7 @@ export class ClaudeClient {
         const formattedSystem = formatSystemPrompt(systemPrompt, this.isOAuth, options?.promptBlocks, enableCaching, skipGlobal);
 
         // 构建 API 工具列表（将 WebSearch 客户端工具替换为 Server Tool）
-        const apiTools = buildApiTools(tools, options?.toolSearchEnabled, enableCaching, this.isOAuth);
+        const apiTools = buildApiTools(tools, options?.toolSearchEnabled, enableCaching, this.isOAuth, this.isThirdParty);
 
         const requestParams: any = {
           model: currentModel,
@@ -1808,7 +1817,7 @@ export class ClaudeClient {
       const formattedSystem = formatSystemPrompt(systemPrompt, this.isOAuth, options?.promptBlocks, enableCaching, skipGlobal);
 
       // 构建 API 工具列表（将 WebSearch 客户端工具替换为 Server Tool）
-      const apiTools = buildApiTools(tools, options?.toolSearchEnabled, enableCaching, this.isOAuth);
+      const apiTools = buildApiTools(tools, options?.toolSearchEnabled, enableCaching, this.isOAuth, this.isThirdParty);
 
       if (this.debug) {
         console.log('[ClaudeClient] isOAuth:', this.isOAuth, '| apiKey:', this.client.apiKey ? 'set' : 'null', '| authToken:', (this.client as any).authToken ? 'set' : 'null');

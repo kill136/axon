@@ -1,9 +1,9 @@
 /**
  * LogView - Git Commit 历史视图（集成 Graph）
- * 显示 commit graph + commit 列表，支持搜索/过滤、ref 标签显示、右键菜单
+ * 虚拟滚动 + 分页加载，支持大仓库
  */
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useLanguage } from '../../i18n';
 import { GitCommit } from './index';
 import { CommitGraph } from './CommitGraph';
@@ -59,6 +59,10 @@ function parseRef(ref: string): { type: 'branch' | 'tag' | 'remote' | 'head'; na
   return { type: 'branch', name: trimmed };
 }
 
+const ROW_HEIGHT = 36;
+const OVERSCAN = 10; // 上下多渲染的行数
+const PAGE_SIZE = 200;
+
 export function LogView({ commits, send, addMessageHandler, projectPath, selectedHash, onSelectCommit, filterBranch }: LogViewProps) {
   const { t } = useLanguage();
   
@@ -76,16 +80,105 @@ export function LogView({ commits, send, addMessageHandler, projectPath, selecte
     commit: GitCommit;
   } | null>(null);
 
+  // 虚拟滚动状态
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const graphContainerRef = useRef<HTMLDivElement>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [containerHeight, setContainerHeight] = useState(600);
+
+  // 分页状态
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+
   // 计算 graph layout
   const layout = useMemo(() => {
     if (commits.length === 0) return null;
     return computeGraphLayout(commits.map(c => ({ hash: c.hash, parents: c.parents || [] })));
   }, [commits]);
 
+  // 虚拟滚动计算
+  const totalHeight = commits.length * ROW_HEIGHT;
+  const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
+  const endIndex = Math.min(commits.length, Math.ceil((scrollTop + containerHeight) / ROW_HEIGHT) + OVERSCAN);
+  const visibleCommits = commits.slice(startIndex, endIndex);
+  const offsetY = startIndex * ROW_HEIGHT;
+
+  // 滚动处理
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.currentTarget;
+    setScrollTop(target.scrollTop);
+
+    // 同步 graph 容器滚动
+    if (graphContainerRef.current) {
+      graphContainerRef.current.scrollTop = target.scrollTop;
+    }
+
+    // 判断是否滚到底部，触发加载更多
+    if (hasMore && !loadingMore) {
+      const threshold = 200; // 距底部 200px 时触发
+      if (target.scrollTop + target.clientHeight >= target.scrollHeight - threshold) {
+        loadMore();
+      }
+    }
+  }, [hasMore, loadingMore]);
+
+  // 监测容器高度
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setContainerHeight(entry.contentRect.height);
+      }
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
+
+  // 加载更多 commits
+  const loadMore = useCallback(() => {
+    if (!projectPath || loadingMore || !hasMore) return;
+    setLoadingMore(true);
+
+    const filter: any = {
+      projectPath,
+      limit: PAGE_SIZE,
+      skip: commits.length,
+    };
+    if (filterBranch) filter.branch = filterBranch;
+    else filter.all = true;
+    if (query.trim()) filter.query = query.trim();
+    if (author.trim()) filter.author = author.trim();
+    if (since) filter.since = since;
+    if (until) filter.until = until;
+
+    send({
+      type: 'git:get_log',
+      payload: filter,
+    });
+  }, [projectPath, loadingMore, hasMore, commits.length, filterBranch, query, author, since, until, send]);
+
+  // 监听 log response 来处理分页
+  useEffect(() => {
+    const handler = (msg: any) => {
+      if (msg?.type === 'git:log_response' && msg.payload?.success) {
+        const data = msg.payload.data || [];
+        if (data.length < PAGE_SIZE) {
+          setHasMore(false);
+        }
+        setLoadingMore(false);
+      }
+    };
+    const unsubscribe = addMessageHandler(handler);
+    return () => unsubscribe();
+  }, [addMessageHandler]);
+
   // 搜索 commits
   const handleSearch = () => {
     if (!projectPath) return;
-    const filter: any = { projectPath, limit: 200 };
+    setHasMore(true);
+    const filter: any = { projectPath, limit: PAGE_SIZE };
     if (query.trim()) filter.query = query.trim();
     if (author.trim()) filter.author = author.trim();
     if (since) filter.since = since;
@@ -103,10 +196,11 @@ export function LogView({ commits, send, addMessageHandler, projectPath, selecte
     setAuthor('');
     setSince('');
     setUntil('');
+    setHasMore(true);
     if (projectPath) {
       send({
         type: 'git:get_log',
-        payload: { projectPath, limit: 200 },
+        payload: { projectPath, limit: PAGE_SIZE },
       });
     }
   };
@@ -114,16 +208,17 @@ export function LogView({ commits, send, addMessageHandler, projectPath, selecte
   // 当 filterBranch 改变时，请求筛选的 log
   useEffect(() => {
     if (!projectPath) return;
+    setHasMore(true);
     
     if (filterBranch) {
       send({
         type: 'git:get_log',
-        payload: { projectPath, limit: 200, branch: filterBranch },
+        payload: { projectPath, limit: PAGE_SIZE, branch: filterBranch },
       });
     } else {
       send({
         type: 'git:get_log',
-        payload: { projectPath, limit: 200, all: true },
+        payload: { projectPath, limit: PAGE_SIZE, all: true },
       });
     }
   }, [filterBranch, projectPath, send]);
@@ -315,7 +410,7 @@ export function LogView({ commits, send, addMessageHandler, projectPath, selecte
     );
   }
 
-  const rowHeight = 36;
+  const graphWidth = layout ? (layout.maxLane + 1) * 20 + 20 : 0;
 
   return (
     <div className="git-log-view">
@@ -368,65 +463,99 @@ export function LogView({ commits, send, addMessageHandler, projectPath, selecte
         )}
       </div>
 
-      {/* Commit 列表（集成 Graph）*/}
+      {/* Commit 列表（虚拟滚动 + Graph）*/}
       <div className="git-log-content">
+        {/* Graph 列（独立滚动容器，由 commit 列同步） */}
         {layout && (
-          <div className="git-log-graph-container" style={{ width: (layout.maxLane + 1) * 20 + 20 }}>
-            <CommitGraph
-              layout={layout}
-              commits={commits}
-              selectedHash={selectedHash}
-              rowHeight={rowHeight}
-              onCommitClick={onSelectCommit}
-            />
+          <div
+            ref={graphContainerRef}
+            className="git-log-graph-container"
+            style={{ width: graphWidth, overflow: 'hidden' }}
+          >
+            <div style={{ height: totalHeight, position: 'relative' }}>
+              <CommitGraph
+                layout={layout}
+                commits={commits}
+                selectedHash={selectedHash}
+                rowHeight={ROW_HEIGHT}
+                onCommitClick={onSelectCommit}
+                startIndex={startIndex}
+                endIndex={endIndex}
+              />
+            </div>
           </div>
         )}
-        <div className="git-log-commits">
-          {commits.map((commit) => {
-            const isSelected = selectedHash === commit.hash;
-            
-            return (
-              <div
-                key={commit.hash}
-                className={`git-commit-row ${isSelected ? 'git-commit-row--selected' : ''}`}
-                style={{ height: rowHeight }}
-                onClick={() => onSelectCommit(commit.hash)}
-                onContextMenu={(e) => handleContextMenu(e, commit)}
-              >
-                <div className="git-commit-row-main">
-                  <span className="git-commit-hash">{commit.shortHash}</span>
-                  <span className="git-commit-message">
-                    {commit.message}
-                    {/* Ref 标签 */}
-                    {commit.refs && commit.refs.length > 0 && (
-                      <span className="git-ref-tags">
-                        {commit.refs.map((ref, refIdx) => {
-                          const parsed = parseRef(ref);
-                          const node = layout?.nodes.get(commit.hash);
-                          const color = node ? GRAPH_COLORS[node.color % GRAPH_COLORS.length] : '#6366f1';
-                          
-                          return (
-                            <span
-                              key={refIdx}
-                              className={`git-ref-tag git-ref-tag--${parsed.type}`}
-                              style={parsed.type === 'branch' ? { backgroundColor: color } : {}}
-                            >
-                              {parsed.name}
-                            </span>
-                          );
-                        })}
+
+        {/* Commit 列（虚拟滚动） */}
+        <div
+          ref={scrollContainerRef}
+          className="git-log-commits"
+          onScroll={handleScroll}
+        >
+          {/* 撑起总高度的占位容器 */}
+          <div style={{ height: totalHeight, position: 'relative' }}>
+            {/* 偏移到可见区域 */}
+            <div style={{ position: 'absolute', top: offsetY, left: 0, right: 0 }}>
+              {visibleCommits.map((commit) => {
+                const isSelected = selectedHash === commit.hash;
+                
+                return (
+                  <div
+                    key={commit.hash}
+                    className={`git-commit-row ${isSelected ? 'git-commit-row--selected' : ''}`}
+                    style={{ height: ROW_HEIGHT }}
+                    onClick={() => onSelectCommit(commit.hash)}
+                    onContextMenu={(e) => handleContextMenu(e, commit)}
+                  >
+                    <div className="git-commit-row-main">
+                      <span className="git-commit-hash">{commit.shortHash}</span>
+                      <span className="git-commit-message">
+                        {commit.message}
+                        {/* Ref 标签 */}
+                        {commit.refs && commit.refs.length > 0 && (
+                          <span className="git-ref-tags">
+                            {commit.refs.map((ref, refIdx) => {
+                              const parsed = parseRef(ref);
+                              const node = layout?.nodes.get(commit.hash);
+                              const color = node ? GRAPH_COLORS[node.color % GRAPH_COLORS.length] : '#6366f1';
+                              
+                              return (
+                                <span
+                                  key={refIdx}
+                                  className={`git-ref-tag git-ref-tag--${parsed.type}`}
+                                  style={parsed.type === 'branch' ? { backgroundColor: color } : {}}
+                                >
+                                  {parsed.name}
+                                </span>
+                              );
+                            })}
+                          </span>
+                        )}
                       </span>
-                    )}
-                  </span>
-                </div>
-                <div className="git-commit-row-meta">
-                  <span className="git-commit-author">{commit.author}</span>
-                  <span className="git-commit-time">{formatRelativeTime(commit.date)}</span>
-                </div>
-              </div>
-            );
-          })}
+                    </div>
+                    <div className="git-commit-row-meta">
+                      <span className="git-commit-author">{commit.author}</span>
+                      <span className="git-commit-time">{formatRelativeTime(commit.date)}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 加载更多指示器 */}
+          {loadingMore && (
+            <div className="git-log-loading-more">
+              <div className="git-loading-spinner" /> Loading...
+            </div>
+          )}
         </div>
+      </div>
+
+      {/* 底部状态栏 */}
+      <div className="git-log-status-bar">
+        <span>{commits.length} commits</span>
+        {!hasMore && <span> (all loaded)</span>}
       </div>
 
       {/* 右键菜单 */}

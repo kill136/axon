@@ -26,6 +26,8 @@ interface TerminalSession {
   rows: number;
   onData: (data: string) => void;
   onExit: (code: number) => void;
+  /** child_process 回退模式的行缓冲（用于手动回显） */
+  lineBuffer?: string;
 }
 
 export class TerminalManager {
@@ -36,10 +38,8 @@ export class TerminalManager {
    */
   private getDefaultShell(): string {
     if (os.platform() === 'win32') {
-      // Windows: 优先使用 PowerShell
       return 'powershell.exe';
     }
-    // Unix: 使用用户的默认 shell
     return process.env.SHELL || '/bin/bash';
   }
 
@@ -54,8 +54,9 @@ export class TerminalManager {
       }
       return [];
     }
-    // Unix: 使用 login shell
-    return ['-l'];
+    // Unix: 强制交互模式 + login shell
+    // -i 使 shell 输出 prompt，即使 stdin 不是 tty
+    return ['-i', '-l'];
   }
 
   /**
@@ -127,65 +128,15 @@ export class TerminalManager {
       }
     }
 
-    // 回退方案：使用 script 命令包装 PTY（macOS/Linux）
-    // child_process 的 pipe 模式下 shell 检测到不是 tty，不会显示 prompt
-    // 用 `script` 命令创建伪终端，让 shell 以交互模式运行
-    if (os.platform() !== 'win32') {
-      try {
-        // macOS: script -q /dev/null <shell> -l
-        // Linux: script -qc "<shell> -l" /dev/null
-        const isMac = os.platform() === 'darwin';
-        const scriptCmd = isMac ? 'script' : 'script';
-        const scriptArgs = isMac
-          ? ['-q', '/dev/null', shell, ...shellArgs]
-          : ['-qc', [shell, ...shellArgs].join(' '), '/dev/null'];
-
-        const childProcess = spawn(scriptCmd, scriptArgs, {
-          cwd,
-          env: {
-            ...process.env,
-            TERM: 'xterm-256color',
-            COLORTERM: 'truecolor',
-          },
-          stdio: ['pipe', 'pipe', 'pipe'],
-          windowsHide: true,
-        });
-
-        childProcess.stdout?.on('data', (data: Buffer) => {
-          options.onData(data.toString());
-        });
-
-        childProcess.stderr?.on('data', (data: Buffer) => {
-          options.onData(data.toString());
-        });
-
-        childProcess.on('exit', (code: number | null) => {
-          options.onExit(code ?? 0);
-          this.sessions.delete(id);
-        });
-
-        childProcess.on('error', (err: Error) => {
-          options.onData(`\r\nError: ${err.message}\r\n`);
-          options.onExit(1);
-          this.sessions.delete(id);
-        });
-
-        session.process = childProcess;
-        this.sessions.set(id, session);
-        console.log(`[TerminalManager] script-pty session created: ${id}, shell=${shell}`);
-        return true;
-      } catch (err) {
-        console.error(`[TerminalManager] script fallback failed:`, err);
-      }
-    }
-
-    // 最终回退：纯 child_process（Windows 无 node-pty 时，或 script 也失败时）
+    // 回退方案：child_process + 强制交互模式 + 手动回显
+    // 没有 PTY 驱动，shell 不会回显用户输入，需要我们自己处理
     try {
       const childProcess = spawn(shell, shellArgs, {
         cwd,
         env: {
           ...process.env,
           TERM: 'xterm-256color',
+          COLORTERM: 'truecolor',
         },
         stdio: ['pipe', 'pipe', 'pipe'],
         shell: false,
@@ -212,8 +163,9 @@ export class TerminalManager {
       });
 
       session.process = childProcess;
+      session.lineBuffer = '';
       this.sessions.set(id, session);
-      console.log(`[TerminalManager] child_process session created: ${id}, shell=${shell} (limited mode)`);
+      console.log(`[TerminalManager] child_process session created: ${id}, shell=${shell} (fallback mode, -i)`);
       return true;
     } catch (err) {
       console.error(`[TerminalManager] Failed to create terminal:`, err);
@@ -234,7 +186,38 @@ export class TerminalManager {
     }
 
     if (session.process?.stdin) {
-      session.process.stdin.write(data);
+      // child_process 回退模式：手动回显用户输入
+      // PTY 驱动通常负责回显，但 pipe 模式没有 PTY
+      for (const ch of data) {
+        if (ch === '\r' || ch === '\n') {
+          // Enter：回显换行 + 发送整行给 shell
+          session.onData('\r\n');
+          session.process.stdin.write((session.lineBuffer ?? '') + '\n');
+          session.lineBuffer = '';
+        } else if (ch === '\x7f' || ch === '\b') {
+          // Backspace：删除最后一个字符
+          if (session.lineBuffer && session.lineBuffer.length > 0) {
+            session.lineBuffer = session.lineBuffer.slice(0, -1);
+            // 回显：光标左移 + 空格覆盖 + 光标左移
+            session.onData('\b \b');
+          }
+        } else if (ch === '\x03') {
+          // Ctrl+C：发送 SIGINT
+          session.lineBuffer = '';
+          session.onData('^C\r\n');
+          session.process.kill('SIGINT');
+        } else if (ch === '\x04') {
+          // Ctrl+D：EOF
+          if (!session.lineBuffer || session.lineBuffer.length === 0) {
+            session.process.stdin.end();
+          }
+        } else if (ch >= ' ' || ch === '\t') {
+          // 可打印字符或 Tab
+          session.lineBuffer = (session.lineBuffer ?? '') + ch;
+          session.onData(ch);
+        }
+        // 忽略其他控制字符
+      }
       return true;
     }
 

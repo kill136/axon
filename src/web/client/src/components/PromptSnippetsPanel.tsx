@@ -130,7 +130,7 @@ export function PromptSnippetsPanel({ onClose, onSendMessage, addMessageHandler 
   };
 
   const handleDelete = (id: string, name: string) => {
-    if (!confirm(`确定删除片段 "${name}" 吗？`)) return;
+    if (!confirm(t('snippets.confirmDelete', { name }))) return;
     onSendMessage?.({
       type: 'prompt_snippets_delete',
       payload: { id },
@@ -205,15 +205,15 @@ export function PromptSnippetsPanel({ onClose, onSendMessage, addMessageHandler 
                     </button>
                     <span className="snippet-name">{snippet.name}</span>
                     <span className={`snippet-position-badge snippet-position-${snippet.position}`}>
-                      {snippet.position === 'prepend' ? '前置' : '追加'}
+                      {snippet.position === 'prepend' ? t('snippets.positionPrepend') : t('snippets.positionAppend')}
                     </span>
                   </div>
                   <div className="snippet-card-right">
                     <span className="snippet-tokens">~{estimateTokens(snippet.content)} tokens</span>
-                    <button className="snippet-action-btn" onClick={() => handleEdit(snippet)} title="编辑">
+                    <button className="snippet-action-btn" onClick={() => handleEdit(snippet)} title={t('snippets.edit')}>
                       ✎
                     </button>
-                    <button className="snippet-action-btn snippet-delete-btn" onClick={() => handleDelete(snippet.id, snippet.name)} title="删除">
+                    <button className="snippet-action-btn snippet-delete-btn" onClick={() => handleDelete(snippet.id, snippet.name)} title={t('snippets.delete')}>
                       ×
                     </button>
                   </div>
@@ -243,27 +243,27 @@ export function PromptSnippetsPanel({ onClose, onSendMessage, addMessageHandler 
   // 创建/编辑视图
   return (
     <div className="prompt-snippets-panel">
-      <h3>{viewMode === 'create' ? '新建提示词片段' : '编辑提示词片段'}</h3>
+      <h3>{viewMode === 'create' ? t('snippets.createTitle') : t('snippets.editTitle')}</h3>
       <p className="settings-description">
         {viewMode === 'create'
-          ? '创建一个新的提示词片段，注入到系统提示词中。'
-          : `正在编辑: ${editingSnippet?.name}`}
+          ? t('snippets.createDescription')
+          : t('snippets.editingName', { name: editingSnippet?.name || '' })}
       </p>
 
       <div className="snippet-form">
         <div className="snippet-form-group">
-          <label>名称 *</label>
+          <label>{t('snippets.form.name')} *</label>
           <input
             type="text"
             className="snippet-input"
             value={formName}
             onChange={(e) => setFormName(e.target.value)}
-            placeholder="例如: code-review-rules"
+            placeholder={t('snippets.form.namePlaceholder')}
           />
         </div>
 
         <div className="snippet-form-group">
-          <label>描述</label>
+          <label>{t('snippets.form.description')}</label>
           <input
             type="text"
             className="snippet-input"
@@ -275,52 +275,52 @@ export function PromptSnippetsPanel({ onClose, onSendMessage, addMessageHandler 
 
         <div className="snippet-form-row">
           <div className="snippet-form-group snippet-form-half">
-            <label>注入位置</label>
+            <label>{t('snippets.form.position')}</label>
             <select
               className="snippet-select"
               value={formPosition}
               onChange={(e) => setFormPosition(e.target.value as 'prepend' | 'append')}
             >
-              <option value="append">追加 (在系统提示词之后)</option>
-              <option value="prepend">前置 (在系统提示词之前)</option>
+              <option value="append">{t('snippets.form.positionAppend')}</option>
+              <option value="prepend">{t('snippets.form.positionPrepend')}</option>
             </select>
           </div>
           <div className="snippet-form-group snippet-form-half">
-            <label>标签 (逗号分隔)</label>
+            <label>{t('snippets.form.tags')}</label>
             <input
               type="text"
               className="snippet-input"
               value={formTags}
               onChange={(e) => setFormTags(e.target.value)}
-              placeholder="例如: style, rules"
+              placeholder={t('snippets.form.tagsPlaceholder')}
             />
           </div>
         </div>
 
         <div className="snippet-form-group">
           <label>
-            内容 *
+            {t('snippets.form.content')} *
             <span className="snippet-token-hint">~{estimateTokens(formContent).toLocaleString()} tokens</span>
           </label>
           <textarea
             className="snippet-textarea"
             value={formContent}
             onChange={(e) => setFormContent(e.target.value)}
-            placeholder="输入要注入到系统提示词中的内容..."
+            placeholder={t('snippets.form.contentPlaceholder')}
             rows={12}
           />
         </div>
 
         <div className="snippet-form-actions">
           <button className="snippets-btn" onClick={handleCancel}>
-            取消
+            {t('snippets.form.cancel')}
           </button>
           <button
             className="snippets-btn snippets-btn-primary"
             onClick={handleSave}
             disabled={!formName.trim() || !formContent.trim()}
           >
-            {viewMode === 'create' ? '创建' : '保存'}
+            {viewMode === 'create' ? t('snippets.form.create') : t('snippets.form.save')}
           </button>
         </div>
       </div>
