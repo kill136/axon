@@ -1317,6 +1317,56 @@
 .diff-td-ln.diff-td--removed { background: rgba(239, 68, 68, 0.08); color: rgba(239, 68, 68, 0.6); }
 .diff-td-ln.diff-td--empty   { background: var(--bg-secondary); }
 
+/* ---- 语法高亮 ---- */
+.hl-comment { color: #6b7280; font-style: italic; }
+.hl-string { color: #10b981; }
+.hl-keyword { color: #c084fc; font-weight: 600; }
+.hl-number { color: #f59e0b; }
+.hl-type { color: #38bdf8; }
+.hl-function { color: #818cf8; }
+.hl-prefix { color: var(--text-muted); opacity: 0.5; }
+
+/* ---- Word-level diff ---- */
+.diff-word-added {
+  background: rgba(16, 185, 129, 0.3);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.diff-word-removed {
+  background: rgba(239, 68, 68, 0.3);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.diff-prefix {
+  color: var(--text-muted);
+  opacity: 0.5;
+  margin-right: 4px;
+}
+
+/* ---- Diff 统计 ---- */
+.git-diff-stats {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.git-diff-stat-added {
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.1);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.git-diff-stat-removed {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
 /* ============================================
    输入对话框（用于 Stash Save、Commit 等）
    ============================================ */

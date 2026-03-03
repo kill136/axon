@@ -1201,6 +1201,14 @@ export class ClaudeClient {
       'anthropic-dangerous-direct-browser-access': 'true',
     };
 
+    // 第三方兼容 API（如 MiniMax）要求 Authorization: Bearer 格式，而非 x-api-key
+    const isThirdPartyUrl = !!(config.baseUrl &&
+      !config.baseUrl.includes('api.anthropic.com') &&
+      !config.baseUrl.includes('anthropic.com'));
+    if (isThirdPartyUrl && apiKey) {
+      defaultHeaders['Authorization'] = `Bearer ${apiKey}`;
+    }
+
     // 如果使用 OAuth，标记模式
     if (authToken) {
       this.isOAuth = true;
