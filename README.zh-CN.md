@@ -102,6 +102,30 @@ node dist/web-cli.js    # Web IDE
 ```
 </details>
 
+<details>
+<summary>卸载</summary>
+
+**macOS / Linux：**
+```bash
+curl -fsSL https://raw.githubusercontent.com/kill136/claude-code-open/private_web_ui/uninstall.sh | bash
+```
+
+**国内镜像：**
+```bash
+curl -fsSL https://gitee.com/lubanbbs/claude-code-open/raw/private_web_ui/uninstall.sh | bash
+```
+
+**Windows（PowerShell）：**
+```powershell
+irm https://raw.githubusercontent.com/kill136/claude-code-open/private_web_ui/uninstall.ps1 | iex
+```
+
+**Windows（cmd）：**
+```cmd
+curl -fsSL https://raw.githubusercontent.com/kill136/claude-code-open/private_web_ui/uninstall.bat -o uninstall.bat && uninstall.bat
+```
+</details>
+
 ## 核心功能
 
 ### Web IDE

@@ -55,16 +55,12 @@ export function StatusView({ gitStatus, send, projectPath }: StatusViewProps) {
     source: 'staged' | 'unstaged' | 'untracked' | 'conflict';
   } | null>(null);
 
-  // 如果没有 git status 数据，显示加载或空状态
-  if (!gitStatus) {
-    return (
-      <div className="git-status-view">
-        <div className="git-status-empty">{t('git.loading')}</div>
-      </div>
-    );
-  }
-
-  const { staged, unstaged, untracked, conflicts, currentBranch, remoteStatus } = gitStatus;
+  const staged = gitStatus?.staged ?? [];
+  const unstaged = gitStatus?.unstaged ?? [];
+  const untracked = gitStatus?.untracked ?? [];
+  const conflicts = gitStatus?.conflicts ?? [];
+  const currentBranch = gitStatus?.currentBranch;
+  const remoteStatus = gitStatus?.remoteStatus;
 
   // 获取文件状态标记
   const getFileStatusBadge = (file: string, type: 'staged' | 'unstaged' | 'untracked' | 'conflict') => {
@@ -85,7 +81,7 @@ export function StatusView({ gitStatus, send, projectPath }: StatusViewProps) {
     return file;
   };
 
-  // 构建所有文件条目
+  // 构建所有文件条目（必须在条件 return 之前，保持 hooks 数量一致）
   const allEntries: FileEntry[] = useMemo(() => {
     const entries: FileEntry[] = [];
     for (const f of conflicts) {
@@ -171,6 +167,15 @@ export function StatusView({ gitStatus, send, projectPath }: StatusViewProps) {
 
   // 获取平铺的文件列表（用于 Shift 多选）
   const flatFileList = useMemo(() => allEntries.map(e => e.cleanFile), [allEntries]);
+
+  // 如果没有 git status 数据，显示加载或空状态（必须在所有 hooks 之后）
+  if (!gitStatus) {
+    return (
+      <div className="git-status-view">
+        <div className="git-status-empty">{t('git.loading')}</div>
+      </div>
+    );
+  }
 
   // ---- 操作处理函数 ----
 
