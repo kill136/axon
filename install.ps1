@@ -22,7 +22,7 @@ $RepoUrlGithub = "https://github.com/kill136/claude-code-open.git"
 $RepoUrlGitee  = "https://gitee.com/lubanbbs/claude-code-open.git"
 $RepoUrl       = ""  # Will be set by Detect-RepoUrl
 $DockerImage   = "wbj66/axon:latest"
-$InstallDir    = "$env:USERPROFILE\.axon"
+$InstallDir    = if ($env:AXON_CONFIG_DIR) { $env:AXON_CONFIG_DIR } else { "$env:USERPROFILE\.axon" }
 $NodeMajorRequired = 18
 $NodeMajorMax = 22  # LTS; native modules may lack prebuilds for newer versions
 
@@ -52,6 +52,29 @@ function Detect-RepoUrl {
     if ($script:RepoUrl) {
         Write-Info "Using user-specified repo: $script:RepoUrl"
         return
+    }
+
+    # Auto-detect system proxy and configure git to use it
+    $proxy = $null
+    try {
+        $reg = Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings" -ErrorAction SilentlyContinue
+        if ($reg.ProxyEnable -eq 1 -and $reg.ProxyServer) {
+            $proxy = $reg.ProxyServer
+            if ($proxy -notmatch '^https?://') { $proxy = "http://$proxy" }
+        }
+    } catch {}
+    # Also check common env vars
+    if (-not $proxy) {
+        $proxy = $env:HTTPS_PROXY
+        if (-not $proxy) { $proxy = $env:HTTP_PROXY }
+        if (-not $proxy) { $proxy = $env:https_proxy }
+        if (-not $proxy) { $proxy = $env:http_proxy }
+    }
+    if ($proxy) {
+        Write-Info "Detected proxy: $proxy, configuring git..."
+        git config --global http.proxy $proxy 2>$null
+        git config --global https.proxy $proxy 2>$null
+        $script:GitProxyConfigured = $true
     }
 
     Write-Info "Detecting network connectivity..."
@@ -520,7 +543,8 @@ function New-LauncherScript {
     $LauncherPath = Join-Path $LauncherDir "claude-web-start.bat"
 
     # This launcher lives outside git repo, so git operations never break it
-    $LauncherContent = @'
+    # Use PowerShell variable to inject the actual install path into the bat template
+    $LauncherContent = @"
 @echo off
 chcp 65001 >nul 2>&1
 setlocal enabledelayedexpansion
@@ -531,7 +555,12 @@ echo   ^|            Axon - WebUI                     ^|
 echo   +=============================================+
 echo.
 
-set "INSTALL_DIR=%USERPROFILE%\.axon"
+REM Use AXON_CONFIG_DIR if set, otherwise fall back to the path chosen at install time
+if defined AXON_CONFIG_DIR (
+    set "INSTALL_DIR=%AXON_CONFIG_DIR%"
+) else (
+    set "INSTALL_DIR=$InstallPath"
+)
 
 if not exist "%INSTALL_DIR%" (
     echo [ERROR] Installation directory not found: %INSTALL_DIR%
@@ -539,6 +568,10 @@ if not exist "%INSTALL_DIR%" (
     goto :error_exit
 )
 cd /d "%INSTALL_DIR%"
+"@
+
+    # The rest of the launcher is static, use single-quoted here-string
+    $LauncherContent += @'
 
 REM --- Determine which node.exe to use ---
 REM Priority 1: portable Node.js in .node/ (always wins if present)
@@ -747,6 +780,23 @@ function Clone-Repository {
     git clone -b private_web_ui --progress $RepoUrl $InstallDir 2>&1 | Write-Host
     $cloneExit = $LASTEXITCODE
     $ErrorActionPreference = $prevEAP
+
+    # If GitHub clone failed, automatically fall back to Gitee mirror
+    if ($cloneExit -ne 0 -and $RepoUrl -eq $script:RepoUrlGithub) {
+        Write-Warn "GitHub clone failed, falling back to Gitee mirror..."
+        # Clean up partial clone
+        if (Test-Path $InstallDir) { Remove-Item -Recurse -Force $InstallDir }
+        $prevEAP = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        git clone -b private_web_ui --progress $script:RepoUrlGitee $InstallDir 2>&1 | Write-Host
+        $cloneExit = $LASTEXITCODE
+        $ErrorActionPreference = $prevEAP
+        if ($cloneExit -eq 0) {
+            $script:RepoUrl = $script:RepoUrlGitee
+            Write-Ok "Cloned from Gitee mirror successfully"
+        }
+    }
+
     if ($cloneExit -ne 0) {
         Write-Error "Git clone failed (exit code $cloneExit). Please check your network connection and try again."
     }
@@ -981,6 +1031,25 @@ function Main {
         Uninstall
         return
     }
+
+    # Prompt user for installation directory
+    Write-Host "  Install directory: " -ForegroundColor White -NoNewline
+    Write-Host "$InstallDir" -ForegroundColor Cyan
+    Write-Host "  Press Enter to accept, or type a new path:" -ForegroundColor DarkGray
+    $customDir = Read-Host "  "
+    if (-not [string]::IsNullOrWhiteSpace($customDir)) {
+        $script:InstallDir = $customDir.Trim().TrimEnd('\')
+    }
+    Write-Ok "Installation directory: $InstallDir"
+
+    # Persist AXON_CONFIG_DIR if user chose a non-default path
+    $DefaultDir = "$env:USERPROFILE\.axon"
+    if ($InstallDir -ne $DefaultDir) {
+        [Environment]::SetEnvironmentVariable("AXON_CONFIG_DIR", $InstallDir, "User")
+        $env:AXON_CONFIG_DIR = $InstallDir
+        Write-Ok "Saved AXON_CONFIG_DIR=$InstallDir to user environment variables"
+    }
+    Write-Host ""
 
     Write-Info "Checking & installing dependencies..."
     Write-Host ""
