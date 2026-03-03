@@ -67,6 +67,9 @@ jobs:
           draft: false
           prerelease: false
           generate_release_notes: true
+          files: |
+            install.bat
+            install.ps1
 
   build-packages:
     name: Build ${{ matrix.label }}

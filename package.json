@@ -1,6 +1,6 @@
 {
   "name": "axon",
-  "version": "2.1.37",
+  "version": "2.1.39",
   "description": "Free & open source AI coding assistant with Web IDE, multi-agent system, and self-evolution",
   "type": "module",
   "bin": {
