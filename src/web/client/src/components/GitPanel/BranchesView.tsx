@@ -1,18 +1,19 @@
 /**
  * BranchesView - Git 分支管理视图（树形结构）
  * 显示本地和远程分支，支持分支切换、创建、删除操作
- * 新增：树形结构、分支筛选回调
+ * 新增：树形结构、分支筛选回调、右键菜单、双击切换分支
  */
 
 import { useState, useEffect, useRef } from 'react';
 import { useLanguage } from '../../i18n';
+import { ContextMenu, type ContextMenuEntry } from './ContextMenu';
 import { GitBranch } from './index';
 
 interface BranchesViewProps {
   branches: GitBranch[];
   send: (msg: any) => void;
   projectPath?: string;
-  onBranchSelect?: (branch: string | null) => void; // 新增：筛选分支回调
+  onBranchSelect?: (branch: string | null) => void;
 }
 
 type MergeStrategy = 'default' | 'no-ff' | 'squash' | 'ff-only';
@@ -37,7 +38,6 @@ interface TreeNode {
  */
 function buildTree(branches: GitBranch[]): TreeNode[] {
   const root: TreeNode[] = [];
-  const nodeMap = new Map<string, TreeNode>();
 
   branches.forEach((branch) => {
     const parts = branch.name.split('/');
@@ -48,7 +48,6 @@ function buildTree(branches: GitBranch[]): TreeNode[] {
       currentPath = currentPath ? `${currentPath}/${part}` : part;
       const isLast = idx === parts.length - 1;
 
-      // 查找当前层级是否已有该节点
       let node = currentLevel.find(n => n.name === part);
 
       if (!node) {
@@ -60,7 +59,6 @@ function buildTree(branches: GitBranch[]): TreeNode[] {
           children: [],
         };
         currentLevel.push(node);
-        nodeMap.set(currentPath, node);
       }
 
       if (!isLast) {
@@ -106,6 +104,16 @@ export function BranchesView({ branches, send, projectPath, onBranchSelect }: Br
   // 选中的分支（用于筛选）
   const [selectedBranch, setSelectedBranch] = useState<string | null>(null);
 
+  // 右键菜单状态
+  const [contextMenu, setContextMenu] = useState<{
+    show: boolean;
+    x: number;
+    y: number;
+    branch: string;
+    isCurrent: boolean;
+    isRemote: boolean;
+  } | null>(null);
+
   // 分离本地分支和远程分支
   const localBranches = branches.filter((b) => !b.remote);
   const remoteBranches = branches.filter((b) => b.remote);
@@ -128,7 +136,7 @@ export function BranchesView({ branches, send, projectPath, onBranchSelect }: Br
     setExpandedNodes(newExpanded);
   };
 
-  // 选择分支（筛选）
+  // 选择分支（筛选 log）
   const handleBranchClick = (branch: string | null) => {
     setSelectedBranch(branch);
     onBranchSelect?.(branch);
@@ -187,7 +195,6 @@ export function BranchesView({ branches, send, projectPath, onBranchSelect }: Br
       },
     });
 
-    // 关闭对话框
     setMergeDialog({ visible: false, targetBranch: '', strategy: 'default' });
   };
 
@@ -209,9 +216,7 @@ export function BranchesView({ branches, send, projectPath, onBranchSelect }: Br
 
   // Compare 分支
   const handleCompare = (branchName: string) => {
-    if (!projectPath) return;
-    
-    if (!currentBranch) return;
+    if (!projectPath || !currentBranch) return;
 
     send({
       type: 'git:compare_branches',
@@ -223,6 +228,130 @@ export function BranchesView({ branches, send, projectPath, onBranchSelect }: Br
     });
   };
 
+  // 从远程分支 checkout
+  const handleCheckoutRemote = (remoteBranch: string) => {
+    if (!projectPath) return;
+    // 远程分支如 origin/feature-x，checkout 时 git 会自动创建本地跟踪分支
+    send({
+      type: 'git:checkout',
+      payload: { projectPath, branch: remoteBranch },
+    });
+  };
+
+  // 右键菜单
+  const handleContextMenu = (
+    e: React.MouseEvent,
+    branch: string,
+    isCurrent: boolean,
+    isRemote: boolean,
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      show: true,
+      x: e.clientX,
+      y: e.clientY,
+      branch,
+      isCurrent,
+      isRemote,
+    });
+  };
+
+  // 生成右键菜单项
+  const getContextMenuItems = (): ContextMenuEntry[] => {
+    if (!contextMenu) return [];
+
+    const { branch, isCurrent, isRemote } = contextMenu;
+    const items: ContextMenuEntry[] = [];
+
+    if (isRemote) {
+      // 远程分支菜单
+      items.push({
+        label: t('git.checkout'),
+        icon: '↩',
+        onClick: () => handleCheckoutRemote(branch),
+      });
+      items.push({ separator: true });
+      items.push({
+        label: t('git.copyBranchName'),
+        icon: '📋',
+        onClick: () => navigator.clipboard.writeText(branch),
+      });
+    } else if (isCurrent) {
+      // 当前分支菜单
+      items.push({
+        label: t('git.push'),
+        icon: '↑',
+        onClick: () => {
+          if (!projectPath) return;
+          send({ type: 'git:push', payload: { projectPath } });
+        },
+      });
+      items.push({
+        label: t('git.pull'),
+        icon: '↓',
+        onClick: () => {
+          if (!projectPath) return;
+          send({ type: 'git:pull', payload: { projectPath } });
+        },
+      });
+      items.push({ separator: true });
+      items.push({
+        label: t('git.copyBranchName'),
+        icon: '📋',
+        onClick: () => navigator.clipboard.writeText(branch),
+      });
+    } else {
+      // 非当前本地分支菜单
+      items.push({
+        label: t('git.switch'),
+        icon: '✓',
+        onClick: () => handleCheckout(branch),
+      });
+      items.push({ separator: true });
+      items.push({
+        label: t('git.merge'),
+        icon: '⤴',
+        onClick: () => handleMerge(branch),
+      });
+      items.push({
+        label: t('git.rebase'),
+        icon: '⤵',
+        onClick: () => handleRebase(branch),
+      });
+      items.push({
+        label: t('git.compare'),
+        icon: '↔',
+        onClick: () => handleCompare(branch),
+      });
+      items.push({ separator: true });
+      items.push({
+        label: t('git.copyBranchName'),
+        icon: '📋',
+        onClick: () => navigator.clipboard.writeText(branch),
+      });
+      items.push({ separator: true });
+      items.push({
+        label: t('git.delete'),
+        icon: '🗑️',
+        onClick: () => handleDeleteBranch(branch),
+        danger: true,
+      });
+    }
+
+    return items;
+  };
+
+  // 双击切换分支
+  const handleDoubleClick = (branch: string, isCurrent: boolean, isRemote: boolean) => {
+    if (isCurrent) return;
+    if (isRemote) {
+      handleCheckoutRemote(branch);
+    } else {
+      handleCheckout(branch);
+    }
+  };
+
   /**
    * 渲染树节点
    */
@@ -231,12 +360,13 @@ export function BranchesView({ branches, send, projectPath, onBranchSelect }: Br
     const isSelected = selectedBranch === node.fullPath;
 
     if (node.isLeaf) {
-      // 叶子节点（分支）
       return (
         <div
           key={node.fullPath}
           className={`git-branch-tree-leaf ${node.isCurrent ? 'git-branch-tree-current' : ''} ${isSelected ? 'git-branch-tree-selected' : ''}`}
           onClick={() => handleBranchClick(node.fullPath)}
+          onDoubleClick={() => handleDoubleClick(node.fullPath, node.isCurrent, isRemote)}
+          onContextMenu={(e) => handleContextMenu(e, node.fullPath, node.isCurrent, isRemote)}
         >
           <span className="git-branch-tree-icon">
             {node.isCurrent ? '●' : '○'}
@@ -245,33 +375,16 @@ export function BranchesView({ branches, send, projectPath, onBranchSelect }: Br
             {node.name}
             {node.isCurrent && <span className="git-branch-tree-badge">★</span>}
           </span>
-          {!isRemote && (
+          {!isRemote && !node.isCurrent && (
             <div className="git-branch-tree-actions">
-              {!node.isCurrent && (
-                <>
-                  <button onClick={(e) => { e.stopPropagation(); handleCheckout(node.fullPath); }} title={t('git.switch')}>
-                    ✓
-                  </button>
-                  <button onClick={(e) => { e.stopPropagation(); handleMerge(node.fullPath); }} title={t('git.merge')}>
-                    ⤴
-                  </button>
-                  <button onClick={(e) => { e.stopPropagation(); handleRebase(node.fullPath); }} title={t('git.rebase')}>
-                    ⤵
-                  </button>
-                  <button onClick={(e) => { e.stopPropagation(); handleCompare(node.fullPath); }} title={t('git.compare')}>
-                    ↔
-                  </button>
-                  <button onClick={(e) => { e.stopPropagation(); handleDeleteBranch(node.fullPath); }} title={t('git.delete')}>
-                    ✕
-                  </button>
-                </>
-              )}
+              <button onClick={(e) => { e.stopPropagation(); handleCheckout(node.fullPath); }} title={t('git.switch')}>
+                ✓
+              </button>
             </div>
           )}
         </div>
       );
     } else {
-      // 目录节点
       return (
         <div key={node.fullPath} className="git-branch-tree-directory">
           <div
@@ -412,7 +525,10 @@ export function BranchesView({ branches, send, projectPath, onBranchSelect }: Br
       {currentBranch && (
         <div className="git-branch-tree-section">
           <div className="git-branch-tree-section-title">HEAD</div>
-          <div className="git-branch-tree-leaf git-branch-tree-current">
+          <div
+            className="git-branch-tree-leaf git-branch-tree-current"
+            onContextMenu={(e) => handleContextMenu(e, currentBranch.name, true, false)}
+          >
             <span className="git-branch-tree-icon">●</span>
             <span className="git-branch-tree-name">
               {currentBranch.name} ★
@@ -459,6 +575,16 @@ export function BranchesView({ branches, send, projectPath, onBranchSelect }: Br
             </div>
           )}
         </div>
+      )}
+
+      {/* 右键菜单 */}
+      {contextMenu && (
+        <ContextMenu
+          items={getContextMenuItems()}
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={() => setContextMenu(null)}
+        />
       )}
     </div>
   );

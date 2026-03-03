@@ -1,8 +1,8 @@
 #!/bin/bash
 # ============================================
 # Axon - One-Click Install Script
-# GitHub:  curl -fsSL https://raw.githubusercontent.com/kill136/axon/private_web_ui/install.sh | bash
-# China:   curl -fsSL https://gitee.com/lubanbbs/axon/raw/private_web_ui/install.sh | bash
+# GitHub:  curl -fsSL https://raw.githubusercontent.com/kill136/claude-code-open/private_web_ui/install.sh | bash
+# China:   curl -fsSL https://gitee.com/lubanbbs/claude-code-open/raw/private_web_ui/install.sh | bash
 # ============================================
 set -e
 
@@ -15,8 +15,8 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
 
-REPO_URL_GITHUB="https://github.com/kill136/axon.git"
-REPO_URL_GITEE="https://gitee.com/lubanbbs/axon.git"
+REPO_URL_GITHUB="https://github.com/kill136/claude-code-open.git"
+REPO_URL_GITEE="https://gitee.com/lubanbbs/claude-code-open.git"
 REPO_URL=""  # Will be set by detect_repo_url()
 DOCKER_IMAGE="wbj66/axon:latest"
 INSTALL_DIR="$HOME/.axon"
@@ -29,7 +29,7 @@ print_banner() {
     echo -e "${CYAN}"
     echo '  ╔═══════════════════════════════════════════╗'
     echo '  ║             Axon Installer                ║'
-    echo '  ║        github.com/kill136/axon            ║'
+    echo '  ║        github.com/kill136/claude-code-open            ║'
     echo '  ╚═══════════════════════════════════════════╝'
     echo -e "${NC}"
 }

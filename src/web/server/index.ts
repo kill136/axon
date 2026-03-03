@@ -281,6 +281,25 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
     webScheduler.start();
   }
 
+  // 启动 IM 通道管理器（Telegram/飞书等 IM 平台 → AI 的反向通道）
+  let channelManager: import('./channels/index.js').ChannelManager | null = null;
+  {
+    const { ChannelManager } = await import('./channels/index.js');
+    const { broadcastMessage, setChannelManager } = await import('./websocket.js');
+    channelManager = new ChannelManager(conversationManager, model, cwd);
+    channelManager.setBroadcast(broadcastMessage);
+    // 注入到 WebSocket 处理器，使 channel:* 消息可用
+    setChannelManager(channelManager);
+    // 延迟初始化，不阻塞服务器启动
+    setTimeout(async () => {
+      try {
+        await channelManager!.initialize();
+      } catch (error) {
+        console.error('[ChannelManager] Initialization failed:', error);
+      }
+    }, 2000);
+  }
+
   // 注入 ErrorWatcher 通知回调 — 错误达到阈值时通知当前活跃会话的主 Agent
   {
     const { broadcastMessage } = await import('./websocket.js');

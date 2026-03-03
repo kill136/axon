@@ -2897,6 +2897,12 @@ pre.git-ai-result-content {
   text-overflow: ellipsis;
 }
 
+.git-context-menu-separator {
+  height: 1px;
+  background: var(--border-color);
+  margin: 4px 8px;
+}
+
 /* ============================================
    Auto Fetch Toggle 自动拉取开关样式
    ============================================ */

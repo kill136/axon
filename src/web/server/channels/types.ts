@@ -1,0 +1,168 @@
+/**
+ * IM 通道系统类型定义
+ *
+ * 让用户在已有 IM（Telegram/飞书/Slack）中直接给 AI 下任务。
+ * 接口设计参考 OpenClaw ChannelPlugin，但大幅精简为只关心收发消息。
+ */
+
+// ============================================================================
+// 通道适配器接口
+// ============================================================================
+
+/**
+ * 通道适配器：每个 IM 平台实现一个
+ *
+ * 职责明确：收消息、发消息、管理连接状态。
+ * 不涉及 AI 逻辑（AI 逻辑在 bridge.ts 中）。
+ */
+export interface ChannelAdapter {
+  /** 通道唯一标识 */
+  readonly id: string;
+  /** 显示名称 */
+  readonly name: string;
+
+  /**
+   * 启动通道（连接 IM 平台、启动轮询/Webhook）
+   * @param config 通道配置
+   * @param onMessage 收到消息时的回调
+   */
+  start(config: ChannelConfig, onMessage: (msg: InboundMessage) => void): Promise<void>;
+
+  /** 停止通道（断开连接、清理资源） */
+  stop(): Promise<void>;
+
+  /** 发送文本消息到 IM */
+  sendText(chatId: string, text: string, options?: SendOptions): Promise<void>;
+
+  /** 发送图片到 IM（可选能力） */
+  sendImage?(chatId: string, imageData: Buffer, mimeType: string, caption?: string): Promise<void>;
+
+  /** 获取当前连接状态 */
+  getStatus(): ChannelStatus;
+}
+
+// ============================================================================
+// 配置类型
+// ============================================================================
+
+/**
+ * 单个通道的配置
+ */
+export interface ChannelConfig {
+  /** 是否启用 */
+  enabled: boolean;
+  /** 凭据（各平台不同） */
+  credentials: Record<string, string>;
+  /** 白名单：允许哪些用户/群组与 AI 对话。'*' 表示全部放行 */
+  allowList?: string[];
+  /** 是否允许群组消息（默认 false，只允许私聊） */
+  allowGroups?: boolean;
+  /** 群组中触发 AI 的方式 */
+  groupTrigger?: GroupTriggerMode;
+  /** 使用的模型（覆盖默认） */
+  model?: string;
+}
+
+/**
+ * 群组触发模式
+ * - 'mention': @机器人 时才响应（推荐）
+ * - 'keyword': 包含关键词时响应
+ * - 'always': 群内所有消息都响应（慎用）
+ */
+export type GroupTriggerMode = 'mention' | 'keyword' | 'always';
+
+/**
+ * 所有通道的配置集合
+ */
+export interface ChannelsConfig {
+  [channelId: string]: ChannelConfig;
+}
+
+// ============================================================================
+// 消息类型
+// ============================================================================
+
+/**
+ * 入站消息（从 IM 到 AI）
+ */
+export interface InboundMessage {
+  /** 来源通道 */
+  channel: string;
+  /** 发送者 ID（平台内部 ID） */
+  senderId: string;
+  /** 发送者显示名 */
+  senderName: string;
+  /** 聊天 ID（私聊=senderId，群=群ID） */
+  chatId: string;
+  /** 消息文本 */
+  text: string;
+  /** 是否群组消息 */
+  isGroup: boolean;
+  /** 是否 @了机器人（群组消息中） */
+  isMentioned?: boolean;
+  /** 原始消息 ID（用于回复） */
+  messageId?: string;
+  /** 图片附件（base64 编码） */
+  images?: Array<{ data: string; mimeType: string }>;
+  /** 时间戳 */
+  timestamp: number;
+}
+
+/**
+ * 发送选项
+ */
+export interface SendOptions {
+  /** 回复特定消息 */
+  replyToMessageId?: string;
+  /** Markdown 解析模式 */
+  parseMode?: 'Markdown' | 'HTML' | 'plain';
+}
+
+// ============================================================================
+// 状态类型
+// ============================================================================
+
+export type ChannelStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
+
+/**
+ * 通道运行时状态（供 Web UI 和 API 展示）
+ */
+export interface ChannelStatusInfo {
+  id: string;
+  name: string;
+  status: ChannelStatus;
+  enabled: boolean;
+  /** 是否已配置凭据 */
+  configured: boolean;
+  /** 配置引导文案 */
+  configureHint?: string;
+  /** 错误信息（status=error 时） */
+  error?: string;
+  /** 最后活跃时间 */
+  lastActiveAt?: number;
+  /** 已处理的消息计数 */
+  messageCount?: number;
+}
+
+// ============================================================================
+// WebSocket 消息类型（前后端通信）
+// ============================================================================
+
+/**
+ * 通道相关的 WebSocket 客户端消息
+ */
+export type ChannelClientMessage =
+  | { type: 'channel:list' }
+  | { type: 'channel:start'; payload: { channelId: string } }
+  | { type: 'channel:stop'; payload: { channelId: string } }
+  | { type: 'channel:config_update'; payload: { channelId: string; config: Partial<ChannelConfig> } }
+  | { type: 'channel:test'; payload: { channelId: string } };
+
+/**
+ * 通道相关的 WebSocket 服务端消息
+ */
+export type ChannelServerMessage =
+  | { type: 'channel:list'; payload: { channels: ChannelStatusInfo[] } }
+  | { type: 'channel:status_update'; payload: ChannelStatusInfo }
+  | { type: 'channel:message'; payload: { channel: string; direction: 'inbound' | 'outbound'; senderName: string; text: string; timestamp: number } }
+  | { type: 'channel:error'; payload: { channelId: string; error: string } };

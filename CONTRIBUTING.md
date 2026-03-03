@@ -48,7 +48,7 @@ npx tsc --noEmit            # Type checking
 
 ### Reporting Bugs
 
-1. Search [existing issues](https://github.com/kill136/axon/issues) first
+1. Search [existing issues](https://github.com/kill136/claude-code-open/issues) first
 2. Use the **Bug Report** template
 3. Include:
    - Steps to reproduce
@@ -111,7 +111,7 @@ src/
 ## Need Help?
 
 - [Discord](https://discord.gg/bNyJKk6PVZ)
-- [Open an issue](https://github.com/kill136/axon/issues)
+- [Open an issue](https://github.com/kill136/claude-code-open/issues)
 
 ## License
 

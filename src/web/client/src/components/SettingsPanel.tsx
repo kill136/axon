@@ -250,7 +250,7 @@ export function SettingsPanel({
               </p>
               <p>
                 <a
-                  href="https://github.com/kill136/axon"
+                  href="https://github.com/kill136/claude-code-open"
                   target="_blank"
                   rel="noopener noreferrer"
                 >

@@ -58,7 +58,7 @@ jobs:
 
           echo "" >> CHANGELOG_BODY.md
           echo "" >> CHANGELOG_BODY.md
-          echo "**Full Changelog**: https://github.com/kill136/axon/compare/${PREV_TAG}...${CURRENT_TAG}" >> CHANGELOG_BODY.md
+          echo "**Full Changelog**: https://github.com/kill136/claude-code-open/compare/${PREV_TAG}...${CURRENT_TAG}" >> CHANGELOG_BODY.md
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -67,6 +67,9 @@ jobs:
           draft: false
           prerelease: false
           generate_release_notes: true
+          files: |
+            install.bat
+            install.ps1
 
   build-packages:
     name: Build ${{ matrix.label }}
