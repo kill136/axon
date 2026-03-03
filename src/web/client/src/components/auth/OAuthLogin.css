@@ -62,6 +62,10 @@
   border-color: #5c8acc;
 }
 
+.oauth-button.apikey {
+  border-color: #7c6acc;
+}
+
 .button-content {
   display: flex;
   align-items: center;

@@ -5,6 +5,7 @@
  * 是 channels/ 模块的唯一对外入口。
  */
 
+import * as fs from 'fs';
 import type { ConversationManager } from '../conversation.js';
 import type {
   ChannelAdapter,
@@ -224,8 +225,18 @@ export class ChannelManager {
   // ==========================================================================
 
   private getChannelsConfig(): ChannelsConfig | undefined {
-    const config = configManager.getAll();
-    return (config as any).channels as ChannelsConfig | undefined;
+    // UserConfigSchema.parse() strips unknown fields (like 'channels') from mergedConfig,
+    // so we read directly from settings.json to avoid the Zod stripping issue.
+    try {
+      const settingsPath = configManager.getConfigPaths().userSettings;
+      if (fs.existsSync(settingsPath)) {
+        const raw = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+        return raw.channels as ChannelsConfig | undefined;
+      }
+    } catch {
+      // fall through
+    }
+    return undefined;
   }
 
   private broadcastStatusUpdate(channelId: string): void {

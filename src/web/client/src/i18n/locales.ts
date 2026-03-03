@@ -581,6 +581,18 @@ const en: Translations = {
   'auth.oauth.success': 'Login successful!',
   'auth.oauth.exchangeFailed': 'Failed to exchange code',
 
+  // API Key login
+  'auth.apiKey.title': 'Use API Key',
+  'auth.apiKey.desc': 'Directly enter your Anthropic API Key',
+  'auth.apiKey.inputTitle': 'Enter API Key',
+  'auth.apiKey.inputDesc': 'Paste your API Key from console.anthropic.com',
+  'auth.apiKey.placeholder': 'sk-ant-...',
+  'auth.apiKey.submit': 'Confirm',
+  'auth.apiKey.submitting': 'Verifying...',
+  'auth.apiKey.required': 'Please enter an API Key',
+  'auth.apiKey.success': 'API Key verified and saved',
+  'auth.apiKey.error': 'Verification failed: {{error}}',
+
   // Placeholders
   'placeholder.apiBaseUrl': 'https://api.anthropic.com',
   'placeholder.apiKey': 'sk-ant-...',
@@ -1788,6 +1800,19 @@ const zh: Translations = {
   'auth.oauth.exchanging': '正在交换访问令牌...',
   'auth.oauth.success': '授权成功！',
   'auth.oauth.exchangeFailed': '交换授权码失败',
+
+  // API Key 登录
+  'auth.apiKey.title': '使用 API Key',
+  'auth.apiKey.desc': '直接输入您的 Anthropic API Key',
+  'auth.apiKey.inputTitle': '输入 API Key',
+  'auth.apiKey.inputDesc': '从 console.anthropic.com 获取您的 API Key 并粘贴到此处',
+  'auth.apiKey.placeholder': 'sk-ant-...',
+  'auth.apiKey.submit': '确认',
+  'auth.apiKey.submitting': '验证中...',
+  'auth.apiKey.required': '请输入 API Key',
+  'auth.apiKey.success': 'API Key 验证成功并已保存',
+  'auth.apiKey.error': '验证失败：{{error}}',
+
   // Placeholders
   'placeholder.apiBaseUrl': 'https://api.anthropic.com',
   'placeholder.apiKey': 'sk-ant-...',

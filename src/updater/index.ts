@@ -7,6 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as https from 'https';
 import * as child_process from 'child_process';
+import { fileURLToPath } from 'url';
 import { EventEmitter } from 'events';
 import {
   getPackageManagerInfo,
@@ -110,6 +111,7 @@ export class UpdateManager extends EventEmitter {
   // 读取当前版本
   private readCurrentVersion(): string {
     try {
+      const __dirname = path.dirname(fileURLToPath(import.meta.url));
       const packagePath = path.join(__dirname, '../../package.json');
       const packageJson = JSON.parse(fs.readFileSync(packagePath, 'utf-8'));
       return packageJson.version || '0.0.0';
