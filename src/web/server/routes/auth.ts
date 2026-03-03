@@ -290,6 +290,39 @@ router.get('/status', async (req: Request, res: Response) => {
 });
 
 /**
+ * POST /api/auth/api-key
+ * 使用 API Key 直接登录
+ */
+router.post('/api-key', async (req: Request, res: Response) => {
+  try {
+    const { apiKey } = req.body as { apiKey: string };
+
+    if (!apiKey || typeof apiKey !== 'string' || !apiKey.trim()) {
+      return res.status(400).json({ error: 'API Key is required' });
+    }
+
+    const trimmedKey = apiKey.trim();
+
+    // 验证 API Key 有效性
+    const isValid = await webAuth.validateApiKey(trimmedKey);
+    if (!isValid) {
+      return res.status(401).json({ error: 'Invalid API Key' });
+    }
+
+    // 保存 API Key 并将认证优先级设为 apiKey
+    const saved = webAuth.saveApiKeyLogin(trimmedKey);
+    if (!saved) {
+      return res.status(500).json({ error: 'Failed to save API Key' });
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('[Auth] API Key login error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
  * POST /api/auth/logout
  * 登出（清除 WebUI 管理的所有认证）
  */

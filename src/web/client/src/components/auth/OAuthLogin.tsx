@@ -22,7 +22,7 @@ export interface OAuthLoginProps {
   onError?: (error: string) => void;
 }
 
-type LoginPhase = 'select' | 'authorize' | 'input-code';
+type LoginPhase = 'select' | 'authorize' | 'input-code' | 'input-apikey';
 
 export function OAuthLogin({ onSuccess, onError }: OAuthLoginProps) {
   const { t } = useLanguage();
@@ -34,6 +34,7 @@ export function OAuthLogin({ onSuccess, onError }: OAuthLoginProps) {
   const [authCode, setAuthCode] = useState<string>('');
   const [selectedAccountType, setSelectedAccountType] = useState<AccountType | null>(null);
   const [authUrl, setAuthUrl] = useState<string>('');
+  const [apiKeyInput, setApiKeyInput] = useState<string>('');
 
   /**
    * 启动 OAuth 登录流程
@@ -139,6 +140,45 @@ export function OAuthLogin({ onSuccess, onError }: OAuthLoginProps) {
   };
 
   /**
+   * 提交 API Key 登录
+   */
+  const handleSubmitApiKey = async () => {
+    if (!apiKeyInput.trim()) {
+      setStatusIsError(true);
+      setStatus(t('auth.apiKey.required'));
+      return;
+    }
+
+    setLoading(true);
+    setStatusIsError(false);
+    setStatus(t('auth.apiKey.submitting'));
+
+    try {
+      const response = await fetch('/api/auth/api-key', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiKey: apiKeyInput.trim() }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || t('auth.apiKey.error', { error: response.statusText }));
+      }
+
+      setStatus(t('auth.apiKey.success'));
+      setLoading(false);
+      onSuccess?.();
+    } catch (error) {
+      setLoading(false);
+      setStatusIsError(true);
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      setStatus(t('auth.apiKey.error', { error: errorMsg }));
+      onError?.(errorMsg);
+    }
+  };
+
+  /**
    * 返回选择阶段
    */
   const handleBack = () => {
@@ -149,6 +189,7 @@ export function OAuthLogin({ onSuccess, onError }: OAuthLoginProps) {
     setStatus('');
     setStatusIsError(false);
     setSelectedAccountType(null);
+    setApiKeyInput('');
   };
 
   /**
@@ -199,6 +240,20 @@ export function OAuthLogin({ onSuccess, onError }: OAuthLoginProps) {
               </div>
             </div>
           </button>
+
+          <button
+            className="oauth-button apikey"
+            onClick={() => setPhase('input-apikey')}
+            disabled={loading}
+          >
+            <div className="button-content">
+              <div className="icon">🗝️</div>
+              <div className="text">
+                <div className="title">{t('auth.apiKey.title')}</div>
+                <div className="subtitle">{t('auth.apiKey.desc')}</div>
+              </div>
+            </div>
+          </button>
         </div>
 
         {status && (
@@ -221,6 +276,56 @@ export function OAuthLogin({ onSuccess, onError }: OAuthLoginProps) {
               {t('auth.oauth.getFromConsole')}
             </a>
           </p>
+        </div>
+      </div>
+    );
+  }
+
+  // 渲染 API Key 输入阶段
+  if (phase === 'input-apikey') {
+    return (
+      <div className="oauth-login">
+        <div className="oauth-header">
+          <h2>{t('auth.apiKey.inputTitle')}</h2>
+          <p>{t('auth.apiKey.inputDesc')}</p>
+        </div>
+
+        <div className="oauth-code-section">
+          <div className="code-input-group">
+            <input
+              type="password"
+              className="code-input"
+              placeholder={t('auth.apiKey.placeholder')}
+              value={apiKeyInput}
+              onChange={(e) => setApiKeyInput(e.target.value)}
+              disabled={loading}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && apiKeyInput.trim()) {
+                  handleSubmitApiKey();
+                }
+              }}
+            />
+            <button
+              className="submit-button"
+              onClick={handleSubmitApiKey}
+              disabled={loading || !apiKeyInput.trim()}
+            >
+              {loading ? t('auth.apiKey.submitting') : t('auth.apiKey.submit')}
+            </button>
+          </div>
+
+          {status && (
+            <div className={`oauth-status ${loading ? 'loading' : statusIsError ? 'error' : ''}`}>
+              {loading && <div className="spinner"></div>}
+              <span>{status}</span>
+            </div>
+          )}
+        </div>
+
+        <div className="oauth-back">
+          <button className="back-button" onClick={handleBack} disabled={loading}>
+            {t('auth.oauth.backToLogin')}
+          </button>
         </div>
       </div>
     );

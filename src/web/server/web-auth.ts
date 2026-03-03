@@ -262,6 +262,21 @@ class WebAuthProvider {
   }
 
   /**
+   * 保存 API Key 并将认证优先级设为 apiKey
+   */
+  saveApiKeyLogin(key: string): boolean {
+    if (!key || typeof key !== 'string') return false;
+    try {
+      configManager.set('apiKey', key);
+      configManager.set('authPriority', 'apiKey');
+      return true;
+    } catch (error) {
+      console.error('[WebAuth] Failed to save API Key login:', error);
+      return false;
+    }
+  }
+
+  /**
    * 清除 API Key
    */
   clearApiKey(): void {

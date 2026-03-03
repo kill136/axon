@@ -108,14 +108,16 @@ export function ApiConfigPanel({ onSave, onClose }: ApiConfigPanelProps) {
 
   // 加载状态
   const [loading, setLoading] = useState(false);
-  // 错误信息
+  // 加载/保存错误（顶部显示）
   const [error, setError] = useState<string | null>(null);
-  // 验证错误
+  // 验证错误（按钮附近显示）
   const [validationError, setValidationError] = useState<string | null>(null);
   // 测试状态
   const [testing, setTesting] = useState(false);
-  // 测试成功消息
+  // 测试成功消息（按钮附近显示）
   const [testSuccess, setTestSuccess] = useState<string | null>(null);
+  // 测试失败消息（按钮附近显示）
+  const [testError, setTestError] = useState<string | null>(null);
   // 保存成功消息
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
 
@@ -201,6 +203,7 @@ export function ApiConfigPanel({ onSave, onClose }: ApiConfigPanelProps) {
     setConfig({ ...config, [field]: value });
     setValidationError(null);
     setTestSuccess(null);
+    setTestError(null);
     setSaveSuccess(null);
   };
 
@@ -217,7 +220,7 @@ export function ApiConfigPanel({ onSave, onClose }: ApiConfigPanelProps) {
     }
 
     setTesting(true);
-    setError(null);
+    setTestError(null);
     setTestSuccess(null);
     setValidationError(null);
 
@@ -231,18 +234,18 @@ export function ApiConfigPanel({ onSave, onClose }: ApiConfigPanelProps) {
           customModelName: config.customModelName || '',
         }),
       });
-      
+
       const data = await response.json();
 
       if (data.success) {
         setTestSuccess(t('apiConfig.testSuccess', { model: data.data.model, baseUrl: data.data.baseUrl }));
-        setError(null);
+        setTestError(null);
       } else {
-        setError(data.error || t('apiConfig.testFailed', { error: '' }));
+        setTestError(data.error || t('apiConfig.testFailed', { error: '' }));
         setTestSuccess(null);
       }
     } catch (err) {
-      setError(t('apiConfig.testFailed', { error: err instanceof Error ? err.message : String(err) }));
+      setTestError(t('apiConfig.testFailed', { error: err instanceof Error ? err.message : String(err) }));
       setTestSuccess(null);
     } finally {
       setTesting(false);
@@ -257,24 +260,10 @@ export function ApiConfigPanel({ onSave, onClose }: ApiConfigPanelProps) {
           {t('apiConfig.description')}
         </p>
 
-        {/* 错误消息 */}
-        {(error || validationError) && (
+        {/* 加载/保存错误消息（顶部显示） */}
+        {error && (
           <div className="mcp-form-error">
-            {validationError || error}
-          </div>
-        )}
-
-        {/* 成功消息 */}
-        {(testSuccess || saveSuccess) && (
-          <div className="mcp-form-success" style={{
-            padding: '12px',
-            marginBottom: '16px',
-            backgroundColor: 'rgba(34, 197, 94, 0.1)',
-            border: '1px solid rgba(34, 197, 94, 0.3)',
-            borderRadius: '4px',
-            color: '#22c55e'
-          }}>
-            ✓ {testSuccess || saveSuccess}
+            {error}
           </div>
         )}
 
@@ -461,6 +450,28 @@ export function ApiConfigPanel({ onSave, onClose }: ApiConfigPanelProps) {
             </span>
           </div>
         </div>
+
+        {/* 验证/测试错误（按钮上方显示，保证可见） */}
+        {(validationError || testError) && (
+          <div className="mcp-form-error" style={{ marginBottom: '12px' }}>
+            {validationError || testError}
+          </div>
+        )}
+
+        {/* 测试成功消息（按钮上方显示，保证可见） */}
+        {testSuccess && (
+          <div style={{
+            padding: '10px 12px',
+            marginBottom: '12px',
+            backgroundColor: 'rgba(34, 197, 94, 0.1)',
+            border: '1px solid rgba(34, 197, 94, 0.3)',
+            borderRadius: '4px',
+            color: '#22c55e',
+            fontSize: '13px',
+          }}>
+            ✓ {testSuccess}
+          </div>
+        )}
 
         {/* 操作按钮 */}
         <div className="mcp-form-actions">

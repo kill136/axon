@@ -148,9 +148,7 @@ export function SettingsPanel({
       case 'api':
         return (
           <ApiConfigPanel
-            onSave={() => {
-              console.log('API config saved');
-            }}
+            onSave={() => { onClose(); }}
             onClose={onClose}
           />
         );
@@ -158,9 +156,7 @@ export function SettingsPanel({
       case 'permissions':
         return (
           <PermissionsConfigPanel
-            onSave={() => {
-              console.log('Permissions config saved');
-            }}
+            onSave={() => { onClose(); }}
             onClose={onClose}
           />
         );
@@ -168,9 +164,7 @@ export function SettingsPanel({
       case 'hooks':
         return (
           <HooksConfigPanel
-            onSave={() => {
-              console.log('Hooks config saved');
-            }}
+            onSave={() => { onClose(); }}
             onClose={onClose}
           />
         );
@@ -178,9 +172,7 @@ export function SettingsPanel({
       case 'system':
         return (
           <SystemConfigPanel
-            onSave={() => {
-              console.log('System config saved');
-            }}
+            onSave={() => { onClose(); }}
             onClose={onClose}
           />
         );
