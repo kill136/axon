@@ -1,158 +1,379 @@
-# Git 面板升级计划：对齐 IDEA Git Panel
+# IM 通道整合方案：让人类在 IM 中主动指挥 AI 干活
 
-## 目标
-将现有的右侧抽屉式 Git 面板升级为 IDEA 风格的三栏 Git 面板，核心是添加 **Commit Graph 可视化**。
+## 问题定义
 
-## 现状分析
+我们的连接器体系是 **AI→外部服务** 的方向（GitHub/Slack/Google MCP 工具），缺少 **人→AI** 的反向通道——让用户在微信、Telegram、飞书等已有 IM 中直接给 AI 下任务。
 
-### 当前面板
-- **布局**：右侧固定 500px 抽屉，Tab 切换（status/log/branches/stash/tags/remotes）
-- **Log 视图**：纯文本列表，每个 commit 显示 hash + message + author + time
-- **分支视图**：扁平列表，本地/远程分组
-- **数据模型**：GitCommit 只有 `hash, shortHash, author, date, message`，缺少 `parents` 和 `refs`
+OpenClaw（F:\moltbot）是一个成熟的多通道 AI 网关，支持 20+ IM 平台。问题是：**整合什么、不整合什么**。
 
-### IDEA 面板核心特征
-1. **三栏布局**：左侧分支树 | 中间 Commit Graph + Commit 列表 | 右侧 Commit 详情
-2. **Commit Graph**：SVG 线图，彩色区分分支，合并/分叉清晰可见
-3. **Ref 标签**：commit 旁显示 branch/tag 标签（彩色小标签）
-4. **顶部筛选栏**：按分支/用户/日期快速筛选
+---
 
-## 实施方案
+## 核心决策：不整合什么
 
-### Phase 1：后端数据增强
+经过对两边源码的详细核实，以下模块**明确不整合**：
 
-**文件：`src/web/server/git-manager.ts`**
+### 1. ❌ Pi-Agent 运行时
+- OpenClaw 强绑定 `@mariozechner/pi-coding-agent` 作为 AI 运行时
+- 我们有自己的 `ConversationManager.chat()` + `conversationLoop()`，功能完备
+- 引入 Pi-Agent = 引入一个完整的竞争运行时，维护成本极高
 
-1. 扩展 `GitCommit` 接口，添加 graph 所需字段：
+### 2. ❌ OpenClaw 的配置系统 (OpenClawConfig)
+- 7.7万行配置代码，Zod Schema 极其复杂
+- 我们有 `configManager` + `settings.json`，体系完全不同
+- 硬整合 = 两套配置系统共存，是灾难
+
+### 3. ❌ OpenClaw 的 Gateway WebSocket 协议
+- OpenClaw 有完整的 Gateway RPC 协议（端口 18789）
+- 我们已有 WebSocket 服务器（端口 3456），消息类型完全不同
+- 不需要第二个 Gateway
+
+### 4. ❌ OpenClaw 的路由系统 (resolve-route)
+- 多 Agent 路由、per-peer 绑定、Guild/Team 匹配
+- 我们是单用户/单 Agent 架构，不需要这么复杂的路由
+- 每个 IM 通道直接连到当前活跃会话即可
+
+### 5. ❌ OpenClaw 的 ACP 会话管理器
+- 与 Pi-Agent 深度绑定
+- 我们用 `WebSessionManager` 管理会话
+
+### 6. ❌ OpenClaw 的记忆系统
+- 虽然向量+FTS 混合搜索很好，但引入 sqlite-vec 等重依赖不值得
+- 我们有 Notebook + MemorySearch，够用
+
+### 7. ❌ OpenClaw 的插件系统
+- 40 个 extensions，插件加载器复杂
+- 我们只需要几个核心通道，不需要通用插件框架
+
+---
+
+## 核心决策：整合什么
+
+### 整合原则
+**不搬运 OpenClaw 的代码，而是从 OpenClaw 学习接口设计，用我们自己的架构重新实现精简版。**
+
+理由：
+1. OpenClaw 代码量 54 万行，我们只需要其中 <1% 的能力
+2. 两个项目的架构风格完全不同（OpenClaw 的分层 vs 我们的扁平结构）
+3. 直接 copy 代码会引入大量死代码和未使用的依赖
+
+### 整合目标
+构建一个轻量的 **IM Channel Gateway** 模块，功能明确：
+
+```
+用户在 IM 发消息 → Channel Adapter 接收 → 转为 chat() 调用 
+    → ConversationManager 处理 → 回复通过 Channel Adapter 发回 IM
+```
+
+---
+
+## 实现方案
+
+### 架构设计
+
+```
+src/web/server/channels/
+├── index.ts              # ChannelManager：通道生命周期管理
+├── types.ts              # 通道接口定义（借鉴 OpenClaw 但大幅精简）
+├── adapters/
+│   ├── telegram.ts       # Telegram Bot 适配器（grammY）
+│   ├── feishu.ts         # 飞书机器人适配器
+│   └── slack-bot.ts      # Slack Bot 适配器（区别于现有的 MCP connector）
+└── bridge.ts             # IM↔ConversationManager 桥接层
+```
+
+### 核心接口设计
+
 ```typescript
-export interface GitCommit {
-  hash: string;
-  shortHash: string;
-  author: string;
-  date: string;
-  message: string;
-  parents: string[];    // 父 commit hash 列表（用于画线）
-  refs: string[];       // 指向此 commit 的 ref（如 "HEAD -> main", "origin/main", "tag: v1.0"）
+// types.ts - 精简的通道接口（从 OpenClaw 的 ChannelPlugin 大幅裁剪）
+
+/** 通道适配器：只关心收发消息 */
+interface ChannelAdapter {
+  id: string;                    // 'telegram' | 'feishu' | 'slack-bot'
+  name: string;                  // 显示名
+  
+  /** 启动通道（连接 IM 平台） */
+  start(config: ChannelConfig): Promise<void>;
+  
+  /** 停止通道 */
+  stop(): Promise<void>;
+  
+  /** 发送文本消息到 IM */
+  sendText(target: string, text: string, options?: SendOptions): Promise<void>;
+  
+  /** 发送图片到 IM */
+  sendImage?(target: string, imageData: Buffer, mimeType: string): Promise<void>;
+  
+  /** 当前状态 */
+  getStatus(): ChannelStatus;
+}
+
+/** 通道配置 */
+interface ChannelConfig {
+  /** Telegram: Bot Token; 飞书: App ID + Secret; Slack: Bot Token */
+  credentials: Record<string, string>;
+  /** 白名单：允许哪些用户/群组发消息给 AI */
+  allowList?: string[];
+  /** 是否允许群组消息（默认只允许私聊） */
+  allowGroups?: boolean;
+}
+
+/** 入站消息（从 IM 到 AI） */
+interface InboundMessage {
+  channel: string;               // 来源通道
+  senderId: string;              // 发送者 ID
+  senderName: string;            // 发送者昵称
+  chatId: string;                // 聊天 ID（私聊=senderId，群=群ID）
+  text: string;                  // 消息文本
+  isGroup: boolean;              // 是否群组消息
+  replyToMessageId?: string;     // 回复的消息 ID
+  images?: Buffer[];             // 图片附件
+  timestamp: number;
+}
+
+type ChannelStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
+```
+
+### 桥接层设计（核心）
+
+```typescript
+// bridge.ts - IM 消息 ↔ ConversationManager 桥接
+
+class IMBridge {
+  constructor(
+    private conversationManager: ConversationManager,
+    private broadcastToWebUI: (msg: ServerMessage) => void
+  ) {}
+
+  /** 处理来自 IM 的消息 */
+  async handleInboundMessage(msg: InboundMessage): Promise<void> {
+    // 1. 权限检查（白名单）
+    
+    // 2. 获取或创建该 IM 用户的专属会话
+    //    会话 ID 格式：im:{channel}:{chatId}
+    //    例如：im:telegram:123456789
+    const sessionId = `im:${msg.channel}:${msg.chatId}`;
+    
+    // 3. 构建 StreamCallbacks —— 关键：回复发到 IM 而不是 WebSocket
+    const callbacks: StreamCallbacks = {
+      onTextDelta: (text) => {
+        // 累积文本，不每个 delta 都发（IM 有速率限制）
+        this.accumulateText(sessionId, text);
+      },
+      onComplete: async (stopReason, usage) => {
+        // 对话完成，将累积的文本一次性发送到 IM
+        const fullText = this.flushText(sessionId);
+        if (fullText) {
+          await channel.sendText(msg.chatId, fullText);
+        }
+      },
+      onToolUseStart: (id, name, input) => {
+        // 可选：通知 IM 用户"正在执行工具 xxx"
+      },
+      onError: async (error) => {
+        await channel.sendText(msg.chatId, `Error: ${error.message}`);
+      },
+    };
+    
+    // 4. 调用 ConversationManager.chat()
+    //    复用完整的 AI 能力（工具调用、上下文管理、权限等）
+    await this.conversationManager.chat(
+      sessionId,
+      msg.text,
+      undefined,  // mediaAttachments
+      model,
+      callbacks,
+      projectPath
+    );
+  }
 }
 ```
 
-2. 修改 `getLog()` 方法，使用 `--parents --decorate=short` 获取额外数据：
+### 通道实现（以 Telegram 为例）
+
+```typescript
+// adapters/telegram.ts
+
+import { Bot } from 'grammy';  // 直接用 grammY（OpenClaw 也用的这个库）
+
+class TelegramAdapter implements ChannelAdapter {
+  id = 'telegram';
+  name = 'Telegram';
+  private bot?: Bot;
+  private onMessage?: (msg: InboundMessage) => void;
+  
+  async start(config: ChannelConfig): Promise<void> {
+    this.bot = new Bot(config.credentials.botToken);
+    
+    // 监听文本消息
+    this.bot.on('message:text', (ctx) => {
+      // 白名单检查
+      if (!this.isAllowed(ctx.from.id, config)) return;
+      
+      this.onMessage?.({
+        channel: 'telegram',
+        senderId: String(ctx.from.id),
+        senderName: ctx.from.first_name,
+        chatId: String(ctx.chat.id),
+        text: ctx.message.text,
+        isGroup: ctx.chat.type !== 'private',
+        timestamp: ctx.message.date * 1000,
+      });
+    });
+    
+    // 启动轮询
+    this.bot.start();
+  }
+  
+  async sendText(target: string, text: string): Promise<void> {
+    // Telegram 消息长度限制 4096 字符，超出需要分块
+    const chunks = splitMessage(text, 4096);
+    for (const chunk of chunks) {
+      await this.bot!.api.sendMessage(Number(target), chunk, {
+        parse_mode: 'Markdown',
+      });
+    }
+  }
+  
+  async stop(): Promise<void> {
+    this.bot?.stop();
+  }
+}
 ```
-git log -N --format="%H|%P|%h|%an|%ai|%s|%D" --parents
-```
-其中 `%P` = parent hashes，`%D` = ref names
 
-3. 同步修改 `searchCommits()` 方法
+### 配置方式
 
-### Phase 2：前端 - Commit Graph 算法
+复用现有的 `settings.json` 结构，在 `channels` 字段下配置：
 
-**新文件：`src/web/client/src/components/GitPanel/graph-utils.ts`**
-
-实现 commit graph 布局算法：
-- 输入：按时间排序的 commits（含 parents）
-- 输出：每个 commit 的列号（lane）和连线信息
-- 算法：标准的 lane assignment
-  - 维护活跃 lane 列表
-  - 新 commit 分配到其第一个 parent 所在 lane
-  - 合并 commit 产生交叉线
-  - 分支分叉产生新 lane
-
-### Phase 3：前端 - 全新布局
-
-**改造：`src/web/client/src/components/GitPanel/index.tsx`**
-
-从抽屉式改为独立页面式（或者大面板），采用三栏布局：
-
-```
-+-------------------+------------------------------------------+-------------------+
-|   Branch Tree     |  Graph Column | Commit List              | Commit Detail     |
-|                   |  (SVG lines)  | (message, author, date)  | (files, diff)     |
-|   ▼ Local         |  ●──●         | fix: stripe lifetime...  |                   |
-|     main          |  │  ●──●      | info: 添加升级检查...      |                   |
-|     dev           |  ●  │         | fix: replicate 未填充...   |                   |
-|   ▼ Remote        |  │  ●         | Merge branch 'feat/...'  |                   |
-|     origin/main   |  ●──┤         | 开启阿里滤网             |                   |
-+-------------------+------------------------------------------+-------------------+
+```json
+{
+  "channels": {
+    "telegram": {
+      "enabled": true,
+      "credentials": {
+        "botToken": "123456:ABC-DEF"
+      },
+      "allowList": ["user_id_1", "user_id_2"],
+      "allowGroups": false,
+      "model": "sonnet"
+    },
+    "feishu": {
+      "enabled": true,
+      "credentials": {
+        "appId": "cli_xxx",
+        "appSecret": "xxx"
+      },
+      "allowList": ["*"],
+      "allowGroups": true
+    }
+  }
+}
 ```
 
-布局方案：
-- **左侧栏** (200px)：分支树（树形层级结构，本地/远程/feature 分组）
-- **中间主区** (flex-1)：Graph + Commit 列表（水平排列）
-  - Graph 列 (80-150px)：SVG 画布渲染分支线
-  - Commit 列 (flex-1)：消息 + ref 标签 + 作者 + 日期
-- **右侧栏** (300px, 可选)：选中 commit 的详情（文件列表 + diff）
+### Web UI 管理界面
 
-### Phase 4：前端 - Graph SVG 渲染
+在现有的 Connectors 页面旁边新增 "Channels" Tab：
+- 显示各通道的连接状态（connected/disconnected/error）
+- 配置凭据（Bot Token 等）
+- 白名单管理
+- 启用/停用开关
+- 查看最近的 IM 消息日志
 
-**新文件：`src/web/client/src/components/GitPanel/CommitGraph.tsx`**
+### 与现有功能的关系
 
-- 每行高度固定（32px），与 commit 列表同步滚动
-- SVG 渲染：
-  - 圆点 (●) 表示 commit，颜色按 lane 分配
-  - 竖线 (│) 表示同一分支的连续 commit
-  - 斜线 (╱╲) 表示合并/分叉
-  - 颜色调色板：使用 7-8 种高对比色，循环分配给不同 lane
+| 现有功能 | IM 通道整合 | 关系 |
+|---------|------------|------|
+| Connectors (GitHub/Slack MCP) | Channels (Telegram/飞书 Bot) | **并行共存**，互不影响 |
+| ConversationManager.chat() | IMBridge.handleInboundMessage() | **复用** chat() 作为入口 |
+| WebSocket 消息流 | IM 消息流 | **并行**：Web UI 用 WS，IM 用各自 SDK |
+| Session 管理 | IM 会话 | **复用** WebSessionManager，会话 ID 加 `im:` 前缀 |
+| 工具系统 | IM 中的工具调用 | **完全复用**，无区别 |
+| 权限系统 | IM 权限 | **复用** + 白名单额外过滤 |
 
-### Phase 5：前端 - Ref 标签
+---
 
-在 commit 消息旁显示 ref 标签：
-- branch ref → 带颜色背景的小标签（如 `main`、`origin/dev`）
-- tag ref → 不同颜色的标签
-- HEAD 指针 → 特殊高亮
+## 实现优先级
 
-### Phase 6：前端 - 分支树组件
+### Phase 1：Telegram（最简单，验证架构）
+- grammY 库，API 简单，文档完善
+- OpenClaw 中最成熟的通道
+- 全球用户量大
 
-**改造：`src/web/client/src/components/GitPanel/BranchesView.tsx`**
+### Phase 2：飞书
+- 中国用户刚需
+- OpenClaw 有完整的飞书插件实现可参考
+- WebSocket 长连接模式，无需公网
 
-从扁平列表改为树形：
+### Phase 3：Slack Bot（区别于现有 Slack MCP Connector）
+- 现有的 `connector-slack` 是 MCP 工具（AI 主动操作 Slack）
+- 新增的是 Slack Bot（人在 Slack 里给 AI 下命令）
+- 两者共存，互补
+
+### 暂不实现
+- **微信**：只有社区第三方协议（WeChatPadPro），有封号风险，不稳定
+- **钉钉**：OpenClaw 也不支持，API 生态较差
+- **企业微信**：同上
+- **Discord/WhatsApp**：国内用户少，优先级低
+
+---
+
+## 依赖变更
+
+```json
+{
+  "dependencies": {
+    "grammy": "^1.39.0"        // Telegram Bot SDK（Phase 1）
+  },
+  "optionalDependencies": {
+    // 飞书 SDK（Phase 2，按需安装）
+  }
+}
 ```
-▼ Local
-  ● main (HEAD)
-  ▸ feature/
-    ○ feature/login
-    ○ feature/payment
-  ○ dev
-▼ Remote
-  ▸ origin/
-    ○ main
-    ○ dev
+
+**注意**：只增加 grammy 一个必须依赖。飞书等后续通道作为可选依赖。
+
+---
+
+## 风险评估
+
+| 风险 | 影响 | 缓解措施 |
+|------|------|---------|
+| IM SDK 依赖体积 | 增加包大小 | grammy 很轻量（<1MB） |
+| 会话隔离不彻底 | IM 用户看到其他人的上下文 | 严格的 sessionId 隔离（`im:channel:chatId`） |
+| IM 速率限制 | 回复被截断或延迟 | 消息累积 + 分块发送 |
+| 工具执行安全性 | IM 用户执行危险操作 | 白名单 + 现有权限系统 |
+| 现有功能回归 | 新代码影响 WebSocket 消息流 | 完全独立的模块，不修改现有代码 |
+
+---
+
+## 文件变更清单
+
+### 新增文件
 ```
-- 支持折叠/展开
-- 点击分支 → 筛选 log 只显示该分支
-- 双击 → checkout
+src/web/server/channels/
+├── index.ts              # ChannelManager 类
+├── types.ts              # 接口定义
+├── bridge.ts             # IMBridge 桥接层
+└── adapters/
+    └── telegram.ts       # Telegram 适配器
 
-### Phase 7：顶部筛选栏
+src/web/client/src/components/ChannelsPanel/
+├── index.tsx             # 通道管理面板
+└── ChannelCard.tsx       # 单个通道卡片
+```
 
-在 commit 列表上方添加筛选工具栏：
-- 分支下拉选择（多选）
-- 作者下拉选择
-- 日期范围选择
-- 搜索框（commit message 模糊搜索）
+### 修改文件
+```
+src/web/server/index.ts            # 初始化 ChannelManager
+src/web/server/websocket.ts        # 添加 channel:* 消息类型
+src/web/shared/types.ts            # 添加通道相关类型
+src/web/server/conversation.ts     # 可能需要暴露 chat() 的更多参数
+src/config/index.ts                # 添加 channels 配置字段
+package.json                       # 添加 grammy 依赖
+```
 
-## 改动文件清单
-
-| 文件 | 改动类型 | 说明 |
-|------|----------|------|
-| `src/web/server/git-manager.ts` | 修改 | `GitCommit` 加 parents/refs，`getLog()` 改 format |
-| `src/web/server/websocket-git-handlers.ts` | 修改 | `handleGitGetLog` 传递新字段 |
-| `src/web/client/src/components/GitPanel/index.tsx` | 重构 | 三栏布局 |
-| `src/web/client/src/components/GitPanel/graph-utils.ts` | 新建 | Graph 布局算法 |
-| `src/web/client/src/components/GitPanel/CommitGraph.tsx` | 新建 | Graph SVG 渲染组件 |
-| `src/web/client/src/components/GitPanel/LogView.tsx` | 重构 | 集成 Graph，添加 ref 标签 |
-| `src/web/client/src/components/GitPanel/BranchesView.tsx` | 重构 | 树形分支显示 |
-| `src/web/client/src/components/GitPanel/GitPanel.css` | 大改 | 新布局样式 |
-| `src/web/client/src/components/GitPanel/CommitDetail.tsx` | 新建 | 右侧 commit 详情面板 |
-
-## 技术要点
-
-1. **Graph 算法**：不依赖第三方库，自研 lane assignment 算法（~200 行）
-2. **SVG 渲染**：纯 SVG path，不用 canvas（方便交互和样式）
-3. **同步滚动**：Graph SVG 和 Commit 列表共用 scroll container
-4. **性能**：只渲染可视区域的 commits（虚拟滚动，如果 commit 数量 > 200）
-5. **Windows 兼容**：git format 中 `%` 在 cmd.exe 需要转义，用 `execFileSync` 或 `%%`
-
-## 风险与注意
-
-- Windows 下 `git log --format="%P"` 中的 `%` 可能被 cmd.exe 吃掉 → 现有代码已经用双引号包裹，需要测试
-- Graph 算法复杂度需控制在 O(n) 级别（n = commit 数量）
-- 虚拟滚动暂不实现，先用简单 overflow scroll，commit 数量限制 200 条
+### 不修改的文件
+- 核心引擎（src/core/）
+- 工具系统（src/tools/）
+- 权限系统（src/permissions/）
+- 现有连接器（src/web/server/connectors/）
+- CLI 模式（src/cli.ts）

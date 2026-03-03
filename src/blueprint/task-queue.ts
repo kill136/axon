@@ -56,7 +56,7 @@ export class TaskQueue extends EventEmitter {
    */
   async execute(tasks: SmartTask[], executor: TaskExecutor): Promise<QueueResult> {
     if (this.isRunning) {
-      throw new Error('队列正在执行中');
+      throw new Error('Queue is already executing');
     }
 
     this.isRunning = true;
@@ -78,7 +78,7 @@ export class TaskQueue extends EventEmitter {
             completedCount,
             failedCount,
             results,
-            error: '执行被取消',
+            error: 'Execution cancelled',
           };
         }
 
@@ -126,7 +126,7 @@ export class TaskQueue extends EventEmitter {
               completedCount,
               failedCount,
               results,
-              error: `任务失败: ${task.name}`,
+              error: `Task failed: ${task.name}`,
             };
           }
         } catch (error: any) {
@@ -151,7 +151,7 @@ export class TaskQueue extends EventEmitter {
             completedCount,
             failedCount,
             results,
-            error: `任务执行异常: ${task.name} - ${error.message}`,
+            error: `Task execution error: ${task.name} - ${error.message}`,
           };
         }
 

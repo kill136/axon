@@ -877,11 +877,11 @@ export class SmartPlanner extends EventEmitter {
    */
   async generateBlueprint(state: DialogState): Promise<Blueprint> {
     if (!state.isComplete) {
-      throw new Error('对话未完成，无法生成蓝图');
+      throw new Error('Conversation not complete, cannot generate blueprint');
     }
 
     if (!this.projectPath) {
-      throw new Error('项目路径未设置');
+      throw new Error('Project path not set');
     }
 
     // 发送进度事件：开始分析需求
@@ -1187,7 +1187,7 @@ export class SmartPlanner extends EventEmitter {
     if (!taskData || !Array.isArray(taskData.tasks)) {
       console.error('[SmartPlanner] AI returned invalid data, missing tasks array');
       console.error('[SmartPlanner] taskData:', JSON.stringify(taskData, null, 2));
-      throw new Error('任务分解失败：AI 未能返回有效的任务列表。请检查蓝图描述是否足够详细，或稍后重试。');
+      throw new Error('Task decomposition failed: AI did not return a valid task list. Please check if the blueprint description is detailed enough, or try again later.');
     }
 
     // 构建智能任务列表（过滤掉无效任务）
@@ -1900,7 +1900,7 @@ ${explorationContext ? `\n## 代码库探索结果\n${explorationContext}` : ''}
       console.log('[SmartPlanner] Agent response preview:', result?.slice(0, 500));
 
       if (!result) {
-        throw new Error('Agent 返回空响应');
+        throw new Error('Agent returned empty response');
       }
 
       // 从响应中提取 JSON
@@ -1921,11 +1921,11 @@ ${explorationContext ? `\n## 代码库探索结果\n${explorationContext}` : ''}
 
       console.error('[SmartPlanner] Cannot extract JSON from response');
       console.error('[SmartPlanner] Full response:', result);
-      throw new Error('无法从 Agent 响应中提取任务数据');
+      throw new Error('Unable to extract task data from Agent response');
 
     } catch (error: any) {
       console.error('[SmartPlanner] Task decomposition Agent failed:', error.message);
-      throw new Error(`任务分解失败: ${error.message}`);
+      throw new Error(`Task decomposition failed: ${error.message}`);
     }
   }
 
@@ -2517,7 +2517,7 @@ export class StreamingBlueprintGenerator extends EventEmitter {
 
     if (!state.isComplete) {
       console.log('[StreamingBlueprintGenerator] Error: dialog not completed');
-      yield { type: 'error', error: '对话未完成，无法生成蓝图' };
+      yield { type: 'error', error: 'Conversation not complete, cannot generate blueprint' };
       return;
     }
 
@@ -2572,7 +2572,7 @@ export class StreamingBlueprintGenerator extends EventEmitter {
       blueprintData = this.extractBlueprintFromResponse(fullResponse);
 
       if (!blueprintData) {
-        yield { type: 'error', error: '无法从 AI 响应中解析蓝图数据' };
+        yield { type: 'error', error: 'Unable to parse blueprint data from AI response' };
         return;
       }
 
@@ -2591,7 +2591,7 @@ export class StreamingBlueprintGenerator extends EventEmitter {
       yield { type: 'complete', blueprint };
 
     } catch (error: any) {
-      yield { type: 'error', error: error.message || '蓝图生成失败' };
+      yield { type: 'error', error: error.message || 'Blueprint generation failed' };
     }
   }
 

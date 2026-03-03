@@ -127,7 +127,59 @@ export class TerminalManager {
       }
     }
 
-    // 回退方案：使用 child_process（功能受限）
+    // 回退方案：使用 script 命令包装 PTY（macOS/Linux）
+    // child_process 的 pipe 模式下 shell 检测到不是 tty，不会显示 prompt
+    // 用 `script` 命令创建伪终端，让 shell 以交互模式运行
+    if (os.platform() !== 'win32') {
+      try {
+        // macOS: script -q /dev/null <shell> -l
+        // Linux: script -qc "<shell> -l" /dev/null
+        const isMac = os.platform() === 'darwin';
+        const scriptCmd = isMac ? 'script' : 'script';
+        const scriptArgs = isMac
+          ? ['-q', '/dev/null', shell, ...shellArgs]
+          : ['-qc', [shell, ...shellArgs].join(' '), '/dev/null'];
+
+        const childProcess = spawn(scriptCmd, scriptArgs, {
+          cwd,
+          env: {
+            ...process.env,
+            TERM: 'xterm-256color',
+            COLORTERM: 'truecolor',
+          },
+          stdio: ['pipe', 'pipe', 'pipe'],
+          windowsHide: true,
+        });
+
+        childProcess.stdout?.on('data', (data: Buffer) => {
+          options.onData(data.toString());
+        });
+
+        childProcess.stderr?.on('data', (data: Buffer) => {
+          options.onData(data.toString());
+        });
+
+        childProcess.on('exit', (code: number | null) => {
+          options.onExit(code ?? 0);
+          this.sessions.delete(id);
+        });
+
+        childProcess.on('error', (err: Error) => {
+          options.onData(`\r\nError: ${err.message}\r\n`);
+          options.onExit(1);
+          this.sessions.delete(id);
+        });
+
+        session.process = childProcess;
+        this.sessions.set(id, session);
+        console.log(`[TerminalManager] script-pty session created: ${id}, shell=${shell}`);
+        return true;
+      } catch (err) {
+        console.error(`[TerminalManager] script fallback failed:`, err);
+      }
+    }
+
+    // 最终回退：纯 child_process（Windows 无 node-pty 时，或 script 也失败时）
     try {
       const childProcess = spawn(shell, shellArgs, {
         cwd,
@@ -161,7 +213,7 @@ export class TerminalManager {
 
       session.process = childProcess;
       this.sessions.set(id, session);
-      console.log(`[TerminalManager] child_process session created: ${id}, shell=${shell}`);
+      console.log(`[TerminalManager] child_process session created: ${id}, shell=${shell} (limited mode)`);
       return true;
     } catch (err) {
       console.error(`[TerminalManager] Failed to create terminal:`, err);

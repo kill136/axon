@@ -207,7 +207,7 @@ export class VisualComparator {
       base64 = input.base64;
     } else if (input.filePath) {
       if (!fs.existsSync(input.filePath)) {
-        throw new Error(`图片文件不存在: ${input.filePath}`);
+        throw new Error(`Image file not found: ${input.filePath}`);
       }
 
       const buffer = fs.readFileSync(input.filePath);
@@ -223,7 +223,7 @@ export class VisualComparator {
         mimeType = 'image/webp';
       }
     } else {
-      throw new Error('必须提供 base64 或 filePath');
+      throw new Error('Must provide base64 or filePath');
     }
 
     return { base64, mimeType };
@@ -287,7 +287,7 @@ ${context ? `**上下文**: ${context}\n\n` : ''}**分析维度**：
     // 提取文本内容
     const textContent = response.content.find(block => block.type === 'text');
     if (!textContent || textContent.type !== 'text') {
-      throw new Error('AI 响应中没有文本内容');
+      throw new Error('No text content in AI response');
     }
 
     const rawAnalysis = textContent.text;

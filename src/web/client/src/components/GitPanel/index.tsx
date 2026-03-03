@@ -251,10 +251,10 @@ export function GitPanel({ isOpen, onClose, send, addMessageHandler, projectPath
       payload: { projectPath },
     });
 
-    // 请求 git log（增加到 200 条）
+    // 请求 git log（--all 显示所有分支，limit 200）
     send({
       type: 'git:get_log',
-      payload: { projectPath, limit: 200 },
+      payload: { projectPath, limit: 200, all: true },
     });
 
     // 始终请求 branches 和 stashes

@@ -62,7 +62,7 @@ export const executionRouter = router({
       if (!status) {
         throw new TRPCError({
           code: 'NOT_FOUND',
-          message: '执行会话不存在',
+          message: 'Execution session not found',
         });
       }
 
@@ -90,11 +90,11 @@ export const executionRouter = router({
       if (!success) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
-          message: '无法暂停执行（可能已完成或不存在）',
+          message: 'Cannot pause execution (may be completed or not found)',
         });
       }
 
-      return { message: '执行已暂停' };
+      return { message: 'Execution paused' };
     }),
 
   /**
@@ -112,11 +112,11 @@ export const executionRouter = router({
       if (!success) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
-          message: '无法恢复执行（可能已完成或不存在）',
+          message: 'Cannot resume execution (may be completed or not found)',
         });
       }
 
-      return { message: '执行已恢复' };
+      return { message: 'Execution resumed' };
     }),
 
   /**
@@ -134,11 +134,11 @@ export const executionRouter = router({
       if (!success) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
-          message: '无法取消执行（可能已完成或不存在）',
+          message: 'Cannot cancel execution (may be completed or not found)',
         });
       }
 
-      return { message: '执行已取消' };
+      return { message: 'Execution cancelled' };
     }),
 
   /**
@@ -177,7 +177,7 @@ export const executionRouter = router({
       if (!blueprint) {
         throw new TRPCError({
           code: 'NOT_FOUND',
-          message: '蓝图不存在',
+          message: 'Blueprint not found',
         });
       }
 
@@ -193,8 +193,8 @@ export const executionRouter = router({
       });
 
       return {
-        message: 'E2E 测试请求已提交，请确保浏览器 MCP 扩展已连接',
-        hint: 'E2E 测试将启动应用、打开浏览器、按业务流程验收，并与设计图对比',
+        message: 'E2E test request submitted, please ensure the browser MCP extension is connected',
+        hint: 'E2E test will launch the app, open a browser, run acceptance tests by business flow, and compare with design images',
       };
     }),
 });

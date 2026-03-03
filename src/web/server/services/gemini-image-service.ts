@@ -67,7 +67,7 @@ export class GeminiImageService {
 
     const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
     if (!apiKey) {
-      throw new Error('未配置 GEMINI_API_KEY 或 GOOGLE_API_KEY 环境变量');
+      throw new Error('GEMINI_API_KEY or GOOGLE_API_KEY environment variable is not configured');
     }
 
     this.ai = new GoogleGenAI({ apiKey });
@@ -143,10 +143,10 @@ export class GeminiImageService {
    */
   private buildPrompt(options: GenerateDesignOptions): string {
     const styleDescriptions = {
-      modern: '现代、简洁、扁平化设计风格，使用渐变色和圆角元素',
-      minimal: '极简主义风格，大量留白，黑白灰为主，突出内容',
-      corporate: '企业级专业风格，稳重的配色，清晰的层次结构',
-      creative: '创意风格，大胆的配色，独特的布局，视觉冲击力强',
+      modern: 'Modern, clean, flat design style with gradient colors and rounded elements',
+      minimal: 'Minimalist style with generous whitespace, primarily black/white/gray, content-focused',
+      corporate: 'Enterprise-grade professional style with stable colors and clear hierarchy',
+      creative: 'Creative style with bold colors, unique layouts, and strong visual impact',
     };
 
     const style = options.style || 'modern';
@@ -169,25 +169,25 @@ export class GeminiImageService {
       : '';
 
     return `
-请生成一个专业的软件系统 UI 设计图/界面原型图。
+Generate a professional software system UI design / interface prototype.
 
-项目名称: ${options.projectName}
-项目描述: ${options.projectDescription}
+Project Name: ${options.projectName}
+Project Description: ${options.projectDescription}
 
-核心功能模块:
+Core Feature Modules:
 ${coreFeatures.map((f, i) => `${i + 1}. ${f}`).join('\n')}
 
-${techInfo ? `技术栈: ${techInfo}` : ''}
+${techInfo ? `Tech Stack: ${techInfo}` : ''}
 
-设计要求:
+Design Requirements:
 - ${styleDesc}
-- 展示系统的主要界面布局
-- 包含导航栏、侧边栏、主内容区等核心组件
-- 清晰的信息层次和视觉引导
-- 专业的 UI 设计，类似 Figma 设计稿
-- 高清晰度，适合展示给客户确认
+- Show the main interface layout of the system
+- Include navigation bar, sidebar, main content area and other core components
+- Clear information hierarchy and visual guidance
+- Professional UI design, similar to Figma mockups
+- High resolution, suitable for client review
 
-请生成一张完整的系统界面设计图，展示整体布局和主要功能模块的界面设计。
+Generate a complete system interface design showing the overall layout and main feature module designs.
 `.trim();
   }
 
@@ -246,7 +246,7 @@ ${techInfo ? `技术栈: ${techInfo}` : ''}
       if (!imageData) {
         return {
           success: false,
-          error: '未能生成图片，请稍后重试',
+          error: 'Failed to generate image, please try again later',
           generatedText,
         };
       }
@@ -263,26 +263,26 @@ ${techInfo ? `技术栈: ${techInfo}` : ''}
     } catch (error) {
       console.error('[GeminiImageService] Failed to generate design image:', error);
 
-      const errorMessage = error instanceof Error ? error.message : '未知错误';
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
       // 处理特定错误
       if (errorMessage.includes('API key')) {
         return {
           success: false,
-          error: '未配置有效的 Gemini API Key，请检查环境变量 GEMINI_API_KEY',
+          error: 'No valid Gemini API Key configured, please check the GEMINI_API_KEY environment variable',
         };
       }
 
       if (errorMessage.includes('quota') || errorMessage.includes('rate')) {
         return {
           success: false,
-          error: 'API 配额已用尽或请求频率过高，请稍后重试',
+          error: 'API quota exhausted or request rate too high, please try again later',
         };
       }
 
       return {
         success: false,
-        error: `生成设计图失败: ${errorMessage}`,
+        error: `Failed to generate design image: ${errorMessage}`,
       };
     }
   }
@@ -347,7 +347,7 @@ ${techInfo ? `技术栈: ${techInfo}` : ''}
       if (!imageData) {
         return {
           success: false,
-          error: '未能生成图片，请稍后重试',
+          error: 'Failed to generate image, please try again later',
           generatedText,
         };
       }
@@ -364,25 +364,25 @@ ${techInfo ? `技术栈: ${techInfo}` : ''}
     } catch (error) {
       console.error('[GeminiImageService] Failed to generate image:', error);
 
-      const errorMessage = error instanceof Error ? error.message : '未知错误';
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
       if (errorMessage.includes('API key')) {
         return {
           success: false,
-          error: '未配置有效的 Gemini API Key，请检查环境变量 GEMINI_API_KEY',
+          error: 'No valid Gemini API Key configured, please check the GEMINI_API_KEY environment variable',
         };
       }
 
       if (errorMessage.includes('quota') || errorMessage.includes('rate')) {
         return {
           success: false,
-          error: 'API 配额已用尽或请求频率过高，请稍后重试',
+          error: 'API quota exhausted or request rate too high, please try again later',
         };
       }
 
       return {
         success: false,
-        error: `生成图片失败: ${errorMessage}`,
+        error: `Failed to generate image: ${errorMessage}`,
       };
     }
   }

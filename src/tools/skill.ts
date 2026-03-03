@@ -10,6 +10,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { fileURLToPath } from 'url';
 import { BaseTool } from './base.js';
 import type { ToolResult, ToolDefinition } from '../types/index.js';
 import { getCurrentCwd } from '../core/cwd-context.js';
@@ -940,6 +941,47 @@ async function loadSkillsFromPluginCache(): Promise<SkillDefinition[]> {
  * }
  * ```
  */
+
+/**
+ * 部署内置 skills 到用户目录
+ * 将 src/skills/builtin/ 下的 skills 复制到 ~/.axon/skills/（仅在目标不存在时）
+ * 确保新用户安装后开箱即有 tool-discovery 和 skill-hub 等核心 skills
+ */
+function deployBuiltinSkills(claudeDir: string): void {
+  try {
+    // 定位内置 skills 目录：src/skills/builtin/
+    const __filename = fileURLToPath(import.meta.url);
+    const srcRoot = path.resolve(path.dirname(__filename), '..');
+    const builtinDir = path.join(srcRoot, 'skills', 'builtin');
+
+    if (!fs.existsSync(builtinDir)) return;
+
+    const userSkillsDir = path.join(claudeDir, 'skills');
+    fs.mkdirSync(userSkillsDir, { recursive: true });
+
+    const entries = fs.readdirSync(builtinDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+
+      const targetDir = path.join(userSkillsDir, entry.name);
+      const targetFile = path.join(targetDir, 'SKILL.md');
+
+      // 只在目标不存在时部署，用户修改过的不覆盖
+      if (fs.existsSync(targetFile)) continue;
+
+      const sourceFile = path.join(builtinDir, entry.name, 'SKILL.md');
+      if (!fs.existsSync(sourceFile)) continue;
+
+      fs.mkdirSync(targetDir, { recursive: true });
+      fs.copyFileSync(sourceFile, targetFile);
+      console.log(`[Skills] Deployed builtin skill: ${entry.name}`);
+    }
+  } catch (error) {
+    // 部署失败不应阻断 skills 加载
+    console.error('[Skills] Failed to deploy builtin skills:', error);
+  }
+}
+
 export async function initializeSkills(): Promise<void> {
   if (skillsLoaded) return;
 
@@ -959,6 +1001,9 @@ export async function initializeSkills(): Promise<void> {
   for (const skill of pluginSkills) {
     allSkillsWithPath.push({ skill, filePath: skill.filePath });
   }
+
+  // 1.5 部署内置 skills（确保新用户开箱即有 tool-discovery / skill-hub）
+  deployBuiltinSkills(claudeDir);
 
   // 2. 加载用户级 skills（对齐官网 userSettings）
   const userSkillsDir = path.join(claudeDir, 'skills');
@@ -1273,6 +1318,11 @@ Important:
   async execute(input: SkillInput): Promise<any> {
     const { skill: skillInput, args } = input;
 
+    // 内置可执行 skill：skill-hub 直接调用 hub.ts 函数返回结果
+    if (skillInput === 'skill-hub') {
+      return await this.executeSkillHub(args);
+    }
+
     // 确保 skills 已加载
     if (!skillsLoaded) {
       await initializeSkills();
@@ -1383,6 +1433,90 @@ Important:
         },
       ],
     };
+  }
+
+  /**
+   * 内置可执行 skill: skill-hub
+   * 直接调用 hub.ts 函数，返回纯文本结果，不走 newMessages 提示词注入
+   */
+  private async executeSkillHub(args?: string): Promise<any> {
+    const { searchSkills, installSkill, listInstalledSkills, publishSkill } = await import('../skills/hub.js');
+
+    const parts = (args || '').trim().split(/\s+/);
+    const command = parts[0] || '';
+    const restArgs = parts.slice(1).join(' ');
+
+    try {
+      switch (command) {
+        case 'search': {
+          if (!restArgs) {
+            return { success: false, error: 'Usage: /skill-hub search <query>' };
+          }
+          const results = await searchSkills(restArgs);
+          if (results.length === 0) {
+            return { success: true, output: `No skills found matching "${restArgs}"` };
+          }
+          let output = `Found ${results.length} skill(s):\n\n`;
+          for (const skill of results) {
+            output += `**${skill.name}** (${skill.id})\n`;
+            output += `  ${skill.description}\n`;
+            output += `  Author: ${skill.author} | Version: ${skill.version}\n`;
+            if (skill.tags && skill.tags.length > 0) {
+              output += `  Tags: ${skill.tags.join(', ')}\n`;
+            }
+            output += `  Install: \`/skill-hub install ${skill.id}\`\n\n`;
+          }
+          return { success: true, output };
+        }
+
+        case 'install': {
+          if (!restArgs) {
+            return { success: false, error: 'Usage: /skill-hub install <skill-id>' };
+          }
+          await installSkill(restArgs);
+          return { success: true, output: `Skill "${restArgs}" installed successfully! Restart your session to load it.` };
+        }
+
+        case 'list': {
+          const skills = listInstalledSkills();
+          if (skills.length === 0) {
+            return { success: true, output: 'No skills installed.\n\nSearch for skills: `/skill-hub search <query>`' };
+          }
+          let output = `Installed Skills (${skills.length}):\n\n`;
+          for (const skill of skills) {
+            const sourceIcon = skill.source === 'hub' ? '[hub]' : '[local]';
+            output += `${sourceIcon} **${skill.name}** (${skill.id})\n`;
+            output += `   ${skill.description}\n`;
+            if (skill.version) output += `   Version: ${skill.version}`;
+            if (skill.author) output += ` | Author: ${skill.author}`;
+            output += `\n   Path: ${skill.path}\n\n`;
+          }
+          return { success: true, output };
+        }
+
+        case 'publish': {
+          if (!restArgs) {
+            return { success: false, error: 'Usage: /skill-hub publish <path-to-skill-file>' };
+          }
+          const prUrl = await publishSkill(restArgs);
+          return { success: true, output: `Skill validated and ready for publication!\n\nCreate a PR at: ${prUrl}` };
+        }
+
+        default:
+          return {
+            success: true,
+            output: [
+              'Skill Hub Manager - Available commands:\n',
+              '  /skill-hub search <query>  - Search community registry',
+              '  /skill-hub install <id>    - Install a skill',
+              '  /skill-hub list            - List installed skills',
+              '  /skill-hub publish <path>  - Publish a skill',
+            ].join('\n'),
+          };
+      }
+    } catch (error: any) {
+      return { success: false, error: `skill-hub ${command} failed: ${error.message}` };
+    }
   }
 }
 

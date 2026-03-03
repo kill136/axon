@@ -209,7 +209,7 @@ export class WebConfigService {
       return this.configManager.getAll();
     } catch (error) {
       console.error('[WebConfigService] Failed to get all config:', error);
-      throw new Error(`获取配置失败: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Failed to get config: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -239,7 +239,7 @@ export class WebConfigService {
       };
     } catch (error) {
       console.error('[WebConfigService] Failed to get API config:', error);
-      throw new Error(`获取 API 配置失败: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Failed to get API config: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -252,7 +252,7 @@ export class WebConfigService {
       return config.permissions || {};
     } catch (error) {
       console.error('[WebConfigService] Failed to get permissions config:', error);
-      throw new Error(`获取权限配置失败: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Failed to get permissions config: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -266,7 +266,7 @@ export class WebConfigService {
       return {};
     } catch (error) {
       console.error('[WebConfigService] Failed to get hooks config:', error);
-      throw new Error(`获取 Hooks 配置失败: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Failed to get hooks config: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -281,7 +281,7 @@ export class WebConfigService {
       };
     } catch (error) {
       console.error('[WebConfigService] Failed to get logging config:', error);
-      throw new Error(`获取日志配置失败: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Failed to get logging config: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -294,7 +294,7 @@ export class WebConfigService {
       return config.proxy || {};
     } catch (error) {
       console.error('[WebConfigService] Failed to get proxy config:', error);
-      throw new Error(`获取代理配置失败: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Failed to get proxy config: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -308,7 +308,7 @@ export class WebConfigService {
       return config.security || { allowSandboxEscape: false };
     } catch (error) {
       console.error('[WebConfigService] Failed to get security config:', error);
-      throw new Error(`获取安全配置失败: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Failed to get security config: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -321,7 +321,7 @@ export class WebConfigService {
       return config.terminal || {};
     } catch (error) {
       console.error('[WebConfigService] Failed to get terminal config:', error);
-      throw new Error(`获取终端配置失败: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Failed to get terminal config: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -338,7 +338,7 @@ export class WebConfigService {
       };
     } catch (error) {
       console.error('[WebConfigService] Failed to get UI config:', error);
-      throw new Error(`获取 UI 配置失败: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Failed to get UI config: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -354,7 +354,7 @@ export class WebConfigService {
       };
     } catch (error) {
       console.error('[WebConfigService] Failed to get Git config:', error);
-      throw new Error(`获取 Git 配置失败: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Failed to get Git config: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -370,7 +370,7 @@ export class WebConfigService {
       };
     } catch (error) {
       console.error('[WebConfigService] Failed to get tool filter config:', error);
-      throw new Error(`获取工具过滤配置失败: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Failed to get tool filter config: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -536,7 +536,7 @@ export class WebConfigService {
       return this.configManager.export(maskSecrets);
     } catch (error) {
       console.error('[WebConfigService] Failed to export config:', error);
-      throw new Error(`导出配置失败: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Failed to export config: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 

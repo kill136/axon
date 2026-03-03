@@ -245,7 +245,7 @@ export class BrowserTestTools extends EventEmitter {
       };
     }
 
-    throw new Error('无法检测项目类型和启动命令');
+    throw new Error('Unable to detect project type and start commands');
   }
 
   /**
@@ -333,7 +333,7 @@ export class BrowserTestTools extends EventEmitter {
       await new Promise(resolve => setTimeout(resolve, 500));
     }
 
-    throw new Error(`服务启动超时 (${timeout}ms)`);
+    throw new Error(`Service startup timeout (${timeout}ms)`);
   }
 
   // ==========================================================================
@@ -354,7 +354,7 @@ export class BrowserTestTools extends EventEmitter {
       });
 
       if (!createResult.success) {
-        return { success: false, error: createResult.error || '创建标签页失败' };
+        return { success: false, error: createResult.error || 'Failed to create tab' };
       }
 
       // 获取标签页信息
@@ -383,7 +383,7 @@ export class BrowserTestTools extends EventEmitter {
    */
   async navigate(url: string): Promise<{ success: boolean; error?: string }> {
     if (!this.tabId) {
-      return { success: false, error: '浏览器未打开' };
+      return { success: false, error: 'Browser not open' };
     }
 
     this.log(`导航到: ${url}`);
@@ -472,7 +472,7 @@ export class BrowserTestTools extends EventEmitter {
    */
   async click(refIdOrQuery: string): Promise<{ success: boolean; error?: string }> {
     if (!this.tabId) {
-      return { success: false, error: '浏览器未打开' };
+      return { success: false, error: 'Browser not open' };
     }
 
     let refId = refIdOrQuery;
@@ -481,7 +481,7 @@ export class BrowserTestTools extends EventEmitter {
     if (!refIdOrQuery.match(/^[a-z0-9-]+$/i)) {
       const element = await this.findElement(refIdOrQuery);
       if (!element) {
-        return { success: false, error: `找不到元素: ${refIdOrQuery}` };
+        return { success: false, error: `Element not found: ${refIdOrQuery}` };
       }
       refId = element.refId;
     }
@@ -502,7 +502,7 @@ export class BrowserTestTools extends EventEmitter {
    */
   async type(text: string): Promise<{ success: boolean; error?: string }> {
     if (!this.tabId) {
-      return { success: false, error: '浏览器未打开' };
+      return { success: false, error: 'Browser not open' };
     }
 
     this.log(`输入文本: ${text.substring(0, 50)}...`);
@@ -521,7 +521,7 @@ export class BrowserTestTools extends EventEmitter {
    */
   async fillField(refIdOrQuery: string, value: string): Promise<{ success: boolean; error?: string }> {
     if (!this.tabId) {
-      return { success: false, error: '浏览器未打开' };
+      return { success: false, error: 'Browser not open' };
     }
 
     let refId = refIdOrQuery;
@@ -529,7 +529,7 @@ export class BrowserTestTools extends EventEmitter {
     if (!refIdOrQuery.match(/^[a-z0-9-]+$/i)) {
       const element = await this.findElement(refIdOrQuery);
       if (!element) {
-        return { success: false, error: `找不到元素: ${refIdOrQuery}` };
+        return { success: false, error: `Element not found: ${refIdOrQuery}` };
       }
       refId = element.refId;
     }
@@ -550,7 +550,7 @@ export class BrowserTestTools extends EventEmitter {
    */
   async pressKey(key: string): Promise<{ success: boolean; error?: string }> {
     if (!this.tabId) {
-      return { success: false, error: '浏览器未打开' };
+      return { success: false, error: 'Browser not open' };
     }
 
     this.log(`按键: ${key}`);
@@ -569,7 +569,7 @@ export class BrowserTestTools extends EventEmitter {
    */
   async scroll(direction: 'up' | 'down' | 'left' | 'right', amount = 300): Promise<{ success: boolean; error?: string }> {
     if (!this.tabId) {
-      return { success: false, error: '浏览器未打开' };
+      return { success: false, error: 'Browser not open' };
     }
 
     const result = await this.config.mcpToolCaller.call('computer', {
@@ -591,7 +591,7 @@ export class BrowserTestTools extends EventEmitter {
    */
   async takeScreenshot(savePath?: string): Promise<{ success: boolean; path?: string; base64?: string; error?: string }> {
     if (!this.tabId) {
-      return { success: false, error: '浏览器未打开' };
+      return { success: false, error: 'Browser not open' };
     }
 
     this.log('截取页面截图...');
@@ -615,7 +615,7 @@ export class BrowserTestTools extends EventEmitter {
       return { success: true, base64 };
     }
 
-    return { success: false, error: result.error || '截图失败' };
+    return { success: false, error: result.error || 'Screenshot failed' };
   }
 
   /**
@@ -634,7 +634,7 @@ export class BrowserTestTools extends EventEmitter {
       const designBuffer = fs.readFileSync(designImagePath);
       designBase64 = designBuffer.toString('base64');
     } else {
-      throw new Error(`设计图不存在: ${designImagePath}`);
+      throw new Error(`Design image not found: ${designImagePath}`);
     }
 
     return {
@@ -675,7 +675,7 @@ export class BrowserTestTools extends EventEmitter {
       return { success: true };
     }
 
-    return { success: false, error: `元素不存在: ${query}` };
+    return { success: false, error: `Element not found: ${query}` };
   }
 
   /**
@@ -683,7 +683,7 @@ export class BrowserTestTools extends EventEmitter {
    */
   async assertTextExists(text: string): Promise<{ success: boolean; error?: string }> {
     if (!this.tabId) {
-      return { success: false, error: '浏览器未打开' };
+      return { success: false, error: 'Browser not open' };
     }
 
     const result = await this.config.mcpToolCaller.call('get_page_text', {
@@ -694,7 +694,7 @@ export class BrowserTestTools extends EventEmitter {
       return { success: true };
     }
 
-    return { success: false, error: `页面不包含文本: ${text}` };
+    return { success: false, error: `Page does not contain text: ${text}` };
   }
 
   /**
@@ -702,7 +702,7 @@ export class BrowserTestTools extends EventEmitter {
    */
   async assertUrl(expectedUrl: string | RegExp): Promise<{ success: boolean; actualUrl?: string; error?: string }> {
     if (!this.tabId) {
-      return { success: false, error: '浏览器未打开' };
+      return { success: false, error: 'Browser not open' };
     }
 
     const result = await this.config.mcpToolCaller.call('javascript_tool', {
@@ -722,10 +722,10 @@ export class BrowserTestTools extends EventEmitter {
         return { success: true, actualUrl };
       }
 
-      return { success: false, actualUrl, error: `URL 不匹配: 期望 ${expectedUrl}, 实际 ${actualUrl}` };
+      return { success: false, actualUrl, error: `URL mismatch: expected ${expectedUrl}, actual ${actualUrl}` };
     }
 
-    return { success: false, error: '获取 URL 失败' };
+    return { success: false, error: 'Failed to get URL' };
   }
 
   /**
@@ -794,7 +794,7 @@ export class BrowserTestTools extends EventEmitter {
    */
   async executeScript(script: string): Promise<{ success: boolean; result?: string; error?: string }> {
     if (!this.tabId) {
-      return { success: false, error: '浏览器未打开' };
+      return { success: false, error: 'Browser not open' };
     }
 
     const result = await this.config.mcpToolCaller.call('javascript_tool', {

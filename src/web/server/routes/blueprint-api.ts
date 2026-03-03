@@ -364,6 +364,29 @@ class BlueprintStore {
       }
     }
 
+    // 缓存未命中且 projectPath 未提供或未找到：遍历所有已知项目路径查找
+    try {
+      const recentProjects = loadRecentProjects();
+      for (const project of recentProjects) {
+        if (project.path === projectPath) continue; // 已经试过了
+        const blueprintDir = this.getBlueprintDir(project.path);
+        const filePath = path.join(blueprintDir, `${id}.json`);
+
+        if (fs.existsSync(filePath)) {
+          try {
+            const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+            const blueprint = this.deserializeBlueprint(data, project.path);
+            this.blueprints.set(id, blueprint);
+            return blueprint;
+          } catch (e) {
+            console.error(`[BlueprintStore] Failed to read blueprint: ${filePath}`, e);
+          }
+        }
+      }
+    } catch (e) {
+      // loadRecentProjects 可能在初始化阶段不可用，忽略
+    }
+
     return null;
   }
 
@@ -383,7 +406,7 @@ class BlueprintStore {
    */
   save(blueprint: Blueprint): void {
     if (!blueprint.projectPath) {
-      throw new Error('蓝图必须有 projectPath');
+      throw new Error('Blueprint must have a projectPath');
     }
 
     // v12.0: 状态转为 executing 时检查唯一活跃约束
@@ -391,15 +414,15 @@ class BlueprintStore {
       const existing = this.getActiveBlueprint(blueprint.projectPath);
       if (existing && existing.id !== blueprint.id) {
         throw new Error(
-          `项目已有活跃蓝图: "${existing.name}" (ID: ${existing.id}, 状态: ${existing.status})。` +
-          `请先完成或取消该蓝图后再执行新蓝图。`
+          `Project already has an active blueprint: "${existing.name}" (ID: ${existing.id}, status: ${existing.status}). ` +
+          `Please complete or cancel it before executing a new blueprint.`
         );
       }
     }
 
     // 状态校验：confirmed 状态至少需要 name + description（v10.0: 不再强制要求 modules 等旧字段）
     if (blueprint.status === 'confirmed' && !blueprint.name && !blueprint.description) {
-      throw new Error('蓝图状态不能为 confirmed：至少需要 name 或 description');
+      throw new Error('Blueprint status cannot be confirmed: at least name or description is required');
     }
 
     // 版本号逻辑：空内容的蓝图版本号应为 0.1.0
@@ -578,10 +601,10 @@ class RealTaskExecutor implements TaskExecutor {
       return '';
     }
 
-    const lines: string[] = ['## 蜂群共享记忆'];
+    const lines: string[] = ['## Swarm Shared Memory'];
 
     // 进度概览
-    lines.push(`进度: ${memory.overview}`);
+    lines.push(`Progress: ${memory.overview}`);
 
     // API 列表（最多显示 10 个）
     if (memory.apis?.length > 0) {
@@ -595,15 +618,15 @@ class RealTaskExecutor implements TaskExecutor {
 
     // 已完成任务（最多显示 5 个）
     if (memory.completedTasks?.length > 0) {
-      lines.push('已完成:');
+      lines.push('Completed:');
       memory.completedTasks.slice(-5).forEach(t => {
-        lines.push(`- ${t.taskName}: ${t.summary?.slice(0, 30) || '完成'}`);
+        lines.push(`- ${t.taskName}: ${t.summary?.slice(0, 30) || 'done'}`);
       });
     }
 
     // 蓝图路径提示
     const blueprintPath = `.blueprint/${this.blueprint.id}.json`;
-    lines.push(`\n详情: Read("${blueprintPath}") 查看完整蓝图和记忆`);
+    lines.push(`\nDetails: Read("${blueprintPath}") to view the full blueprint and memory`);
 
     return lines.join('\n');
   }
@@ -611,7 +634,7 @@ class RealTaskExecutor implements TaskExecutor {
   constructor(blueprint: Blueprint) {
     // 关键检查：确保 projectPath 存在，避免后续执行时回退到 process.cwd()
     if (!blueprint.projectPath) {
-      throw new Error(`无法创建 RealTaskExecutor：蓝图 "${blueprint.name}" (${blueprint.id}) 缺少 projectPath 配置`);
+      throw new Error(`Cannot create RealTaskExecutor: blueprint "${blueprint.name}" (${blueprint.id}) is missing projectPath configuration`);
     }
     this.blueprint = blueprint;
     // v5.0: 一次性构建共享的 System Prompt 基础部分
@@ -638,7 +661,7 @@ class RealTaskExecutor implements TaskExecutor {
         success: false,
         changes: [],
         decisions: [],
-        error: '任务对象无效',
+        error: 'Invalid task object',
       };
     }
     if (!task.name) {
@@ -647,7 +670,7 @@ class RealTaskExecutor implements TaskExecutor {
         success: false,
         changes: [],
         decisions: [],
-        error: '任务缺少 name 属性',
+        error: 'Task is missing the name property',
       };
     }
 
@@ -711,45 +734,45 @@ class RealTaskExecutor implements TaskExecutor {
 
       // 策略决定
       worker.on('strategy:decided', (data: any) => {
-        emitWorkerLog('info', 'decision', `策略决定: ${data.strategy?.approach || '自动选择'}`, { strategy: data.strategy });
+        emitWorkerLog('info', 'decision', `Strategy decision: ${data.strategy?.approach || 'auto-selected'}`, { strategy: data.strategy });
       });
 
       // 代码编写
       worker.on('code:writing', (data: any) => {
-        emitWorkerLog('info', 'tool', `正在编写代码...`, { task: data.task?.name });
+        emitWorkerLog('info', 'tool', `Writing code...`, { task: data.task?.name });
       });
 
       worker.on('code:written', (data: any) => {
         const fileCount = data.changes?.length || 0;
-        emitWorkerLog('info', 'output', `代码编写完成，修改了 ${fileCount} 个文件`, { changes: data.changes });
+        emitWorkerLog('info', 'output', `Code writing complete, modified ${fileCount} files`, { changes: data.changes });
       });
 
       // 测试编写
       worker.on('test:writing', (data: any) => {
-        emitWorkerLog('info', 'tool', `正在编写测试...`, { task: data.task?.name });
+        emitWorkerLog('info', 'tool', `Writing tests...`, { task: data.task?.name });
       });
 
       worker.on('test:written', (data: any) => {
         const fileCount = data.changes?.length || 0;
-        emitWorkerLog('info', 'output', `测试编写完成，添加了 ${fileCount} 个测试文件`, { changes: data.changes });
+        emitWorkerLog('info', 'output', `Test writing complete, added ${fileCount} test files`, { changes: data.changes });
       });
 
       // 测试运行
       worker.on('test:running', (data: any) => {
-        emitWorkerLog('info', 'tool', `正在运行测试...`, { task: data.task?.name });
+        emitWorkerLog('info', 'tool', `Running tests...`, { task: data.task?.name });
       });
 
       worker.on('test:passed', (data: any) => {
-        emitWorkerLog('info', 'status', `✅ 测试通过`, { result: data.result });
+        emitWorkerLog('info', 'status', `Tests passed`, { result: data.result });
       });
 
       worker.on('test:failed', (data: any) => {
-        emitWorkerLog('warn', 'error', `❌ 测试失败: ${data.result?.error || '未知错误'}`, { result: data.result });
+        emitWorkerLog('warn', 'error', `Tests failed: ${data.result?.error || 'unknown error'}`, { result: data.result });
       });
 
       // 🔧 代码审查中
       worker.on('task:reviewing', (data: any) => {
-        emitWorkerLog('info', 'status', `🔍 正在进行代码审查...`, { task: data.task });
+        emitWorkerLog('info', 'status', `Running code review...`, { task: data.task });
         executionEventEmitter.emit('task:reviewing', {
           blueprintId: this.blueprint.id,
           workerId,
@@ -760,10 +783,10 @@ class RealTaskExecutor implements TaskExecutor {
       // v5.0: 审查进度反馈
       worker.on('reviewer:progress', (data: any) => {
         const stageMessages: Record<string, string> = {
-          checking_git: '🔍 验证 Git 提交状态',
-          verifying_files: '📄 验证文件内容和代码质量',
-          analyzing_quality: '🔬 分析代码质量',
-          completing: '✅ 完成审查',
+          checking_git: 'Verifying Git commit status',
+          verifying_files: 'Verifying file content and code quality',
+          analyzing_quality: 'Analyzing code quality',
+          completing: 'Completing review',
         };
         const displayMessage = stageMessages[data.stage] || data.message;
         emitWorkerLog('info', 'status', displayMessage, { stage: data.stage, details: data.details });
@@ -781,17 +804,17 @@ class RealTaskExecutor implements TaskExecutor {
 
       // 任务完成
       worker.on('task:completed', (data: any) => {
-        emitWorkerLog('info', 'status', `✅ 任务完成: ${data.task?.name || task.name}`, { task: data.task });
+        emitWorkerLog('info', 'status', `Task completed: ${data.task?.name || task.name}`, { task: data.task });
       });
 
 
       // 错误处理
       worker.on('error:occurred', (data: any) => {
-        emitWorkerLog('error', 'error', `❌ 发生错误: ${data.error}`, { task: data.task, error: data.error });
+        emitWorkerLog('error', 'error', `Error occurred: ${data.error}`, { task: data.task, error: data.error });
       });
 
       worker.on('error:retrying', (data: any) => {
-        emitWorkerLog('warn', 'status', `🔄 重试中 (尝试 ${data.attempt})...`, { attempt: data.attempt, action: data.action });
+        emitWorkerLog('warn', 'status', `Retrying (attempt ${data.attempt})...`, { attempt: data.attempt, action: data.action });
       });
 
       // v2.1: 监听流式事件（实时显示 Claude 的思考和输出）
@@ -894,7 +917,7 @@ class RealTaskExecutor implements TaskExecutor {
         timestamp: new Date().toISOString(),
         level: 'info' as const,
         type: 'status' as const,
-        message: `🚀 开始执行任务: ${task.name}`,
+        message: `Starting task execution: ${task.name}`,
         details: { taskId: task.id, taskName: task.name, complexity: task.complexity },
       },
     });
@@ -911,7 +934,7 @@ class RealTaskExecutor implements TaskExecutor {
           success: false,
           changes: [],
           decisions: [],
-          error: `蓝图 "${this.blueprint.name}" 缺少 projectPath 配置，无法执行任务。请确保蓝图关联了正确的项目路径。`,
+          error: `Blueprint "${this.blueprint.name}" is missing projectPath configuration and cannot execute tasks. Please ensure the blueprint is associated with the correct project path.`,
         };
       }
       const effectiveProjectPath = this.blueprint.projectPath;
@@ -1035,7 +1058,7 @@ class RealTaskExecutor implements TaskExecutor {
           timestamp: new Date().toISOString(),
           level: result.success ? 'info' as const : 'error' as const,
           type: 'status' as const,
-          message: result.success ? `✅ 任务执行完成: ${task.name}` : `❌ 任务执行失败: ${result.error || '未知错误'}`,
+          message: result.success ? `Task execution completed: ${task.name}` : `Task execution failed: ${result.error || 'unknown error'}`,
           details: { success: result.success, changesCount: result.changes?.length || 0 },
         },
       });
@@ -1058,7 +1081,7 @@ class RealTaskExecutor implements TaskExecutor {
           timestamp: new Date().toISOString(),
           level: 'error' as const,
           type: 'error' as const,
-          message: `❌ 任务执行出错: ${error.message || '未知错误'}`,
+          message: `Task execution error: ${error.message || 'unknown error'}`,
           details: { error: error.message, stack: error.stack },
         },
       });
@@ -1070,7 +1093,7 @@ class RealTaskExecutor implements TaskExecutor {
         success: false,
         changes: [],
         decisions: [],
-        error: error.message || '任务执行失败',
+        error: error.message || 'Task execution failed',
       };
     }
   }
@@ -1099,7 +1122,7 @@ class RealTaskExecutor implements TaskExecutor {
           timestamp: new Date().toISOString(),
           level: 'warn' as const,
           type: 'status' as const,
-          message: `⏹️ 任务执行被中止（超时）`,
+          message: `Task execution aborted (timeout)`,
           details: { taskId: currentTask?.id, reason: 'timeout' },
         },
       });
@@ -1260,7 +1283,7 @@ class ExecutionManager {
     if (!blueprint.id.startsWith('tp-')) {
       const existingSession = this.getSessionByBlueprint(blueprint.id);
       if (existingSession && !existingSession.completedAt) {
-        throw new Error('该蓝图已有正在执行的任务');
+        throw new Error('This blueprint already has tasks being executed');
       }
     }
 
@@ -1402,7 +1425,7 @@ class ExecutionManager {
       const logEntry = workerTracker.addLog(data.workerId, {
         level: 'info',
         type: 'status',
-        message: `开始执行任务: ${data.taskName || data.taskId}`,
+        message: `Starting task execution: ${data.taskName || data.taskId}`,
         details: { taskId: data.taskId, taskName: data.taskName },
       }, data.taskId);
 
@@ -1442,7 +1465,7 @@ class ExecutionManager {
         const logEntry = workerTracker.addLog(workerId, {
           level: 'info',
           type: 'status',
-          message: `任务完成: ${data.taskName || data.taskId}`,
+          message: `Task completed: ${data.taskName || data.taskId}`,
           details: { taskId: data.taskId, success: true },
         }, data.taskId);
         executionEventEmitter.emit('worker:log', {
@@ -1486,7 +1509,7 @@ class ExecutionManager {
         const logEntry = workerTracker.addLog(workerId, {
           level: 'error',
           type: 'error',
-          message: `任务失败: ${data.error || '未知错误'}`,
+          message: `Task failed: ${data.error || 'unknown error'}`,
           details: { taskId: data.taskId, error: data.error },
         }, data.taskId);
         executionEventEmitter.emit('worker:log', {
@@ -1529,7 +1552,7 @@ class ExecutionManager {
     coordinator.on('plan:failed', (data: any) => {
       executionEventEmitter.emit('execution:failed', {
         blueprintId: blueprint.id,
-        error: data.error || '执行失败',
+        error: data.error || 'Execution failed',
       });
     });
 
@@ -1801,7 +1824,7 @@ class ExecutionManager {
   async waitForCompletion(executionId: string): Promise<ExecutionResult> {
     const session = this.sessions.get(executionId);
     if (!session) {
-      throw new Error(`执行会话 ${executionId} 不存在`);
+      throw new Error(`Execution session ${executionId} does not exist`);
     }
 
     // 如果已完成，直接返回
@@ -1849,12 +1872,12 @@ class ExecutionManager {
           completedCount: completedTasks.length,
           failedCount: failedTasks.length,
           skippedCount: skippedTasks.length,
-          rawResponse: `LeadAgent 执行超时 (${LEAD_AGENT_TIMEOUT / 60000} 分钟)，已强制终止。`,
+          rawResponse: `LeadAgent execution timed out (${LEAD_AGENT_TIMEOUT / 60000} minutes) and was forcefully terminated.`,
           issues: [{
             id: `timeout-${Date.now()}`,
             taskId: '',
             type: 'timeout' as const,
-            description: `LeadAgent 执行超时 (${LEAD_AGENT_TIMEOUT / 60000} 分钟)`,
+            description: `LeadAgent execution timed out (${LEAD_AGENT_TIMEOUT / 60000} minutes)`,
             timestamp: new Date(),
             resolved: false,
           }],
@@ -1989,7 +2012,7 @@ class ExecutionManager {
     if (!blueprint && session) {
       blueprint = {
         id: blueprintId,
-        name: session.blueprintName || 'TaskPlan 执行',
+        name: session.blueprintName || 'TaskPlan Execution',
         description: '',
         status: 'executing',
         projectPath: session.projectPath,
@@ -1999,19 +2022,19 @@ class ExecutionManager {
     }
 
     if (!blueprint || !blueprint.projectPath) {
-      return { success: false, error: '找不到蓝图或缺少项目路径' };
+      return { success: false, error: 'Blueprint not found or missing project path' };
     }
 
     // 获取之前的执行计划
     const lastPlan = session?.coordinator.getCurrentPlan() || blueprint.lastExecutionPlan;
     if (!lastPlan || !lastPlan.tasks || lastPlan.tasks.length === 0) {
-      return { success: false, error: '没有执行计划可以恢复' };
+      return { success: false, error: 'No execution plan available to resume' };
     }
 
     // 检查是否有 pending 任务
     const pendingTasks = lastPlan.tasks.filter((t: any) => t.status === 'pending' || t.status === 'running');
     if (pendingTasks.length === 0) {
-      return { success: false, error: '所有任务已完成，无需恢复' };
+      return { success: false, error: 'All tasks are already completed, no need to resume' };
     }
 
     // 将 running 任务重置为 pending（原 LeadAgent 已退出，Worker 也已终止）
@@ -2284,14 +2307,14 @@ class ExecutionManager {
 
     if (!session) {
       console.log(`[ExecutionManager] Session not found and cannot be restored, current sessions:`, Array.from(this.sessions.keys()));
-      return { success: false, error: '找不到该蓝图的执行会话，请重新开始执行' };
+      return { success: false, error: 'Execution session for this blueprint not found, please restart execution' };
     }
 
     console.log(`[ExecutionManager] Session found, checking coordinator...`);
 
     if (!session.coordinator) {
       console.log(`[ExecutionManager] Coordinator does not exist`);
-      return { success: false, error: '执行协调器不可用' };
+      return { success: false, error: 'Execution coordinator unavailable' };
     }
 
     console.log(`[ExecutionManager] Coordinator exists, starting task retry...`);
@@ -2323,7 +2346,7 @@ class ExecutionManager {
 
         const blueprint = blueprintStore.get(blueprintId);
         if (!blueprint) {
-          return { success: false, error: '找不到蓝图' };
+          return { success: false, error: 'Blueprint not found' };
         }
 
         // 清除会话的完成状态，使其可以重新执行
@@ -2357,10 +2380,10 @@ class ExecutionManager {
         return { success: true };
       }
 
-      return { success: false, error: '协调器重试失败' };
+      return { success: false, error: 'Coordinator retry failed' };
     } catch (error: any) {
       console.error(`[ExecutionManager] Task retry failed:`, error);
-      return { success: false, error: error.message || '重试任务时发生错误' };
+      return { success: false, error: error.message || 'Error occurred while retrying task' };
     }
   }
 
@@ -2542,7 +2565,7 @@ class ExecutionManager {
       const logEntry = workerTracker.addLog(data.workerId, {
         level: 'info',
         type: 'status',
-        message: `开始执行任务: ${data.taskName || data.taskId}`,
+        message: `Starting task execution: ${data.taskName || data.taskId}`,
         details: { taskId: data.taskId, taskName: data.taskName },
       }, data.taskId);
 
@@ -2566,7 +2589,7 @@ class ExecutionManager {
       const logEntry = workerTracker.addLog(data.workerId, {
         level: 'info',
         type: 'status',
-        message: `✅ 任务完成: ${data.taskName || data.taskId}`,
+        message: `Task completed: ${data.taskName || data.taskId}`,
         details: { taskId: data.taskId },
       }, data.taskId);
 
@@ -2590,7 +2613,7 @@ class ExecutionManager {
       const logEntry = workerTracker.addLog(data.workerId, {
         level: 'error',
         type: 'status',
-        message: `❌ 任务执行出错: ${data.error || '未知错误'}`,
+        message: `Task execution error: ${data.error || 'unknown error'}`,
         details: { taskId: data.taskId, error: data.error },
       }, data.taskId);
 
@@ -2710,7 +2733,7 @@ class ExecutionManager {
     coordinator.on('plan:failed', (data: any) => {
       executionEventEmitter.emit('execution:failed', {
         blueprintId: blueprint.id,
-        error: data.error || '执行失败',
+        error: data.error || 'Execution failed',
       });
     });
 
@@ -2829,7 +2852,7 @@ router.post('/blueprints', async (req: Request, res: Response) => {
     if (!name || !projectPath) {
       return res.status(400).json({
         success: false,
-        error: '缺少必填字段: name, projectPath',
+        error: 'Missing required fields: name, projectPath',
       });
     }
 
@@ -2838,7 +2861,7 @@ router.post('/blueprints', async (req: Request, res: Response) => {
     if (existingBlueprint) {
       return res.status(409).json({
         success: false,
-        error: `该项目路径已存在蓝图: "${existingBlueprint.name}" (ID: ${existingBlueprint.id})`,
+        error: `A blueprint already exists for this project path: "${existingBlueprint.name}" (ID: ${existingBlueprint.id})`,
         existingBlueprint: {
           id: existingBlueprint.id,
           name: existingBlueprint.name,
@@ -2875,14 +2898,14 @@ router.post('/blueprints', async (req: Request, res: Response) => {
       return res.json({
         success: true,
         data: blueprint,
-        message: '蓝图创建成功',
+        message: 'Blueprint created successfully',
       });
     }
 
     // v10.0: 对话流程已移入 Chat Tab 主 Agent，不再支持独立对话模式
     res.status(400).json({
       success: false,
-      error: '请在 Chat Tab 中通过对话生成蓝图（v10.0）',
+      error: 'Please generate blueprints through conversation in the Chat Tab (v10.0)',
     });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
@@ -2900,7 +2923,7 @@ router.get('/blueprints/:id', (req: Request, res: Response) => {
     if (!blueprint) {
       return res.status(404).json({
         success: false,
-        error: '蓝图不存在',
+        error: 'Blueprint does not exist',
       });
     }
 
@@ -2924,7 +2947,7 @@ router.delete('/blueprints/:id', (req: Request, res: Response) => {
     if (!blueprint) {
       return res.status(404).json({
         success: false,
-        error: '蓝图不存在',
+        error: 'Blueprint does not exist',
       });
     }
 
@@ -2932,7 +2955,7 @@ router.delete('/blueprints/:id', (req: Request, res: Response) => {
     if (blueprint.status === 'executing') {
       return res.status(400).json({
         success: false,
-        error: '无法删除正在执行的蓝图',
+        error: 'Cannot delete a blueprint that is currently executing',
       });
     }
 
@@ -2940,7 +2963,7 @@ router.delete('/blueprints/:id', (req: Request, res: Response) => {
 
     res.json({
       success: true,
-      message: '蓝图已删除',
+      message: 'Blueprint deleted',
     });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
@@ -2973,7 +2996,7 @@ router.get('/blueprints/:id/architecture-graph', async (req: Request, res: Respo
 
     const blueprint = blueprintStore.get(id);
     if (!blueprint) {
-      return res.status(404).json({ success: false, error: '蓝图不存在' });
+      return res.status(404).json({ success: false, error: 'Blueprint does not exist' });
     }
 
     // 检查缓存
@@ -3013,31 +3036,31 @@ router.get('/blueprints/:id/architecture-graph', async (req: Request, res: Respo
 
     // 构建 AI 提示词
     const typePrompts: Record<string, string> = {
-      dataflow: '数据流图：展示数据如何在系统中流动',
-      modulerelation: '模块关系图：展示各模块之间的依赖关系',
-      full: '完整架构图：展示系统整体架构和核心组件',
+      dataflow: 'Data flow diagram: shows how data flows through the system',
+      modulerelation: 'Module relationship diagram: shows dependencies between modules',
+      full: 'Full architecture diagram: shows overall system architecture and core components',
     };
 
-    const prompt = `分析项目并生成 ${typePrompts[type] || typePrompts.full}。
+    const prompt = `Analyze the project and generate a ${typePrompts[type] || typePrompts.full}.
 
-项目: ${blueprint.name}
-描述: ${blueprint.description || '无'}
-技术栈: ${JSON.stringify(blueprint.techStack || {})}
+Project: ${blueprint.name}
+Description: ${blueprint.description || 'N/A'}
+Tech Stack: ${JSON.stringify(blueprint.techStack || {})}
 
-文件结构:
-${fileStructure || '(无)'}
+File Structure:
+${fileStructure || '(none)'}
 
-模块:
-${blueprint.modules?.map((m: any) => `- ${m.name}: ${m.description || ''}`).join('\n') || '(无)'}
+Modules:
+${blueprint.modules?.map((m: any) => `- ${m.name}: ${m.description || ''}`).join('\n') || '(none)'}
 
-生成 Mermaid flowchart 代码。要求:
-1. 使用 flowchart TD 格式
-2. 节点 ID 用英文，标签可中文
-3. 用 subgraph 分组
-4. 不同箭头: --> 调用, -.-> 依赖, ==> 数据流
+Generate Mermaid flowchart code. Requirements:
+1. Use flowchart TD format
+2. Node IDs in English, labels can be descriptive
+3. Use subgraph for grouping
+4. Different arrows: --> calls, -.-> dependencies, ==> data flow
 
-返回 JSON:
-{"title":"标题","description":"描述","mermaidCode":"flowchart TD\\n...","nodePathMap":{"NodeId":{"path":"src/xxx","type":"folder"}}}`;
+Return JSON:
+{"title":"title","description":"description","mermaidCode":"flowchart TD\\n...","nodePathMap":{"NodeId":{"path":"src/xxx","type":"folder"}}}`;
 
     // 调用 AI
     const { getDefaultClient } = await import('../../../core/client.js');
@@ -3057,12 +3080,12 @@ ${blueprint.modules?.map((m: any) => `- ${m.name}: ${m.description || ''}`).join
       if (jsonMatch) jsonStr = jsonMatch[1];
       result = JSON.parse(jsonStr.trim());
     } catch {
-      return res.status(500).json({ success: false, error: 'AI 返回格式错误' });
+      return res.status(500).json({ success: false, error: 'AI returned incorrect format' });
     }
 
     const graphData = {
       type,
-      title: result.title || `${blueprint.name} 架构图`,
+      title: result.title || `${blueprint.name} Architecture Diagram`,
       description: result.description || '',
       mermaidCode: result.mermaidCode || '',
       generatedAt: new Date().toISOString(),
@@ -3073,7 +3096,7 @@ ${blueprint.modules?.map((m: any) => `- ${m.name}: ${m.description || ''}`).join
     res.json({ success: true, data: graphData });
   } catch (error: any) {
     console.error('[architecture-graph] Error:', error);
-    res.status(500).json({ success: false, error: error.message || 'AI 生成失败' });
+    res.status(500).json({ success: false, error: error.message || 'AI generation failed' });
   }
 });
 
@@ -3088,7 +3111,7 @@ router.post('/blueprints/:id/execute', async (req: Request, res: Response) => {
     if (!blueprint) {
       return res.status(404).json({
         success: false,
-        error: '蓝图不存在',
+        error: 'Blueprint does not exist',
       });
     }
 
@@ -3096,14 +3119,14 @@ router.post('/blueprints/:id/execute', async (req: Request, res: Response) => {
     if (blueprint.status === 'executing') {
       return res.status(400).json({
         success: false,
-        error: '蓝图正在执行中',
+        error: 'Blueprint is currently executing',
       });
     }
 
     if (blueprint.status !== 'confirmed' && blueprint.status !== 'paused' && blueprint.status !== 'failed') {
       return res.status(400).json({
         success: false,
-        error: '蓝图状态不允许执行，需要先确认蓝图',
+        error: 'Blueprint status does not allow execution, needs to be confirmed first',
       });
     }
 
@@ -3112,7 +3135,7 @@ router.post('/blueprints/:id/execute', async (req: Request, res: Response) => {
     if (activeBlueprint && activeBlueprint.id !== blueprint.id) {
       return res.status(409).json({
         success: false,
-        error: `项目已有活跃蓝图: "${activeBlueprint.name}" (状态: ${activeBlueprint.status})`,
+        error: `Project already has an active blueprint: "${activeBlueprint.name}" (status: ${activeBlueprint.status})`,
         activeBlueprintId: activeBlueprint.id,
       });
     }
@@ -3129,7 +3152,7 @@ router.post('/blueprints/:id/execute', async (req: Request, res: Response) => {
         estimatedMinutes: session.plan.estimatedMinutes,
         estimatedCost: session.plan.estimatedCost,
       },
-      message: '执行已开始',
+      message: 'Execution started',
     });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
@@ -3147,7 +3170,7 @@ router.get('/execution/:id/status', (req: Request, res: Response) => {
     if (!status) {
       return res.status(404).json({
         success: false,
-        error: '执行会话不存在',
+        error: 'Execution session does not exist',
       });
     }
 
@@ -3177,13 +3200,13 @@ router.post('/execution/:id/pause', (req: Request, res: Response) => {
     if (!success) {
       return res.status(400).json({
         success: false,
-        error: '无法暂停执行（可能已完成或不存在）',
+        error: 'Cannot pause execution (may have completed or does not exist)',
       });
     }
 
     res.json({
       success: true,
-      message: '执行已暂停',
+      message: 'Execution paused',
     });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
@@ -3201,13 +3224,13 @@ router.post('/execution/:id/resume', (req: Request, res: Response) => {
     if (!success) {
       return res.status(400).json({
         success: false,
-        error: '无法恢复执行（可能已完成或不存在）',
+        error: 'Cannot resume execution (may have completed or does not exist)',
       });
     }
 
     res.json({
       success: true,
-      message: '执行已恢复',
+      message: 'Execution resumed',
     });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
@@ -3225,13 +3248,13 @@ router.post('/execution/:id/cancel', (req: Request, res: Response) => {
     if (!success) {
       return res.status(400).json({
         success: false,
-        error: '无法取消执行（可能已完成或不存在）',
+        error: 'Cannot cancel execution (may have completed or does not exist)',
       });
     }
 
     res.json({
       success: true,
-      message: '执行已取消',
+      message: 'Execution cancelled',
     });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
@@ -3268,7 +3291,7 @@ router.post('/execution/:blueprintId/verify-e2e', async (req: Request, res: Resp
     if (!blueprint) {
       return res.status(404).json({
         success: false,
-        error: '蓝图不存在',
+        error: 'Blueprint does not exist',
       });
     }
 
@@ -3286,8 +3309,8 @@ router.post('/execution/:blueprintId/verify-e2e', async (req: Request, res: Resp
 
     res.json({
       success: true,
-      message: 'E2E 测试请求已提交，请确保浏览器 MCP 扩展已连接',
-      hint: 'E2E 测试将启动应用、打开浏览器、按业务流程验收，并与设计图对比',
+      message: 'E2E test request submitted, please ensure the browser MCP extension is connected',
+      hint: 'E2E tests will start the app, open the browser, validate business flows, and compare with design mockups',
     });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
@@ -3304,7 +3327,7 @@ router.get('/execution/recoverable', (req: Request, res: Response) => {
     if (!projectPath) {
       return res.status(400).json({
         success: false,
-        error: '缺少 projectPath 参数',
+        error: 'Missing projectPath parameter',
       });
     }
 
@@ -3350,7 +3373,7 @@ router.post('/execution/recover', async (req: Request, res: Response) => {
     if (!projectPath) {
       return res.status(400).json({
         success: false,
-        error: '缺少 projectPath 参数',
+        error: 'Missing projectPath parameter',
       });
     }
 
@@ -3360,7 +3383,7 @@ router.post('/execution/recover', async (req: Request, res: Response) => {
     if (!session) {
       return res.status(400).json({
         success: false,
-        error: `项目 ${projectPath} 没有可恢复的执行状态`,
+        error: `Project ${projectPath} has no recoverable execution state`,
       });
     }
 
@@ -3678,7 +3701,7 @@ router.get('/coordinator/tasks/:taskId/logs', (req: Request, res: Response) => {
       return res.json({
         success: true,
         data: [],
-        message: '该任务尚未分配 Worker',
+        message: 'This task has not been assigned a Worker yet',
       });
     }
     // v4.1: 使用 getLogsByTaskId 按任务ID过滤日志
@@ -3808,7 +3831,7 @@ router.post('/coordinator/start', async (req: Request, res: Response) => {
         console.log('[coordinator/start] Blueprint not found:', blueprintId);
         return res.status(404).json({
           success: false,
-          error: '蓝图不存在',
+          error: 'Blueprint does not exist',
         });
       }
 
@@ -3829,7 +3852,7 @@ router.post('/coordinator/start', async (req: Request, res: Response) => {
                 blueprintId,
                 executionId: recoveredSession.id,
                 planId: recoveredSession.plan?.id,
-                message: '已从上次中断的位置恢复执行',
+                message: 'Resumed execution from the last interruption point',
               },
             });
           }
@@ -3845,7 +3868,7 @@ router.post('/coordinator/start', async (req: Request, res: Response) => {
         console.log('[coordinator/start] Blueprint status does not allow execution:', blueprint.status);
         return res.status(400).json({
           success: false,
-          error: `蓝图状态 "${blueprint.status}" 不允许执行`,
+          error: `Blueprint status "${blueprint.status}" does not allow execution`,
         });
       }
 
@@ -3932,14 +3955,14 @@ router.post('/coordinator/recover/:blueprintId', async (req: Request, res: Respo
     if (!blueprint) {
       return res.status(404).json({
         success: false,
-        error: '蓝图不存在',
+        error: 'Blueprint does not exist',
       });
     }
 
     if (!blueprint.projectPath) {
       return res.status(400).json({
         success: false,
-        error: '蓝图没有关联的项目路径',
+        error: 'Blueprint has no associated project path',
       });
     }
 
@@ -3947,7 +3970,7 @@ router.post('/coordinator/recover/:blueprintId', async (req: Request, res: Respo
     if (!RealtimeCoordinator.hasRecoverableState(blueprint.projectPath)) {
       return res.status(400).json({
         success: false,
-        error: '没有可恢复的执行状态',
+        error: 'No recoverable execution state',
       });
     }
 
@@ -3956,7 +3979,7 @@ router.post('/coordinator/recover/:blueprintId', async (req: Request, res: Respo
     if (existingSession && !existingSession.completedAt) {
       return res.status(409).json({
         success: false,
-        error: '该蓝图已有正在执行的任务',
+        error: 'This blueprint already has a running execution',
       });
     }
 
@@ -3966,7 +3989,7 @@ router.post('/coordinator/recover/:blueprintId', async (req: Request, res: Respo
     if (!session) {
       return res.status(500).json({
         success: false,
-        error: '恢复执行失败',
+        error: 'Failed to resume execution',
       });
     }
 
@@ -3975,7 +3998,7 @@ router.post('/coordinator/recover/:blueprintId', async (req: Request, res: Respo
       data: {
         executionId: session.id,
         blueprintId: session.blueprintId,
-        message: '执行已恢复',
+        message: 'Execution resumed',
       },
     });
   } catch (error: any) {
@@ -4143,7 +4166,7 @@ router.post('/coordinator/merge', async (req: Request, res: Response) => {
     success: true,
     data: {
       success: true,
-      message: '串行执行模式无需手动合并',
+      message: 'Serial execution mode does not require manual merging',
     },
   });
 });
@@ -4189,7 +4212,7 @@ router.post('/design/generate', async (req: Request, res: Response) => {
     if (!projectName || !requirements || !Array.isArray(requirements) || requirements.length === 0) {
       return res.status(400).json({
         success: false,
-        error: '缺少必要参数：projectName 和 requirements（数组）',
+        error: 'Missing required parameters: projectName and requirements (array)',
       });
     }
 
@@ -4206,7 +4229,7 @@ router.post('/design/generate', async (req: Request, res: Response) => {
     if (!result.success) {
       return res.status(500).json({
         success: false,
-        error: result.error || '生成设计图失败',
+        error: result.error || 'Failed to generate design mockups',
       });
     }
 
@@ -4221,7 +4244,7 @@ router.post('/design/generate', async (req: Request, res: Response) => {
     console.error('[Blueprint API] Failed to generate design image:', error);
     res.status(500).json({
       success: false,
-      error: error.message || '生成设计图时发生错误',
+      error: error.message || 'Error occurred while generating design mockups',
     });
   }
 });
@@ -4490,35 +4513,35 @@ router.post('/projects/open', (req: Request, res: Response) => {
     if (!projectPath) {
       return res.status(400).json({
         success: false,
-        error: '缺少 path 参数',
+        error: 'Missing path parameter',
       });
     }
 
     if (!path.isAbsolute(projectPath)) {
       return res.status(400).json({
         success: false,
-        error: '必须提供绝对路径',
+        error: 'Must provide an absolute path',
       });
     }
 
     if (!fs.existsSync(projectPath)) {
       return res.status(404).json({
         success: false,
-        error: `路径不存在: ${projectPath}`,
+        error: `Path does not exist: ${projectPath}`,
       });
     }
 
     if (!fs.statSync(projectPath).isDirectory()) {
       return res.status(400).json({
         success: false,
-        error: '路径必须是目录',
+        error: 'Path must be a directory',
       });
     }
 
     if (!isPathSafe(projectPath)) {
       return res.status(403).json({
         success: false,
-        error: '禁止访问系统目录',
+        error: 'Access to system directories is forbidden',
       });
     }
 
@@ -4586,7 +4609,7 @@ router.post('/projects/browse', async (req: Request, res: Response) => {
       const psScript = `
 Add-Type -AssemblyName System.Windows.Forms
 $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
-$dialog.Description = "选择项目文件夹"
+$dialog.Description = "Select project folder"
 $dialog.ShowNewFolderButton = $true
 if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
   Write-Output $dialog.SelectedPath
@@ -4597,7 +4620,7 @@ if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
     } else if (platform === 'darwin') {
       // macOS: 使用 osascript
       cmd = 'osascript';
-      args = ['-e', 'POSIX path of (choose folder with prompt "选择项目文件夹")'];
+      args = ['-e', 'POSIX path of (choose folder with prompt "Select project folder")'];
     } else {
       // Linux: 检查是否有可用的 GUI 对话框工具
       // 1. 检查 DISPLAY 或 WAYLAND_DISPLAY 环境变量
@@ -4639,10 +4662,10 @@ if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
       // 设置对应工具的命令参数
       if (dialogTool === 'kdialog') {
         cmd = 'kdialog';
-        args = ['--getexistingdirectory', os.homedir(), '--title', '选择项目文件夹'];
+        args = ['--getexistingdirectory', os.homedir(), '--title', 'Select project folder'];
       } else {
         cmd = 'zenity';
-        args = ['--file-selection', '--directory', '--title=选择项目文件夹'];
+        args = ['--file-selection', '--directory', '--title=Select project folder'];
       }
     }
 
@@ -4671,7 +4694,7 @@ if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
         console.error('[POST /projects/browse] process error:', stderr);
         return res.status(500).json({
           success: false,
-          error: '无法打开文件夹选择对话框',
+          error: 'Cannot open folder selection dialog',
         });
       }
 
@@ -4680,7 +4703,7 @@ if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
       if (!fs.existsSync(selectedPath) || !fs.statSync(selectedPath).isDirectory()) {
         return res.status(400).json({
           success: false,
-          error: '选择的路径无效',
+          error: 'Selected path is invalid',
         });
       }
 
@@ -4694,7 +4717,7 @@ if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
       console.error('[POST /projects/browse] spawn error:', error);
       res.status(500).json({
         success: false,
-        error: '无法启动文件夹选择对话框',
+        error: 'Cannot launch folder selection dialog',
       });
     });
   } catch (error: any) {
@@ -4751,7 +4774,7 @@ router.post('/projects/list-dirs', async (req: Request, res: Response) => {
     if (!fs.existsSync(targetPath)) {
       return res.status(400).json({
         success: false,
-        error: '路径不存在',
+        error: 'Path does not exist',
       });
     }
 
@@ -4760,7 +4783,7 @@ router.post('/projects/list-dirs', async (req: Request, res: Response) => {
     if (!stat.isDirectory()) {
       return res.status(400).json({
         success: false,
-        error: '路径不是目录',
+        error: 'Path is not a directory',
       });
     }
 
@@ -4772,7 +4795,7 @@ router.post('/projects/list-dirs', async (req: Request, res: Response) => {
       // 无权限访问
       return res.status(403).json({
         success: false,
-        error: '无权限访问此目录',
+        error: 'No permission to access this directory',
       });
     }
 
@@ -4837,7 +4860,7 @@ router.delete('/projects/:id', (req: Request, res: Response) => {
     if (index < 0) {
       return res.status(404).json({
         success: false,
-        error: '项目不存在',
+        error: 'Project does not exist',
       });
     }
 
@@ -4846,7 +4869,7 @@ router.delete('/projects/:id', (req: Request, res: Response) => {
 
     res.json({
       success: true,
-      message: `项目 "${removedProject.name}" 已从列表中移除`,
+      message: `Project "${removedProject.name}" has been removed from the list`,
       data: removedProject,
     });
   } catch (error: any) {
@@ -4934,21 +4957,21 @@ router.get('/file-tree', (req: Request, res: Response) => {
     if (!isPathSafeForFileTree(absoluteRoot)) {
       return res.status(403).json({
         success: false,
-        error: '禁止访问系统目录或根目录',
+        error: 'Access to system or root directories is forbidden',
       });
     }
 
     if (!fs.existsSync(absoluteRoot)) {
       return res.status(404).json({
         success: false,
-        error: `目录不存在: ${root}`,
+        error: `Directory does not exist: ${root}`,
       });
     }
 
     if (!fs.statSync(absoluteRoot).isDirectory()) {
       return res.status(400).json({
         success: false,
-        error: `路径不是目录: ${root}`,
+        error: `Path is not a directory: ${root}`,
       });
     }
 
@@ -5019,27 +5042,27 @@ router.get('/file-content', (req: Request, res: Response) => {
   try {
     const filePath = req.query.path as string;
     if (!filePath) {
-      return res.status(400).json({ success: false, error: '缺少文件路径参数' });
+      return res.status(400).json({ success: false, error: 'Missing file path parameter' });
     }
 
     const isAbsolutePath = path.isAbsolute(filePath);
     const absolutePath = isAbsolutePath ? filePath : path.resolve(process.cwd(), filePath);
 
     if (!isPathSafeForFileTree(absolutePath)) {
-      return res.status(403).json({ success: false, error: '禁止访问系统目录' });
+      return res.status(403).json({ success: false, error: 'Access to system directories is forbidden' });
     }
 
     if (!fs.existsSync(absolutePath)) {
-      return res.status(404).json({ success: false, error: `文件不存在: ${filePath}` });
+      return res.status(404).json({ success: false, error: `File does not exist: ${filePath}` });
     }
 
     const stats = fs.statSync(absolutePath);
     if (!stats.isFile()) {
-      return res.status(400).json({ success: false, error: '路径不是文件' });
+      return res.status(400).json({ success: false, error: 'Path is not a file' });
     }
 
     if (stats.size > 1024 * 1024) {
-      return res.status(413).json({ success: false, error: '文件过大，超过 1MB 限制' });
+      return res.status(413).json({ success: false, error: 'File too large, exceeds 1MB limit' });
     }
 
     const content = fs.readFileSync(absolutePath, 'utf-8');
@@ -5081,22 +5104,22 @@ router.put('/file-content', (req: Request, res: Response) => {
     const { path: filePath, content } = req.body;
 
     if (!filePath) {
-      return res.status(400).json({ success: false, error: '缺少文件路径参数' });
+      return res.status(400).json({ success: false, error: 'Missing file path parameter' });
     }
 
     if (typeof content !== 'string') {
-      return res.status(400).json({ success: false, error: '内容必须是字符串' });
+      return res.status(400).json({ success: false, error: 'Content must be a string' });
     }
 
     const isAbsolutePath = path.isAbsolute(filePath);
     const absolutePath = isAbsolutePath ? filePath : path.resolve(process.cwd(), filePath);
 
     if (!isPathSafeForFileTree(absolutePath)) {
-      return res.status(403).json({ success: false, error: '禁止修改系统目录文件' });
+      return res.status(403).json({ success: false, error: 'Modifying files in system directories is forbidden' });
     }
 
     if (!fs.existsSync(absolutePath)) {
-      return res.status(404).json({ success: false, error: `文件不存在: ${filePath}` });
+      return res.status(404).json({ success: false, error: `File does not exist: ${filePath}` });
     }
 
     fs.writeFileSync(absolutePath, content, 'utf-8');
@@ -5109,7 +5132,7 @@ router.put('/file-content', (req: Request, res: Response) => {
         size: stats.size,
         modifiedAt: stats.mtime.toISOString(),
       },
-      message: '文件保存成功',
+      message: 'File saved successfully',
     });
   } catch (error: any) {
     console.error('[File Save Error]', error);
@@ -5128,14 +5151,14 @@ router.post('/files/create', (req: Request, res: Response) => {
     if (!filePath) {
       return res.status(400).json({
         success: false,
-        error: '缺少 path 参数',
+        error: 'Missing path parameter',
       });
     }
 
     if (!type || !['file', 'directory'].includes(type)) {
       return res.status(400).json({
         success: false,
-        error: 'type 参数必须是 "file" 或 "directory"',
+        error: 'type parameter must be "file" or "directory"',
       });
     }
 
@@ -5144,14 +5167,14 @@ router.post('/files/create', (req: Request, res: Response) => {
     if (!isPathSafe(absolutePath)) {
       return res.status(403).json({
         success: false,
-        error: '禁止在系统目录中创建文件',
+        error: 'Creating files in system directories is not allowed',
       });
     }
 
     if (fs.existsSync(absolutePath)) {
       return res.status(409).json({
         success: false,
-        error: `路径已存在: ${filePath}`,
+        error: `Path already exists: ${filePath}`,
       });
     }
 
@@ -5168,7 +5191,7 @@ router.post('/files/create', (req: Request, res: Response) => {
 
     res.json({
       success: true,
-      message: `${type === 'directory' ? '文件夹' : '文件'} 创建成功`,
+      message: `${type === 'directory' ? 'Directory' : 'File'} created successfully`,
       data: {
         path: absolutePath,
         type,
@@ -5192,7 +5215,7 @@ router.delete('/files', (req: Request, res: Response) => {
     if (!filePath) {
       return res.status(400).json({
         success: false,
-        error: '缺少 path 参数',
+        error: 'Missing path parameter',
       });
     }
 
@@ -5201,14 +5224,14 @@ router.delete('/files', (req: Request, res: Response) => {
     if (!isPathSafe(absolutePath)) {
       return res.status(403).json({
         success: false,
-        error: '禁止删除系统目录中的文件',
+        error: 'Deleting files in system directories is not allowed',
       });
     }
 
     if (!fs.existsSync(absolutePath)) {
       return res.status(404).json({
         success: false,
-        error: `路径不存在: ${filePath}`,
+        error: `Path does not exist: ${filePath}`,
       });
     }
 
@@ -5225,7 +5248,7 @@ router.delete('/files', (req: Request, res: Response) => {
 
       res.json({
         success: true,
-        message: `${isDirectory ? '文件夹' : '文件'} "${fileName}" 已永久删除`,
+        message: `${isDirectory ? 'Directory' : 'File'} "${fileName}" permanently deleted`,
       });
     } else {
       const projectRoot = process.cwd();
@@ -5241,7 +5264,7 @@ router.delete('/files', (req: Request, res: Response) => {
 
       res.json({
         success: true,
-        message: `${isDirectory ? '文件夹' : '文件'} "${fileName}" 已移到回收站`,
+        message: `${isDirectory ? 'Directory' : 'File'} "${fileName}" moved to trash`,
         data: {
           originalPath: absolutePath,
           trashPath,
@@ -5265,7 +5288,7 @@ router.post('/files/rename', (req: Request, res: Response) => {
     if (!oldPath || !newPath) {
       return res.status(400).json({
         success: false,
-        error: '缺少 oldPath 或 newPath 参数',
+        error: 'Missing oldPath or newPath parameter',
       });
     }
 
@@ -5275,21 +5298,21 @@ router.post('/files/rename', (req: Request, res: Response) => {
     if (!isPathSafe(absoluteOldPath) || !isPathSafe(absoluteNewPath)) {
       return res.status(403).json({
         success: false,
-        error: '禁止在系统目录中操作文件',
+        error: 'Operating on files in system directories is not allowed',
       });
     }
 
     if (!fs.existsSync(absoluteOldPath)) {
       return res.status(404).json({
         success: false,
-        error: `源路径不存在: ${oldPath}`,
+        error: `Source path does not exist: ${oldPath}`,
       });
     }
 
     if (fs.existsSync(absoluteNewPath)) {
       return res.status(409).json({
         success: false,
-        error: `目标路径已存在: ${newPath}`,
+        error: `Target path already exists: ${newPath}`,
       });
     }
 
@@ -5297,7 +5320,7 @@ router.post('/files/rename', (req: Request, res: Response) => {
 
     res.json({
       success: true,
-      message: '重命名成功',
+      message: 'Renamed successfully',
       data: {
         oldPath: absoluteOldPath,
         newPath: absoluteNewPath,
@@ -5472,7 +5495,7 @@ router.get('/layered-treemap', async (req: Request, res: Response) => {
       if (zoomLevel < ZoomLevel.PROJECT || zoomLevel > ZoomLevel.CODE) {
         return res.status(400).json({
           success: false,
-          error: `无效的缩放级别: ${zoomLevel}，应为 0-4`
+          error: `Invalid zoom level: ${zoomLevel}, expected 0-4`
         });
       }
 
@@ -5519,7 +5542,7 @@ router.get('/layered-treemap/children', async (req: Request, res: Response) => {
     if (!nodePath) {
       return res.status(400).json({
         success: false,
-        error: '缺少节点路径参数'
+        error: 'Missing node path parameter'
       });
     }
 
@@ -5567,7 +5590,7 @@ router.get('/module-files', (req: Request, res: Response) => {
     if (!modulePath) {
       return res.status(400).json({
         success: false,
-        error: '缺少 path 参数',
+        error: 'Missing path parameter',
       });
     }
 
@@ -5576,14 +5599,14 @@ router.get('/module-files', (req: Request, res: Response) => {
     if (!fs.existsSync(absolutePath)) {
       return res.status(404).json({
         success: false,
-        error: `目录不存在: ${modulePath}`,
+        error: `Directory does not exist: ${modulePath}`,
       });
     }
 
     if (!fs.statSync(absolutePath).isDirectory()) {
       return res.status(400).json({
         success: false,
-        error: `路径不是目录: ${modulePath}`,
+        error: `Path is not a directory: ${modulePath}`,
       });
     }
 
@@ -5689,7 +5712,7 @@ router.get('/file-detail', (req: Request, res: Response) => {
     if (!filePath) {
       return res.status(400).json({
         success: false,
-        error: '缺少 path 参数',
+        error: 'Missing path parameter',
       });
     }
 
@@ -5698,7 +5721,7 @@ router.get('/file-detail', (req: Request, res: Response) => {
     if (!fs.existsSync(absolutePath)) {
       return res.status(404).json({
         success: false,
-        error: `文件不存在: ${filePath}`,
+        error: `File does not exist: ${filePath}`,
       });
     }
 
@@ -5706,7 +5729,7 @@ router.get('/file-detail', (req: Request, res: Response) => {
     if (!stat.isFile()) {
       return res.status(400).json({
         success: false,
-        error: `路径不是文件: ${filePath}`,
+        error: `Path is not a file: ${filePath}`,
       });
     }
 
@@ -5765,35 +5788,35 @@ router.get('/file-detail', (req: Request, res: Response) => {
         const isApi = hasExpress || fileName.includes('api') || fileName.includes('route');
 
         if (isTest) {
-          summary = `${fileName.replace(/\.(test|spec)\.(ts|tsx|js|jsx)$/, '')} 的测试文件`;
-          description = `包含针对相关模块的单元测试或集成测试`;
-          keyPoints = ['测试用例', '待 AI 分析详细内容'];
+          summary = `Test file for ${fileName.replace(/\.(test|spec)\.(ts|tsx|js|jsx)$/, '')}`;
+          description = `Contains unit tests or integration tests for the related module`;
+          keyPoints = ['Test cases', 'Pending AI analysis for details'];
         } else if (isHook) {
-          summary = `${fileName.replace(/\.(ts|tsx)$/, '')} 自定义 Hook`;
-          description = `React 自定义 Hook，提供可复用的状态逻辑`;
-          keyPoints = ['React Hook', '状态管理', '待 AI 分析详细内容'];
+          summary = `${fileName.replace(/\.(ts|tsx)$/, '')} custom Hook`;
+          description = `React custom Hook providing reusable state logic`;
+          keyPoints = ['React Hook', 'State management', 'Pending AI analysis for details'];
         } else if (isComponent) {
-          summary = `${fileName.replace(/\.(tsx|jsx)$/, '')} React 组件`;
-          description = `React 组件，负责 UI 渲染和交互逻辑`;
-          keyPoints = ['React 组件', 'UI 渲染', '待 AI 分析详细内容'];
+          summary = `${fileName.replace(/\.(tsx|jsx)$/, '')} React component`;
+          description = `React component responsible for UI rendering and interaction logic`;
+          keyPoints = ['React component', 'UI rendering', 'Pending AI analysis for details'];
         } else if (isApi) {
-          summary = `${fileName.replace(/\.(ts|js)$/, '')} API 模块`;
-          description = `API 路由或服务端接口实现`;
-          keyPoints = ['API 端点', '请求处理', '待 AI 分析详细内容'];
+          summary = `${fileName.replace(/\.(ts|js)$/, '')} API module`;
+          description = `API route or server-side endpoint implementation`;
+          keyPoints = ['API endpoints', 'Request handling', 'Pending AI analysis for details'];
         } else {
-          summary = `${fileName} 模块`;
-          description = `${language} 代码文件`;
-          keyPoints = ['待 AI 分析详细内容'];
+          summary = `${fileName} module`;
+          description = `${language} code file`;
+          keyPoints = ['Pending AI analysis for details'];
         }
       } else {
-        summary = `${fileName} 文件`;
-        description = `${language} 代码文件`;
-        keyPoints = ['待 AI 分析详细内容'];
+        summary = `${fileName} file`;
+        description = `${language} code file`;
+        keyPoints = ['Pending AI analysis for details'];
       }
     } catch (e) {
-      summary = `${fileName} 文件`;
-      description = `无法读取文件内容`;
-      keyPoints = ['文件读取失败'];
+      summary = `${fileName} file`;
+      description = `Unable to read file content`;
+      keyPoints = ['File read failed'];
     }
 
     res.json({
@@ -5867,7 +5890,7 @@ const findReverseDependencies = (targetPath: string, rootDir: string = 'src'): A
                 const fullStatement = match[0];
 
                 if (/export\s+\*\s+from/.test(fullStatement)) {
-                  imports.push('* (所有导出)');
+                  imports.push('* (all exports)');
                 } else {
                   const items = fullStatement.match(/(?:import|export)\s+\{([^}]+)\}/);
                   if (items) {
@@ -5909,7 +5932,7 @@ router.post('/analyze-node', async (req: Request, res: Response) => {
     const { path: nodePath } = req.body;
 
     if (!nodePath) {
-      return res.status(400).json({ success: false, error: '缺少路径参数' });
+      return res.status(400).json({ success: false, error: 'Missing path parameter' });
     }
 
     const absolutePath = path.resolve(process.cwd(), nodePath);
@@ -5917,7 +5940,7 @@ router.post('/analyze-node', async (req: Request, res: Response) => {
     if (!fs.existsSync(absolutePath)) {
       return res.status(404).json({
         success: false,
-        error: `路径不存在: ${nodePath}`,
+        error: `Path does not exist: ${nodePath}`,
       });
     }
 
@@ -5959,41 +5982,41 @@ router.post('/analyze-node', async (req: Request, res: Response) => {
     let contentInfo = '';
     if (isFile) {
       const content = fs.readFileSync(absolutePath, 'utf-8');
-      contentInfo = `文件内容（前 5000 字符）:\n\`\`\`\n${content.slice(0, 5000)}\n\`\`\``;
+      contentInfo = `File content (first 5000 characters):\n\`\`\`\n${content.slice(0, 5000)}\n\`\`\``;
     } else {
       const entries = fs.readdirSync(absolutePath);
       const filtered = entries.filter(e => !e.startsWith('.') && e !== 'node_modules');
-      contentInfo = `目录内容:\n${filtered.join('\n')}`;
+      contentInfo = `Directory contents:\n${filtered.join('\n')}`;
     }
 
     // 构建分析提示
-    const prompt = `请分析以下${isFile ? '文件' : '目录'}并生成 JSON 格式的语义分析报告：
+    const prompt = `Analyze the following ${isFile ? 'file' : 'directory'} and generate a semantic analysis report in JSON format:
 
-路径: ${nodePath}
-类型: ${isFile ? '文件' : '目录'}
-名称: ${name}
+Path: ${nodePath}
+Type: ${isFile ? 'file' : 'directory'}
+Name: ${name}
 
 ${contentInfo}
 
-请返回以下 JSON 格式的分析结果（只返回 JSON，不要其他内容）：
+Return the analysis result in the following JSON format (return only JSON, no other content):
 {
   "path": "${nodePath}",
   "name": "${name}",
   "type": "${isFile ? 'file' : 'directory'}",
-  "summary": "简短摘要（一句话描述主要功能）",
-  "description": "详细描述",
-  ${isFile ? `"exports": ["导出的函数/类/变量名"],
-  "dependencies": ["依赖的模块"],
-  "keyPoints": ["关键点1", "关键点2"],` : `"responsibilities": ["职责1", "职责2"],
-  "children": [{"name": "子项名", "description": "子项描述"}],`}
-  "techStack": ["使用的技术"]
+  "summary": "Brief summary (one sentence describing the main functionality)",
+  "description": "Detailed description",
+  ${isFile ? `"exports": ["exported function/class/variable names"],
+  "dependencies": ["dependent modules"],
+  "keyPoints": ["key point 1", "key point 2"],` : `"responsibilities": ["responsibility 1", "responsibility 2"],
+  "children": [{"name": "child name", "description": "child description"}],`}
+  "techStack": ["technologies used"]
 }`;
 
     // 调用 AI 分析
     const response = await client.createMessage(
       [{ role: 'user', content: prompt }],
       undefined,
-      '你是一个代码分析专家。分析代码并返回结构化的 JSON 结果。只返回 JSON，不要其他内容。'
+      'You are a code analysis expert. Analyze code and return structured JSON results. Return only JSON, no other content.'
     );
 
     // 提取响应文本
@@ -6019,7 +6042,7 @@ ${contentInfo}
         if (bareJsonMatch) {
           analysis = JSON.parse(bareJsonMatch[0]);
         } else {
-          throw new Error(`无法解析 AI 返回的 JSON: ${analysisText.slice(0, 200)}`);
+          throw new Error(`Failed to parse JSON returned by AI: ${analysisText.slice(0, 200)}`);
         }
       }
     }
@@ -6068,8 +6091,8 @@ router.post('/analyze', async (req: Request, res: Response) => {
     res.json({
       success: false,
       needsDialog: true,
-      message: 'v2.0 蜂群架构已使用 SmartPlanner 替代代码库分析器。请通过对话式需求调研创建蓝图。',
-      hint: '使用 POST /blueprints 创建蓝图，然后通过 /swarm/plan 进行智能规划。',
+      message: 'v2.0 swarm architecture now uses SmartPlanner instead of codebase analyzer. Please create a blueprint through dialog-based requirements investigation.',
+      hint: 'Use POST /blueprints to create a blueprint, then use /swarm/plan for smart planning.',
       suggestion: {
         createBlueprint: 'POST /api/blueprint/blueprints',
         planExecution: 'POST /api/blueprint/swarm/plan',
@@ -6096,7 +6119,7 @@ router.get('/analyze/status', (req: Request, res: Response) => {
       data: {
         status: 'idle',
         progress: 0,
-        message: '等待分析任务',
+        message: 'Waiting for analysis task',
       },
     });
   } catch (error: any) {
@@ -6133,8 +6156,8 @@ router.post('/generate', async (req: Request, res: Response) => {
       return res.json({
         success: false,
         needsDialog: true,
-        message: '请提供项目名称和需求描述，或通过对话方式描述您的项目需求。',
-        hint: '使用 POST /blueprints 创建蓝图，或使用 /swarm/plan 进行智能规划。',
+        message: 'Please provide a project name and requirements description, or describe your project needs through dialog.',
+        hint: 'Use POST /blueprints to create a blueprint, or use /swarm/plan for smart planning.',
         suggestion: {
           createBlueprint: 'POST /api/blueprint/blueprints',
           requiredFields: ['name', 'description', 'requirements'],
@@ -6148,7 +6171,7 @@ router.post('/generate', async (req: Request, res: Response) => {
       console.log(`[Blueprint Generate v2.0] ⚠️  Blueprint already exists for this project path: ${existingBlueprint.name}`);
       return res.status(409).json({
         success: false,
-        error: `该项目路径已存在蓝图: "${existingBlueprint.name}" (ID: ${existingBlueprint.id})`,
+        error: `A blueprint already exists for this project path: "${existingBlueprint.name}" (ID: ${existingBlueprint.id})`,
         existingBlueprint: {
           id: existingBlueprint.id,
           name: existingBlueprint.name,
@@ -6161,7 +6184,7 @@ router.post('/generate', async (req: Request, res: Response) => {
     const blueprint: Blueprint = {
       id: crypto.randomUUID(),
       name: name || path.basename(absoluteRoot),
-      description: description || `项目 ${name || path.basename(absoluteRoot)} 的蓝图`,
+      description: description || `Blueprint for project ${name || path.basename(absoluteRoot)}`,
       projectPath: absoluteRoot,
       requirements: requirements,
       techStack: {
@@ -6194,7 +6217,7 @@ router.post('/generate', async (req: Request, res: Response) => {
         moduleCount: blueprint.modules.length,
         projectPath: blueprint.projectPath,
       },
-      message: `蓝图 "${blueprint.name}" 创建成功！使用 /swarm/plan 进行智能规划。`,
+      message: `Blueprint "${blueprint.name}" created successfully! Use /swarm/plan for smart planning.`,
       nextSteps: {
         plan: `POST /api/blueprint/swarm/plan { blueprintId: "${blueprint.id}" }`,
         execute: `POST /api/blueprint/swarm/execute { blueprintId: "${blueprint.id}" }`,
@@ -6226,7 +6249,7 @@ router.post('/file-operation/create', (req: Request, res: Response) => {
     if (!filePath) {
       return res.status(400).json({
         success: false,
-        error: '缺少文件路径',
+        error: 'Missing file path',
       });
     }
 
@@ -6241,7 +6264,7 @@ router.post('/file-operation/create', (req: Request, res: Response) => {
     if (fs.existsSync(fullPath)) {
       return res.status(400).json({
         success: false,
-        error: '文件已存在',
+        error: 'File already exists',
       });
     }
 
@@ -6267,7 +6290,7 @@ router.post('/file-operation/mkdir', (req: Request, res: Response) => {
     if (!dirPath) {
       return res.status(400).json({
         success: false,
-        error: '缺少目录路径',
+        error: 'Missing directory path',
       });
     }
 
@@ -6277,7 +6300,7 @@ router.post('/file-operation/mkdir', (req: Request, res: Response) => {
     if (fs.existsSync(fullPath)) {
       return res.status(400).json({
         success: false,
-        error: '目录已存在',
+        error: 'Directory already exists',
       });
     }
 
@@ -6303,7 +6326,7 @@ router.post('/file-operation/delete', (req: Request, res: Response) => {
     if (!targetPath) {
       return res.status(400).json({
         success: false,
-        error: '缺少路径',
+        error: 'Missing path',
       });
     }
 
@@ -6313,7 +6336,7 @@ router.post('/file-operation/delete', (req: Request, res: Response) => {
     if (!fs.existsSync(fullPath)) {
       return res.status(404).json({
         success: false,
-        error: '文件或目录不存在',
+        error: 'File or directory does not exist',
       });
     }
 
@@ -6344,7 +6367,7 @@ router.post('/file-operation/rename', (req: Request, res: Response) => {
     if (!oldPath || !newPath) {
       return res.status(400).json({
         success: false,
-        error: '缺少路径参数',
+        error: 'Missing path parameter',
       });
     }
 
@@ -6355,14 +6378,14 @@ router.post('/file-operation/rename', (req: Request, res: Response) => {
     if (!fs.existsSync(fullOldPath)) {
       return res.status(404).json({
         success: false,
-        error: '源文件或目录不存在',
+        error: 'Source file or directory does not exist',
       });
     }
 
     if (fs.existsSync(fullNewPath)) {
       return res.status(400).json({
         success: false,
-        error: '目标已存在',
+        error: 'Target already exists',
       });
     }
 
@@ -6388,7 +6411,7 @@ router.post('/file-operation/copy', (req: Request, res: Response) => {
     if (!sourcePath || !destPath) {
       return res.status(400).json({
         success: false,
-        error: '缺少路径参数',
+        error: 'Missing path parameter',
       });
     }
 
@@ -6399,7 +6422,7 @@ router.post('/file-operation/copy', (req: Request, res: Response) => {
     if (!fs.existsSync(fullSourcePath)) {
       return res.status(404).json({
         success: false,
-        error: '源文件或目录不存在',
+        error: 'Source file or directory does not exist',
       });
     }
 
@@ -6430,7 +6453,7 @@ router.post('/file-operation/move', (req: Request, res: Response) => {
     if (!sourcePath || !destPath) {
       return res.status(400).json({
         success: false,
-        error: '缺少路径参数',
+        error: 'Missing path parameter',
       });
     }
 
@@ -6441,7 +6464,7 @@ router.post('/file-operation/move', (req: Request, res: Response) => {
     if (!fs.existsSync(fullSourcePath)) {
       return res.status(404).json({
         success: false,
-        error: '源文件或目录不存在',
+        error: 'Source file or directory does not exist',
       });
     }
 
@@ -6515,7 +6538,7 @@ router.get('/coordinator/conflicts/:conflictId', (req: Request, res: Response) =
 
     res.status(404).json({
       success: false,
-      error: '冲突不存在',
+      error: 'Conflict not found',
     });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
@@ -6534,7 +6557,7 @@ router.post('/coordinator/conflicts/:conflictId/resolve', (req: Request, res: Re
     if (!decision) {
       return res.status(400).json({
         success: false,
-        error: '缺少 decision 参数',
+        error: 'Missing decision parameter',
       });
     }
 
@@ -6558,7 +6581,7 @@ router.post('/coordinator/conflicts/:conflictId/resolve', (req: Request, res: Re
 
     res.status(404).json({
       success: false,
-      error: '冲突不存在',
+      error: 'Conflict not found',
     });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
@@ -6718,7 +6741,7 @@ router.post('/logs/cleanup', async (_req: Request, res: Response) => {
       success: true,
       data: {
         deletedCount,
-        message: `清理了 ${deletedCount} 条过期日志`,
+        message: `Cleaned up ${deletedCount} expired log entries`,
       },
     });
   } catch (error: any) {

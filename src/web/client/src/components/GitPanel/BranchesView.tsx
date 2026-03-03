@@ -4,7 +4,7 @@
  * 新增：树形结构、分支筛选回调
  */
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useLanguage } from '../../i18n';
 import { GitBranch } from './index';
 
@@ -84,6 +84,24 @@ export function BranchesView({ branches, send, projectPath, onBranchSelect }: Br
 
   // 展开/折叠状态
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set(['HEAD', 'local', 'remote']));
+  
+  // branches 异步加载完成后，自动展开第一层子目录
+  const hasInitExpanded = useRef(false);
+  useEffect(() => {
+    if (branches.length > 0 && !hasInitExpanded.current) {
+      hasInitExpanded.current = true;
+      setExpandedNodes(prev => {
+        const next = new Set(prev);
+        branches.forEach(b => {
+          const parts = b.name.split('/');
+          if (parts.length > 1) {
+            next.add(parts[0]);
+          }
+        });
+        return next;
+      });
+    }
+  }, [branches]);
 
   // 选中的分支（用于筛选）
   const [selectedBranch, setSelectedBranch] = useState<string | null>(null);
