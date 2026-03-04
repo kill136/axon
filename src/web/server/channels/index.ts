@@ -20,6 +20,7 @@ import { TelegramAdapter } from './adapters/telegram.js';
 import { FeishuAdapter } from './adapters/feishu.js';
 import { SlackBotAdapter } from './adapters/slack-bot.js';
 import { WhatsAppAdapter } from './adapters/whatsapp.js';
+import { DiscordAdapter } from './adapters/discord.js';
 import { configManager } from '../../../config/index.js';
 
 // ============================================================================
@@ -35,6 +36,7 @@ const ADAPTER_FACTORIES: Record<string, () => ChannelAdapter> = {
   feishu: () => new FeishuAdapter(),
   'slack-bot': () => new SlackBotAdapter(),
   whatsapp: () => new WhatsAppAdapter(),
+  discord: () => new DiscordAdapter(),
 };
 
 /**
@@ -45,6 +47,7 @@ const CONFIG_HINTS: Record<string, string> = {
   feishu: 'Create a bot in Feishu Developer Console, then set channels.feishu.credentials.appId and appSecret',
   'slack-bot': 'Create a Slack App with Bot Token, then set channels.slack-bot.credentials.botToken',
   whatsapp: 'Create a Meta App with WhatsApp API, set accessToken, phoneNumberId, and verifyToken. Webhook URL: /webhook/whatsapp',
+  discord: 'Create a Discord App at discord.com/developers, add a Bot, enable Message Content Intent, then set channels.discord.credentials.botToken',
 };
 
 // ============================================================================
@@ -133,12 +136,18 @@ export class ChannelManager {
 
     console.log(`[ChannelManager] Starting channel: ${channelId}`);
 
-    await adapter.start(config, (msg) => {
-      // 入站消息 → IMBridge 处理
-      this.bridge.handleInboundMessage(msg).catch(err => {
-        console.error(`[ChannelManager] Error handling inbound message from ${channelId}:`, err);
+    try {
+      await adapter.start(config, (msg) => {
+        // 入站消息 → IMBridge 处理
+        this.bridge.handleInboundMessage(msg).catch(err => {
+          console.error(`[ChannelManager] Error handling inbound message from ${channelId}:`, err);
+        });
       });
-    });
+    } catch (err) {
+      // 启动失败：广播错误状态，然后重新抛出让调用方处理
+      this.broadcastStatusUpdate(channelId);
+      throw err;
+    }
 
     // 广播状态更新
     this.broadcastStatusUpdate(channelId);

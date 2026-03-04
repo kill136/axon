@@ -93,6 +93,7 @@ export type ClientMessage =
   | { type: 'set_model'; payload: { model: string } }
   | { type: 'set_language'; payload: { language: string } }
   | { type: 'slash_command'; payload: { command: string } }
+  | { type: 'set_project_path'; payload: { projectPath: string | null } }
   | { type: 'permission_response'; payload: PermissionResponsePayload }
   | { type: 'permission_config'; payload: PermissionConfigPayload }
   | { type: 'user_answer'; payload: UserAnswerPayload }
@@ -445,7 +446,9 @@ export type ServerMessage =
   | { type: 'channel:error'; payload: { channelId: string; error: string } }
   // Pairing 配对
   | { type: 'channel:pairing_list'; payload: { requests: PairingRequestInfo[] } }
-  | { type: 'channel:pairing_new'; payload: PairingRequestInfo };
+  | { type: 'channel:pairing_new'; payload: PairingRequestInfo }
+  // IM 新会话（自动打开 Web UI 对话）
+  | { type: 'channel:new_session'; payload: { sessionId: string; channel: string; senderName: string } };
 
 // ============ IM 通道状态类型 ============
 

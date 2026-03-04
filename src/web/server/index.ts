@@ -204,6 +204,10 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
   const connectorsRouter = await import('./routes/connectors-api.js');
   app.use('/api/connectors', connectorsRouter.default);
 
+  // LSP API 路由（Monaco Editor go-to-definition 支持）
+  const lspRouter = await import('./routes/lsp-api.js');
+  app.use('/api/lsp', lspRouter.default);
+
   // 端口转发路由（反向代理用户应用）
   const portForwardRouter = await import('./routes/port-forward.js');
   app.use('/proxy', portForwardRouter.default);

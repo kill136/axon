@@ -15,7 +15,7 @@ import * as os from 'os';
 
 // 配置常量
 const CLEANUP_PERIOD_DAYS = 30;
-const SESSIONS_BASE_DIR = path.join(os.homedir(), '.axon', 'sessions');
+const SESSIONS_BASE_DIR = process.env.AXON_SESSION_DIR || path.join(os.homedir(), '.axon', 'sessions');
 const SUMMARIES_DIR = path.join(SESSIONS_BASE_DIR, 'summaries');
 
 /**

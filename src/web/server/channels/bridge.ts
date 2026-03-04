@@ -60,6 +60,7 @@ const MAX_MESSAGE_LENGTH: Record<string, number> = {
   feishu: 30000,
   'slack-bot': 4000,
   whatsapp: 4096,
+  discord: 2000,
 };
 
 const DEFAULT_MAX_LENGTH = 4096;
@@ -85,6 +86,10 @@ function convertMarkdown(text: string, channelId: string): { text: string; parse
     case 'whatsapp':
       // WhatsApp 不支持 Markdown/HTML 格式，直接发纯文本
       return { text: stripMarkdown(text), parseMode: 'plain' };
+
+    case 'discord':
+      // Discord 原生支持 Markdown（与标准 Markdown 基本兼容）
+      return { text, parseMode: 'Markdown' };
 
     default:
       return { text, parseMode: 'Markdown' };
@@ -296,6 +301,8 @@ export class IMBridge {
   private processing = new Set<string>();
   /** 消息去重缓存（messageId → timestamp） */
   private seenMessages = new Map<string, number>();
+  /** 已知会话（用于检测新会话，触发 Web UI 自动切换） */
+  private knownSessions = new Set<string>();
   /** 配对请求（code → PairingRequest） */
   private pairingRequests = new Map<string, PairingRequest>();
   /** 获取通道配置 */
@@ -338,6 +345,15 @@ export class IMBridge {
     if (!allowed) return;
 
     const sessionId = this.buildSessionId(msg.channel, msg.chatId);
+
+    // 检测新会话：首条消息时广播，让 Web UI 自动切换到该会话
+    if (!this.knownSessions.has(sessionId)) {
+      this.knownSessions.add(sessionId);
+      this.broadcast?.({
+        type: 'channel:new_session',
+        payload: { sessionId, channel: msg.channel, senderName: msg.senderName },
+      });
+    }
 
     // 广播 IM 消息到 Web UI
     this.broadcast?.({
@@ -858,6 +874,8 @@ export class IMBridge {
   // ==========================================================================
 
   private buildSessionId(channel: string, chatId: string): string {
-    return `im:${channel}:${chatId}`;
+    const fixed = this.getChannelConfig(channel)?.fixedSessionId;
+    if (fixed) return fixed;
+    return `im_${channel}_${chatId}`;
   }
 }

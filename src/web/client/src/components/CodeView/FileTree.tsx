@@ -75,6 +75,31 @@ function getParentPath(path: string): string {
   return idx > 0 ? path.substring(0, idx) : '.';
 }
 
+/**
+ * 在树中按路径查找节点
+ */
+function findNodeInTree(node: FileTreeNode, targetPath: string): FileTreeNode | null {
+  if (node.path === targetPath) return node;
+  if (node.children) {
+    for (const child of node.children) {
+      const found = findNodeInTree(child, targetPath);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+/**
+ * 将子树合并到树中（替换匹配路径的节点）
+ */
+function mergeSubtree(tree: FileTreeNode, subtree: FileTreeNode): FileTreeNode {
+  if (tree.path === subtree.path) return subtree;
+  if (tree.children) {
+    return { ...tree, children: tree.children.map(child => mergeSubtree(child, subtree)) };
+  }
+  return tree;
+}
+
 // ============================================================================
 // 文件类型图标组件
 // ============================================================================
@@ -677,6 +702,11 @@ export const FileTree: React.FC<FileTreeProps> = ({
 
   // Container ref（用于焦点和键盘事件）
   const treeContainerRef = useRef<HTMLDivElement>(null);
+  // 用于在回调中访问最新 tree/expandedDirs（避免闭包过期）
+  const treeRef = useRef<FileTreeNode | null>(null);
+  const expandedDirsRef = useRef(expandedDirs);
+  useEffect(() => { treeRef.current = tree; }, [tree]);
+  useEffect(() => { expandedDirsRef.current = expandedDirs; }, [expandedDirs]);
 
   // 扁平化的可见节点列表
   const flatNodes = useMemo(() => {
@@ -755,18 +785,33 @@ export const FileTree: React.FC<FileTreeProps> = ({
     fetchTree();
   }, [fetchTree]);
 
-  // 切换目录展开/折叠
-  const handleToggleDir = useCallback((path: string) => {
+  // 切换目录展开/折叠（懒加载：展开时若子节点未加载则按需请求）
+  const handleToggleDir = useCallback(async (dirPath: string) => {
+    const isExpanding = !expandedDirsRef.current.has(dirPath);
     setExpandedDirs((prev) => {
       const next = new Set(prev);
-      if (next.has(path)) {
-        next.delete(path);
+      if (next.has(dirPath)) {
+        next.delete(dirPath);
       } else {
-        next.add(path);
+        next.add(dirPath);
       }
       return next;
     });
-  }, []);
+    if (isExpanding) {
+      const node = treeRef.current ? findNodeInTree(treeRef.current, dirPath) : null;
+      if (node?.type === 'directory' && node.children === undefined) {
+        try {
+          const response = await fetch(`/api/files/tree?root=${encodeURIComponent(projectPath)}&path=${encodeURIComponent(dirPath)}&depth=3`);
+          if (response.ok) {
+            const subtree = await response.json();
+            setTree(prev => prev ? mergeSubtree(prev, subtree) : prev);
+          }
+        } catch (err) {
+          console.error('[FileTree] 懒加载子目录失败:', err);
+        }
+      }
+    }
+  }, [projectPath]);
 
   // ==================== 节点点击处理（多选逻辑） ====================
 

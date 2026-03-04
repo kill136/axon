@@ -115,6 +115,15 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
     const [activeTabIndex, setActiveTabIndex] = useState<number>(-1);
     const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
     const monacoRef = useRef<typeof Monaco | null>(null);
+    // 追踪当前打开的文件路径（供 LSP provider 使用，避免 stale closure）
+    const currentTabPathRef = useRef<string | null>(null);
+    const [lspNotification, setLspNotification] = useState<{
+      serverName: string;
+      language: string;
+      npmPackage: string;
+      status: 'missing' | 'installing' | 'done' | 'error';
+      message?: string;
+    } | null>(null);
 
     // AI 功能开关
     const [beginnerMode, setBeginnerMode] = useState(false);
@@ -187,6 +196,76 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
 
     // 当前活跃的 Tab
     const currentTab = activeTabIndex >= 0 ? tabs[activeTabIndex] : null;
+
+    // 同步当前文件路径到 ref（供 LSP provider 闭包使用）
+    useEffect(() => {
+      currentTabPathRef.current = currentTab?.path ?? null;
+    }, [currentTab?.path]);
+
+    // Monaco 原生支持的语言（不需要后端 LSP server）
+    const MONACO_NATIVE_LANGUAGES = new Set([
+      'typescript', 'javascript', 'typescriptreact', 'javascriptreact',
+      'json', 'html', 'css', 'scss', 'less', 'plaintext', 'markdown',
+    ]);
+
+    // 打开文件时检测该语言是否有可用的 LSP server
+    useEffect(() => {
+      const lang = currentTab?.language;
+      if (!lang || MONACO_NATIVE_LANGUAGES.has(lang)) {
+        setLspNotification(null);
+        return;
+      }
+      fetch('/api/lsp/servers')
+        .then(r => r.json())
+        .then((data: { servers: { name: string; installed: boolean; languages: string[]; npmPackage: string }[] }) => {
+          const server = data.servers?.find(s => s.languages.includes(lang));
+          if (server && !server.installed) {
+            setLspNotification(prev => {
+              if (prev?.serverName === server.name && prev.status !== 'missing') return prev;
+              return { serverName: server.name, language: lang, npmPackage: server.npmPackage, status: 'missing' };
+            });
+          } else {
+            setLspNotification(null);
+          }
+        })
+        .catch(() => {});
+    }, [currentTab?.language]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // 安装 LSP server（SSE 流式进度）
+    const handleInstallLsp = async () => {
+      if (!lspNotification) return;
+      const { serverName } = lspNotification;
+      setLspNotification(prev => prev ? { ...prev, status: 'installing', message: 'Starting...' } : null);
+      try {
+        const response = await fetch('/api/lsp/install', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ serverName }),
+        });
+        const reader = response.body!.getReader();
+        const decoder = new TextDecoder();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const text = decoder.decode(value);
+          for (const line of text.split('\n')) {
+            if (!line.startsWith('data: ')) continue;
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.status === 'success') {
+                setLspNotification(prev => prev ? { ...prev, status: 'done', message: data.message } : null);
+              } else if (data.status === 'error') {
+                setLspNotification(prev => prev ? { ...prev, status: 'error', message: data.message } : null);
+              } else {
+                setLspNotification(prev => prev ? { ...prev, message: data.message } : null);
+              }
+            } catch (_e) {}
+          }
+        }
+      } catch (_e) {
+        setLspNotification(prev => prev ? { ...prev, status: 'error', message: 'Network error' } : null);
+      }
+    };
 
     // ========================================================================
     // 集成 AI Hooks
@@ -572,6 +651,47 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
           timeMachine.open();
         },
       });
+
+      // 注册 LSP Definition Provider（Python、Go、Rust 等语言的 Ctrl+Click 跳转定义）
+      // TypeScript/JavaScript 由 Monaco 内置语言服务处理，不需要注册
+      const lspLanguages = ['python', 'go', 'rust', 'java', 'cpp', 'c', 'csharp', 'ruby', 'php'];
+      const lspDisposables = lspLanguages.map(lang =>
+        monaco.languages.registerDefinitionProvider(lang, {
+          async provideDefinition(model, position) {
+            // 从 ref 获取当前文件路径（避免 stale closure）
+            const filePath = currentTabPathRef.current;
+            if (!filePath) return null;
+
+            try {
+              const response = await fetch('/api/lsp/definition', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  filePath,
+                  line: position.lineNumber - 1,    // Monaco 1-indexed → LSP 0-indexed
+                  character: position.column - 1,
+                  projectPath: projectPath,
+                }),
+              });
+
+              if (!response.ok) return null;
+              const data = await response.json();
+              if (!data.location) return null;
+
+              const { filePath: defPath, line, character } = data.location;
+              return {
+                uri: monaco.Uri.file(defPath),
+                range: new monaco.Range(line + 1, character + 1, line + 1, character + 1),
+              };
+            } catch {
+              return null;
+            }
+          },
+        })
+      );
+
+      // 编辑器销毁时清理 provider
+      editor.onDidDispose(() => lspDisposables.forEach(d => d.dispose()));
     };
 
     // 内容变化回调
@@ -750,6 +870,40 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
                 },
               }}
             />
+            {/* LSP server 未安装提示 */}
+            {lspNotification && (
+              <div style={{
+                position: 'absolute', bottom: 32, left: '50%', transform: 'translateX(-50%)',
+                backgroundColor: '#1e1e2e', border: '1px solid #3c3c5c', borderRadius: 8,
+                padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10,
+                zIndex: 100, boxShadow: '0 4px 16px rgba(0,0,0,0.4)', fontSize: 13, color: '#cdd6f4',
+                maxWidth: 500, whiteSpace: 'nowrap',
+              }}>
+                {lspNotification.status === 'missing' && (<>
+                  <span style={{ color: '#fab387' }}>⚠</span>
+                  <span>{lspNotification.language} language server not installed</span>
+                  <button onClick={handleInstallLsp} style={{ background: '#89b4fa', color: '#1e1e2e', border: 'none', borderRadius: 4, padding: '3px 10px', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+                    Install {lspNotification.serverName}
+                  </button>
+                  <button onClick={() => setLspNotification(null)} style={{ background: 'none', border: 'none', color: '#6c7086', cursor: 'pointer', fontSize: 16, padding: '0 2px' }}>×</button>
+                </>)}
+                {lspNotification.status === 'installing' && (<>
+                  <span style={{ color: '#89dceb', animation: 'spin 1s linear infinite' }}>⟳</span>
+                  <span>Installing {lspNotification.serverName}...</span>
+                  <span style={{ color: '#6c7086', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 200 }}>{lspNotification.message}</span>
+                </>)}
+                {lspNotification.status === 'done' && (<>
+                  <span style={{ color: '#a6e3a1' }}>✓</span>
+                  <span>{lspNotification.serverName} installed! Ctrl+Click now works.</span>
+                  <button onClick={() => setLspNotification(null)} style={{ background: 'none', border: 'none', color: '#6c7086', cursor: 'pointer', fontSize: 16, padding: '0 2px' }}>×</button>
+                </>)}
+                {lspNotification.status === 'error' && (<>
+                  <span style={{ color: '#f38ba8' }}>✗</span>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 300 }}>Install failed: {lspNotification.message}</span>
+                  <button onClick={() => setLspNotification(null)} style={{ background: 'none', border: 'none', color: '#6c7086', cursor: 'pointer', fontSize: 16, padding: '0 2px' }}>×</button>
+                </>)}
+              </div>
+            )}
           </div>
 
           {/* 语法详情面板 */}

@@ -72,6 +72,11 @@ export interface ChannelConfig {
   groupTrigger?: GroupTriggerMode;
   /** 使用的模型（覆盖默认） */
   model?: string;
+  /**
+   * 固定会话 ID：当设置时，所有来自该通道的消息都使用此 session，
+   * 而不是按用户/群组自动生成。可与 Web UI 主会话共享历史。
+   */
+  fixedSessionId?: string;
 }
 
 /**

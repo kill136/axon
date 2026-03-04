@@ -98,6 +98,13 @@ function AppContent({
     registerMessaging?.({ send, addMessageHandler });
   }, [send, addMessageHandler, registerMessaging]);
 
+  // 项目切换时同步 projectPath 到 WebSocket 后端
+  useEffect(() => {
+    if (connected) {
+      send({ type: 'set_project_path', payload: { projectPath: currentProjectPath || null } });
+    }
+  }, [currentProjectPath, connected, send]);
+
   // AXON.md 初始化检测：项目切换后检查是否缺少 AXON.md，且 AI 服务可用时才弹框
   useEffect(() => {
     const project = projectState.currentProject;
@@ -445,23 +452,23 @@ function AppContent({
     if (!text.trim() || !send || !connected) return;
 
     const userMessage: ChatMessage = {
-      id: crypto.randomUUID(),
+      id: `user-${Date.now()}`,
       role: 'user',
       content: [{ type: 'text', text: text.trim() }],
       timestamp: Date.now(),
     };
 
     setMessages(prev => [...prev, userMessage]);
-    setStatus('streaming');
+    setStatus('thinking');
 
     send({
-      type: 'user_message',
+      type: 'chat',
       payload: {
-        content: [{ type: 'text', text: text.trim() }],
-        model,
+        content: text.trim(),
+        projectPath: currentProjectPath,
       },
     });
-  }, [send, connected, model, setMessages, setStatus]);
+  }, [send, connected, currentProjectPath, setMessages, setStatus]);
 
   // ========================================================================
 

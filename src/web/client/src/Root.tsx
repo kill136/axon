@@ -206,6 +206,7 @@ function RootContent() {
               onNavigateBack={() => setCurrentPage('chat')}
               onSendMessage={(msg: any) => messagingRef.current.send(msg)}
               addMessageHandler={(handler: (msg: any) => void) => messagingRef.current.addMessageHandler(handler)}
+              sessionId={currentSessionId ?? undefined}
             />
           </ErrorBoundary>
         </div>
