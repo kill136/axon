@@ -1547,6 +1547,10 @@ async function handleClientMessage(
       await handleSlashCommand(client, message.payload.command, conversationManager);
       break;
 
+    case 'set_project_path':
+      client.projectPath = message.payload.projectPath || undefined;
+      break;
+
     case 'session_list':
       await handleSessionList(client, message.payload, conversationManager);
       break;
@@ -3176,6 +3180,18 @@ async function handleSessionSwitch(
           });
         });
       }
+    } else if (sessionId.startsWith('im_')) {
+      // IM 会话尚未创建（首条消息还在处理中），预先切换过去
+      // chat() 运行时会在内存中创建该会话，流式消息会正常显示
+      client.sessionId = sessionId;
+      sendMessage(ws, {
+        type: 'session_switched',
+        payload: { sessionId, projectPath: client.projectPath },
+      });
+      sendMessage(ws, {
+        type: 'history',
+        payload: { messages: [], sessionId },
+      });
     } else {
       sendMessage(ws, {
         type: 'error',

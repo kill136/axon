@@ -10,7 +10,7 @@ import type { SessionData, SessionMetadata } from './index.js';
 import { loadSession, deleteSession, listSessions as baseListSessions } from './index.js';
 
 // 会话存储目录
-const SESSION_DIR = path.join(os.homedir(), '.axon', 'sessions');
+const SESSION_DIR = process.env.AXON_SESSION_DIR || path.join(os.homedir(), '.axon', 'sessions');
 
 // ==================== 类型定义 ====================
 

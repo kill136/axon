@@ -13,6 +13,7 @@ interface CustomizePageProps {
   onNavigateBack?: () => void;
   onSendMessage?: (message: any) => void;
   addMessageHandler?: (handler: (msg: any) => void) => () => void;
+  sessionId?: string;
 }
 
 // SVG Icons
@@ -72,6 +73,7 @@ export default function CustomizePage({
   onNavigateBack,
   onSendMessage,
   addMessageHandler,
+  sessionId,
 }: CustomizePageProps) {
   const { t } = useLanguage();
   const [activeSection, setActiveSection] = useState<ActiveSection>('skills');
@@ -165,6 +167,7 @@ export default function CustomizePage({
           <ChannelsPanel
             onSendMessage={onSendMessage}
             addMessageHandler={addMessageHandler}
+            webUiSessionId={sessionId}
           />
         )}
         {activeSection === 'schedule' && (

@@ -364,6 +364,8 @@ export class TaskManager {
       context.task.status = 'cancelled';
       context.task.endTime = new Date();
       context.task.error = 'Cancelled by user';
+      // 中断子 agent 的 ConversationLoop（核心：必须调用 loop.abort() 才能真正终止子 agent 的 API 请求）
+      context.loop?.abort();
       context.abortController?.abort();
 
       // 发送状态更新
@@ -373,6 +375,29 @@ export class TaskManager {
     }
 
     return false;
+  }
+
+  /**
+   * 取消所有运行中的任务
+   * 当父会话被取消时调用，确保子 agent 也被终止
+   */
+  cancelAllRunningTasks(): number {
+    let cancelled = 0;
+    for (const [taskId, context] of this.tasks) {
+      if (context.task.status === 'running') {
+        context.task.status = 'cancelled';
+        context.task.endTime = new Date();
+        context.task.error = 'Cancelled: parent session terminated';
+        context.loop?.abort();
+        context.abortController?.abort();
+        this.sendTaskStatus(context.task);
+        cancelled++;
+      }
+    }
+    if (cancelled > 0) {
+      console.log(`[TaskManager] Cancelled ${cancelled} running task(s) due to parent session termination`);
+    }
+    return cancelled;
   }
 
   /**

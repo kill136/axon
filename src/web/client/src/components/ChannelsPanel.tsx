@@ -15,6 +15,8 @@ interface ChannelsPanelProps {
   onClose?: () => void;
   onSendMessage?: (message: any) => void;
   addMessageHandler?: (handler: (msg: any) => void) => () => void;
+  /** 当前 Web UI 会话 ID，供用户填入 Fixed Session ID 字段 */
+  webUiSessionId?: string;
 }
 
 interface ChannelConfigForm {
@@ -68,19 +70,29 @@ const CHANNEL_META: Record<string, {
     ],
     docsUrl: 'https://developers.facebook.com/docs/whatsapp/cloud-api/get-started',
   },
+  discord: {
+    icon: '🎮',
+    description: 'Connect a Discord Bot via Gateway WebSocket (no public URL needed)',
+    fields: [
+      { key: 'botToken', label: 'Bot Token', type: 'password', placeholder: 'MTxxxxx...' },
+    ],
+    docsUrl: 'https://discord.com/developers/docs/getting-started',
+  },
 };
 
 // ============================================================================
 // 组件
 // ============================================================================
 
-export default function ChannelsPanel({ onClose, onSendMessage, addMessageHandler }: ChannelsPanelProps) {
+export default function ChannelsPanel({ onClose, onSendMessage, addMessageHandler, webUiSessionId }: ChannelsPanelProps) {
   const { t } = useLanguage();
   const [channels, setChannels] = useState<ChannelStatusInfo[]>([]);
   const [selectedChannel, setSelectedChannel] = useState<string | null>(null);
   const [configForm, setConfigForm] = useState<ChannelConfigForm>({});
   const [allowList, setAllowList] = useState<string>('');
   const [allowGroups, setAllowGroups] = useState(false);
+  const [groupTrigger, setGroupTrigger] = useState<string>('mention');
+  const [fixedSessionId, setFixedSessionId] = useState<string>('');
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [recentMessages, setRecentMessages] = useState<Array<{
@@ -150,13 +162,15 @@ export default function ChannelsPanel({ onClose, onSendMessage, addMessageHandle
       credentials: { ...configForm },
       allowGroups,
       dmPolicy,
+      groupTrigger,
+      ...(fixedSessionId.trim() ? { fixedSessionId: fixedSessionId.trim() } : {}),
     };
     if (allowList.trim()) {
       config.allowList = allowList.split(',').map(s => s.trim()).filter(Boolean);
     }
     onSendMessage?.({ type: 'channel:config_update', payload: { channelId, config } });
     setSelectedChannel(null);
-  }, [onSendMessage, configForm, allowList, allowGroups, dmPolicy]);
+  }, [onSendMessage, configForm, allowList, allowGroups, dmPolicy, groupTrigger, fixedSessionId]);
 
   const handleApprovePairing = useCallback((channel: string, code: string) => {
     onSendMessage?.({ type: 'channel:pairing_approve', payload: { channel, code } });
@@ -349,6 +363,52 @@ export default function ChannelsPanel({ onClose, onSendMessage, addMessageHandle
             </label>
           </div>
 
+          {/* Group trigger (only when allowGroups is enabled) */}
+          {allowGroups && (
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', fontSize: 13, marginBottom: 4, color: 'var(--text-secondary, #999)' }}>
+                Group Trigger
+              </label>
+              <select
+                value={groupTrigger}
+                onChange={e => setGroupTrigger(e.target.value)}
+                style={{ ...inputStyle(), cursor: 'pointer' }}
+              >
+                <option value="mention">@Mention only (bot replies when @mentioned)</option>
+                <option value="always">All messages (bot replies to every message)</option>
+              </select>
+            </div>
+          )}
+
+          {/* Fixed Session ID */}
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: 'block', fontSize: 13, marginBottom: 4, color: 'var(--text-secondary, #999)' }}>
+              Fixed Session ID <span style={{ fontWeight: 400, opacity: 0.7 }}>(optional)</span>
+            </label>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input
+                type="text"
+                value={fixedSessionId}
+                onChange={e => setFixedSessionId(e.target.value)}
+                placeholder="Leave empty to use per-user sessions"
+                style={{ ...inputStyle(), flex: 1, fontFamily: 'monospace', fontSize: 12 }}
+              />
+              {webUiSessionId && (
+                <button
+                  onClick={() => setFixedSessionId(webUiSessionId)}
+                  title="Use current Web UI session ID"
+                  style={{ ...btnStyle('#4b5563'), padding: '0 10px', fontSize: 12, whiteSpace: 'nowrap' }}
+                >
+                  Use current
+                </button>
+              )}
+            </div>
+            <p style={{ fontSize: 11, color: 'var(--text-secondary, #888)', margin: '4px 0 0' }}>
+              When set, all messages from this channel share one conversation.
+              {webUiSessionId && <> Current Web UI session: <code style={{ fontSize: 11 }}>{webUiSessionId.slice(0, 8)}…</code></>}
+            </p>
+          </div>
+
           {/* Docs link */}
           {meta.docsUrl && (
             <p style={{ fontSize: 12, color: 'var(--text-secondary, #666)', margin: '0 0 16px' }}>
@@ -414,7 +474,7 @@ export default function ChannelsPanel({ onClose, onSendMessage, addMessageHandle
   };
 
   return (
-    <div style={{ padding: 16, maxWidth: 600 }}>
+    <div style={{ padding: 16, maxWidth: 600, height: '100%', overflowY: 'auto', boxSizing: 'border-box' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <h2 style={{ margin: 0, fontSize: 18 }}>IM Channels</h2>

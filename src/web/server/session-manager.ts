@@ -22,7 +22,7 @@ import {
 } from '../../session/index.js';
 
 // 会话存储目录
-const SESSION_DIR = path.join(os.homedir(), '.axon', 'sessions');
+const SESSION_DIR = process.env.AXON_SESSION_DIR || path.join(os.homedir(), '.axon', 'sessions');
 
 /**
  * WebUI 会话扩展数据

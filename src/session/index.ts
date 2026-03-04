@@ -158,6 +158,9 @@ export function invalidateSessionCache(sessionId?: string): void {
  * 获取会话存储目录（从配置）
  */
 function getSessionDir(): string {
+  if (process.env.AXON_SESSION_DIR) {
+    return process.env.AXON_SESSION_DIR;
+  }
   const config = configManager.getAll();
   return config.sessionManager?.sessionDir || path.join(os.homedir(), '.axon', 'sessions');
 }

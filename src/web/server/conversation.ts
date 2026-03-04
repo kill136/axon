@@ -1180,6 +1180,8 @@ export class ConversationManager {
       state.cancelled = true;
       // 谁启动的蜂群，谁负责关闭：如果 Planner Agent 正在等待蜂群执行，一并取消
       StartLeadAgentTool.cancelActiveExecution();
+      // 取消所有运行中的子 agent（Task 工具启动的后台任务）
+      state.taskManager.cancelAllRunningTasks();
       // 中断正在执行的工具（如 Bash 命令），让 conversationLoop 的 Promise.race 立即返回
       state.currentAbortController?.abort();
       // 取消所有待处理的用户问题
