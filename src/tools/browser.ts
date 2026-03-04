@@ -233,10 +233,19 @@ ADVANCED FEATURES:
   async execute(input: BrowserToolInput): Promise<ToolResult> {
     try {
       const manager = await this.getManager();
-      const controller = await this.getController();
 
       switch (input.action) {
         case 'start': {
+          // Clean up orphaned controllers from previous sessions
+          // This prevents "All tabs are claimed" errors when reusing browser process
+          const currentSessionId = getSessionId();
+          const orphanedSessions = Array.from(this.controllers.keys()).filter(
+            id => id !== currentSessionId
+          );
+          for (const sessionId of orphanedSessions) {
+            await this.removeController(sessionId);
+          }
+
           await manager.start({ 
             headless: false,
             profileName: input.profileName,
@@ -295,7 +304,12 @@ ADVANCED FEATURES:
 
           return this.success(statusStr);
         }
+      }
 
+      // For all other actions, get controller on demand
+      const controller = await this.getController();
+
+      switch (input.action) {
         case 'goto': {
           if (!input.url) {
             return this.error(t('browser.missingUrl'));

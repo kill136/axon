@@ -39,7 +39,7 @@ import {
   getSummaryPath,
   isSessionMemoryEnabled,
 } from '../../context/session-memory.js';
-import { initNotebookManager, getNotebookManager } from '../../memory/notebook.js';
+import { initNotebookManager, getNotebookManager, activateNotebookManager } from '../../memory/notebook.js';
 import { initMemorySearchManager, getMemorySearchManager } from '../../memory/memory-search.js';
 import { registerMcpServer, connectMcpServer, createMcpTools, getMcpServers, callMcpTool, disconnectMcpServer, unregisterMcpServer, MCPSearchTool, type McpToolDefinition } from '../../tools/mcp.js';
 import { getChromeIntegrationConfig } from '../../chrome-mcp/index.js';
@@ -2580,6 +2580,10 @@ export class ConversationManager {
     state: SessionState,
     callbacks: StreamCallbacks
   ): Promise<{ success: boolean; output?: string; error?: string; data?: ToolResultData; newMessages?: Array<{ role: 'user'; content: any[] }>; images?: Array<{ type: 'image'; source: { type: 'base64'; media_type: string; data: string } }> }> {
+    // 多项目隔离：工具执行前切换 NotebookManager 到当前会话的项目
+    // 防止多会话并发时 NotebookWrite 写入错误项目的笔记本
+    activateNotebookManager(state.session.cwd);
+
     const tool = toolRegistry.get(toolUse.name);
 
     // MCP 工具不在 toolRegistry 中，通过 mcpTools state 管理
@@ -3415,8 +3419,8 @@ export class ConversationManager {
     const conversationText = this.extractConversationText(preCompactMessages, 8000);
     if (!conversationText || conversationText.length < 200) return;
 
-    // 读取 project notebook
-    const nbMgr = getNotebookManager();
+    // 读取 project notebook（确保使用正确项目的 manager）
+    const nbMgr = activateNotebookManager(projectPath) || getNotebookManager();
     const projectNotes = nbMgr?.read('project') || '';
 
     try {
@@ -3765,9 +3769,10 @@ Respond ONLY with valid JSON, no other text.`;
       const isGitRepo = this.checkIsGitRepo(state.session.cwd);
 
       // Agent 笔记本：每轮刷新笔记本内容（与 CLI loop.ts 保持一致）
+      // 使用 activateNotebookManager 确保读取的是当前会话项目的笔记本
       let notebookSummary: string | undefined;
       try {
-        const nbMgr = getNotebookManager();
+        const nbMgr = activateNotebookManager(state.session.cwd) || getNotebookManager();
         if (nbMgr) {
           notebookSummary = nbMgr.getNotebookSummaryForPrompt() || undefined;
         }

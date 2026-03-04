@@ -3,6 +3,62 @@ import ReactDOM from 'react-dom/client';
 import Root from './Root';
 import './styles/index.css';
 
+// ============================================================================
+// 前端错误上报到后端 ErrorWatcher
+// 通过 window.__wsSend（由 useWebSocket hook 注入）发送 client_error 消息
+// ============================================================================
+
+declare global {
+  interface Window {
+    __wsSend?: (message: unknown) => void;
+  }
+}
+
+/** 去重：5 秒内相同 message 不重复上报 */
+const _reportedErrors = new Map<string, number>();
+const DEDUP_WINDOW_MS = 5000;
+
+function reportClientError(info: {
+  message: string;
+  stack?: string;
+  source?: string;
+  lineno?: number;
+  colno?: number;
+  componentName?: string;
+}): void {
+  if (!window.__wsSend) return;
+  if (!info.message) return;
+
+  // 去重
+  const key = info.message + (info.source || '') + (info.lineno || '');
+  const now = Date.now();
+  const last = _reportedErrors.get(key);
+  if (last && now - last < DEDUP_WINDOW_MS) return;
+  _reportedErrors.set(key, now);
+
+  // 清理过期条目
+  if (_reportedErrors.size > 50) {
+    for (const [k, t] of _reportedErrors) {
+      if (now - t > DEDUP_WINDOW_MS) _reportedErrors.delete(k);
+    }
+  }
+
+  window.__wsSend({
+    type: 'client_error',
+    payload: {
+      message: info.message,
+      stack: info.stack?.slice(0, 2000),
+      source: info.source,
+      lineno: info.lineno,
+      colno: info.colno,
+      componentName: info.componentName,
+    },
+  });
+}
+
+// 暴露给 ErrorBoundary 使用
+(window as any).__reportClientError = reportClientError;
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <Root />
@@ -58,13 +114,25 @@ if (!(window as any).__errorGuardRegistered) {
     // 只处理脚本错误，忽略资源加载错误
     if (event.error) {
       console.error('[Global Error Guard] Uncaught error:', event.error);
+      reportClientError({
+        message: event.error.message || String(event.error),
+        stack: event.error.stack,
+        source: event.filename,
+        lineno: event.lineno,
+        colno: event.colno,
+      });
       showCrashRecoveryUI(event.error.message || 'Unknown error');
     }
   });
 
   window.addEventListener('unhandledrejection', (event) => {
     console.error('[Global Error Guard] Unhandled rejection:', event.reason);
-    // Promise rejection 不一定导致白屏，只记录日志
+    const reason = event.reason;
+    reportClientError({
+      message: reason instanceof Error ? reason.message : String(reason),
+      stack: reason instanceof Error ? reason.stack : undefined,
+      source: 'unhandledrejection',
+    });
   });
 }
 

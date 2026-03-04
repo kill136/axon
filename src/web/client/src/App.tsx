@@ -26,6 +26,7 @@ import { LogsView } from './components/Terminal/LogsView';
 import CodeView from './components/CodeView';
 import type { SessionActions } from './types';
 import { useLanguage } from './i18n/LanguageContext';
+import InitAxonMdDialog from './components/InitAxonMdDialog';
 
 // 获取 WebSocket URL
 function getWebSocketUrl(): string {
@@ -64,6 +65,7 @@ function AppContent({
   const { t } = useLanguage();
   const { state: projectState, openFolder } = useProject();
   const currentProjectPath = projectState.currentProject?.path;
+  const [showInitAxonMd, setShowInitAxonMd] = useState(false);
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [showTerminal, setShowTerminal] = useState(false);
   const [showLogsPanel, setShowLogsPanel] = useState(false);
@@ -95,6 +97,28 @@ function AppContent({
   useEffect(() => {
     registerMessaging?.({ send, addMessageHandler });
   }, [send, addMessageHandler, registerMessaging]);
+
+  // AXON.md 初始化检测：项目切换后检查是否缺少 AXON.md，且 AI 服务可用时才弹框
+  useEffect(() => {
+    const project = projectState.currentProject;
+    if (!project || project.hasAxonMd !== false || !connected) return;
+
+    // 异步检查认证状态，只有 AI 可用时才弹框
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/auth/oauth/status');
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        if (!cancelled && data.authenticated) {
+          setShowInitAxonMd(true);
+        }
+      } catch {
+        // 认证检查失败，不弹框
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [projectState.currentProject, connected]);
 
   // 消息处理
   const {
@@ -675,6 +699,15 @@ function AppContent({
           onDismiss={dismissCrossSessionNotification}
         />
       )}
+      <InitAxonMdDialog
+        visible={showInitAxonMd}
+        projectPath={currentProjectPath || ''}
+        onConfirm={() => {
+          setShowInitAxonMd(false);
+          send({ type: 'slash_command', payload: { command: '/init' } });
+        }}
+        onCancel={() => setShowInitAxonMd(false)}
+      />
     </div>
   );
 }

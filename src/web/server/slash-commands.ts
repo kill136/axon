@@ -6,6 +6,8 @@
 import type { ConversationManager } from './conversation.js';
 import type { WebSocket } from 'ws';
 import { createRequire } from 'module';
+import fs from 'fs';
+import path from 'path';
 
 const require = createRequire(import.meta.url);
 
@@ -770,6 +772,64 @@ const logoutCommand: SlashCommand = {
   },
 };
 
+// /init - 初始化 AXON.md
+const initCommand: SlashCommand = {
+  name: 'init',
+  description: 'Initialize AXON.md for this project',
+  usage: '/init',
+  category: 'config',
+  execute: (ctx: ExtendedCommandContext): CommandResult => {
+    const claudeMdPath = path.join(ctx.cwd, 'AXON.md');
+    const claudeDir = path.join(ctx.cwd, '.axon');
+    const alreadyInitialized = fs.existsSync(claudeMdPath) || fs.existsSync(claudeDir);
+
+    if (alreadyInitialized) {
+      const existingFiles: string[] = [];
+      if (fs.existsSync(claudeMdPath)) existingFiles.push('AXON.md');
+      if (fs.existsSync(claudeDir)) existingFiles.push('.axon/');
+
+      return {
+        success: true,
+        data: {
+          chatPrompt: `Please analyze this codebase and suggest improvements to the existing Axon configuration.\n\nCurrent configuration found:\n${existingFiles.map(f => `- ${f}`).join('\n')}\n\nPlease review and suggest improvements for:\n1. AXON.md - Is it comprehensive? Does it include key commands and architecture?\n2. .axon/ directory - Are there useful custom commands or settings that should be added?\n3. Any missing configuration that would help future Claude instances work more effectively in this codebase.\n\nFocus on practical improvements based on the actual codebase structure and development workflow.`,
+        },
+      };
+    }
+
+    return {
+      success: true,
+      data: {
+        chatPrompt: `Please analyze this codebase and create a AXON.md file, which will be given to future instances of Axon to operate in this repository.
+
+IMPORTANT: The AXON.md file MUST use the built-in template as its foundation. Call the createClaudeMdTemplate function or use the following structure:
+1. Start with the standard header "# AXON.md" and the intro line
+2. Fill in the "## Project Overview" section with a concise description of the project
+3. Keep the "## Iron Rules" section and "## Behavioral Red Lines" section EXACTLY as they are in the template — do NOT modify, remove, or reword any rules
+4. Fill in the "## Development Commands" section with actual build/test/lint commands discovered from the project
+5. Fill in the "## Architecture Overview" section with the high-level code structure
+
+What to add in the project-specific sections:
+1. Commands that will be commonly used, such as how to build, lint, and run tests. Include the necessary commands to develop in this codebase, such as how to run a single test.
+2. High-level code architecture and structure so that future instances can be productive more quickly. Focus on the "big picture" architecture that requires reading multiple files to understand.
+
+Usage notes:
+- Do not repeat yourself and do not include obvious instructions.
+- Avoid listing every component or file structure that can be easily discovered.
+- Don't include generic development practices — the Iron Rules already cover behavioral constraints.
+- If there are Cursor rules or Copilot rules, make sure to include the important parts.
+- If there is a README.md, make sure to include the important parts.
+
+Additionally, please help set up the .axon/ directory structure:
+1. Create .axon/commands/ for custom slash commands
+2. Suggest adding .axon/ to .gitignore (but keep AXON.md tracked)
+3. If there are common project-specific workflows, suggest creating custom commands for them
+
+Please analyze the codebase now and create these files.`,
+      },
+    };
+  },
+};
+
 // ============ 注册所有命令 ============
 
 export const registry = new SlashCommandRegistry();
@@ -788,6 +848,7 @@ registry.register(mcpCommand);
 registry.register(pluginCommand);
 registry.register(loginCommand);
 registry.register(logoutCommand);
+registry.register(initCommand);
 
 // ============ 导出工具函数 ============
 

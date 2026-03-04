@@ -1,0 +1,82 @@
+.init-axon-md-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+}
+
+.init-axon-md-dialog {
+  background: var(--bg-primary, #1e1e2e);
+  border: 1px solid var(--border-color, #363647);
+  border-radius: 12px;
+  width: 420px;
+  max-width: 90vw;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.init-axon-md-header {
+  padding: 16px 20px 0;
+}
+
+.init-axon-md-header h3 {
+  margin: 0;
+  font-size: 16px;
+  color: var(--text-primary, #cdd6f4);
+}
+
+.init-axon-md-body {
+  padding: 12px 20px;
+}
+
+.init-axon-md-body p {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--text-secondary, #a6adc8);
+  line-height: 1.5;
+}
+
+.init-axon-md-body code {
+  background: var(--bg-tertiary, #2a2a3e);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.init-axon-md-footer {
+  padding: 12px 20px 16px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.init-axon-md-btn {
+  padding: 6px 16px;
+  border-radius: 6px;
+  border: none;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.init-axon-md-btn.secondary {
+  background: transparent;
+  color: var(--text-secondary, #a6adc8);
+  border: 1px solid var(--border-color, #363647);
+}
+
+.init-axon-md-btn.secondary:hover {
+  background: var(--bg-tertiary, #2a2a3e);
+}
+
+.init-axon-md-btn.primary {
+  background: var(--accent-color, #89b4fa);
+  color: var(--bg-primary, #1e1e2e);
+  font-weight: 500;
+}
+
+.init-axon-md-btn.primary:hover {
+  opacity: 0.9;
+}

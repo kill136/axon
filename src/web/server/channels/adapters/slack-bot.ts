@@ -83,15 +83,33 @@ export class SlackBotAdapter implements ChannelAdapter {
     console.log('[Slack] Bot stopped');
   }
 
-  async sendText(chatId: string, text: string, options?: SendOptions): Promise<void> {
+  async sendText(chatId: string, text: string, options?: SendOptions): Promise<string | void> {
     if (!this.app) throw new Error('Slack bot not started');
 
-    await this.app.client.chat.postMessage({
+    const result = await this.app.client.chat.postMessage({
       channel: chatId,
       text,
       mrkdwn: options?.parseMode === 'Markdown',
       ...(options?.replyToMessageId ? { thread_ts: options.replyToMessageId } : {}),
     });
+    return result.ts; // Slack 用时间戳作消息 ID
+  }
+
+  async editText(chatId: string, messageId: string, text: string, options?: SendOptions): Promise<boolean> {
+    if (!this.app) return false;
+
+    try {
+      await this.app.client.chat.update({
+        channel: chatId,
+        ts: messageId,
+        text,
+      });
+      return true;
+    } catch (error: any) {
+      // "message_not_found" 或 "cant_update_message" 不算致命错误
+      console.error('[Slack] editText failed:', error?.data?.error || error?.message || error);
+      return false;
+    }
   }
 
   async sendImage(chatId: string, imageData: Buffer, mimeType: string, caption?: string): Promise<void> {

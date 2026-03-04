@@ -1119,7 +1119,10 @@ export class ConfigManager {
 
     // 10. 验证配置
     try {
-      return UserConfigSchema.parse(config);
+      const validated = UserConfigSchema.parse(config);
+      // 10a. 检查未知字段（参考 OpenClaw .strict() 模式，但不拒绝，只告警）
+      this.warnUnknownFields(config);
+      return validated;
     } catch (error: any) {
       // v2.1.33: 改进错误展示 - 将验证错误详细展示给用户
       if (error?.issues) {
@@ -1131,6 +1134,35 @@ export class ConfigManager {
         console.warn('Config validation failed, using defaults:', error);
       }
       return UserConfigSchema.parse(DEFAULT_CONFIG);
+    }
+  }
+
+  /**
+   * 检查配置中的未知字段并输出告警
+   * 参考 OpenClaw 的 .strict() 模式，但不拒绝配置，只告警
+   */
+  private warnUnknownFields(config: any): void {
+    if (!config || typeof config !== 'object') return;
+
+    // UserConfigSchema 定义的合法顶层字段
+    const knownFields = new Set(Object.keys(UserConfigSchema.shape));
+    // 扩展系统使用但不在 schema 中定义的合法字段
+    const extensionFields = new Set([
+      'channels', 'connectors', 'plugins', 'hooks', 'customTools',
+      'browserSettings', 'skills', 'marketplace', 'web',
+    ]);
+
+    const unknownFields: string[] = [];
+    for (const key of Object.keys(config)) {
+      if (!knownFields.has(key) && !extensionFields.has(key)) {
+        unknownFields.push(key);
+      }
+    }
+
+    if (unknownFields.length > 0) {
+      console.warn(
+        `[Config] Unknown fields in settings.json (possible typos): ${unknownFields.join(', ')}`
+      );
     }
   }
 

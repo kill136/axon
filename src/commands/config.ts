@@ -1549,24 +1549,24 @@ I'll analyze your codebase and suggest improvements to your configuration.`);
     // 如果未初始化，发送完整的初始化提示（基于官方源码）
     const initPrompt = `Please analyze this codebase and create a AXON.md file, which will be given to future instances of Axon to operate in this repository.
 
-What to add:
+IMPORTANT: The AXON.md file MUST use the built-in template as its foundation. Call the createClaudeMdTemplate function or use the following structure:
+1. Start with the standard header "# AXON.md" and the intro line
+2. Fill in the "## Project Overview" section with a concise description of the project
+3. Keep the "## Iron Rules" section and "## Behavioral Red Lines" section EXACTLY as they are in the template — do NOT modify, remove, or reword any rules
+4. Fill in the "## Development Commands" section with actual build/test/lint commands discovered from the project
+5. Fill in the "## Architecture Overview" section with the high-level code structure
+
+What to add in the project-specific sections:
 1. Commands that will be commonly used, such as how to build, lint, and run tests. Include the necessary commands to develop in this codebase, such as how to run a single test.
 2. High-level code architecture and structure so that future instances can be productive more quickly. Focus on the "big picture" architecture that requires reading multiple files to understand.
 
 Usage notes:
-- When you make the initial AXON.md, do not repeat yourself and do not include obvious instructions like "Provide helpful error messages to users", "Write unit tests for all new utilities", "Never include sensitive information (API keys, tokens) in code or commits".
+- Do not repeat yourself and do not include obvious instructions like "Provide helpful error messages to users", "Write unit tests for all new utilities", "Never include sensitive information (API keys, tokens) in code or commits".
 - Avoid listing every component or file structure that can be easily discovered.
-- Don't include generic development practices.
+- Don't include generic development practices — the Iron Rules already cover behavioral constraints.
 - If there are Cursor rules (in .cursor/rules/ or .cursorrules) or Copilot rules (in .github/copilot-instructions.md), make sure to include the important parts.
 - If there is a README.md, make sure to include the important parts.
 - Do not make up information such as "Common Development Tasks", "Tips for Development", "Support and Documentation" unless this is expressly included in other files that you read.
-- Be sure to prefix the file with the following text:
-
-\`\`\`
-# AXON.md
-
-This file provides guidance to Axon (claude.ai/code) when working with code in this repository.
-\`\`\`
 
 Additionally, please help set up the .axon/ directory structure:
 1. Create .axon/commands/ for custom slash commands

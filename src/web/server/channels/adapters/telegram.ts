@@ -83,7 +83,7 @@ export class TelegramAdapter implements ChannelAdapter {
     console.log('[Telegram] Bot stopped');
   }
 
-  async sendText(chatId: string, text: string, options?: SendOptions): Promise<void> {
+  async sendText(chatId: string, text: string, options?: SendOptions): Promise<string | void> {
     if (!this.bot) throw new Error('Telegram bot not started');
 
     const sendOpts: Record<string, any> = {};
@@ -101,17 +101,53 @@ export class TelegramAdapter implements ChannelAdapter {
     }
 
     try {
-      await this.bot.api.sendMessage(Number(chatId), text, sendOpts);
+      const result = await this.bot.api.sendMessage(Number(chatId), text, sendOpts);
+      return String(result.message_id);
     } catch (error: any) {
       // Markdown 解析失败，降级为纯文本
       if (error?.description?.includes("can't parse")) {
-        await this.bot.api.sendMessage(Number(chatId), text, {
+        const result = await this.bot.api.sendMessage(Number(chatId), text, {
           ...sendOpts,
           parse_mode: undefined,
         });
+        return String(result.message_id);
       } else {
         throw error;
       }
+    }
+  }
+
+  async editText(chatId: string, messageId: string, text: string, options?: SendOptions): Promise<boolean> {
+    if (!this.bot) return false;
+
+    const editOpts: Record<string, any> = {};
+    if (options?.parseMode === 'Markdown') {
+      editOpts.parse_mode = 'Markdown';
+    } else if (options?.parseMode === 'HTML') {
+      editOpts.parse_mode = 'HTML';
+    }
+
+    try {
+      await this.bot.api.editMessageText(Number(chatId), Number(messageId), text, editOpts);
+      return true;
+    } catch (error: any) {
+      // "message is not modified" 不算错误
+      if (error?.description?.includes('message is not modified')) {
+        return true;
+      }
+      // Markdown 解析失败，降级纯文本
+      if (error?.description?.includes("can't parse")) {
+        try {
+          await this.bot.api.editMessageText(Number(chatId), Number(messageId), text, {
+            ...editOpts,
+            parse_mode: undefined,
+          });
+          return true;
+        } catch {
+          return false;
+        }
+      }
+      return false;
     }
   }
 

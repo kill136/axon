@@ -21,17 +21,9 @@ interface ProjectItem {
 }
 
 export interface TopNavBarProps {
-  currentPage: 'chat' | 'swarm' | 'blueprint' | 'customize';
-  onPageChange: (page: 'chat' | 'swarm' | 'blueprint' | 'customize') => void;
+  currentPage: 'chat' | 'code' | 'swarm' | 'blueprint' | 'customize';
+  onPageChange: (page: 'chat' | 'code' | 'swarm' | 'blueprint' | 'customize') => void;
   onSettingsClick?: () => void;
-  /** 代码视图是否激活 */
-  codeViewActive?: boolean;
-  /** 切换代码视图 */
-  onToggleCodeView?: () => void;
-  /** Git 面板是否打开 */
-  gitPanelActive?: boolean;
-  /** 切换 Git 面板 */
-  onToggleGitPanel?: () => void;
   /** 连接状态 */
   connected?: boolean;
   /** 点击登录按钮 */
@@ -140,8 +132,6 @@ const SearchIcon = () => (
  */
 export default function TopNavBar({
   currentPage, onPageChange, onSettingsClick,
-  codeViewActive, onToggleCodeView,
-  gitPanelActive, onToggleGitPanel,
   connected, onLoginClick, authRefreshKey,
   currentProject, onProjectChange, onOpenFolder, onProjectRemove,
   sessions = [], currentSessionId, onSessionSelect, onNewSession,
@@ -329,13 +319,22 @@ export default function TopNavBar({
         {/* 左侧：页面 Tab */}
         <div className={styles.navTabs}>
           <button
-            className={`${styles.navTab} ${currentPage === 'chat' && !codeViewActive ? styles.active : ''}`}
+            className={`${styles.navTab} ${currentPage === 'chat' ? styles.active : ''}`}
             onClick={() => onPageChange('chat')}
           >
             <span className={styles.icon}>
               <ChatIcon />
             </span>
             <span>{t('nav.chat')}</span>
+          </button>
+          <button
+            className={`${styles.navTab} ${currentPage === 'code' ? styles.active : ''}`}
+            onClick={() => onPageChange('code')}
+          >
+            <span className={styles.icon}>
+              <CodeViewIcon />
+            </span>
+            <span>{t('nav.code')}</span>
           </button>
           <button
             className={`${styles.navTab} ${currentPage === 'blueprint' ? styles.active : ''}`}
@@ -365,35 +364,6 @@ export default function TopNavBar({
             <span>{t('nav.customize')}</span>
           </button>
         </div>
-
-        {/* 右侧：Git 按钮 + 视图切换按钮（仅 Chat 页面显示） */}
-        {currentPage === 'chat' && (
-          <div className={styles.viewSwitcher}>
-            {onToggleGitPanel && (
-              <button
-                className={`${styles.viewButton} ${gitPanelActive ? styles.active : ''}`}
-                onClick={onToggleGitPanel}
-                title={t('input.git')}
-              >
-                <GitBranchIcon />
-              </button>
-            )}
-            <button
-              className={`${styles.viewButton} ${!codeViewActive ? styles.active : ''}`}
-              onClick={() => codeViewActive && onToggleCodeView?.()}
-              title={t('nav.conversationView')}
-            >
-              <ConversationViewIcon />
-            </button>
-            <button
-              className={`${styles.viewButton} ${codeViewActive ? styles.active : ''}`}
-              onClick={() => !codeViewActive && onToggleCodeView?.()}
-              title={t('nav.codeView')}
-            >
-              <CodeViewIcon />
-            </button>
-          </div>
-        )}
       </div>
     </nav>
   );

@@ -258,7 +258,13 @@ export type ClientMessage =
   | { type: 'channel:list' }
   | { type: 'channel:start'; payload: { channelId: string } }
   | { type: 'channel:stop'; payload: { channelId: string } }
-  | { type: 'channel:config_update'; payload: { channelId: string; config: Record<string, any> } };
+  | { type: 'channel:config_update'; payload: { channelId: string; config: Record<string, any> } }
+  // Pairing 配对
+  | { type: 'channel:pairing_list' }
+  | { type: 'channel:pairing_approve'; payload: { channel: string; code: string } }
+  | { type: 'channel:pairing_deny'; payload: { channel: string; code: string } }
+  // 前端错误上报
+  | { type: 'client_error'; payload: { message: string; stack?: string; source?: string; lineno?: number; colno?: number; componentName?: string } };
 
 /**
  * 服务端发送的消息类型
@@ -436,7 +442,10 @@ export type ServerMessage =
   | { type: 'channel:list'; payload: { channels: ChannelStatusInfo[] } }
   | { type: 'channel:status_update'; payload: ChannelStatusInfo }
   | { type: 'channel:message'; payload: { channel: string; direction: 'inbound' | 'outbound'; senderName: string; text: string; timestamp: number } }
-  | { type: 'channel:error'; payload: { channelId: string; error: string } };
+  | { type: 'channel:error'; payload: { channelId: string; error: string } }
+  // Pairing 配对
+  | { type: 'channel:pairing_list'; payload: { requests: PairingRequestInfo[] } }
+  | { type: 'channel:pairing_new'; payload: PairingRequestInfo };
 
 // ============ IM 通道状态类型 ============
 
@@ -450,6 +459,15 @@ export interface ChannelStatusInfo {
   error?: string;
   lastActiveAt?: number;
   messageCount?: number;
+}
+
+export interface PairingRequestInfo {
+  senderId: string;
+  senderName: string;
+  channel: string;
+  code: string;
+  createdAt: number;
+  lastSeenAt: number;
 }
 
 // ============ 消息负载类型 ============

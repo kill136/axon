@@ -421,40 +421,6 @@
   color: currentColor;
 }
 
-/* 视图切换器 */
-.viewSwitcher {
-  display: flex;
-  gap: 4px;
-  align-items: center;
-  flex-shrink: 0;
-}
-
-.viewButton {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.viewButton:hover {
-  color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.05);
-  border-color: var(--border-color);
-}
-
-.viewButton.active {
-  color: var(--accent-primary);
-  background: rgba(99, 102, 241, 0.12);
-  border-color: var(--accent-primary);
-}
-
 /* ===================== 响应式 ===================== */
 @media (max-width: 900px) {
   .navProjectSelector {
@@ -569,10 +535,5 @@
 
   .navTab {
     padding: 0 8px;
-  }
-
-  .viewButton {
-    width: 28px;
-    height: 28px;
   }
 }

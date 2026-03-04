@@ -288,6 +288,8 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
     const { broadcastMessage, setChannelManager } = await import('./websocket.js');
     channelManager = new ChannelManager(conversationManager, model, cwd);
     channelManager.setBroadcast(broadcastMessage);
+    // 注册 webhook 路由（WhatsApp 等需要公网回调的通道）
+    channelManager.setupWebhookRoutes(app);
     // 注入到 WebSocket 处理器，使 channel:* 消息可用
     setChannelManager(channelManager);
     // 延迟初始化，不阻塞服务器启动

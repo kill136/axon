@@ -156,6 +156,14 @@ export type PluginHookType =
   | 'onPluginUnload';
 
 /**
+ * Void hooks：通知型，并行执行，不能修改 context（参考 OpenClaw void/blocking 双模式）
+ * Blocking hooks：拦截型，串行执行，可以修改 context
+ */
+const VOID_HOOKS: ReadonlySet<PluginHookType> = new Set<PluginHookType>([
+  'onError', 'onSessionStart', 'onSessionEnd', 'onPluginLoad', 'onPluginUnload',
+]);
+
+/**
  * 钩子处理器
  */
 export type HookHandler<T = unknown> = (context: T) => Promise<T | void> | T | void;
@@ -1170,8 +1178,6 @@ export class PluginManager extends EventEmitter {
    * 执行钩子（按优先级排序）
    */
   async executeHook<T>(hookType: PluginHookType, context: T): Promise<T> {
-    let result = context;
-
     // 收集所有相关钩子
     const hooks: Array<{ plugin: string; hook: HookDefinition }> = [];
     for (const [pluginName, hookList] of Array.from(this.registeredHooks.entries())) {
@@ -1182,10 +1188,28 @@ export class PluginManager extends EventEmitter {
       }
     }
 
+    if (hooks.length === 0) return context;
+
     // 按优先级排序（数字越小优先级越高）
     hooks.sort((a, b) => (a.hook.priority || 100) - (b.hook.priority || 100));
 
-    // 依次执行
+    // Void hooks（on* 系列）：并行执行，不修改 context
+    if (VOID_HOOKS.has(hookType)) {
+      await Promise.allSettled(
+        hooks.map(async ({ plugin, hook }) => {
+          try {
+            await hook.handler(context);
+          } catch (err) {
+            this.emit('hook:error', hookType, plugin, err);
+            console.error(`Error in void hook ${hookType} from plugin ${plugin}:`, err);
+          }
+        })
+      );
+      return context;
+    }
+
+    // Blocking hooks（before*/after* 系列）：串行执行，可修改 context
+    let result = context;
     for (const { plugin, hook } of hooks) {
       try {
         const hookResult = await hook.handler(result);

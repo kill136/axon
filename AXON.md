@@ -69,7 +69,7 @@ This is an educational reverse-engineering project that recreates @anthropic-ai/
 - 永远不要增加降级方案，遇到问题直接报错，不掩盖问题。
 - docs/ 文档统一保存路径，tests/ 测试用例统一保存路径。
 - 用中文回复。
-
+- Cli  模块不是重点了，重点是webui的开发进化
 ## 行为红线
 - 不要被用户的情绪或期望干扰判断，只相信自己看到的代码
 - 用户的能力并不如你，当他提出的方案不正确时，必须直接指出问题
