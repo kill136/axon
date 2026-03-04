@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import type { ChannelStatusInfo } from '../../shared/types';
+import type { ChannelStatusInfo, PairingRequestInfo } from '../../shared/types';
 import { useLanguage } from '../i18n';
 
 // ============================================================================
@@ -58,6 +58,16 @@ const CHANNEL_META: Record<string, {
     ],
     docsUrl: 'https://api.slack.com/start/quickstart',
   },
+  whatsapp: {
+    icon: '📱',
+    description: 'Connect WhatsApp via Cloud API (requires public HTTPS URL for webhook)',
+    fields: [
+      { key: 'accessToken', label: 'Access Token', type: 'password', placeholder: 'EAAx...' },
+      { key: 'phoneNumberId', label: 'Phone Number ID', type: 'text', placeholder: '1234567890' },
+      { key: 'verifyToken', label: 'Webhook Verify Token', type: 'text', placeholder: 'my-secret-token' },
+    ],
+    docsUrl: 'https://developers.facebook.com/docs/whatsapp/cloud-api/get-started',
+  },
 };
 
 // ============================================================================
@@ -80,6 +90,8 @@ export default function ChannelsPanel({ onClose, onSendMessage, addMessageHandle
     text: string;
     timestamp: number;
   }>>([]);
+  const [pairingRequests, setPairingRequests] = useState<PairingRequestInfo[]>([]);
+  const [dmPolicy, setDmPolicy] = useState<string>('allowlist');
 
   // 监听服务端消息
   useEffect(() => {
@@ -98,6 +110,14 @@ export default function ChannelsPanel({ onClose, onSendMessage, addMessageHandle
       } else if (msg.type === 'channel:error') {
         setError(msg.payload.error);
         setLoading(null);
+      } else if (msg.type === 'channel:pairing_list') {
+        setPairingRequests(msg.payload.requests);
+      } else if (msg.type === 'channel:pairing_new') {
+        setPairingRequests(prev => {
+          // 去重
+          if (prev.some(r => r.code === msg.payload.code)) return prev;
+          return [msg.payload, ...prev];
+        });
       }
     });
 
@@ -107,6 +127,7 @@ export default function ChannelsPanel({ onClose, onSendMessage, addMessageHandle
   // 初始加载
   useEffect(() => {
     onSendMessage?.({ type: 'channel:list' });
+    onSendMessage?.({ type: 'channel:pairing_list' });
   }, [onSendMessage]);
 
   const handleStart = useCallback((channelId: string) => {
@@ -128,13 +149,22 @@ export default function ChannelsPanel({ onClose, onSendMessage, addMessageHandle
       enabled: true,
       credentials: { ...configForm },
       allowGroups,
+      dmPolicy,
     };
     if (allowList.trim()) {
       config.allowList = allowList.split(',').map(s => s.trim()).filter(Boolean);
     }
     onSendMessage?.({ type: 'channel:config_update', payload: { channelId, config } });
     setSelectedChannel(null);
-  }, [onSendMessage, configForm, allowList, allowGroups]);
+  }, [onSendMessage, configForm, allowList, allowGroups, dmPolicy]);
+
+  const handleApprovePairing = useCallback((channel: string, code: string) => {
+    onSendMessage?.({ type: 'channel:pairing_approve', payload: { channel, code } });
+  }, [onSendMessage]);
+
+  const handleDenyPairing = useCallback((channel: string, code: string) => {
+    onSendMessage?.({ type: 'channel:pairing_deny', payload: { channel, code } });
+  }, [onSendMessage]);
 
   // =========== 渲染 ===========
 
@@ -287,6 +317,25 @@ export default function ChannelsPanel({ onClose, onSendMessage, addMessageHandle
             />
           </div>
 
+          {/* DM Policy */}
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ display: 'block', fontSize: 13, marginBottom: 4, color: 'var(--text-secondary, #999)' }}>
+              DM Access Policy
+            </label>
+            <select
+              value={dmPolicy}
+              onChange={e => setDmPolicy(e.target.value)}
+              style={{
+                ...inputStyle(),
+                cursor: 'pointer',
+              }}
+            >
+              <option value="allowlist">Allow List (only whitelisted users)</option>
+              <option value="pairing">Pairing (unknown users get a pairing code)</option>
+              <option value="open">Open (anyone can chat)</option>
+            </select>
+          </div>
+
           {/* Allow groups */}
           <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
             <input
@@ -405,6 +454,52 @@ export default function ChannelsPanel({ onClose, onSendMessage, addMessageHandle
           configured: false,
           configureHint: CHANNEL_META[id]?.description,
         }))
+      )}
+
+      {/* Pairing requests */}
+      {pairingRequests.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <h4 style={{ margin: '0 0 8px', fontSize: 13, color: '#facc15' }}>
+            Pending Pairing Requests ({pairingRequests.length})
+          </h4>
+          {pairingRequests.map(req => (
+            <div key={req.code} style={{
+              border: '1px solid var(--border-color, #333)',
+              borderRadius: 6,
+              padding: '10px 12px',
+              marginBottom: 8,
+              background: 'var(--bg-secondary, #1a1a2e)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}>
+              <div style={{ fontSize: 13 }}>
+                <div>
+                  <span style={{ fontWeight: 600 }}>{req.senderName}</span>
+                  <span style={{ color: 'var(--text-secondary, #666)', marginLeft: 6 }}>({req.senderId})</span>
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary, #666)', marginTop: 2 }}>
+                  Channel: {req.channel} | Code: <code style={{ color: '#facc15' }}>{req.code}</code>
+                  {' '}| {new Date(req.createdAt).toLocaleTimeString()}
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button
+                  onClick={() => handleApprovePairing(req.channel, req.code)}
+                  style={btnStyle('#4ade80')}
+                >
+                  Approve
+                </button>
+                <button
+                  onClick={() => handleDenyPairing(req.channel, req.code)}
+                  style={btnStyle('#ef4444')}
+                >
+                  Deny
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
       )}
 
       {/* Message log */}

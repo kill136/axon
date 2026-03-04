@@ -11,6 +11,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { createClaudeMdTemplate } from '../rules/index.js';
 
 /**
  * 允许的文本文件扩展名集合 (从官方源码提取)
@@ -422,42 +423,11 @@ ${info.content}
 
   /**
    * 创建默认的 AXON.md 模板
+   *
+   * 复用 rules/index.ts 中的统一模板（包含铁律约束）
    */
-  static createTemplate(projectName: string, projectType?: string): string {
-    return `# AXON.md
-
-This file provides guidance to Axon (claude.ai/code) when working with code in this repository.
-
-## Project Overview
-
-${projectName} is a ${projectType || 'software'} project.
-
-## Development Guidelines
-
-### Code Style
-
-- Follow consistent formatting
-- Write clear, descriptive comments
-- Use meaningful variable names
-
-### Testing
-
-- Write tests for new features
-- Ensure all tests pass before committing
-- Maintain test coverage above 80%
-
-### Git Workflow
-
-- Use feature branches
-- Write clear commit messages
-- Keep commits atomic and focused
-
-## Important Notes
-
-- Add project-specific guidelines here
-- Document any special requirements
-- Include build/deployment instructions if needed
-`;
+  static createTemplate(_projectName: string, _projectType?: string): string {
+    return createClaudeMdTemplate();
   }
 
   /**

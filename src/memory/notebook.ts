@@ -205,24 +205,64 @@ export class NotebookManager {
 }
 
 // ============================================================================
-// 单例管理（挂到 globalThis 上，避免热重载后模块变量被重置为 null）
+// 实例管理（支持多项目并发，Web 服务器模式下按 projectPath 隔离）
 // ============================================================================
 
 const GLOBAL_KEY = '__claude_notebook_manager__' as const;
+const GLOBAL_MAP_KEY = '__claude_notebook_managers__' as const;
 
-/** 初始化并获取 NotebookManager 实例 */
+/** 获取 managers Map（按 projectPath 索引） */
+function getManagersMap(): Map<string, NotebookManager> {
+  if (!(globalThis as any)[GLOBAL_MAP_KEY]) {
+    (globalThis as any)[GLOBAL_MAP_KEY] = new Map<string, NotebookManager>();
+  }
+  return (globalThis as any)[GLOBAL_MAP_KEY];
+}
+
+/** 规范化路径用于 Map key（统一分隔符和大小写） */
+function normalizeProjectPath(projectPath: string): string {
+  return projectPath.replace(/\\/g, '/').toLowerCase();
+}
+
+/** 初始化并获取 NotebookManager 实例（同时设置为当前活跃实例） */
 export function initNotebookManager(projectPath: string): NotebookManager {
-  const manager = new NotebookManager(projectPath);
+  const key = normalizeProjectPath(projectPath);
+  const map = getManagersMap();
+
+  let manager = map.get(key);
+  if (!manager) {
+    manager = new NotebookManager(projectPath);
+    map.set(key, manager);
+  }
+
+  // 设置为当前活跃实例（CLI 单会话模式 + 兼容旧代码）
   (globalThis as any)[GLOBAL_KEY] = manager;
   return manager;
 }
 
-/** 获取 NotebookManager 实例（必须先调用 initNotebookManager） */
+/** 获取当前活跃的 NotebookManager 实例 */
 export function getNotebookManager(): NotebookManager | null {
   return (globalThis as any)[GLOBAL_KEY] || null;
 }
 
-/** 重置实例 */
+/** 按项目路径获取 NotebookManager（Web 多会话模式下使用） */
+export function getNotebookManagerForProject(projectPath: string): NotebookManager | null {
+  const key = normalizeProjectPath(projectPath);
+  return getManagersMap().get(key) || null;
+}
+
+/** 切换活跃 manager 到指定项目（工具执行前调用，确保全局指针正确） */
+export function activateNotebookManager(projectPath: string): NotebookManager | null {
+  const key = normalizeProjectPath(projectPath);
+  const manager = getManagersMap().get(key);
+  if (manager) {
+    (globalThis as any)[GLOBAL_KEY] = manager;
+  }
+  return manager || null;
+}
+
+/** 重置所有实例 */
 export function resetNotebookManager(): void {
   (globalThis as any)[GLOBAL_KEY] = null;
+  (globalThis as any)[GLOBAL_MAP_KEY] = null;
 }

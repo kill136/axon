@@ -57,6 +57,13 @@ export function useWebSocket(url: string): UseWebSocketReturn {
       console.log('WebSocket connected');
       setConnected(true);
 
+      // 注入全局发送函数，供前端错误上报使用
+      (window as any).__wsSend = (message: unknown) => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify(message));
+        }
+      };
+
       // 定期发送 ping 保持连接
       pingIntervalRef.current = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) {
@@ -174,6 +181,8 @@ export function useWebSocket(url: string): UseWebSocketReturn {
 
       console.log('WebSocket disconnected');
       setConnected(false);
+      // 清除全局发送函数
+      (window as any).__wsSend = undefined;
       // 重置会话恢复标记，确保下次重连时能重新发送 session_switch 恢复会话
       hasRestoredSessionRef.current = false;
 

@@ -74,6 +74,15 @@
   color: var(--accent-error);
 }
 
+/* 内联重置时间 */
+.api-usage-bar__reset {
+  color: var(--accent-info, #818cf8);
+  font-weight: 500;
+  white-space: nowrap;
+  opacity: 0.85;
+  flex-shrink: 0;
+}
+
 /* Tooltip */
 .api-usage-bar__tooltip {
   position: absolute;

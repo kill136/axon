@@ -135,7 +135,7 @@ export class FeishuAdapter implements ChannelAdapter {
     console.log('[Feishu] Bot stopped');
   }
 
-  async sendText(chatId: string, text: string, options?: SendOptions): Promise<void> {
+  async sendText(chatId: string, text: string, options?: SendOptions): Promise<string | void> {
     if (!this.client) throw new Error('Feishu client not started');
 
     const receiveIdType = this.resolveIdType(chatId);
@@ -150,17 +150,17 @@ export class FeishuAdapter implements ChannelAdapter {
 
       if (options?.replyToMessageId) {
         try {
-          await (this.client as any).im.message.reply({
+          const res = await (this.client as any).im.message.reply({
             path: { message_id: options.replyToMessageId },
             data: { content, msg_type: 'post' },
           });
-          return;
+          return res?.data?.message_id;
         } catch {
           // 如果回复失败（消息已撤回），降级为直接发送
         }
       }
 
-      await (this.client as any).im.message.create({
+      const res = await (this.client as any).im.message.create({
         params: { receive_id_type: receiveIdType },
         data: {
           receive_id: chatId,
@@ -168,23 +168,24 @@ export class FeishuAdapter implements ChannelAdapter {
           msg_type: 'post',
         },
       });
+      return res?.data?.message_id;
     } else {
       // 纯文本
       const content = JSON.stringify({ text });
 
       if (options?.replyToMessageId) {
         try {
-          await (this.client as any).im.message.reply({
+          const res = await (this.client as any).im.message.reply({
             path: { message_id: options.replyToMessageId },
             data: { content, msg_type: 'text' },
           });
-          return;
+          return res?.data?.message_id;
         } catch {
           // 降级为直接发送
         }
       }
 
-      await (this.client as any).im.message.create({
+      const res = await (this.client as any).im.message.create({
         params: { receive_id_type: receiveIdType },
         data: {
           receive_id: chatId,
@@ -192,6 +193,36 @@ export class FeishuAdapter implements ChannelAdapter {
           msg_type: 'text',
         },
       });
+      return res?.data?.message_id;
+    }
+  }
+
+  async editText(chatId: string, messageId: string, text: string, options?: SendOptions): Promise<boolean> {
+    if (!this.client) return false;
+
+    try {
+      if (options?.parseMode === 'Markdown') {
+        const content = JSON.stringify({
+          zh_cn: {
+            content: [[{ tag: 'md', text }]],
+          },
+        });
+        await (this.client as any).im.message.update({
+          path: { message_id: messageId },
+          data: { content, msg_type: 'post' },
+        });
+      } else {
+        const content = JSON.stringify({ text });
+        await (this.client as any).im.message.update({
+          path: { message_id: messageId },
+          data: { content, msg_type: 'text' },
+        });
+      }
+      return true;
+    } catch (error: any) {
+      // 飞书只允许编辑 24 小时内的消息
+      console.error('[Feishu] editText failed:', error?.msg || error?.message || error);
+      return false;
     }
   }
 

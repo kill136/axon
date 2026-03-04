@@ -38,6 +38,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   { name: '/resume', description: '恢复之前的对话', aliases: ['/continue'], category: 'session' },
 
   // Config
+  { name: '/init', description: '初始化项目 AXON.md 配置', category: 'config' },
   { name: '/model', description: '查看或切换模型', aliases: ['/m'], category: 'config' },
   { name: '/config', description: '显示当前配置', aliases: ['/settings'], category: 'config' },
   { name: '/mcp', description: '管理 MCP 服务器', category: 'config' },

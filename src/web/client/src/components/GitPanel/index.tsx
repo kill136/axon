@@ -374,22 +374,14 @@ export function GitPanel({ isOpen, onClose, send, addMessageHandler, projectPath
           )}
         </div>
         <div className="git-panel-header-actions">
-          {/* AI 按钮移到头部 */}
+          {/* AI 合并按钮：同时触发提交 + 审查 v2 */}
           <button
             className="git-ai-button git-ai-button--compact"
-            onClick={handleSmartCommit}
-            disabled={isGeneratingCommit || !(gitStatus?.staged.length || gitStatus?.unstaged.length || gitStatus?.untracked.length)}
-            title={t('git.smartCommit')}
+            onClick={() => { handleSmartCommit(); handleSmartReview(); }}
+            disabled={isGeneratingCommit || isReviewing || !(gitStatus?.staged.length || gitStatus?.unstaged.length || gitStatus?.untracked.length)}
+            title={`${t('git.smartCommit')} + ${t('git.smartReview')}`}
           >
-            {isGeneratingCommit ? '⚡' : '🤖'}
-          </button>
-          <button
-            className="git-ai-button git-ai-button--compact"
-            onClick={handleSmartReview}
-            disabled={isReviewing}
-            title={t('git.smartReview')}
-          >
-            {isReviewing ? '⚡' : '🔍'}
+            {(isGeneratingCommit || isReviewing) ? '⚡' : '🤖'}
           </button>
           <button className="git-panel-close" onClick={onClose} title={t('git.closeShortcut')}>
             ✕

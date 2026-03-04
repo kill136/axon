@@ -32,6 +32,8 @@ export interface Project {
   isEmpty?: boolean;
   /** 是否已有蓝图文件 */
   hasBlueprint?: boolean;
+  /** 是否已有 AXON.md */
+  hasAxonMd?: boolean;
 }
 
 /**
@@ -273,6 +275,7 @@ export function ProjectProvider({ children }: ProjectProviderProps) {
   const openProjectApi = useCallback(async (projectPath: string): Promise<{
     project: Project;
     blueprint: BlueprintInfo | null;
+    hasAxonMd: boolean;
   }> => {
     const response = await fetch('/api/blueprint/projects/open', {
       method: 'POST',
@@ -283,15 +286,14 @@ export function ProjectProvider({ children }: ProjectProviderProps) {
     if (!result.success) {
       throw new Error(result.error || '打开项目失败');
     }
-    // 后端返回格式：data: { id, path, name, lastOpenedAt, blueprint }
-    // 项目数据直接在 data 上，不是 data.project
-    const { blueprint, ...projectData } = result.data || {};
+    const { blueprint, hasAxonMd, ...projectData } = result.data || {};
     if (!projectData || !projectData.id) {
       throw new Error('服务器返回的项目数据无效');
     }
     return {
-      project: projectData as Project,
+      project: { ...projectData, hasAxonMd: !!hasAxonMd } as Project,
       blueprint: blueprint || null,
+      hasAxonMd: !!hasAxonMd,
     };
   }, []);
 
@@ -379,7 +381,7 @@ export function ProjectProvider({ children }: ProjectProviderProps) {
     dispatch({ type: 'SET_ERROR', payload: null });
 
     try {
-      const { project: openedProject, blueprint } = await openProjectApi(project.path);
+      const { project: openedProject, blueprint, hasAxonMd } = await openProjectApi(project.path);
 
       dispatch({
         type: 'OPEN_PROJECT_SUCCESS',
@@ -417,7 +419,7 @@ export function ProjectProvider({ children }: ProjectProviderProps) {
       }
 
       // 打开选中的项目
-      const { project, blueprint } = await openProjectApi(selectedPath);
+      const { project, blueprint, hasAxonMd } = await openProjectApi(selectedPath);
 
       dispatch({
         type: 'OPEN_PROJECT_SUCCESS',
@@ -521,7 +523,7 @@ export function ProjectProvider({ children }: ProjectProviderProps) {
           if (exists) {
             // 重新打开项目以获取最新蓝图信息
             try {
-              const { project, blueprint } = await openProjectApi(savedProject.path);
+              const { project, blueprint, hasAxonMd } = await openProjectApi(savedProject.path);
               dispatch({
                 type: 'OPEN_PROJECT_SUCCESS',
                 payload: { project, blueprint },

@@ -49,6 +49,13 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error(`[ErrorBoundary${this.props.name ? `: ${this.props.name}` : ''}] Uncaught error:`, error, errorInfo);
+    // 上报到后端 ErrorWatcher
+    (window as any).__reportClientError?.({
+      message: error.message,
+      stack: error.stack,
+      componentName: this.props.name || 'Unknown',
+      source: errorInfo.componentStack?.slice(0, 500),
+    });
   }
 
   handleReset = () => {

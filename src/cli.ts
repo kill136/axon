@@ -27,6 +27,8 @@ import { VERSION_FULL } from './version.js';
 import { resetTerminalTitle } from './utils/platform.js';
 import { t, initI18n } from './i18n/index.js';
 import { disconnectAllMcpServers } from './tools/mcp.js';
+import { findClaudeMd } from './rules/index.js';
+
 import {
   isPenguinEnabled,
   isFastModeAvailable,
@@ -778,6 +780,14 @@ program
         process.stdout.write(response + '\n');
       }
       process.exit(0);
+    }
+
+    // AXON.md 初始化检查：没有就直接用模板创建
+    if (!findClaudeMd(process.cwd())) {
+      const { createClaudeMdTemplate } = await import('./rules/index.js');
+      const axonMdPath = path.join(process.cwd(), 'AXON.md');
+      fs.writeFileSync(axonMdPath, createClaudeMdTemplate(), 'utf-8');
+      console.log(chalk.green(`✓ Created AXON.md`));
     }
 
     // 使用文本界面还是 TUI

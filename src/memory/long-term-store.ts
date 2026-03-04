@@ -7,6 +7,7 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { MemorySource, MemorySearchResult } from './types.js';
+import { extractKeywords } from './query-expansion.js';
 
 // 时间衰减参数：半衰期 30 天（毫秒）
 const HALF_LIFE = 30 * 24 * 60 * 60 * 1000;
@@ -315,68 +316,34 @@ export class LongTermStore {
       const escaped = query.replace(/["\-*(){}:^~\[\]\\+.]/g, ' ');
       const ftsQuery = tokenizeChinese(escaped);
 
-      // 使用 FTS5 搜索
-      let sql = `
-        SELECT 
-          c.id,
-          c.path,
-          c.source,
-          c.start_line,
-          c.end_line,
-          c.text,
-          c.created_at,
-          bm25(chunks_fts) as rank
-        FROM chunks_fts
-        JOIN chunks c ON chunks_fts.id = c.id
-        WHERE chunks_fts MATCH ?
-      `;
+      // 第一轮：原始 query 搜索
+      results = this.fts5Search(ftsQuery, source, maxResults * 2);
 
-      const params: any[] = [ftsQuery];
-      if (source) {
-        sql += ` AND c.source = ?`;
-        params.push(source);
-      }
+      // 第二轮：关键词扩展搜索（结果不足时补充）
+      if (results.length < Math.ceil(maxResults / 2)) {
+        const keywords = extractKeywords(query);
+        if (keywords.length > 0) {
+          // 对每个关键词做中文分词，用 OR 连接
+          const keywordQuery = keywords
+            .map(kw => tokenizeChinese(kw.replace(/["\-*(){}:^~\[\]\\+.]/g, ' ')))
+            .filter(kw => kw.trim().length > 0)
+            .join(' OR ');
 
-      sql += ` ORDER BY rank LIMIT ?`;
-      params.push(maxResults * 2);
+          if (keywordQuery.trim()) {
+            const supplementary = this.fts5Search(keywordQuery, source, maxResults * 2);
 
-      const stmt = this.db.prepare(sql);
-      const rows = stmt.all(...params) as Array<{
-        id: string;
-        path: string;
-        source: string;
-        start_line: number;
-        end_line: number;
-        text: string;
-        created_at: number;
-        rank: number;
-      }>;
-
-      const now = Date.now();
-
-      // BM25 rank 是负数，绝对值越大匹配越好
-      // 用最佳 rank 做归一化，保证最佳结果 score 接近 1.0
-      const bestRank = rows.length > 0 ? Math.abs(rows[0].rank) : 1;
-
-      for (const row of rows) {
-        const rawScore = Math.abs(row.rank) / bestRank;
-        
-        // 时间衰减
-        const age = now - row.created_at;
-        const decay = 1 / (1 + age / HALF_LIFE);
-        const finalScore = rawScore * decay;
-
-        results.push({
-          id: row.id,
-          path: row.path,
-          startLine: row.start_line,
-          endLine: row.end_line,
-          score: finalScore,
-          snippet: this.extractSnippet(row.text, query),
-          source: row.source as MemorySource,
-          timestamp: new Date(row.created_at).toISOString(),
-          age,
-        });
+            // 合并去重（按 id）
+            const seenIds = new Set(results.map(r => r.id));
+            for (const r of supplementary) {
+              if (!seenIds.has(r.id)) {
+                // 降权补充结果（乘以 0.8 表示关键词匹配比原文匹配弱）
+                r.score *= 0.8;
+                results.push(r);
+                seenIds.add(r.id);
+              }
+            }
+          }
+        }
       }
     } else {
       // Fallback: 简单的 LIKE 搜索
@@ -431,6 +398,77 @@ export class LongTermStore {
     // 排序并限制结果
     results.sort((a, b) => b.score - a.score);
     return results.slice(0, maxResults);
+  }
+
+  /**
+   * FTS5 搜索（BM25 评分 + 时间衰减）
+   */
+  private fts5Search(ftsQuery: string, source: MemorySource | undefined, limit: number): MemorySearchResult[] {
+    let sql = `
+      SELECT
+        c.id,
+        c.path,
+        c.source,
+        c.start_line,
+        c.end_line,
+        c.text,
+        c.created_at,
+        bm25(chunks_fts) as rank
+      FROM chunks_fts
+      JOIN chunks c ON chunks_fts.id = c.id
+      WHERE chunks_fts MATCH ?
+    `;
+
+    const params: any[] = [ftsQuery];
+    if (source) {
+      sql += ` AND c.source = ?`;
+      params.push(source);
+    }
+
+    sql += ` ORDER BY rank LIMIT ?`;
+    params.push(limit);
+
+    const stmt = this.db.prepare(sql);
+    const rows = stmt.all(...params) as Array<{
+      id: string;
+      path: string;
+      source: string;
+      start_line: number;
+      end_line: number;
+      text: string;
+      created_at: number;
+      rank: number;
+    }>;
+
+    const now = Date.now();
+
+    // BM25 rank 是负数，绝对值越大匹配越好
+    // 用最佳 rank 做归一化，保证最佳结果 score 接近 1.0
+    const bestRank = rows.length > 0 ? Math.abs(rows[0].rank) : 1;
+    const results: MemorySearchResult[] = [];
+
+    for (const row of rows) {
+      const rawScore = Math.abs(row.rank) / bestRank;
+
+      // 时间衰减
+      const age = now - row.created_at;
+      const decay = 1 / (1 + age / HALF_LIFE);
+      const finalScore = rawScore * decay;
+
+      results.push({
+        id: row.id,
+        path: row.path,
+        startLine: row.start_line,
+        endLine: row.end_line,
+        score: finalScore,
+        snippet: this.extractSnippet(row.text, ftsQuery),
+        source: row.source as MemorySource,
+        timestamp: new Date(row.created_at).toISOString(),
+        age,
+      });
+    }
+
+    return results;
   }
 
   /**

@@ -81,7 +81,7 @@ const SOURCE_LOCATION_PATTERN = /[\\/]src[\\/](.+?):(\d+)/;
 
 class ErrorWatcher {
   private readonly WINDOW_MS = 5 * 60 * 1000;
-  private readonly REPAIR_THRESHOLD = 3;
+  private readonly REPAIR_THRESHOLD = 1;
   private readonly COOLDOWN_MS = 10 * 60 * 1000;
   private readonly MAX_REPAIRS_PER_HOUR = 3;
   private readonly CLEANUP_INTERVAL_MS = 60 * 1000;

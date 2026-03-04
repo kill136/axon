@@ -7,7 +7,7 @@
  * 3. LongTermStore + MemorySearch — SQLite FTS5 全文检索，索引历史 .md 文件
  */
 
-export { NotebookManager, initNotebookManager, getNotebookManager, resetNotebookManager } from './notebook.js';
+export { NotebookManager, initNotebookManager, getNotebookManager, getNotebookManagerForProject, activateNotebookManager, resetNotebookManager } from './notebook.js';
 export type { NotebookType, NotebookWriteResult, NotebookStats } from './notebook.js';
 export { MemorySearchManager, initMemorySearchManager, getMemorySearchManager, resetMemorySearchManager } from './memory-search.js';
 export { LongTermStore } from './long-term-store.js';

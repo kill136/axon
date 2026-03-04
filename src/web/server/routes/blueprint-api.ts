@@ -4574,12 +4574,17 @@ router.post('/projects/open', (req: Request, res: Response) => {
     const isEmpty = isProjectEmpty(projectPath);
     const hasBlueprint = projectBlueprints.length > 0 || projectHasBlueprint(projectPath);
 
+    // 检查 AXON.md 是否存在
+    const axonMdNames = ['AXON.md', '.axon.md', 'axon.md', '.axon/AXON.md', '.axon/instructions.md'];
+    const hasAxonMd = axonMdNames.some(name => fs.existsSync(path.join(projectPath, name)));
+
     res.json({
       success: true,
       data: {
         ...newProject,
         isEmpty,
         hasBlueprint,
+        hasAxonMd,
         blueprint: currentBlueprint ? {
           id: currentBlueprint.id,
           name: currentBlueprint.name,

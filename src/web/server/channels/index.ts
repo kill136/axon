@@ -13,11 +13,13 @@ import type {
   ChannelsConfig,
   ChannelStatusInfo,
   ChannelServerMessage,
+  PairingRequest,
 } from './types.js';
 import { IMBridge } from './bridge.js';
 import { TelegramAdapter } from './adapters/telegram.js';
 import { FeishuAdapter } from './adapters/feishu.js';
 import { SlackBotAdapter } from './adapters/slack-bot.js';
+import { WhatsAppAdapter } from './adapters/whatsapp.js';
 import { configManager } from '../../../config/index.js';
 
 // ============================================================================
@@ -32,6 +34,7 @@ const ADAPTER_FACTORIES: Record<string, () => ChannelAdapter> = {
   telegram: () => new TelegramAdapter(),
   feishu: () => new FeishuAdapter(),
   'slack-bot': () => new SlackBotAdapter(),
+  whatsapp: () => new WhatsAppAdapter(),
 };
 
 /**
@@ -41,6 +44,7 @@ const CONFIG_HINTS: Record<string, string> = {
   telegram: 'Get a Bot Token from @BotFather on Telegram, then set channels.telegram.credentials.botToken',
   feishu: 'Create a bot in Feishu Developer Console, then set channels.feishu.credentials.appId and appSecret',
   'slack-bot': 'Create a Slack App with Bot Token, then set channels.slack-bot.credentials.botToken',
+  whatsapp: 'Create a Meta App with WhatsApp API, set accessToken, phoneNumberId, and verifyToken. Webhook URL: /webhook/whatsapp',
 };
 
 // ============================================================================
@@ -63,6 +67,8 @@ export class ChannelManager {
       (msg) => this.broadcast?.(msg),
       defaultModel,
       cwd,
+      (channelId) => this.getChannelConfig(channelId),
+      (channelId, allowList) => this.updateChannelAllowList(channelId, allowList),
     );
   }
 
@@ -221,8 +227,78 @@ export class ChannelManager {
   }
 
   // ==========================================================================
+  // Pairing 配对
+  // ==========================================================================
+
+  getPairingRequests(): PairingRequest[] {
+    return this.bridge.getPairingRequests();
+  }
+
+  async approvePairing(code: string): Promise<{ success: boolean; error?: string }> {
+    return this.bridge.approvePairing(code);
+  }
+
+  denyPairing(code: string): { success: boolean; error?: string } {
+    return this.bridge.denyPairing(code);
+  }
+
+  // ==========================================================================
   // 内部方法
   // ==========================================================================
+
+  private getChannelConfig(channelId: string): ChannelConfig | undefined {
+    return this.getChannelsConfig()?.[channelId];
+  }
+
+  /**
+   * 更新通道的 allowList（Pairing 审批后调用）
+   */
+  private async updateChannelAllowList(channelId: string, allowList: string[]): Promise<void> {
+    const channelsConfig = this.getChannelsConfig() || {};
+    const config = channelsConfig[channelId];
+    if (!config) return;
+
+    config.allowList = allowList;
+    channelsConfig[channelId] = config;
+    configManager.save({ channels: channelsConfig } as any);
+
+    // 如果通道正在运行，需要让适配器知道新的 allowList
+    // 适配器会在下次 checkAccess 时读取最新配置
+  }
+
+  /**
+   * 设置 Webhook 路由（WhatsApp 等需要公网回调的通道）
+   * 在 Express app 上挂载 /webhook/:channelId 路由
+   */
+  setupWebhookRoutes(app: any): void {
+    // WhatsApp webhook
+    app.get('/webhook/whatsapp', (req: any, res: any) => {
+      const adapter = this.adapters.get('whatsapp') as WhatsAppAdapter | undefined;
+      if (!adapter) {
+        // 即使适配器未启动，也尝试用配置中的 verifyToken 做验证
+        // 这样可以在 Meta 配置 webhook 时就通过验证
+        const config = this.getChannelConfig('whatsapp');
+        const verifyToken = config?.credentials?.verifyToken;
+        if (req.query['hub.mode'] === 'subscribe' && req.query['hub.verify_token'] === verifyToken) {
+          return res.status(200).send(req.query['hub.challenge']);
+        }
+        return res.status(403).send('Forbidden');
+      }
+      const result = adapter.handleWebhookVerify(req.query);
+      res.status(result.status).send(result.body);
+    });
+
+    app.post('/webhook/whatsapp', (req: any, res: any) => {
+      const adapter = this.adapters.get('whatsapp') as WhatsAppAdapter | undefined;
+      if (!adapter) {
+        return res.sendStatus(200); // Meta 要求始终返回 200
+      }
+      adapter.handleWebhookMessage(req.body);
+      res.sendStatus(200); // 必须快速返回 200，否则 Meta 会重试
+    });
+
+    console.log('[ChannelManager] Webhook routes registered: /webhook/whatsapp');
+  }
 
   private getChannelsConfig(): ChannelsConfig | undefined {
     // UserConfigSchema.parse() strips unknown fields (like 'channels') from mergedConfig,

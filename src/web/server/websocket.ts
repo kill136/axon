@@ -29,6 +29,8 @@ import { registerE2EAgent, unregisterE2EAgent, getE2EAgent } from '../../bluepri
 import { TerminalManager } from './terminal-manager.js';
 // 日志系统
 import { logger } from '../../utils/logger.js';
+// 错误感知
+import { errorWatcher } from '../../utils/error-watcher.js';
 // Git 管理器
 import { GitManager } from './git-manager.js';
 // Git WebSocket 处理函数
@@ -145,6 +147,9 @@ interface LeadAgentPersistState {
 }
 const activeLeadAgentState = new Map<string, LeadAgentPersistState>();
 
+// 背压阈值：单连接缓冲区超过此字节数则视为慢客户端（参考 OpenClaw server-broadcast.ts）
+const MAX_BUFFERED_BYTES = 10 * 1024 * 1024; // 10MB
+
 interface ClientConnection {
   id: string;
   ws: WebSocket;
@@ -182,8 +187,14 @@ const wsClients = new Map<string, ClientConnection>();
  */
 export function broadcastMessage(message: any): void {
   const messageStr = JSON.stringify(message);
-  wsClients.forEach(client => {
+  wsClients.forEach((client, id) => {
     if (client.ws.readyState === WebSocket.OPEN) {
+      if (client.ws.bufferedAmount > MAX_BUFFERED_BYTES) {
+        console.warn(`[WebSocket] Slow consumer in broadcast, terminating client ${id}`);
+        client.ws.terminate();
+        wsClients.delete(id);
+        return;
+      }
       client.ws.send(messageStr);
     }
   });
@@ -274,6 +285,13 @@ export function setupWebSocket(
     subscribers.forEach(clientId => {
       const client = clients.get(clientId);
       if (client && client.ws.readyState === WebSocket.OPEN) {
+        if (client.ws.bufferedAmount > MAX_BUFFERED_BYTES) {
+          console.warn(`[WebSocket] Slow subscriber ${clientId}, terminating`);
+          client.ws.terminate();
+          clients.delete(clientId);
+          cleanupClientSubscriptions(clientId);
+          return;
+        }
         client.ws.send(messageStr);
       }
     });
@@ -282,8 +300,15 @@ export function setupWebSocket(
   // 广播给所有客户端
   const broadcastToAllClients = (message: any) => {
     const messageStr = JSON.stringify(message);
-    clients.forEach((client) => {
+    clients.forEach((client, id) => {
       if (client.ws.readyState === WebSocket.OPEN) {
+        if (client.ws.bufferedAmount > MAX_BUFFERED_BYTES) {
+          console.warn(`[WebSocket] Slow client ${id} in broadcast, terminating`);
+          client.ws.terminate();
+          clients.delete(id);
+          cleanupClientSubscriptions(id);
+          return;
+        }
         client.ws.send(messageStr);
       }
     });
@@ -1368,8 +1393,18 @@ export function setupWebSocket(
  * 避免高频流式事件（thinking_delta 等）产生日志洪水。
  */
 const closedWsLogged = new WeakSet<WebSocket>();
+const backpressureLogged = new WeakSet<WebSocket>();
 function sendMessage(ws: WebSocket, message: ServerMessage): void {
   if (ws.readyState === WebSocket.OPEN) {
+    // 背压检查：慢客户端缓冲区过大时断开连接，防止内存膨胀
+    if (ws.bufferedAmount > MAX_BUFFERED_BYTES) {
+      if (!backpressureLogged.has(ws)) {
+        backpressureLogged.add(ws);
+        console.warn(`[WebSocket] Slow consumer detected (buffered=${(ws.bufferedAmount / 1024 / 1024).toFixed(1)}MB), terminating connection`);
+      }
+      ws.terminate();
+      return;
+    }
     ws.send(JSON.stringify(message));
   } else {
     // 每个已关闭的 ws 只 warn 一次
@@ -1396,6 +1431,21 @@ async function handleClientMessage(
     case 'ping':
       sendMessage(ws, { type: 'pong' });
       break;
+
+    case 'client_error': {
+      const { message: errMsg, stack, source, lineno, colno, componentName } = message.payload;
+      const locationStr = source ? `${source}${lineno ? ':' + lineno : ''}${colno ? ':' + colno : ''}` : undefined;
+      const module = componentName ? `WebUI:${componentName}` : 'WebUI';
+      console.error(`[${module}] ${errMsg}${locationStr ? ' @ ' + locationStr : ''}`);
+      errorWatcher.onError({
+        ts: new Date().toISOString(),
+        level: 'error',
+        module,
+        msg: errMsg,
+        stack: stack || undefined,
+      });
+      break;
+    }
 
     case 'chat':
       // 确保会话关联 WebSocket
@@ -2197,6 +2247,9 @@ async function handleClientMessage(
     case 'channel:start':
     case 'channel:stop':
     case 'channel:config_update':
+    case 'channel:pairing_list':
+    case 'channel:pairing_approve':
+    case 'channel:pairing_deny':
       await handleChannelMessage(client, message as any);
       break;
 
@@ -2601,6 +2654,12 @@ async function handleSlashCommand(
           payload: { phase: 'error', message: result.message, sessionId },
         });
       }
+    }
+
+    // 如果命令返回 chatPrompt，将其作为聊天消息发送给 AI（用于 /init 等命令）
+    if (result.success && result.data?.chatPrompt) {
+      await handleChatMessage(client, result.data.chatPrompt, undefined, conversationManager);
+      return;
     }
 
     // 如果内置命令未找到，尝试作为 skill 执行
@@ -6806,6 +6865,32 @@ async function handleChannelMessage(
         await _channelManager.updateChannelConfig(channelId, config);
         const channels = _channelManager.getAllStatus();
         sendMessage(ws, { type: 'channel:list', payload: { channels } });
+        break;
+      }
+
+      case 'channel:pairing_list': {
+        const requests = _channelManager.getPairingRequests();
+        sendMessage(ws, { type: 'channel:pairing_list', payload: { requests } });
+        break;
+      }
+
+      case 'channel:pairing_approve': {
+        const { channel, code } = message.payload;
+        const result = await _channelManager.approvePairing(code);
+        // 刷新配对列表
+        const requests = _channelManager.getPairingRequests();
+        sendMessage(ws, { type: 'channel:pairing_list', payload: { requests } });
+        // 刷新通道列表（allowList 可能已更新）
+        const channels = _channelManager.getAllStatus();
+        sendMessage(ws, { type: 'channel:list', payload: { channels } });
+        break;
+      }
+
+      case 'channel:pairing_deny': {
+        const { channel, code } = message.payload;
+        _channelManager.denyPairing(code);
+        const requests = _channelManager.getPairingRequests();
+        sendMessage(ws, { type: 'channel:pairing_list', payload: { requests } });
         break;
       }
     }

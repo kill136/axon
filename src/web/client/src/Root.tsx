@@ -11,7 +11,7 @@ import { ProjectProvider, useProject } from './contexts/ProjectContext';
 import { LanguageProvider } from './i18n';
 import type { Session, SessionActions } from './types';
 
-type Page = 'chat' | 'swarm' | 'blueprint' | 'customize';
+type Page = 'chat' | 'code' | 'swarm' | 'blueprint' | 'customize';
 
 /**
  * RootContent - 在 ProjectProvider 内部使用 ProjectContext
@@ -20,7 +20,6 @@ function RootContent() {
   const [currentPage, setCurrentPage] = useState<Page>('chat');
   const [selectedBlueprintId, setSelectedBlueprintId] = useState<string | null>(null);
   const [swarmBlueprintId, setSwarmBlueprintId] = useState<string | null>(null);
-  const [codeViewActive, setCodeViewActive] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showGitPanel, setShowGitPanel] = useState(false);
   const [showAuthDialog, setShowAuthDialog] = useState(false);
@@ -61,18 +60,13 @@ function RootContent() {
 
   const handlePageChange = (page: Page) => {
     setCurrentPage(page);
-    // 切换到非 chat 页面时自动关闭代码视图
-    if (page !== 'chat' && codeViewActive) {
-      setCodeViewActive(false);
-    }
   };
 
+  const codeViewActive = currentPage === 'code';
+
   const toggleCodeView = useCallback(() => {
-    if (currentPage !== 'chat') {
-      setCurrentPage('chat');
-    }
-    setCodeViewActive(prev => !prev);
-  }, [currentPage, codeViewActive]);
+    setCurrentPage(prev => prev === 'code' ? 'chat' : 'code');
+  }, []);
 
   const toggleGitPanel = useCallback(() => {
     setShowGitPanel(prev => !prev);
@@ -105,8 +99,7 @@ function RootContent() {
   };
 
   const navigateToCodePage = useCallback(() => {
-    setCurrentPage('chat');
-    setCodeViewActive(true);
+    setCurrentPage('code');
   }, []);
 
   // 项目操作（ProjectSelector 回调 -> ProjectContext）
@@ -140,8 +133,9 @@ function RootContent() {
   }, []);
 
   // 页面容器样式：活跃页面显示，非活跃页面隐藏但保持挂载（保留 WebSocket 连接和状态）
+  // App 容器在 chat 和 code 页面都需要显示（CodeView 是 App 的子组件，共享 WebSocket 和消息状态）
   const pageStyle = (page: Page): React.CSSProperties => ({
-    display: currentPage === page ? 'flex' : 'none',
+    display: (page === 'chat' ? (currentPage === 'chat' || currentPage === 'code') : currentPage === page) ? 'flex' : 'none',
     flex: 1,
     overflow: 'hidden',
     minHeight: 0,
@@ -152,10 +146,6 @@ function RootContent() {
       <TopNavBar
         currentPage={currentPage}
         onPageChange={handlePageChange}
-        codeViewActive={codeViewActive}
-        onToggleCodeView={toggleCodeView}
-        gitPanelActive={showGitPanel}
-        onToggleGitPanel={toggleGitPanel}
         connected={connected}
         onLoginClick={() => setShowAuthDialog(true)}
         onSettingsClick={() => setShowSettings(true)}
