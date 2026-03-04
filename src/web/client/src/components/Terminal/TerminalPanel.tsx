@@ -237,6 +237,8 @@ export function TerminalPanel({
   const instancesContainerRef = useRef<HTMLDivElement>(null);
   // 终端计数器（用于生成名称）
   const counterRef = useRef(0);
+  // terminalId -> tabId 的同步映射（不依赖 React state 的异步更新）
+  const terminalIdMapRef = useRef<Map<string, string>>(new Map());
 
   // 查找某个 tab 对应的 xterm 实例 DOM
   const findInstanceEl = useCallback((tabId: string): HTMLElement | null => {
@@ -270,6 +272,8 @@ export function TerminalPanel({
     setTabs(prev => {
       const tab = prev.find(t => t.id === tabId);
       if (tab?.terminalId) {
+        // 清理同步映射
+        terminalIdMapRef.current.delete(tab.terminalId);
         send({
           type: 'terminal:destroy',
           payload: { terminalId: tab.terminalId },
@@ -302,6 +306,7 @@ export function TerminalPanel({
 
     // 销毁旧终端
     if (tab.terminalId) {
+      terminalIdMapRef.current.delete(tab.terminalId);
       send({
         type: 'terminal:destroy',
         payload: { terminalId: tab.terminalId },
@@ -345,6 +350,8 @@ export function TerminalPanel({
           // 从队列中取出待关联的 tabId
           const pendingTabId = pendingTabIdsRef.current.shift();
           if (pendingTabId) {
+            // 同步更新映射，确保后续 terminal:output 能立即找到 tab
+            terminalIdMapRef.current.set(serverTerminalId, pendingTabId);
             setTabs(prev => prev.map(t =>
               t.id === pendingTabId
                 ? { ...t, terminalId: serverTerminalId, isReady: true }
@@ -386,21 +393,14 @@ export function TerminalPanel({
           const data = payload.data as string;
           if (!tid || !data) break;
 
-          // 查找对应的 tab 并写入
-          // 使用 DOM 查找（因为 tabs state 在闭包中可能过时）
+          // 使用同步映射查找 tabId（不依赖 React state 的异步更新）
           const container = instancesContainerRef.current;
           if (container) {
-            const instances = container.querySelectorAll('.terminal-instance');
-            // 需要通过 tabs ref 查找 terminalId 对应的 tabId
-            // 但 tabs state 在闭包中可能过时，所以我们遍历所有实例检查
-            setTabs(currentTabs => {
-              const tab = currentTabs.find(t => t.terminalId === tid);
-              if (tab) {
-                const el = container.querySelector(`[data-tab-id="${tab.id}"]`);
-                if (el) (el as any).__xtermWrite?.(data);
-              }
-              return currentTabs; // 不修改状态
-            });
+            const tabId = terminalIdMapRef.current.get(tid);
+            if (tabId) {
+              const el = container.querySelector(`[data-tab-id="${tabId}"]`);
+              if (el) (el as any).__xtermWrite?.(data);
+            }
           }
           break;
         }
@@ -408,20 +408,21 @@ export function TerminalPanel({
         case 'terminal:exit': {
           const tid = payload.terminalId as string;
           const exitCode = payload.exitCode as number;
-          setTabs(prev => {
-            const tab = prev.find(t => t.terminalId === tid);
-            if (tab) {
-              const el = instancesContainerRef.current?.querySelector(`[data-tab-id="${tab.id}"]`);
-              if (el) {
-                (el as any).__xtermWrite?.(
-                  `\r\n\x1b[90m[Process exited with code ${exitCode}]\x1b[0m\r\n`
-                );
-              }
+          // 通过同步映射写入退出消息
+          const exitTabId = terminalIdMapRef.current.get(tid);
+          if (exitTabId) {
+            const el = instancesContainerRef.current?.querySelector(`[data-tab-id="${exitTabId}"]`);
+            if (el) {
+              (el as any).__xtermWrite?.(
+                `\r\n\x1b[90m[Process exited with code ${exitCode}]\x1b[0m\r\n`
+              );
             }
-            return prev.map(t =>
-              t.terminalId === tid ? { ...t, isReady: false, terminalId: null } : t
-            );
-          });
+          }
+          // 清理同步映射
+          terminalIdMapRef.current.delete(tid);
+          setTabs(prev => prev.map(t =>
+            t.terminalId === tid ? { ...t, isReady: false, terminalId: null } : t
+          ));
           break;
         }
 

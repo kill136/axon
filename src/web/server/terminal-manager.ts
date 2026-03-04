@@ -4,6 +4,32 @@
  */
 
 import * as os from 'os';
+import * as fs from 'fs';
+import * as path from 'path';
+import { createRequire } from 'module';
+
+// node-pty 的 spawn-helper 在某些安装方式下可能丢失执行权限
+// 在导入前修复，避免 posix_spawnp 失败
+function fixSpawnHelperPermissions() {
+  if (os.platform() === 'win32') return;
+  try {
+    const require = createRequire(import.meta.url);
+    const arch = os.arch() === 'arm64' ? 'arm64' : 'x64';
+    const platform = os.platform();
+    const ptyPath = require.resolve('node-pty/package.json');
+    const helperPath = path.join(path.dirname(ptyPath), 'prebuilds', `${platform}-${arch}`, 'spawn-helper');
+    if (fs.existsSync(helperPath)) {
+      const stat = fs.statSync(helperPath);
+      if (!(stat.mode & 0o111)) {
+        fs.chmodSync(helperPath, stat.mode | 0o755);
+        console.log('[TerminalManager] Fixed spawn-helper permissions');
+      }
+    }
+  } catch {
+    // 忽略，后续会回退到 child_process
+  }
+}
+fixSpawnHelperPermissions();
 
 // node-pty 是可选依赖，动态导入
 let pty: typeof import('node-pty') | null = null;
