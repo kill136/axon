@@ -72,10 +72,7 @@ export interface ChannelConfig {
   groupTrigger?: GroupTriggerMode;
   /** 使用的模型（覆盖默认） */
   model?: string;
-  /**
-   * 固定会话 ID：当设置时，所有来自该通道的消息都使用此 session，
-   * 而不是按用户/群组自动生成。可与 Web UI 主会话共享历史。
-   */
+  /** 固定会话 ID（同一通道所有消息复用同一会话） */
   fixedSessionId?: string;
 }
 
@@ -216,4 +213,5 @@ export type ChannelServerMessage =
   | { type: 'channel:message'; payload: { channel: string; direction: 'inbound' | 'outbound'; senderName: string; text: string; timestamp: number } }
   | { type: 'channel:error'; payload: { channelId: string; error: string } }
   | { type: 'channel:pairing_list'; payload: { requests: PairingRequest[] } }
-  | { type: 'channel:pairing_new'; payload: PairingRequest };
+  | { type: 'channel:pairing_new'; payload: PairingRequest }
+  | { type: 'channel:new_session'; payload: { sessionId: string; channel: string; senderName: string } };

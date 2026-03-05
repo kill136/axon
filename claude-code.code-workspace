@@ -1,0 +1,6 @@
+{
+  "folders": [
+    { "path": "." },
+    { "path": "src/web/client" }
+  ]
+}

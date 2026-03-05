@@ -3,6 +3,7 @@
   "version": "2.1.39",
   "description": "Free & open source AI coding assistant with Web IDE, multi-agent system, and self-evolution",
   "type": "module",
+  "main": "electron/main.cjs",
   "bin": {
     "axon": "./dist/cli.js",
     "axon-web": "./dist/web-cli.js",
@@ -44,7 +45,55 @@
     "test:e2e:session": "tsx tests/e2e/cli-session.test.ts",
     "test:e2e:tools": "tsx tests/e2e/cli-tools.test.ts",
     "postinstall": "node scripts/postinstall.js || true",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "pkg": "pkg dist/web-cli.js --compress GZip --target node18-win-x64 --output release/axon-web.exe",
+    "pkg:cli": "pkg dist/cli.js --compress GZip --target node18-win-x64 --output release/axon.exe",
+    "electron": "electron .",
+    "electron:build": "npm run build && node --max-old-space-size=8192 node_modules/electron-builder/out/cli/cli.js --win --x64",
+    "electron:build:all": "npm run build && node --max-old-space-size=8192 node_modules/electron-builder/out/cli/cli.js --win --mac --linux"
+  },
+  "pkg": {
+    "assets": [
+      "dist/**/*",
+      "src/web/client/dist/**/*",
+      "node_modules/@vscode/tree-sitter-wasm/**/*.wasm",
+      "node_modules/web-tree-sitter/**/*.wasm",
+      "node_modules/better-sqlite3/**/*.node",
+      "node_modules/node-pty/**/*.node",
+      "node_modules/sharp/**/*.node"
+    ],
+    "targets": [
+      "node18-win-x64"
+    ],
+    "outputPath": "release"
+  },
+  "build": {
+    "appId": "com.axon.app",
+    "productName": "Axon",
+    "npmRebuild": false,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "electron/**/*",
+      "dist/**/*",
+      "src/web/client/dist/**/*",
+      "node_modules/**/*",
+      "!node_modules/**/*.{md,ts,map}",
+      "!node_modules/**/test/**",
+      "!node_modules/**/tests/**",
+      "!node_modules/**/*.d.ts",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**/*",
+      "node_modules/node-pty/**/*",
+      "node_modules/sharp/**/*"
+    ],
+    "win": {
+      "target": ["portable"],
+      "icon": "electron/icon.png"
+    }
   },
   "keywords": [
     "claude",
@@ -156,6 +205,9 @@
     "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^4.7.0",
     "@vitest/ui": "^2.1.9",
+    "@yao-pkg/pkg": "^6.14.1",
+    "electron": "^40.7.0",
+    "electron-builder": "^26.8.1",
     "highlight.js": "^11.11.1",
     "ink-testing-library": "^4.0.0",
     "jsdom": "^27.4.0",

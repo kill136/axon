@@ -1,0 +1,9 @@
+{
+  "name": "axon",
+  "version": "2.1.39",
+  "type": "module",
+  "description": "Axon Desktop - AI Coding Assistant",
+  "main": "electron/main.cjs",
+  "author": "",
+  "license": "MIT"
+}

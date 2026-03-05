@@ -223,7 +223,57 @@ axon-web                      # Web IDE
 axon-web -p 8080 -H 0.0.0.0  # Custom port and host
 axon-web --ngrok              # Public tunnel
 axon-web --evolve             # Self-evolution mode
+axon-proxy -k my-secret       # Start local proxy server (share your quota)
 ```
+
+### Proxy Server (Local Mode)
+
+Share your Anthropic API key or Claude subscription quota with other devices on your network.
+
+**On the host machine (has the API key / subscription):**
+
+```bash
+# Auto-detect local credentials (API key or OAuth subscription)
+axon-proxy -k my-secret
+
+# Manually specify API key
+axon-proxy -k my-secret --anthropic-key sk-ant-xxx
+
+# Custom port (default: 8082)
+axon-proxy -k my-secret -p 9000
+```
+
+**On client machines (connect to the proxy):**
+
+```bash
+# Linux / macOS
+export ANTHROPIC_API_KEY="my-secret"
+export ANTHROPIC_BASE_URL="http://<host-ip>:8082"
+axon
+
+# Windows (PowerShell)
+$env:ANTHROPIC_API_KEY="my-secret"
+$env:ANTHROPIC_BASE_URL="http://<host-ip>:8082"
+axon
+
+# Windows (CMD)
+set ANTHROPIC_API_KEY=my-secret
+set ANTHROPIC_BASE_URL=http://<host-ip>:8082
+axon
+```
+
+**Options:**
+
+| Flag | Default | Description |
+|---|---|---|
+| `-k, --proxy-key` | auto-generated | Key clients use to authenticate |
+| `-p, --port` | `8082` | Port to listen on |
+| `-H, --host` | `0.0.0.0` | Bind address |
+| `--anthropic-key` | auto-detect | Override Anthropic API key |
+| `--auth-token` | auto-detect | Override OAuth access token |
+| `--target` | `https://api.anthropic.com` | Upstream API URL |
+
+The proxy auto-detects local credentials in this order: `ANTHROPIC_API_KEY` env var → `~/.axon/.credentials.json` (OAuth subscription).
 
 ## Community
 

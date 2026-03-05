@@ -51,10 +51,16 @@ import { VERSION_BASE } from './version.js';
 // ============ 本地凭据检测 ============
 
 const AXON_DIR = path.join(os.homedir(), '.axon');
+/** 官方 @anthropic-ai/claude-code 的配置目录 */
+const OFFICIAL_CLAUDE_DIR = path.join(os.homedir(), '.claude');
 
-/** 官方 Axon 的 OAuth 凭据文件（未加密） */
+/** 官方 CC OAuth 凭据文件（~/.claude/.credentials.json） */
+const OFFICIAL_CC_CREDENTIALS_FILE = path.join(OFFICIAL_CLAUDE_DIR, '.credentials.json');
+/** 官方 CC 配置文件（~/.claude/config.json，存储 primaryApiKey） */
+const OFFICIAL_CC_CONFIG_FILE = path.join(OFFICIAL_CLAUDE_DIR, 'config.json');
+/** Axon 自身的 OAuth 凭据文件（~/.axon/.credentials.json） */
 const OFFICIAL_CREDENTIALS_FILE = path.join(AXON_DIR, '.credentials.json');
-/** 官方 Axon 的配置文件（存储 primaryApiKey） */
+/** Axon 自身的配置文件（~/.axon/config.json） */
 const CONFIG_FILE = path.join(AXON_DIR, 'config.json');
 
 interface DetectedAuth {
@@ -106,51 +112,57 @@ function detectLocalAuth(): DetectedAuth | null {
     };
   }
 
-  // 3. 官方 Axon 的 .credentials.json（OAuth，未加密）
+  // 3. 官方 @anthropic-ai/claude-code 的 ~/.claude/.credentials.json
   // 文件结构：{ claudeAiOauth: { accessToken, ... }, oauthAccount: { accountUuid, ... } }
-  if (fs.existsSync(OFFICIAL_CREDENTIALS_FILE)) {
-    try {
-      const creds = JSON.parse(fs.readFileSync(OFFICIAL_CREDENTIALS_FILE, 'utf-8'));
-      if (creds.claudeAiOauth?.accessToken) {
-        const oauth = creds.claudeAiOauth;
-        const scopes = oauth.scopes || [];
+  for (const credFile of [OFFICIAL_CC_CREDENTIALS_FILE, OFFICIAL_CREDENTIALS_FILE]) {
+    if (fs.existsSync(credFile)) {
+      try {
+        const creds = JSON.parse(fs.readFileSync(credFile, 'utf-8'));
+        if (creds.claudeAiOauth?.accessToken) {
+          const oauth = creds.claudeAiOauth;
+          const scopes = oauth.scopes || [];
 
-        if (hasInferenceScope(scopes)) {
-          const expiresAt = oauth.expiresAt || 0;
-          const remainMin = Math.max(0, Math.round((expiresAt - Date.now()) / 60000));
+          if (hasInferenceScope(scopes)) {
+            const expiresAt = oauth.expiresAt || 0;
+            const remainMin = Math.max(0, Math.round((expiresAt - Date.now()) / 60000));
+            const accountUuid = creds.oauthAccount?.accountUuid || undefined;
 
-          // 从 oauthAccount 中读取 accountUuid（官方 CC 的 tK() 函数返回此对象）
-          const accountUuid = creds.oauthAccount?.accountUuid || undefined;
-
-          return {
-            mode: 'oauth',
-            source: `~/.axon/.credentials.json (subscription account, token expires in ${remainMin} min)`,
-            accessToken: oauth.accessToken,
-            refreshToken: oauth.refreshToken || '',
-            expiresAt,
-            scopes,
-            accountUuid,
-          };
+            return {
+              mode: 'oauth',
+              source: `${credFile} (subscription account, token expires in ${remainMin} min)`,
+              accessToken: oauth.accessToken,
+              refreshToken: oauth.refreshToken || '',
+              expiresAt,
+              scopes,
+              accountUuid,
+            };
+          }
         }
+      } catch {
+        // 忽略解析错误
       }
-    } catch {
-      // 忽略解析错误
     }
   }
 
-  // 4. 官方 Axon 的 config.json（API Key）
-  if (fs.existsSync(CONFIG_FILE)) {
-    try {
-      const config = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
-      if (config.primaryApiKey) {
-        return {
-          mode: 'api-key',
-          source: '~/.axon/config.json (primaryApiKey)',
-          apiKey: config.primaryApiKey,
-        };
+
+  // 4. config.json 中的 primaryApiKey（先查 ~/.claude/ 再查 ~/.axon/）
+  for (const [configFile, label] of [
+    [OFFICIAL_CC_CONFIG_FILE, '~/.claude/config.json'],
+    [CONFIG_FILE, '~/.axon/config.json'],
+  ] as const) {
+    if (fs.existsSync(configFile)) {
+      try {
+        const config = JSON.parse(fs.readFileSync(configFile, 'utf-8'));
+        if (config.primaryApiKey) {
+          return {
+            mode: 'api-key',
+            source: `${label} (primaryApiKey)`,
+            apiKey: config.primaryApiKey,
+          };
+        }
+      } catch {
+        // 忽略解析错误
       }
-    } catch {
-      // 忽略解析错误
     }
   }
 

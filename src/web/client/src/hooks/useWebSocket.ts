@@ -117,6 +117,14 @@ export function useWebSocket(url: string): UseWebSocketReturn {
           updateSkillCommands(payload.skills);
         }
 
+        // IM 新会话：自动切换到该会话（让 Web UI 同步显示 IM 对话）
+        if (message.type === 'channel:new_session') {
+          const { sessionId: imSessionId } = message.payload as { sessionId: string };
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'session_switch', payload: { sessionId: imSessionId } }));
+          }
+        }
+
         // 处理会话切换 - 更新 sessionId 并持久化
         if (message.type === 'session_switched') {
           const payload = message.payload as { sessionId: string };
