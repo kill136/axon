@@ -31,15 +31,17 @@ DefaultGroupName={#MyAppName}
 ; Allow user to choose if they want a desktop icon
 AllowNoIcons=yes
 ; Output installer file
-OutputDir=..\release
-OutputBaseFilename=Axon-Setup-{#MyAppVersion}
+OutputDir=.
+OutputBaseFilename=Axon-Setup
 ; Installer icon
 SetupIconFile=..\electron\icon.ico
 ; Uninstaller icon
 UninstallDisplayIcon={app}\{#MyAppExeName}
 ; Compression
-Compression=lzma2/ultra64
+Compression=lzma2/fast
 SolidCompression=yes
+LZMANumBlockThreads=4
+DiskSpanning=no
 ; Modern wizard style
 WizardStyle=modern
 ; 64-bit only
