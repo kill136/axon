@@ -51,7 +51,7 @@ echo [4/6] Copying application files...
 xcopy /E /I /Y /Q dist release\axon-portable\resources\app\dist >nul
 xcopy /E /I /Y /Q src\web\client\dist release\axon-portable\resources\app\src\web\client\dist >nul
 xcopy /E /I /Y /Q electron release\axon-portable\resources\app\electron >nul
-copy /Y package.json release\axon-portable\resources\app\ >nul
+copy /Y electron\package.json release\axon-portable\resources\app\ >nul
 
 echo [5/6] Copying node_modules (this may take 2-5 minutes)...
 xcopy /E /I /Y /Q node_modules release\axon-portable\resources\app\node_modules >nul
