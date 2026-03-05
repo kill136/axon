@@ -225,7 +225,57 @@ axon-web                      # Web IDE
 axon-web -p 8080 -H 0.0.0.0  # 自定义端口
 axon-web --ngrok              # 公网隧道
 axon-web --evolve             # 自我进化模式
+axon-proxy -k my-secret       # 启动本地代理服务器（共享你的额度）
 ```
+
+### 代理服务器（本地模式）
+
+将你的 Anthropic API Key 或 Claude 订阅额度共享给局域网内的其他设备使用。
+
+**在宿主机上（持有 API Key / 订阅账号的那台机器）：**
+
+```bash
+# 自动检测本地凭据（API Key 或 OAuth 订阅），推荐方式
+axon-proxy -k my-secret
+
+# 手动指定 API Key
+axon-proxy -k my-secret --anthropic-key sk-ant-xxx
+
+# 自定义端口（默认 8082）
+axon-proxy -k my-secret -p 9000
+```
+
+**在客户端机器上（连接到代理）：**
+
+```bash
+# Linux / macOS
+export ANTHROPIC_API_KEY="my-secret"
+export ANTHROPIC_BASE_URL="http://<宿主机IP>:8082"
+axon
+
+# Windows (PowerShell)
+$env:ANTHROPIC_API_KEY="my-secret"
+$env:ANTHROPIC_BASE_URL="http://<宿主机IP>:8082"
+axon
+
+# Windows (CMD)
+set ANTHROPIC_API_KEY=my-secret
+set ANTHROPIC_BASE_URL=http://<宿主机IP>:8082
+axon
+```
+
+**参数说明：**
+
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `-k, --proxy-key` | 自动生成 | 客户端连接时使用的密钥 |
+| `-p, --port` | `8082` | 监听端口 |
+| `-H, --host` | `0.0.0.0` | 绑定地址 |
+| `--anthropic-key` | 自动检测 | 手动指定 Anthropic API Key |
+| `--auth-token` | 自动检测 | 手动指定 OAuth Access Token |
+| `--target` | `https://api.anthropic.com` | 上游 API 地址 |
+
+代理服务器按以下优先级自动检测本地凭据：`ANTHROPIC_API_KEY` 环境变量 → `~/.axon/.credentials.json`（OAuth 订阅）。
 
 ## 社区
 
