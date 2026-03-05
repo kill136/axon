@@ -218,20 +218,25 @@ function Install-NodePortable {
     $zipFile = "node-v$nodeVersion-win-$arch.zip"
     $zipPath = Join-Path $env:TEMP $zipFile
 
+    # 国内用户优先使用淘宝镜像
     $nodeUrls = @(
-        "https://nodejs.org/dist/v$nodeVersion/$zipFile",
-        "https://npmmirror.com/mirrors/node/v$nodeVersion/$zipFile"
+        "https://npmmirror.com/mirrors/node/v$nodeVersion/$zipFile",
+        "https://nodejs.org/dist/v$nodeVersion/$zipFile"
     )
 
     $downloaded = $false
     foreach ($url in $nodeUrls) {
-        Write-Info "Downloading $zipFile from $url ..."
+        Write-Info "Downloading Node.js v$nodeVersion (~30MB) ..."
+        Write-Host "  Source: $url" -ForegroundColor DarkGray
         try {
-            Invoke-WebRequest -Uri $url -OutFile $zipPath -UseBasicParsing -TimeoutSec 120
+            # 显示进度条，缩短超时时间以便快速切换源
+            $ProgressPreference = 'Continue'
+            Invoke-WebRequest -Uri $url -OutFile $zipPath -TimeoutSec 30
             $downloaded = $true
+            Write-Ok "Download completed"
             break
         } catch {
-            Write-Warn "Download failed from $url, trying next source..."
+            Write-Warn "Download failed, trying next source..."
         }
     }
 
@@ -850,13 +855,12 @@ function Install-Npm {
         Push-Location $InstallDir
     }
 
-    # Auto-detect China network and set npm mirror
-    if ($script:RepoUrl -like '*gitee*') {
-        Write-Info "Detected China network, setting npm registry to npmmirror..."
-        npm.cmd config set registry https://registry.npmmirror.com
-    }
-
-    Write-Info "Installing dependencies..."
+    # 国内用户默认使用淘宝镜像加速
+    Write-Info "Configuring npm registry (using npmmirror for faster downloads)..."
+    npm.cmd config set registry https://registry.npmmirror.com
+    
+    Write-Info "Installing dependencies (this may take 2-5 minutes)..."
+    Write-Host "  Tip: You can see download progress below" -ForegroundColor DarkGray
     npm.cmd install --legacy-peer-deps
     if ($LASTEXITCODE -ne 0) {
         Write-Warn "Some native modules failed to compile, trying without optional dependencies..."
@@ -879,10 +883,12 @@ This usually means the git clone was incomplete. Please try:
     }
 
     Push-Location src\web\client
+    Write-Info "Installing frontend dependencies (this may take 1-3 minutes)..."
     npm.cmd install
     if ($LASTEXITCODE -ne 0) {
         Write-Error "Frontend npm install failed."
     }
+    Write-Info "Building frontend (this may take 1-2 minutes)..."
     npm.cmd run build
     if ($LASTEXITCODE -ne 0) {
         Write-Error "Frontend build failed."
