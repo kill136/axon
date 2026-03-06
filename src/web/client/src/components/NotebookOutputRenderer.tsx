@@ -19,6 +19,8 @@
 import { useState } from 'react';
 import { MarkdownContent } from './MarkdownContent';
 import { sanitizeHtml, sanitizeSvg } from '../utils/sanitize';
+import { useLanguage } from '../i18n';
+import { getTranslation, getInitialLocale } from '../i18n';
 import type { NotebookOutputData, NotebookCellData, NotebookCellOutput, NotebookMimeBundle } from '../types';
 import './NotebookOutputRenderer.css';
 
@@ -30,6 +32,7 @@ interface NotebookOutputRendererProps {
  * Notebook 输出渲染器主组件
  */
 export function NotebookOutputRenderer({ data }: NotebookOutputRendererProps) {
+  const { t } = useLanguage();
   const [expandedCells, setExpandedCells] = useState<Set<number>>(new Set());
 
   const toggleCell = (index: number) => {
@@ -59,8 +62,8 @@ export function NotebookOutputRenderer({ data }: NotebookOutputRendererProps) {
           <span className="notebook-path">{data.filePath}</span>
         </div>
         <div className="notebook-actions">
-          <button onClick={expandAll} className="notebook-btn">展开全部</button>
-          <button onClick={collapseAll} className="notebook-btn">折叠全部</button>
+          <button onClick={expandAll} className="notebook-btn">{t('notebook.expandAll')}</button>
+          <button onClick={collapseAll} className="notebook-btn">{t('notebook.collapseAll')}</button>
         </div>
       </div>
 
@@ -69,19 +72,19 @@ export function NotebookOutputRenderer({ data }: NotebookOutputRendererProps) {
         <div className="notebook-metadata">
           {data.metadata.kernelspec && (
             <span className="metadata-item">
-              <span className="metadata-label">内核:</span>
+              <span className="metadata-label">{t('notebook.kernel')}:</span>
               {data.metadata.kernelspec.displayName || data.metadata.kernelspec.name}
             </span>
           )}
           {data.metadata.languageInfo && (
             <span className="metadata-item">
-              <span className="metadata-label">语言:</span>
+              <span className="metadata-label">{t('notebook.language')}:</span>
               {data.metadata.languageInfo.name}
               {data.metadata.languageInfo.version && ` ${data.metadata.languageInfo.version}`}
             </span>
           )}
           <span className="metadata-item">
-            <span className="metadata-label">单元格:</span>
+            <span className="metadata-label">{t('notebook.cells')}:</span>
             {data.cells.length}
           </span>
         </div>
@@ -112,6 +115,7 @@ interface NotebookCellRendererProps {
 }
 
 function NotebookCellRenderer({ cell, isExpanded, onToggle }: NotebookCellRendererProps) {
+  const { t } = useLanguage();
   const getCellIcon = () => {
     switch (cell.cellType) {
       case 'code': return '💻';
@@ -137,7 +141,7 @@ function NotebookCellRenderer({ cell, isExpanded, onToggle }: NotebookCellRender
         <span className="cell-icon">{getCellIcon()}</span>
         <span className="cell-label">{getCellLabel()}</span>
         <span className="cell-type">{cell.cellType}</span>
-        {hasOutputs && <span className="cell-has-output">有输出</span>}
+        {hasOutputs && <span className="cell-has-output">{t('notebook.hasOutput')}</span>}
         <span className="expand-icon">{isExpanded ? '▼' : '▶'}</span>
       </div>
 
@@ -284,6 +288,7 @@ function MimeBundleRenderer({ data, executionCount }: MimeBundleRendererProps) {
  * 根据 MIME 类型渲染内容
  */
 function renderMimeContent(mimeType: string, content: any): JSX.Element {
+  const t = getTranslation(getInitialLocale());
   // 图片类型
   if (mimeType.startsWith('image/')) {
     if (mimeType === 'image/svg+xml') {
@@ -345,9 +350,9 @@ function renderMimeContent(mimeType: string, content: any): JSX.Element {
       <div className="output-plotly">
         <div className="plotly-placeholder">
           <span className="plotly-icon">📊</span>
-          <span>Plotly 图表</span>
+          <span>{t('notebook.plotlyChart')}</span>
           <details>
-            <summary>查看数据</summary>
+            <summary>{t('notebook.viewData')}</summary>
             <pre><code>{JSON.stringify(content, null, 2)}</code></pre>
           </details>
         </div>
@@ -361,9 +366,9 @@ function renderMimeContent(mimeType: string, content: any): JSX.Element {
       <div className="output-vega">
         <div className="vega-placeholder">
           <span className="vega-icon">📈</span>
-          <span>Vega 可视化</span>
+          <span>{t('notebook.vegaVisualization')}</span>
           <details>
-            <summary>查看数据</summary>
+            <summary>{t('notebook.viewData')}</summary>
             <pre><code>{JSON.stringify(content, null, 2)}</code></pre>
           </details>
         </div>

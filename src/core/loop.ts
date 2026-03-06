@@ -1283,6 +1283,15 @@ function createSessionMemoryCompactResult(
     });
   }
 
+  // v2.1.70: 提取原始消息中的图片，保留到压缩结果中以复用 prompt cache
+  const preservedImages = extractImagesFromMessages(messages);
+  if (preservedImages.length > 0) {
+    attachments.push({
+      role: 'user',
+      content: preservedImages,
+    });
+  }
+
   // 5. Hook结果（暂时为空，未来可以扩展）
   const hookResults: Message[] = [];
 
@@ -1452,6 +1461,38 @@ async function trySessionMemoryCompact(
 }
 
 /**
+ * v2.1.70: 从消息列表中提取所有图片 content blocks
+ * 用于 compaction 后保留图片，以便 prompt cache 复用
+ * 
+ * 提取来源：
+ * 1. 用户消息中的 image blocks
+ * 2. tool_result 中嵌套的 image blocks（如 Browser 截图）
+ */
+export function extractImagesFromMessages(messages: Message[]): AnyContentBlock[] {
+  const images: AnyContentBlock[] = [];
+  
+  for (const msg of messages) {
+    if (!Array.isArray(msg.content)) continue;
+    
+    for (const block of msg.content) {
+      if (typeof block !== 'object' || !('type' in block)) continue;
+      
+      if (block.type === 'image') {
+        images.push(block);
+      } else if (block.type === 'tool_result' && 'content' in block && Array.isArray(block.content)) {
+        for (const item of block.content) {
+          if (typeof item === 'object' && 'type' in item && item.type === 'image') {
+            images.push(item as AnyContentBlock);
+          }
+        }
+      }
+    }
+  }
+  
+  return images;
+}
+
+/**
  * 尝试进行对话摘要压缩（第二层 - 对齐官方 NJ1 函数）
  *
  * 核心流程：
@@ -1553,7 +1594,17 @@ async function tryConversationSummary(
     };
 
     // 8. 构建新的消息列表：[边界标记, 摘要消息]
-    const compactedMessages = [boundaryMarker, summaryMessage];
+    const compactedMessages: Message[] = [boundaryMarker, summaryMessage];
+
+    // v2.1.70: 提取原始消息中的图片，保留到压缩结果中以复用 prompt cache
+    const preservedImages = extractImagesFromMessages(messagesToSummarize);
+    if (preservedImages.length > 0) {
+      compactedMessages.push({
+        role: 'user',
+        content: preservedImages,
+      });
+      console.log(chalk.blue(`[NJ1] Preserved ${preservedImages.length} image(s) for prompt cache reuse`));
+    }
 
     // 9. 计算压缩后的token数
     const postCompactTokenCount = calculateTotalTokens(compactedMessages);
@@ -1600,7 +1651,8 @@ async function autoCompact(
   messages: Message[],
   model: string,
   client: ClaudeClient,
-  session?: Session
+  session?: Session,
+  planMode?: boolean
 ): Promise<{ wasCompacted: boolean; messages: Message[]; boundaryUuid?: string }> {
   // 1. 检查是否应该自动压缩
   if (!shouldAutoCompact(messages, model)) {
@@ -1621,6 +1673,10 @@ async function autoCompact(
   if (tj1Result && tj1Result.success) {
     console.log(chalk.green(`[AutoCompact] Session Memory compaction successful, saved ${tj1Result.savedTokens.toLocaleString()} tokens`));
     console.log(chalk.green(`[AutoCompact] Compression ratio: ${tj1Result.preCompactTokenCount.toLocaleString()} → ${tj1Result.postCompactTokenCount.toLocaleString()} tokens (${Math.round(tj1Result.postCompactTokenCount / tj1Result.preCompactTokenCount * 100)}%)`));
+    // v2.1.69: 压缩后恢复 plan mode 提醒
+    if (planMode) {
+      appendPlanModeReminder(tj1Result.messages);
+    }
     // 获取边界标记的 UUID（用于增量压缩）
     const boundaryUuid = tj1Result.boundaryMarker?.uuid;
     return { wasCompacted: true, messages: tj1Result.messages, boundaryUuid };
@@ -1631,6 +1687,10 @@ async function autoCompact(
   if (nj1Result && nj1Result.success) {
     console.log(chalk.green(`[AutoCompact] Conversation summary successful, saved ${nj1Result.savedTokens.toLocaleString()} tokens`));
     console.log(chalk.green(`[AutoCompact] Compression ratio: ${nj1Result.preCompactTokenCount.toLocaleString()} → ${nj1Result.postCompactTokenCount.toLocaleString()} tokens (${Math.round(nj1Result.postCompactTokenCount / nj1Result.preCompactTokenCount * 100)}%)`));
+    // v2.1.69: 压缩后恢复 plan mode 提醒
+    if (planMode) {
+      appendPlanModeReminder(nj1Result.messages);
+    }
     return { wasCompacted: true, messages: nj1Result.messages };
   }
 
@@ -1639,6 +1699,24 @@ async function autoCompact(
   console.log(chalk.yellow('[AutoCompact] Tip: You can disable this warning by setting DISABLE_COMPACT=1'));
 
   return { wasCompacted: false, messages };
+}
+
+/**
+ * v2.1.69: 压缩后追加 plan mode 提醒消息
+ * 确保 AI 在压缩后仍然知道自己处于 plan mode
+ */
+function appendPlanModeReminder(messages: Message[]): void {
+  messages.push({
+    role: 'user',
+    content: `<system-reminder>
+You are currently in plan mode. In plan mode, you should:
+1. Only use read-only tools (Read, Glob, Grep, WebSearch, WebFetch)
+2. Write your implementation plan to PLAN.md
+3. Use ExitPlanMode when ready for user approval
+Do NOT make any code changes until the plan is approved.
+</system-reminder>`,
+  });
+  console.log(chalk.blue('[AutoCompact] Plan mode reminder restored after compaction'));
 }
 
 // ============================================================================
@@ -2762,7 +2840,7 @@ export class ConversationLoop {
       messages = validateToolResults(messages);
 
       // 尝试自动压缩（第二+三层）
-      const compactResult = await autoCompact(messages, resolvedModel, this.client, this.session);
+      const compactResult = await autoCompact(messages, resolvedModel, this.client, this.session, this.options.planMode);
       if (compactResult.wasCompacted) {
         messages = compactResult.messages;
         // 更新会话中的消息（压缩成功后替换整个消息列表）
@@ -3152,7 +3230,7 @@ Guidelines:
       messages = validateToolResults(messages);
 
       // 尝试自动压缩（第二+三层）
-      const compactResult = await autoCompact(messages, resolvedModel, this.client, this.session);
+      const compactResult = await autoCompact(messages, resolvedModel, this.client, this.session, this.options.planMode);
       if (compactResult.wasCompacted) {
         messages = compactResult.messages;
         // 更新会话中的消息（压缩成功后替换整个消息列表）

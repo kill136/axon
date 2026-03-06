@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import styles from './BlueprintDetailPanel.module.css';
 import { FadeIn } from '../common/FadeIn';
 import { blueprintApi } from '../../../api/blueprint';
+import { useLanguage } from '../../../i18n';
 
 /**
  * 业务流程类型
@@ -128,6 +129,7 @@ export const BlueprintDetailPanel: React.FC<BlueprintDetailPanelProps> = ({
   onRefresh,
   onDeleted,
 }) => {
+  const { t } = useLanguage();
   const [blueprint, setBlueprint] = useState<BlueprintDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -176,7 +178,7 @@ export const BlueprintDetailPanel: React.FC<BlueprintDetailPanelProps> = ({
           break;
 
         case 'reject':
-          const reason = prompt('请输入拒绝原因:');
+          const reason = prompt(t('blueprintDetail.enterRejectReason'));
           if (reason) {
             await blueprintApi.rejectBlueprint(blueprintId, reason);
             console.log('[BlueprintDetailPanel] 蓝图已拒绝');
@@ -187,7 +189,7 @@ export const BlueprintDetailPanel: React.FC<BlueprintDetailPanelProps> = ({
           break;
 
         case 'submit-review':
-          if (confirm('确定要提交审核吗？提交后将无法再编辑蓝图。')) {
+          if (confirm(t('blueprintDetail.confirmSubmitReview'))) {
             try {
               const result = await blueprintApi.submitForReview(blueprintId);
               console.log('[BlueprintDetailPanel] 蓝图已提交审核');
@@ -196,21 +198,21 @@ export const BlueprintDetailPanel: React.FC<BlueprintDetailPanelProps> = ({
               onRefresh?.();
               // 显示成功提示（包含警告信息）
               if (result.warnings && result.warnings.length > 0) {
-                alert(`✅ 蓝图已成功提交审核\n\n⚠️ 警告信息：\n${result.warnings.join('\n')}`);
+                alert(`${t('blueprintDetail.submitSuccess')}\n\n${t('blueprintDetail.warningInfo')}\n${result.warnings.join('\n')}`);
               } else {
-                alert('✅ 蓝图已成功提交审核');
+                alert(t('blueprintDetail.submitSuccess'));
               }
             } catch (submitError) {
               // 提交审核失败时显示详细错误
               const errorMessage = submitError instanceof Error ? submitError.message : String(submitError);
               console.error('[BlueprintDetailPanel] 提交审核失败:', errorMessage);
-              alert(`❌ 提交审核失败\n\n${errorMessage}\n\n请检查蓝图配置后重试。`);
+              alert(`${t('blueprintDetail.submitFailed')}\n\n${errorMessage}\n\n${t('blueprintDetail.checkAndRetry')}`);
             }
           }
           break;
 
         case 'start-execution':
-          if (confirm('确定要启动执行吗？')) {
+          if (confirm(t('blueprintDetail.confirmStartExecution'))) {
             try {
               await blueprintApi.startExecution(blueprintId);
               console.log('[BlueprintDetailPanel] 执行已启动');
@@ -227,7 +229,7 @@ export const BlueprintDetailPanel: React.FC<BlueprintDetailPanelProps> = ({
           break;
 
         case 'delete':
-          if (confirm('确定要删除这个蓝图吗？此操作不可撤销。')) {
+          if (confirm(t('blueprintDetail.confirmDelete'))) {
             try {
               await blueprintApi.deleteBlueprint(blueprintId);
               console.log('[BlueprintDetailPanel] 蓝图已删除');
@@ -236,7 +238,7 @@ export const BlueprintDetailPanel: React.FC<BlueprintDetailPanelProps> = ({
               onClose();
             } catch (error) {
               console.error('[BlueprintDetailPanel] 删除失败:', error);
-              alert(`删除失败: ${error instanceof Error ? error.message : '未知错误'}`);
+              alert(`${t('blueprintDetail.deleteFailed')}: ${error instanceof Error ? error.message : t('blueprintDetail.unknownError')}`);
             }
           }
           break;
@@ -246,7 +248,7 @@ export const BlueprintDetailPanel: React.FC<BlueprintDetailPanelProps> = ({
       }
     } catch (error) {
       console.error(`[BlueprintDetailPanel] 操作失败:`, error);
-      alert(`操作失败: ${error instanceof Error ? error.message : '未知错误'}`);
+      alert(`${t('blueprintDetail.actionFailed')}: ${error instanceof Error ? error.message : t('blueprintDetail.unknownError')}`);
     }
   };
 
@@ -258,17 +260,17 @@ export const BlueprintDetailPanel: React.FC<BlueprintDetailPanelProps> = ({
 
       const response = await fetch(`/api/blueprint/blueprints/${blueprintId}`);
       if (!response.ok) {
-        throw new Error('获取蓝图详情失败');
+        throw new Error(t('blueprintDetail.fetchFailed'));
       }
 
       const data = await response.json();
       if (!data.success) {
-        throw new Error(data.error || '获取蓝图详情失败');
+        throw new Error(data.error || t('blueprintDetail.fetchFailed'));
       }
 
       setBlueprint(data.data);
     } catch (err: any) {
-      setError(err.message || '未知错误');
+      setError(err.message || t('blueprintDetail.unknownError'));
     } finally {
       setLoading(false);
     }
@@ -276,40 +278,40 @@ export const BlueprintDetailPanel: React.FC<BlueprintDetailPanelProps> = ({
 
   // 状态映射
   const statusTexts: Record<string, string> = {
-    draft: '草稿',
-    review: '审核中',
-    approved: '已批准',
-    executing: '执行中',
-    completed: '已完成',
-    paused: '已暂停',
-    modified: '已修改',
-    failed: '已失败',
-    cancelled: '已取消',
+    draft: t('blueprintDetail.statusDraft'),
+    review: t('blueprintDetail.statusReview'),
+    approved: t('blueprintDetail.statusApproved'),
+    executing: t('blueprintDetail.statusExecuting'),
+    completed: t('blueprintDetail.statusCompleted'),
+    paused: t('blueprintDetail.statusPaused'),
+    modified: t('blueprintDetail.statusModified'),
+    failed: t('blueprintDetail.statusFailed'),
+    cancelled: t('blueprintDetail.statusCancelled'),
   };
 
   const priorityTexts: Record<string, string> = {
-    must: '必须',
-    should: '应该',
-    could: '可以',
-    wont: '不会',
+    must: t('blueprintDetail.priorityMust'),
+    should: t('blueprintDetail.priorityShould'),
+    could: t('blueprintDetail.priorityCould'),
+    wont: t('blueprintDetail.priorityWont'),
   };
 
   const categoryTexts: Record<string, string> = {
-    performance: '性能',
-    security: '安全',
-    scalability: '可扩展性',
-    availability: '可用性',
-    maintainability: '可维护性',
-    usability: '可用性',
-    other: '其他',
+    performance: t('blueprintDetail.categoryPerformance'),
+    security: t('blueprintDetail.categorySecurity'),
+    scalability: t('blueprintDetail.categoryScalability'),
+    availability: t('blueprintDetail.categoryAvailability'),
+    maintainability: t('blueprintDetail.categoryMaintainability'),
+    usability: t('blueprintDetail.categoryUsability'),
+    other: t('blueprintDetail.categoryOther'),
   };
 
   // 设计风格映射
   const styleTexts: Record<string, string> = {
-    modern: '现代',
-    minimal: '极简',
-    corporate: '企业',
-    creative: '创意',
+    modern: t('blueprintDetail.styleModern'),
+    minimal: t('blueprintDetail.styleMinimal'),
+    corporate: t('blueprintDetail.styleCorporate'),
+    creative: t('blueprintDetail.styleCreative'),
   };
 
   // 渲染加载状态
@@ -317,14 +319,14 @@ export const BlueprintDetailPanel: React.FC<BlueprintDetailPanelProps> = ({
     return (
       <div className={styles.panel}>
         <div className={styles.header}>
-          <h2 className={styles.title}>加载中...</h2>
+          <h2 className={styles.title}>{t('blueprintDetail.loading')}</h2>
           <button className={styles.closeButton} onClick={onClose}>
             ✕
           </button>
         </div>
         <div className={styles.loadingContainer}>
           <div className={styles.spinner}></div>
-          <p>正在加载蓝图详情...</p>
+          <p>{t('blueprintDetail.loadingDetails')}</p>
         </div>
       </div>
     );
@@ -335,14 +337,14 @@ export const BlueprintDetailPanel: React.FC<BlueprintDetailPanelProps> = ({
     return (
       <div className={styles.panel}>
         <div className={styles.header}>
-          <h2 className={styles.title}>加载失败</h2>
+          <h2 className={styles.title}>{t('blueprintDetail.loadFailed')}</h2>
           <button className={styles.closeButton} onClick={onClose}>
             ✕
           </button>
         </div>
         <div className={styles.errorContainer}>
           <p className={styles.errorText}>
-            {error || '蓝图不存在'}
+            {error || t('blueprintDetail.notFound')}
           </p>
         </div>
       </div>
@@ -363,7 +365,7 @@ export const BlueprintDetailPanel: React.FC<BlueprintDetailPanelProps> = ({
             {statusTexts[blueprint.status]}
           </span>
         </div>
-        <button className={styles.closeButton} onClick={onClose} title="关闭">
+        <button className={styles.closeButton} onClick={onClose} title={t('blueprintDetail.close')}>
           ✕
         </button>
       </div>
@@ -375,18 +377,18 @@ export const BlueprintDetailPanel: React.FC<BlueprintDetailPanelProps> = ({
           <section className={styles.section}>
             <div className={styles.infoGrid}>
               <div className={styles.infoItem}>
-                <span className={styles.infoLabel}>版本</span>
+                <span className={styles.infoLabel}>{t('blueprintDetail.version')}</span>
                 <span className={styles.infoValue}>{blueprint.version}</span>
               </div>
               <div className={styles.infoItem}>
-                <span className={styles.infoLabel}>创建时间</span>
+                <span className={styles.infoLabel}>{t('blueprintDetail.createdAt')}</span>
                 <span className={styles.infoValue}>
                   {new Date(blueprint.createdAt).toLocaleString('zh-CN')}
                 </span>
               </div>
               {blueprint.approvedBy && (
                 <div className={styles.infoItem}>
-                  <span className={styles.infoLabel}>批准人</span>
+                  <span className={styles.infoLabel}>{t('blueprintDetail.approvedBy')}</span>
                   <span className={styles.infoValue}>{blueprint.approvedBy}</span>
                 </div>
               )}
@@ -405,7 +407,7 @@ export const BlueprintDetailPanel: React.FC<BlueprintDetailPanelProps> = ({
               >
                 <span className={styles.sectionIcon}>📋</span>
                 <h3 className={styles.sectionTitle}>
-                  需求列表 ({blueprint.requirements.length})
+                  {t('blueprintDetail.requirements')} ({blueprint.requirements.length})
                 </h3>
                 <span className={styles.expandIcon}>
                   {expandedSections.requirements ? '▼' : '▶'}
@@ -433,7 +435,7 @@ export const BlueprintDetailPanel: React.FC<BlueprintDetailPanelProps> = ({
                 onClick={() => toggleSection('techStack')}
               >
                 <span className={styles.sectionIcon}>🛠️</span>
-                <h3 className={styles.sectionTitle}>技术栈</h3>
+                <h3 className={styles.sectionTitle}>{t('blueprintDetail.techStack')}</h3>
                 <span className={styles.expandIcon}>
                   {expandedSections.techStack ? '▼' : '▶'}
                 </span>
@@ -466,7 +468,7 @@ export const BlueprintDetailPanel: React.FC<BlueprintDetailPanelProps> = ({
               >
                 <span className={styles.sectionIcon}>⚠️</span>
                 <h3 className={styles.sectionTitle}>
-                  约束条件 ({blueprint.constraints.length})
+                  {t('blueprintDetail.constraints')} ({blueprint.constraints.length})
                 </h3>
                 <span className={styles.expandIcon}>
                   {expandedSections.constraints ? '▼' : '▶'}
@@ -494,7 +496,7 @@ export const BlueprintDetailPanel: React.FC<BlueprintDetailPanelProps> = ({
                 onClick={() => toggleSection('brief')}
               >
                 <span className={styles.sectionIcon}>📖</span>
-                <h3 className={styles.sectionTitle}>项目简介</h3>
+                <h3 className={styles.sectionTitle}>{t('blueprintDetail.projectBrief')}</h3>
                 <span className={styles.expandIcon}>
                   {expandedSections.brief ? '▼' : '▶'}
                 </span>
@@ -518,7 +520,7 @@ export const BlueprintDetailPanel: React.FC<BlueprintDetailPanelProps> = ({
               >
                 <span className={styles.sectionIcon}>📊</span>
                 <h3 className={styles.sectionTitle}>
-                  As-Is 业务流程 ({asIsProcesses.length})
+                  {t('blueprintDetail.asIsProcesses')} ({asIsProcesses.length})
                 </h3>
                 <span className={styles.expandIcon}>
                   {expandedSections.asIsProcesses ? '▼' : '▶'}
@@ -531,8 +533,8 @@ export const BlueprintDetailPanel: React.FC<BlueprintDetailPanelProps> = ({
                       <h4 className={styles.processName}>{process.name}</h4>
                       <p className={styles.processDesc}>{process.description}</p>
                       <div className={styles.processMeta}>
-                        <span>步骤: {process.steps.length}</span>
-                        <span>参与者: {process.actors.join(', ')}</span>
+                        <span>{t('blueprintDetail.steps')}: {process.steps.length}</span>
+                        <span>{t('blueprintDetail.actors')}: {process.actors.join(', ')}</span>
                       </div>
                     </div>
                   ))}
@@ -552,7 +554,7 @@ export const BlueprintDetailPanel: React.FC<BlueprintDetailPanelProps> = ({
               >
                 <span className={styles.sectionIcon}>📊</span>
                 <h3 className={styles.sectionTitle}>
-                  To-Be 业务流程 ({toBeProcesses.length})
+                  {t('blueprintDetail.toBeProcesses')} ({toBeProcesses.length})
                 </h3>
                 <span className={styles.expandIcon}>
                   {expandedSections.toBeProcesses ? '▼' : '▶'}
@@ -565,8 +567,8 @@ export const BlueprintDetailPanel: React.FC<BlueprintDetailPanelProps> = ({
                       <h4 className={styles.processName}>{process.name}</h4>
                       <p className={styles.processDesc}>{process.description}</p>
                       <div className={styles.processMeta}>
-                        <span>步骤: {process.steps.length}</span>
-                        <span>参与者: {process.actors.join(', ')}</span>
+                        <span>{t('blueprintDetail.steps')}: {process.steps.length}</span>
+                        <span>{t('blueprintDetail.actors')}: {process.actors.join(', ')}</span>
                       </div>
                     </div>
                   ))}
@@ -586,7 +588,7 @@ export const BlueprintDetailPanel: React.FC<BlueprintDetailPanelProps> = ({
               >
                 <span className={styles.sectionIcon}>🧩</span>
                 <h3 className={styles.sectionTitle}>
-                  系统模块 ({blueprint.modules.length})
+                  {t('blueprintDetail.systemModules')} ({blueprint.modules.length})
                 </h3>
                 <span className={styles.expandIcon}>
                   {expandedSections.modules ? '▼' : '▶'}
@@ -602,14 +604,14 @@ export const BlueprintDetailPanel: React.FC<BlueprintDetailPanelProps> = ({
                       </div>
                       {module.rootPath && (
                         <div className={styles.moduleRootPath}>
-                          <span className={styles.moduleSectionTitle}>路径:</span>
+                          <span className={styles.moduleSectionTitle}>{t('blueprintDetail.path')}:</span>
                           <code>{module.rootPath}</code>
                         </div>
                       )}
                       <p className={styles.moduleDesc}>{module.description}</p>
                       {module.responsibilities.length > 0 && (
                         <div className={styles.moduleSection}>
-                          <span className={styles.moduleSectionTitle}>职责:</span>
+                          <span className={styles.moduleSectionTitle}>{t('blueprintDetail.responsibilities')}:</span>
                           <ul className={styles.moduleList}>
                             {module.responsibilities.map((r, i) => (
                               <li key={i}>{r}</li>
@@ -619,7 +621,7 @@ export const BlueprintDetailPanel: React.FC<BlueprintDetailPanelProps> = ({
                       )}
                       {module.techStack && module.techStack.length > 0 && (
                         <div className={styles.moduleTechStack}>
-                          <span className={styles.moduleSectionTitle}>技术栈:</span>
+                          <span className={styles.moduleSectionTitle}>{t('blueprintDetail.techStack')}:</span>
                           <div className={styles.techTags}>
                             {module.techStack.map((tech, i) => (
                               <span key={i} className={styles.techTag}>{tech}</span>
@@ -630,7 +632,7 @@ export const BlueprintDetailPanel: React.FC<BlueprintDetailPanelProps> = ({
                       {module.dependencies && module.dependencies.length > 0 && (
                         <div className={styles.moduleSection}>
                           <span className={styles.moduleSectionTitle}>
-                            依赖: {module.dependencies.length} 个模块
+                            {t('blueprintDetail.dependencies', { count: module.dependencies.length })}
                           </span>
                         </div>
                       )}
@@ -652,7 +654,7 @@ export const BlueprintDetailPanel: React.FC<BlueprintDetailPanelProps> = ({
               >
                 <span className={styles.sectionIcon}>🎯</span>
                 <h3 className={styles.sectionTitle}>
-                  非功能性要求 ({blueprint.nfrs.length})
+                  {t('blueprintDetail.nfrs')} ({blueprint.nfrs.length})
                 </h3>
                 <span className={styles.expandIcon}>
                   {expandedSections.nfrs ? '▼' : '▶'}
@@ -676,7 +678,7 @@ export const BlueprintDetailPanel: React.FC<BlueprintDetailPanelProps> = ({
                       <p className={styles.nfrDesc}>{nfr.description}</p>
                       {nfr.metric && (
                         <div className={styles.nfrMetric}>
-                          <span className={styles.metricLabel}>指标:</span>
+                          <span className={styles.metricLabel}>{t('blueprintDetail.metric')}:</span>
                           <span className={styles.metricValue}>{nfr.metric}</span>
                         </div>
                       )}
@@ -698,7 +700,7 @@ export const BlueprintDetailPanel: React.FC<BlueprintDetailPanelProps> = ({
               >
                 <span className={styles.sectionIcon}>🎨</span>
                 <h3 className={styles.sectionTitle}>
-                  UI 设计图 ({blueprint.designImages.length})
+                  {t('blueprintDetail.designImages')} ({blueprint.designImages.length})
                 </h3>
                 <span className={styles.expandIcon}>
                   {expandedSections.designImages ? '▼' : '▶'}
@@ -721,7 +723,7 @@ export const BlueprintDetailPanel: React.FC<BlueprintDetailPanelProps> = ({
                           />
                           {img.isAccepted && (
                             <div className={styles.acceptedBadge}>
-                              ✓ 验收标准
+                              ✓ {t('blueprintDetail.acceptanceCriteria')}
                             </div>
                           )}
                         </div>
@@ -768,11 +770,11 @@ export const BlueprintDetailPanel: React.FC<BlueprintDetailPanelProps> = ({
               <h3 className={styles.imageModalTitle}>{previewImage.name}</h3>
               <div className={styles.imageModalMeta}>
                 <span className={styles.imageModalStyle}>
-                  风格: {styleTexts[previewImage.style] || previewImage.style}
+                  {t('blueprintDetail.style')}: {styleTexts[previewImage.style] || previewImage.style}
                 </span>
                 {previewImage.isAccepted && (
                   <span className={styles.imageModalAccepted}>
-                    ✓ 已设为验收标准
+                    ✓ {t('blueprintDetail.setAsAcceptance')}
                   </span>
                 )}
               </div>
@@ -793,13 +795,13 @@ export const BlueprintDetailPanel: React.FC<BlueprintDetailPanelProps> = ({
               className={`${styles.footerButton} ${styles.submit}`}
               onClick={() => handleAction('submit-review')}
             >
-              提交审核
+              {t('blueprintDetail.submitReview')}
             </button>
             <button
               className={`${styles.footerButton} ${styles.delete}`}
               onClick={() => handleAction('delete')}
             >
-              删除
+              {t('blueprintDetail.delete')}
             </button>
           </>
         )}
@@ -811,19 +813,19 @@ export const BlueprintDetailPanel: React.FC<BlueprintDetailPanelProps> = ({
               className={`${styles.footerButton} ${styles.approve}`}
               onClick={() => handleAction('approve')}
             >
-              批准
+              {t('blueprintDetail.approve')}
             </button>
             <button
               className={`${styles.footerButton} ${styles.reject}`}
               onClick={() => handleAction('reject')}
             >
-              拒绝
+              {t('blueprintDetail.reject')}
             </button>
             <button
               className={`${styles.footerButton} ${styles.delete}`}
               onClick={() => handleAction('delete')}
             >
-              删除
+              {t('blueprintDetail.delete')}
             </button>
           </>
         )}
@@ -834,14 +836,14 @@ export const BlueprintDetailPanel: React.FC<BlueprintDetailPanelProps> = ({
             className={`${styles.footerButton} ${styles.start}`}
             onClick={() => handleAction('start-execution')}
           >
-            启动执行
+            {t('blueprintDetail.startExecution')}
           </button>
         )}
 
         {/* approved 状态且从代码生成：显示说明 */}
         {blueprint.status === 'approved' && blueprint.source === 'codebase' && (
           <div className={styles.infoMessage}>
-            此蓝图从现有代码生成，作为项目文档和后续开发的基础
+            {t('blueprintDetail.codebaseInfo')}
           </div>
         )}
 
@@ -849,13 +851,13 @@ export const BlueprintDetailPanel: React.FC<BlueprintDetailPanelProps> = ({
         {blueprint.status === 'failed' && (
           <>
             <div className={styles.infoMessage}>
-              执行失败，可以删除后重新创建蓝图
+              {t('blueprintDetail.failedInfo')}
             </div>
             <button
               className={`${styles.footerButton} ${styles.delete}`}
               onClick={() => handleAction('delete')}
             >
-              删除
+              {t('blueprintDetail.delete')}
             </button>
           </>
         )}
@@ -866,7 +868,7 @@ export const BlueprintDetailPanel: React.FC<BlueprintDetailPanelProps> = ({
             className={`${styles.footerButton} ${styles.delete}`}
             onClick={() => handleAction('delete')}
           >
-            删除
+            {t('blueprintDetail.delete')}
           </button>
         )}
       </div>

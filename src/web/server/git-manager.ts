@@ -4,6 +4,8 @@
  */
 
 import { execSync, execFileSync } from 'child_process';
+import { existsSync, unlinkSync, statSync } from 'fs';
+import { join } from 'path';
 
 /**
  * Git 操作统一返回格式
@@ -12,6 +14,12 @@ export interface GitResult<T = any> {
   success: boolean;
   data?: T;
   error?: string;
+  /** 当检测到 index.lock 问题时，包含 lock 文件信息 */
+  lockConflict?: {
+    lockFile: string;
+    age: number; // lock 文件已存在的秒数
+    suggestion: 'delete' | 'wait'; // 建议操作
+  };
 }
 
 /**
@@ -82,6 +90,64 @@ export class GitManager {
 
   constructor(cwd: string) {
     this.cwd = cwd;
+  }
+
+  /**
+   * 检测 .git/index.lock 是否存在并返回诊断信息
+   */
+  checkLockFile(): { exists: boolean; lockFile: string; age: number; suggestion: 'delete' | 'wait' } {
+    const lockFile = join(this.cwd, '.git', 'index.lock');
+    if (!existsSync(lockFile)) {
+      return { exists: false, lockFile, age: 0, suggestion: 'delete' };
+    }
+    try {
+      const stat = statSync(lockFile);
+      const age = Math.floor((Date.now() - stat.mtimeMs) / 1000);
+      // 如果 lock 文件超过 5 秒，大概率是残留文件，建议删除
+      // 如果不到 5 秒，可能有正在执行的 git 操作
+      return { exists: true, lockFile, age, suggestion: age > 5 ? 'delete' : 'wait' };
+    } catch {
+      return { exists: false, lockFile, age: 0, suggestion: 'delete' };
+    }
+  }
+
+  /**
+   * 删除 .git/index.lock 文件
+   */
+  removeLockFile(): GitResult {
+    const lockFile = join(this.cwd, '.git', 'index.lock');
+    if (!existsSync(lockFile)) {
+      return { success: true };
+    }
+    try {
+      unlinkSync(lockFile);
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message || String(error) };
+    }
+  }
+
+  /**
+   * 检查错误是否为 index.lock 冲突
+   */
+  private isLockError(errorMsg: string): boolean {
+    return errorMsg.includes('index.lock') || errorMsg.includes('.git/index.lock');
+  }
+
+  /**
+   * 当 git 操作因 lock 失败时，返回包含 lockConflict 信息的 GitResult
+   */
+  private buildLockErrorResult(errorMsg: string): GitResult {
+    const lockInfo = this.checkLockFile();
+    return {
+      success: false,
+      error: errorMsg,
+      lockConflict: lockInfo.exists ? {
+        lockFile: lockInfo.lockFile,
+        age: lockInfo.age,
+        suggestion: lockInfo.suggestion,
+      } : undefined,
+    };
   }
 
   /**
@@ -367,10 +433,11 @@ export class GitManager {
         success: true,
       };
     } catch (error: any) {
-      return {
-        success: false,
-        error: error.message || String(error),
-      };
+      const msg = error.message || String(error);
+      if (this.isLockError(msg)) {
+        return this.buildLockErrorResult(msg);
+      }
+      return { success: false, error: msg };
     }
   }
 
@@ -382,7 +449,11 @@ export class GitManager {
       this.execGit('add -A');
       return { success: true };
     } catch (error: any) {
-      return { success: false, error: error.message || String(error) };
+      const msg = error.message || String(error);
+      if (this.isLockError(msg)) {
+        return this.buildLockErrorResult(msg);
+      }
+      return { success: false, error: msg };
     }
   }
 
@@ -405,10 +476,11 @@ export class GitManager {
         success: true,
       };
     } catch (error: any) {
-      return {
-        success: false,
-        error: error.message || String(error),
-      };
+      const msg = error.message || String(error);
+      if (this.isLockError(msg)) {
+        return this.buildLockErrorResult(msg);
+      }
+      return { success: false, error: msg };
     }
   }
 
@@ -438,10 +510,11 @@ export class GitManager {
       };
     } catch (error: any) {
       const stderr = error.stderr || '';
-      return {
-        success: false,
-        error: stderr || error.message || String(error),
-      };
+      const msg = stderr || error.message || String(error);
+      if (this.isLockError(msg)) {
+        return this.buildLockErrorResult(msg);
+      }
+      return { success: false, error: msg };
     }
   }
 
@@ -495,6 +568,31 @@ export class GitManager {
       }
 
       this.execGit(`checkout "${branch}"`);
+
+      return {
+        success: true,
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.message || String(error),
+      };
+    }
+  }
+
+  /**
+   * 强制切换分支（丢弃本地更改）
+   */
+  forceCheckout(branch: string): GitResult {
+    try {
+      if (!branch || !branch.trim()) {
+        return {
+          success: false,
+          error: 'Branch name cannot be empty',
+        };
+      }
+
+      this.execGit(`checkout -f "${branch}"`);
 
       return {
         success: true,
@@ -906,7 +1004,11 @@ export class GitManager {
       this.execGit('reset HEAD');
       return { success: true };
     } catch (error: any) {
-      return { success: false, error: error.message || String(error) };
+      const msg = error.message || String(error);
+      if (this.isLockError(msg)) {
+        return this.buildLockErrorResult(msg);
+      }
+      return { success: false, error: msg };
     }
   }
 

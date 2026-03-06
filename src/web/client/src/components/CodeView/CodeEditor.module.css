@@ -1914,3 +1914,36 @@
 :global(.pattern-line-design-pattern) {
   background-color: rgba(33, 150, 243, 0.08) !important;
 }
+
+/* ============================================================
+   选中文本 AI 解释浮动卡片
+   ============================================================ */
+
+@keyframes :global(selectionExplainFadeIn) {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+:global(.selection-explain-spinner) {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid rgba(139, 92, 246, 0.3);
+  border-top-color: #a78bfa;
+  border-radius: 50%;
+  animation: selectionExplainSpin 0.6s linear infinite;
+  vertical-align: middle;
+  margin-right: 4px;
+}
+
+@keyframes :global(selectionExplainSpin) {
+  to {
+    transform: rotate(360deg);
+  }
+}

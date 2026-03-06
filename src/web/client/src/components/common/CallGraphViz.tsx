@@ -6,6 +6,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import styles from './CallGraphViz.module.css';
+import { useLanguage } from '../../i18n';
 
 // 调用图节点
 export interface CallGraphNode {
@@ -58,10 +59,11 @@ export const CallGraphViz: React.FC<CallGraphVizProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { t } = useLanguage();
 
   useEffect(() => {
     if (!data || !data.nodes || data.nodes.length === 0) {
-      setError('无调用图数据');
+      setError(t('callGraph.noData'));
       setLoading(false);
       return;
     }
@@ -70,7 +72,7 @@ export const CallGraphViz: React.FC<CallGraphVizProps> = ({
       renderGraph();
       setLoading(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '渲染失败');
+      setError(err instanceof Error ? err.message : t('callGraph.renderFailed'));
       setLoading(false);
     }
   }, [data, centerNodeId]);
@@ -81,7 +83,7 @@ export const CallGraphViz: React.FC<CallGraphVizProps> = ({
     // 动态加载 D3.js
     if (!(window as any).d3) {
       // D3.js 未加载，需要在 index.html 中引入
-      throw new Error('D3.js 未加载，请在 index.html 中引入');
+      throw new Error(t('callGraph.d3NotLoaded'));
     }
 
     const d3 = (window as any).d3;
@@ -227,9 +229,9 @@ export const CallGraphViz: React.FC<CallGraphVizProps> = ({
 
     // Tooltip
     node.append('title').text((d: any) => {
-      let text = `${d.name}\n类型: ${d.type}`;
-      if (d.className) text += `\n类: ${d.className}`;
-      if (d.signature) text += `\n签名: ${d.signature}`;
+      let text = `${d.name}\n${t('callGraph.type')}: ${d.type}`;
+      if (d.className) text += `\n${t('callGraph.class')}: ${d.className}`;
+      if (d.signature) text += `\n${t('callGraph.signature')}: ${d.signature}`;
       return text;
     });
 
@@ -269,7 +271,7 @@ export const CallGraphViz: React.FC<CallGraphVizProps> = ({
       <div className={styles.container} style={{ height }}>
         <div className={styles.loading}>
           <div className={styles.spinner}></div>
-          <p>正在渲染调用图...</p>
+          <p>{t('callGraph.rendering')}</p>
         </div>
       </div>
     );
@@ -291,23 +293,23 @@ export const CallGraphViz: React.FC<CallGraphVizProps> = ({
       <div className={styles.legend}>
         <div className={styles.legendItem}>
           <div className={`${styles.legendIcon} ${styles.function}`}></div>
-          <span>函数</span>
+          <span>{t('callGraph.function')}</span>
         </div>
         <div className={styles.legendItem}>
           <div className={`${styles.legendIcon} ${styles.method}`}></div>
-          <span>方法</span>
+          <span>{t('callGraph.method')}</span>
         </div>
         <div className={styles.legendItem}>
           <div className={`${styles.legendIcon} ${styles.constructor}`}></div>
-          <span>构造函数</span>
+          <span>{t('callGraph.constructor')}</span>
         </div>
         <div className={styles.legendItem}>
           <div className={styles.legendLine}></div>
-          <span>调用关系</span>
+          <span>{t('callGraph.callRelation')}</span>
         </div>
       </div>
       <div className={styles.hint}>
-        💡 拖拽节点调整位置 | 滚轮缩放 | 点击节点跳转
+        {t('callGraph.hint')}
       </div>
     </div>
   );

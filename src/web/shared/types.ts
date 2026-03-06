@@ -215,6 +215,8 @@ export type ClientMessage =
   | { type: 'git:push' }
   | { type: 'git:pull' }
   | { type: 'git:checkout'; payload: { branch: string } }
+  | { type: 'git:stash_and_checkout'; payload: { branch: string } }
+  | { type: 'git:force_checkout'; payload: { branch: string } }
   | { type: 'git:create_branch'; payload: { name: string; startPoint?: string } }
   | { type: 'git:delete_branch'; payload: { name: string } }
   | { type: 'git:stash_save'; payload: { message?: string } }
@@ -255,6 +257,7 @@ export type ClientMessage =
   | { type: 'git:compare_branches'; payload: { base: string; target: string } }
   | { type: 'git:get_merge_status' }
   | { type: 'git:get_conflicts'; payload: { file: string } }
+  | { type: 'git:resolve_lock'; payload: { action: 'delete' | 'retry' } }
   // IM 通道管理消息
   | { type: 'channel:list' }
   | { type: 'channel:start'; payload: { channelId: string } }

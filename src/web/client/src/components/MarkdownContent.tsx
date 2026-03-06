@@ -2,6 +2,7 @@ import { useRef, useEffect, useCallback } from 'react';
 import { marked, Renderer } from 'marked';
 import hljs from 'highlight.js';
 import { sanitizeHtml } from '../utils/sanitize';
+import { getTranslation } from '../i18n';
 
 interface MarkdownContentProps {
   content: string;
@@ -31,6 +32,15 @@ const PREVIEWABLE_EXTENSIONS = new Set([
   '.mp3', '.wav', '.ogg',
   '.html', '.htm', '.txt', '.md', '.json', '.xml', '.csv', '.log',
 ]);
+
+/** 可内联渲染的图片扩展名 */
+const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.bmp']);
+
+/** 可内联播放的视频扩展名 */
+const VIDEO_EXTENSIONS = new Set(['.mp4', '.webm']);
+
+/** 可内联播放的音频扩展名 */
+const AUDIO_EXTENSIONS = new Set(['.mp3', '.wav', '.ogg', '.flac', '.aac']);
 
 /**
  * 代码引用正则：匹配 `FileName.ext:lineNumber` 或 `FileName.ext:startLine-endLine`
@@ -69,7 +79,7 @@ function isCodeReference(text: string): { match: boolean; filePath: string; line
 }
 
 /**
- * 生成文件链接 HTML（下载按钮 + 可选预览按钮）
+ * 生成文件链接 HTML（下载按钮 + 可选预览按钮 + 内联媒体）
  */
 function renderFileLink(filePath: string, ext: string): string {
   const encodedPath = encodeURIComponent(filePath);
@@ -77,13 +87,28 @@ function renderFileLink(filePath: string, ext: string): string {
   const escapedFileName = fileName.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const escapedPath = filePath.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const canPreview = PREVIEWABLE_EXTENSIONS.has(ext);
+  const inlineSrc = `/api/files/download?path=${encodedPath}&inline=1`;
 
-  const downloadBtn = `<a class="file-download-btn" href="/api/files/download?path=${encodedPath}" download="${encodeURIComponent(fileName)}" title="下载 ${escapedFileName}">↓</a>`;
+  const downloadBtn = `<a class="file-download-btn" href="/api/files/download?path=${encodedPath}" download="${encodeURIComponent(fileName)}" title="${getTranslation('markdown.download')} ${escapedFileName}">↓</a>`;
   const previewBtn = canPreview
-    ? `<a class="file-preview-btn" href="/api/files/download?path=${encodedPath}&inline=1" target="_blank" title="预览 ${escapedFileName}">⧉</a>`
+    ? `<a class="file-preview-btn" href="${inlineSrc}" target="_blank" title="${getTranslation('markdown.preview')} ${escapedFileName}">⧉</a>`
     : '';
 
-  return `<span class="file-link-wrapper"><code class="file-path">${escapedPath}</code>${downloadBtn}${previewBtn}</span>`;
+  const linkBar = `<span class="file-link-wrapper"><code class="file-path">${escapedPath}</code>${downloadBtn}${previewBtn}</span>`;
+
+  // 内联渲染媒体
+  if (IMAGE_EXTENSIONS.has(ext)) {
+    return `<div class="media-inline media-inline--image">${linkBar}<img src="${inlineSrc}" alt="${escapedFileName}" loading="lazy" class="media-inline__img" /></div>`;
+  }
+  if (VIDEO_EXTENSIONS.has(ext)) {
+    return `<div class="media-inline media-inline--video">${linkBar}<video controls preload="metadata" class="media-inline__video"><source src="${inlineSrc}" type="video/${ext.slice(1)}" /></video></div>`;
+  }
+  if (AUDIO_EXTENSIONS.has(ext)) {
+    const audioType = ext === '.mp3' ? 'mpeg' : ext === '.flac' ? 'flac' : ext === '.aac' ? 'aac' : ext.slice(1);
+    return `<div class="media-inline media-inline--audio">${linkBar}<audio controls preload="metadata" class="media-inline__audio"><source src="${inlineSrc}" type="audio/${audioType}" /></audio></div>`;
+  }
+
+  return linkBar;
 }
 
 /**
@@ -92,7 +117,7 @@ function renderFileLink(filePath: string, ext: string): string {
 function renderCodeRefLink(text: string, filePath: string, line: number): string {
   const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const escapedFilePath = filePath.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  return `<code class="code-ref-link" data-code-ref="true" data-file-path="${escapedFilePath}" data-line="${line}" title="在编辑器中打开 ${escapedFilePath}:${line}">${escaped}</code>`;
+  return `<code class="code-ref-link" data-code-ref="true" data-file-path="${escapedFilePath}" data-line="${line}" title="${getTranslation('markdown.openInEditor')} ${escapedFilePath}:${line}">${escaped}</code>`;
 }
 
 /**
@@ -150,8 +175,15 @@ export function MarkdownContent({ content, isUserMessage = false, onCodeRefClick
     }
   }, [content, isUserMessage]);
 
-  // 事件委托：监听代码引用点击
+  // 事件委托：监听代码引用点击 + 内联图片点击放大
   const handleClick = useCallback((e: React.MouseEvent) => {
+    // 内联图片点击 → 新标签打开原图
+    const imgTarget = (e.target as HTMLElement).closest('.media-inline__img') as HTMLImageElement | null;
+    if (imgTarget?.src) {
+      window.open(imgTarget.src, '_blank');
+      return;
+    }
+
     const target = (e.target as HTMLElement).closest('.code-ref-link') as HTMLElement | null;
     if (!target) return;
 

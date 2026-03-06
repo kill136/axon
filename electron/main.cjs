@@ -12,7 +12,7 @@
  * 3. Electron GUI 没有 stdout，pipe 输出会 EPIPE 崩溃
  */
 
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
 const fs = require('fs');
@@ -149,9 +149,12 @@ function createWindow() {
     width: 1400,
     height: 900,
     title: 'Axon',
+    frame: false,       // 无边框窗口，去掉系统标题栏和菜单
+    titleBarStyle: 'hidden', // macOS 上隐藏标题栏但保留红绿灯（可选）
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      preload: path.join(__dirname, 'preload.cjs'),
     },
     icon: path.join(__dirname, 'icon.png'),
     show: false, // 先隐藏，等内容加载好再显示
@@ -216,6 +219,21 @@ function showError(message) {
 // ============================================================
 // App Lifecycle
 // ============================================================
+
+// 窗口控制 IPC 处理
+ipcMain.on('window-minimize', () => {
+  mainWindow?.minimize();
+});
+ipcMain.on('window-maximize', () => {
+  if (mainWindow?.isMaximized()) {
+    mainWindow.unmaximize();
+  } else {
+    mainWindow?.maximize();
+  }
+});
+ipcMain.on('window-close', () => {
+  mainWindow?.close();
+});
 
 app.whenReady().then(async () => {
   createWindow();

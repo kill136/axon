@@ -5,6 +5,7 @@
  */
 
 import './CrossSessionToast.css';
+import { useLanguage } from '../i18n';
 import type { CrossSessionNotification } from '../hooks/useMessageHandler';
 
 interface CrossSessionToastProps {
@@ -15,11 +16,12 @@ interface CrossSessionToastProps {
 }
 
 export function CrossSessionToast({ notification, sessionName, onSwitch, onDismiss }: CrossSessionToastProps) {
+  const { t } = useLanguage();
   const isPermission = notification.type === 'permission_request';
-  const title = isPermission ? '权限确认等待中' : '需要回答问题';
+  const title = isPermission ? t('crossSession.permissionWaiting') : t('crossSession.questionWaiting');
   const detail = isPermission
-    ? `工具 ${notification.toolName || '未知'} 请求权限`
-    : notification.questionHeader || '有问题需要回答';
+    ? t('crossSession.toolRequestPermission', { tool: notification.toolName || t('crossSession.unknown') })
+    : notification.questionHeader || t('crossSession.hasQuestion');
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -43,10 +45,10 @@ export function CrossSessionToast({ notification, sessionName, onSwitch, onDismi
           {sessionName ? `${sessionName}: ` : ''}{detail}
         </div>
         <div className="cross-session-toast-action">
-          点击切换到该会话
+          {t('crossSession.clickToSwitch')}
         </div>
       </div>
-      <button className="cross-session-toast-close" onClick={handleClose} title="关闭">
+      <button className="cross-session-toast-close" onClick={handleClose} title={t('crossSession.close')}>
         &times;
       </button>
     </div>

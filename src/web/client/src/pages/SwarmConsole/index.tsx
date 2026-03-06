@@ -334,11 +334,11 @@ export default function SwarmConsole({ initialBlueprintId }: SwarmConsoleProps) 
       if (result.success) {
         console.log(`[SwarmConsole] ✅ 冲突解决成功`);
       } else {
-        alert('冲突解决失败: ' + (result.message || '未知错误'));
+        alert(t('swarmConsole.conflictResolveFailed') + ': ' + (result.message || t('swarmConsole.unknownError')));
       }
     } catch (err) {
       console.error('[SwarmConsole] 解决冲突失败:', err);
-      alert('解决冲突失败: ' + (err instanceof Error ? err.message : String(err)));
+      alert(t('swarmConsole.conflictResolveFailed') + ': ' + (err instanceof Error ? err.message : String(err)));
     }
   }, []);
 

@@ -310,6 +310,10 @@ export async function disconnectMcpServer(name: string): Promise<void> {
   server.connecting = false;
   server.reconnectAttempts = 0;
   server.permanentlyFailed = false; // 允许手动重连
+
+  // v2.1.63: 清除工具和资源缓存，防止 reconnect 时内存泄漏
+  server.tools = [];
+  server.resources = [];
 }
 
 /**
@@ -966,6 +970,16 @@ export function modelSupportsToolReference(model: string): boolean {
 }
 
 /**
+ * v2.1.70: 检查是否使用第三方 API 网关（非 Anthropic 官方端点）
+ * 第三方网关不支持 tool_reference blocks，需要禁用 tool search
+ */
+export function isThirdPartyApiEndpoint(): boolean {
+  const baseUrl = process.env.ANTHROPIC_BASE_URL || process.env.AXON_BASE_URL || '';
+  if (!baseUrl) return false;
+  return !baseUrl.includes('api.anthropic.com') && !baseUrl.includes('anthropic.com');
+}
+
+/**
  * 检查 MCPSearch 工具是否可用
  * 对齐官方 meB 函数
  * @param tools 工具列表
@@ -1018,6 +1032,14 @@ export function calculateMcpToolDescriptionChars(): number {
  */
 export function isToolSearchEnabled(model: string, tools: Array<{ name: string }>): boolean {
   const mcpToolCount = Array.from(mcpServers.values()).reduce((sum, s) => sum + s.tools.length, 0);
+
+  // v2.1.70: 第三方 API 网关不支持 tool_reference blocks
+  if (isThirdPartyApiEndpoint()) {
+    if (process.env.DEBUG) {
+      console.log('[MCP] Tool search disabled: third-party API endpoint detected (ANTHROPIC_BASE_URL).');
+    }
+    return false;
+  }
 
   // 1. 检查模型是否支持 tool_reference 块
   if (!modelSupportsToolReference(model)) {

@@ -1,5 +1,6 @@
 import React from 'react';
 import styles from './animations.module.css';
+import { useLanguage } from '../../../i18n';
 
 /**
  * 呼吸灯组件 Props
@@ -40,6 +41,7 @@ export const BreathingLight: React.FC<BreathingLightProps> = ({
   size = 10,
   className = '',
 }) => {
+  const { t } = useLanguage();
   return (
     <div
       className={`${styles.breathingLight} ${active ? styles.active : styles.inactive} ${active ? styles[color] : ''} ${className}`}
@@ -48,7 +50,7 @@ export const BreathingLight: React.FC<BreathingLightProps> = ({
         height: size,
       }}
       role="status"
-      aria-label={active ? `活跃状态 - ${color}` : '非活跃状态'}
+      aria-label={active ? t('breathingLight.active', { color }) : t('breathingLight.inactive')}
       aria-live="polite"
     />
   );

@@ -1,5 +1,6 @@
 import React from 'react';
 import styles from './animations.module.css';
+import { useLanguage } from '../../../i18n';
 
 /**
  * 动画打勾组件 Props
@@ -40,12 +41,13 @@ export const AnimatedCheckmark: React.FC<AnimatedCheckmarkProps> = ({
   animate = true,
   className = '',
 }) => {
+  const { t } = useLanguage();
   return (
     <div
       className={`${styles.checkmarkContainer} ${className}`}
       style={{ width: size, height: size }}
       role="img"
-      aria-label="完成标记"
+      aria-label={t('checkmark.completed')}
     >
       <svg
         className={styles.checkmarkSvg}

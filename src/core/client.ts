@@ -1083,7 +1083,8 @@ export function buildApiTools(
       // v2.1.34: deferred tool 标记 defer_loading
       // 对齐官方 PP6 函数：if(q.deferLoading) z.defer_loading = true
       // 当 toolSearchEnabled 时，isMcp 的工具（已被发现并传给 API 的）标记为 defer_loading
-      if (toolSearchEnabled && tool.isMcp) {
+      // v2.1.70: 第三方网关不支持 defer_loading / tool_reference blocks
+      if (toolSearchEnabled && tool.isMcp && !isThirdParty) {
         apiTool.defer_loading = true;
       }
 

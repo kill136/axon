@@ -428,6 +428,7 @@ function DiscoverTab({
 }) {
   const { t } = useLanguage();
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [displayCount, setDisplayCount] = useState(15);
 
   // 过滤插件
   const filteredPlugins = useMemo(() => {
@@ -440,6 +441,11 @@ function DiscoverTab({
         p.marketplaceName.toLowerCase().includes(q)
     );
   }, [plugins, searchQuery]);
+
+  // 搜索变化时重置显示数量
+  useEffect(() => {
+    setDisplayCount(15);
+  }, [searchQuery]);
 
   if (noMarketplaces) {
     return (
@@ -488,7 +494,7 @@ function DiscoverTab({
 
       {/* 插件列表 */}
       <div className="plugins-list">
-        {filteredPlugins.slice(0, 15).map((plugin, index) => {
+        {filteredPlugins.slice(0, displayCount).map((plugin, index) => {
           const isSelected = index === selectedIndex;
           const isChecked = selectedPlugins.has(plugin.pluginId);
           const isLoading = loadingPlugins.has(plugin.pluginId);
@@ -554,9 +560,15 @@ function DiscoverTab({
         })}
       </div>
 
-      {/* 更多指示器 */}
-      {filteredPlugins.length > 15 && (
-        <div className="plugins-more">{ICONS.arrowDown} {t('plugins.moreBelow')}</div>
+      {/* 加载更多按钮 */}
+      {filteredPlugins.length > displayCount && (
+        <div
+          className="plugins-more"
+          onClick={() => setDisplayCount(prev => prev + 15)}
+          style={{ cursor: 'pointer' }}
+        >
+          {ICONS.arrowDown} {t('plugins.moreBelow')}
+        </div>
       )}
 
       {/* 底部提示 */}

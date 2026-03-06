@@ -1,5 +1,6 @@
 import React from 'react';
 import styles from './animations.module.css';
+import { useLanguage } from '../../../i18n';
 
 /**
  * 状态徽章组件 Props
@@ -14,17 +15,6 @@ export interface StatusBadgeProps {
   /** 自定义类名 */
   className?: string;
 }
-
-/**
- * 状态文本映射
- */
-const STATUS_LABELS: Record<StatusBadgeProps['status'], string> = {
-  pending: '等待中',
-  running: '运行中',
-  success: '成功',
-  error: '错误',
-  warning: '警告',
-};
 
 /**
  * StatusBadge - 状态徽章组件
@@ -47,13 +37,23 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
   pulse = false,
   className = '',
 }) => {
+  const { t } = useLanguage();
+
+  const STATUS_LABELS: Record<StatusBadgeProps['status'], string> = {
+    pending: t('statusBadge.pending'),
+    running: t('statusBadge.running'),
+    success: t('statusBadge.success'),
+    error: t('statusBadge.error'),
+    warning: t('statusBadge.warning'),
+  };
+
   const displayLabel = label ?? STATUS_LABELS[status];
 
   return (
     <span
       className={`${styles.statusBadge} ${styles[status]} ${pulse ? styles.pulse : ''} ${className}`}
       role="status"
-      aria-label={`状态: ${displayLabel}`}
+      aria-label={t('statusBadge.statusLabel', { status: displayLabel })}
     >
       <span className={styles.statusDot} aria-hidden="true" />
       <span>{displayLabel}</span>

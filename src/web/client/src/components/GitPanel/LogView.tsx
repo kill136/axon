@@ -1,12 +1,13 @@
 /**
- * LogView - Git Commit 历史视图（集成 Graph）
+ * LogView - GitLens 风格的 Commit 历史视图
+ * Graph 和 commit 信息在同一行内无缝集成
  * 虚拟滚动 + 分页加载，支持大仓库
  */
 
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useLanguage } from '../../i18n';
 import { GitCommit } from './index';
-import { CommitGraph } from './CommitGraph';
+import { CommitGraphCell } from './CommitGraph';
 import { ContextMenu, type ContextMenuEntry } from './ContextMenu';
 import { computeGraphLayout, GRAPH_COLORS } from './graph-utils';
 
@@ -60,8 +61,10 @@ function parseRef(ref: string): { type: 'branch' | 'tag' | 'remote' | 'head'; na
 }
 
 const ROW_HEIGHT = 36;
-const OVERSCAN = 10; // 上下多渲染的行数
+const OVERSCAN = 10;
 const PAGE_SIZE = 200;
+const LANE_WIDTH = 16;
+const PAD_LEFT = 12;
 
 export function LogView({ commits, send, addMessageHandler, projectPath, selectedHash, onSelectCommit, filterBranch }: LogViewProps) {
   const { t } = useLanguage();
@@ -71,6 +74,7 @@ export function LogView({ commits, send, addMessageHandler, projectPath, selecte
   const [author, setAuthor] = useState('');
   const [since, setSince] = useState('');
   const [until, setUntil] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
 
   // 右键菜单状态
   const [contextMenu, setContextMenu] = useState<{
@@ -82,7 +86,6 @@ export function LogView({ commits, send, addMessageHandler, projectPath, selecte
 
   // 虚拟滚动状态
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const graphContainerRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [containerHeight, setContainerHeight] = useState(600);
 
@@ -96,6 +99,9 @@ export function LogView({ commits, send, addMessageHandler, projectPath, selecte
     return computeGraphLayout(commits.map(c => ({ hash: c.hash, parents: c.parents || [] })));
   }, [commits]);
 
+  // graph 宽度
+  const graphWidth = layout ? (layout.maxLane + 1) * LANE_WIDTH + PAD_LEFT * 2 : 40;
+
   // 虚拟滚动计算
   const totalHeight = commits.length * ROW_HEIGHT;
   const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
@@ -108,14 +114,9 @@ export function LogView({ commits, send, addMessageHandler, projectPath, selecte
     const target = e.currentTarget;
     setScrollTop(target.scrollTop);
 
-    // 同步 graph 容器滚动
-    if (graphContainerRef.current) {
-      graphContainerRef.current.scrollTop = target.scrollTop;
-    }
-
     // 判断是否滚到底部，触发加载更多
     if (hasMore && !loadingMore) {
-      const threshold = 200; // 距底部 200px 时触发
+      const threshold = 200;
       if (target.scrollTop + target.clientHeight >= target.scrollHeight - threshold) {
         loadMore();
       }
@@ -241,7 +242,6 @@ export function LogView({ commits, send, addMessageHandler, projectPath, selecte
     const { commit } = contextMenu;
     const items: ContextMenuEntry[] = [];
 
-    // 查看详情
     items.push({
       label: t('git.viewDetail'),
       icon: '🔍',
@@ -250,7 +250,6 @@ export function LogView({ commits, send, addMessageHandler, projectPath, selecte
 
     items.push({ separator: true });
 
-    // Cherry-pick
     items.push({
       label: 'Cherry-pick',
       icon: '🍒',
@@ -265,7 +264,6 @@ export function LogView({ commits, send, addMessageHandler, projectPath, selecte
       },
     });
 
-    // Revert
     items.push({
       label: 'Revert',
       icon: '↩',
@@ -282,7 +280,6 @@ export function LogView({ commits, send, addMessageHandler, projectPath, selecte
 
     items.push({ separator: true });
 
-    // Reset 操作
     items.push({
       label: 'Reset --soft',
       icon: '⟲',
@@ -328,7 +325,6 @@ export function LogView({ commits, send, addMessageHandler, projectPath, selecte
 
     items.push({ separator: true });
 
-    // 从此 commit 创建分支
     items.push({
       label: t('git.createBranchFrom'),
       icon: '🌿',
@@ -343,7 +339,6 @@ export function LogView({ commits, send, addMessageHandler, projectPath, selecte
       },
     });
 
-    // 从此 commit 创建 tag
     items.push({
       label: t('git.createTagFrom'),
       icon: '🏷️',
@@ -360,7 +355,6 @@ export function LogView({ commits, send, addMessageHandler, projectPath, selecte
 
     items.push({ separator: true });
 
-    // AI 解释
     items.push({
       label: t('git.explainCommit'),
       icon: '🤖',
@@ -375,21 +369,18 @@ export function LogView({ commits, send, addMessageHandler, projectPath, selecte
 
     items.push({ separator: true });
 
-    // 复制 hash
     items.push({
       label: t('git.copyHash'),
       icon: '📋',
       onClick: () => navigator.clipboard.writeText(commit.hash),
     });
 
-    // 复制 short hash
     items.push({
       label: t('git.copyShortHash'),
       icon: '📋',
       onClick: () => navigator.clipboard.writeText(commit.shortHash),
     });
 
-    // 复制 commit message
     items.push({
       label: t('git.copyMessage'),
       icon: '📝',
@@ -410,146 +401,148 @@ export function LogView({ commits, send, addMessageHandler, projectPath, selecte
     );
   }
 
-  const graphWidth = layout ? (layout.maxLane + 1) * 20 + 20 : 0;
-
   return (
     <div className="git-log-view">
-      {/* 筛选栏 */}
-      <div className="git-filter-bar">
-        <input
-          type="text"
-          className="git-filter-input"
-          placeholder={t('git.searchPlaceholder')}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-        />
-        <input
-          type="text"
-          className="git-filter-input git-filter-input--small"
-          placeholder={t('git.filterAuthor')}
-          value={author}
-          onChange={(e) => setAuthor(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-        />
-        <div className="git-filter-date-group">
+      {/* 搜索栏 */}
+      <div className="git-graph-toolbar">
+        <div className="git-graph-search-row">
           <input
-            type="date"
-            className="git-filter-input git-filter-input--date"
-            placeholder={t('git.since')}
-            value={since}
-            onChange={(e) => setSince(e.target.value)}
-            title={t('git.since')}
+            type="text"
+            className="git-graph-search-input"
+            placeholder={t('git.searchPlaceholder')}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
           />
-          <input
-            type="date"
-            className="git-filter-input git-filter-input--date"
-            placeholder={t('git.until')}
-            value={until}
-            onChange={(e) => setUntil(e.target.value)}
-            title={t('git.until')}
-          />
+          <button
+            className="git-graph-toolbar-btn"
+            onClick={() => setShowFilters(!showFilters)}
+            title="Filters"
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M1 2h14L9 8.5V13l-2 1V8.5L1 2z"/>
+            </svg>
+          </button>
+          <button className="git-graph-toolbar-btn" onClick={handleSearch} title={t('git.search')}>
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M11.742 10.344a6.5 6.5 0 10-1.397 1.398l3.85 3.85a1 1 0 001.415-1.414l-3.868-3.834zm-5.44.806a4.5 4.5 0 110-9 4.5 4.5 0 010 9z"/>
+            </svg>
+          </button>
+          {(query || author || since || until) && (
+            <button className="git-graph-toolbar-btn git-graph-toolbar-btn--clear" onClick={handleClear} title={t('git.clear')}>
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                <path d="M4.646 4.646a.5.5 0 01.708 0L8 7.293l2.646-2.647a.5.5 0 01.708.708L8.707 8l2.647 2.646a.5.5 0 01-.708.708L8 8.707l-2.646 2.647a.5.5 0 01-.708-.708L7.293 8 4.646 5.354a.5.5 0 010-.708z"/>
+              </svg>
+            </button>
+          )}
+          {filterBranch && (
+            <span className="git-graph-branch-badge">{filterBranch}</span>
+          )}
         </div>
-        <button className="git-filter-button" onClick={handleSearch}>
-          {t('git.search')}
-        </button>
-        <button className="git-filter-button git-filter-button--secondary" onClick={handleClear}>
-          {t('git.clear')}
-        </button>
-        {filterBranch && (
-          <div className="git-filter-badge">
-            Branch: {filterBranch}
+        {showFilters && (
+          <div className="git-graph-filter-row">
+            <input
+              type="text"
+              className="git-graph-filter-input"
+              placeholder={t('git.filterAuthor')}
+              value={author}
+              onChange={(e) => setAuthor(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+            />
+            <input
+              type="date"
+              className="git-graph-filter-input git-graph-filter-input--date"
+              value={since}
+              onChange={(e) => setSince(e.target.value)}
+              title={t('git.since')}
+            />
+            <input
+              type="date"
+              className="git-graph-filter-input git-graph-filter-input--date"
+              value={until}
+              onChange={(e) => setUntil(e.target.value)}
+              title={t('git.until')}
+            />
           </div>
         )}
       </div>
 
-      {/* Commit 列表（虚拟滚动 + Graph）*/}
-      <div className="git-log-content">
-        {/* Graph 列（独立滚动容器，由 commit 列同步） */}
-        {layout && (
-          <div
-            ref={graphContainerRef}
-            className="git-log-graph-container"
-            style={{ width: graphWidth, overflow: 'hidden' }}
-          >
-            <div style={{ height: totalHeight, position: 'relative' }}>
-              <CommitGraph
-                layout={layout}
-                commits={commits}
-                selectedHash={selectedHash}
-                rowHeight={ROW_HEIGHT}
-                onCommitClick={onSelectCommit}
-                startIndex={startIndex}
-                endIndex={endIndex}
-              />
-            </div>
+      {/* Graph + Commit 统一列表（虚拟滚动） */}
+      <div
+        ref={scrollContainerRef}
+        className="git-graph-list"
+        onScroll={handleScroll}
+      >
+        <div style={{ height: totalHeight, position: 'relative' }}>
+          <div style={{ position: 'absolute', top: offsetY, left: 0, right: 0 }}>
+            {visibleCommits.map((commit, i) => {
+              const row = startIndex + i;
+              const isSelected = selectedHash === commit.hash;
+              const node = layout?.nodes.get(commit.hash);
+              const nodeColor = node ? GRAPH_COLORS[node.color % GRAPH_COLORS.length] : '#6366f1';
+              
+              return (
+                <div
+                  key={commit.hash}
+                  className={`git-graph-row ${isSelected ? 'git-graph-row--selected' : ''}`}
+                  style={{ height: ROW_HEIGHT }}
+                  onClick={() => onSelectCommit(commit.hash)}
+                  onContextMenu={(e) => handleContextMenu(e, commit)}
+                >
+                  {/* 左侧 Graph Cell */}
+                  {layout && (
+                    <div className="git-graph-cell" style={{ width: graphWidth }}>
+                      <CommitGraphCell
+                        layout={layout}
+                        commitHash={commit.hash}
+                        row={row}
+                        rowHeight={ROW_HEIGHT}
+                        isSelected={isSelected}
+                        laneWidth={LANE_WIDTH}
+                        padLeft={PAD_LEFT}
+                      />
+                    </div>
+                  )}
+
+                  {/* 右侧 Commit 信息 */}
+                  <div className="git-graph-commit-info">
+                    {/* Commit message + ref tags */}
+                    <span className="git-graph-commit-message">
+                      {commit.message}
+                    </span>
+                    {commit.refs && commit.refs.length > 0 && (
+                      <span className="git-graph-ref-tags">
+                        {commit.refs.map((ref, refIdx) => {
+                          const parsed = parseRef(ref);
+                          return (
+                            <span
+                              key={refIdx}
+                              className={`git-graph-ref-tag git-graph-ref-tag--${parsed.type}`}
+                              style={parsed.type === 'branch' ? { borderColor: nodeColor, color: nodeColor } : {}}
+                            >
+                              {parsed.name}
+                            </span>
+                          );
+                        })}
+                      </span>
+                    )}
+                    <span className="git-graph-commit-spacer" />
+                    {/* Author + Time */}
+                    <span className="git-graph-commit-author">{commit.author}</span>
+                    <span className="git-graph-commit-time">{formatRelativeTime(commit.date)}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* 加载更多 */}
+        {loadingMore && (
+          <div className="git-log-loading-more">
+            <div className="git-loading-spinner" /> Loading...
           </div>
         )}
-
-        {/* Commit 列（虚拟滚动） */}
-        <div
-          ref={scrollContainerRef}
-          className="git-log-commits"
-          onScroll={handleScroll}
-        >
-          {/* 撑起总高度的占位容器 */}
-          <div style={{ height: totalHeight, position: 'relative' }}>
-            {/* 偏移到可见区域 */}
-            <div style={{ position: 'absolute', top: offsetY, left: 0, right: 0 }}>
-              {visibleCommits.map((commit) => {
-                const isSelected = selectedHash === commit.hash;
-                
-                return (
-                  <div
-                    key={commit.hash}
-                    className={`git-commit-row ${isSelected ? 'git-commit-row--selected' : ''}`}
-                    style={{ height: ROW_HEIGHT }}
-                    onClick={() => onSelectCommit(commit.hash)}
-                    onContextMenu={(e) => handleContextMenu(e, commit)}
-                  >
-                    <div className="git-commit-row-main">
-                      <span className="git-commit-hash">{commit.shortHash}</span>
-                      <span className="git-commit-message">
-                        {commit.message}
-                        {/* Ref 标签 */}
-                        {commit.refs && commit.refs.length > 0 && (
-                          <span className="git-ref-tags">
-                            {commit.refs.map((ref, refIdx) => {
-                              const parsed = parseRef(ref);
-                              const node = layout?.nodes.get(commit.hash);
-                              const color = node ? GRAPH_COLORS[node.color % GRAPH_COLORS.length] : '#6366f1';
-                              
-                              return (
-                                <span
-                                  key={refIdx}
-                                  className={`git-ref-tag git-ref-tag--${parsed.type}`}
-                                  style={parsed.type === 'branch' ? { backgroundColor: color } : {}}
-                                >
-                                  {parsed.name}
-                                </span>
-                              );
-                            })}
-                          </span>
-                        )}
-                      </span>
-                    </div>
-                    <div className="git-commit-row-meta">
-                      <span className="git-commit-author">{commit.author}</span>
-                      <span className="git-commit-time">{formatRelativeTime(commit.date)}</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* 加载更多指示器 */}
-          {loadingMore && (
-            <div className="git-log-loading-more">
-              <div className="git-loading-spinner" /> Loading...
-            </div>
-          )}
-        </div>
       </div>
 
       {/* 底部状态栏 */}

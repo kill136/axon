@@ -4,6 +4,14 @@ import ProjectSelector from '../ProjectSelector/ProjectSelector';
 import { AuthStatus } from '../../AuthStatus';
 import { useLanguage } from '../../../i18n';
 
+// 检测是否在 Electron 环境中运行（preload.cjs 注入了 electronAPI）
+const isElectron = typeof (window as any).electronAPI !== 'undefined';
+const electronAPI = isElectron ? (window as any).electronAPI as {
+  minimize: () => void;
+  maximize: () => void;
+  close: () => void;
+} : null;
+
 interface SessionItem {
   id: string;
   name: string;
@@ -192,8 +200,8 @@ export default function TopNavBar({
 
   return (
     <nav className={styles.topNavBar}>
-      {/* 第一行：全局上下文行 */}
-      <div className={styles.contextRow}>
+      {/* 第一行：全局上下文行（Electron 模式下充当标题栏，可拖拽） */}
+      <div className={`${styles.contextRow} ${isElectron ? styles.electronDragRegion : ''}`}>
         {/* 左侧：项目选择器 */}
         <div className={styles.contextLeft}>
           <ProjectSelector
@@ -302,7 +310,7 @@ export default function TopNavBar({
           </div>
         </div>
 
-        {/* 右侧：认证状态 + 连接状态 + 设置按钮 */}
+        {/* 右侧：认证状态 + 连接状态 + 设置按钮 + (Electron) 窗口控制 */}
         <div className={styles.contextRight}>
           <AuthStatus onLoginClick={onLoginClick ?? (() => {})} refreshKey={authRefreshKey} />
           {connected !== undefined && (
@@ -311,6 +319,20 @@ export default function TopNavBar({
           <button className={styles.settingsButton} onClick={onSettingsClick} title={t('nav.settings')}>
             <SettingsIcon />
           </button>
+          {/* Electron 窗口控制按钮 */}
+          {electronAPI && (
+            <div className={styles.windowControls}>
+              <button className={styles.windowBtn} onClick={() => electronAPI.minimize()} title={t('nav.minimize')}>
+                <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 6h8" stroke="currentColor" strokeWidth="1.5" fill="none" /></svg>
+              </button>
+              <button className={styles.windowBtn} onClick={() => electronAPI.maximize()} title={t('nav.maximize')}>
+                <svg width="12" height="12" viewBox="0 0 12 12"><rect x="2" y="2" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1.2" fill="none" /></svg>
+              </button>
+              <button className={`${styles.windowBtn} ${styles.windowBtnClose}`} onClick={() => electronAPI.close()} title={t('nav.close')}>
+                <svg width="12" height="12" viewBox="0 0 12 12"><path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" strokeWidth="1.5" fill="none" /></svg>
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

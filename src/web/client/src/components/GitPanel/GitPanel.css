@@ -3783,127 +3783,229 @@ pre.git-ai-result-content {
   white-space: nowrap;
 }
 
-/* Graph + Commit 列表容器 */
-.git-log-content {
-  flex: 1;
-  display: flex;
-  overflow: hidden;
-  position: relative;
-}
+/* ============================================
+   GitLens 风格 Graph + Commit 列表
+   ============================================ */
 
-.git-log-graph-container {
+/* 搜索工具栏 */
+.git-graph-toolbar {
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-secondary);
   flex-shrink: 0;
-  overflow: hidden;
+}
+
+.git-graph-search-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+}
+
+.git-graph-search-input {
+  flex: 1;
+  min-width: 100px;
+  padding: 4px 8px;
   background: var(--bg-primary);
-  border-right: 1px solid var(--border-color);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 12px;
 }
 
-.git-graph-svg {
-  display: block;
+.git-graph-search-input:focus {
+  outline: none;
+  border-color: var(--accent-primary);
 }
 
-.git-log-commits {
+.git-graph-toolbar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.git-graph-toolbar-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.git-graph-toolbar-btn--clear {
+  color: var(--text-muted);
+}
+
+.git-graph-toolbar-btn--clear:hover {
+  color: #ef4444;
+}
+
+.git-graph-branch-badge {
+  padding: 2px 8px;
+  background: rgba(99, 102, 241, 0.15);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  border-radius: 10px;
+  font-size: 11px;
+  color: var(--accent-primary);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.git-graph-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px 6px;
+}
+
+.git-graph-filter-input {
+  flex: 1;
+  padding: 4px 8px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.git-graph-filter-input:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
+.git-graph-filter-input--date {
+  flex: 0 0 auto;
+  min-width: 110px;
+}
+
+/* 统一列表（graph + commit 同行） */
+.git-graph-list {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
 }
 
-/* Commit 行样式 */
-.git-commit-row {
+/* 每一行：graph cell + commit info */
+.git-graph-row {
   display: flex;
-  flex-direction: column;
-  padding: 8px 16px;
-  border-bottom: 1px solid var(--border-color);
+  align-items: center;
   cursor: pointer;
-  transition: background 0.15s;
   user-select: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  transition: background 0.1s;
 }
 
-.git-commit-row:hover {
-  background: var(--bg-tertiary);
+.git-graph-row:hover {
+  background: rgba(255, 255, 255, 0.04);
 }
 
-.git-commit-row--selected {
-  background: rgba(99, 102, 241, 0.15);
-  border-left: 3px solid var(--accent-primary);
-  padding-left: 13px;
+.git-graph-row--selected {
+  background: rgba(99, 102, 241, 0.12) !important;
 }
 
-.git-commit-row-main {
+/* Graph cell 容器 */
+.git-graph-cell {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 4px;
+  overflow: hidden;
 }
 
-.git-commit-row-meta {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 12px;
-  color: var(--text-muted);
-  padding-left: 72px;
+.git-graph-cell-svg {
+  display: block;
 }
 
-.git-commit-hash {
-  font-family: 'Consolas', 'Monaco', monospace;
-  font-size: 12px;
-  color: var(--text-muted);
-  min-width: 60px;
-}
-
-.git-commit-message {
+/* Commit 信息区域 */
+.git-graph-commit-info {
   flex: 1;
-  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 0 12px 0 4px;
+  height: 100%;
+}
+
+.git-graph-commit-message {
+  flex-shrink: 1;
+  font-size: 13px;
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  min-width: 0;
 }
 
-/* Ref 标签样式 */
-.git-ref-tags {
+.git-graph-commit-spacer {
+  flex: 1;
+}
+
+/* Ref 标签 */
+.git-graph-ref-tags {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   flex-shrink: 0;
 }
 
-.git-ref-tag {
-  padding: 2px 8px;
-  border-radius: 10px;
+.git-graph-ref-tag {
+  padding: 1px 6px;
+  border-radius: 3px;
   font-size: 11px;
   font-weight: 500;
   white-space: nowrap;
-  border: 1px solid transparent;
+  line-height: 1.4;
 }
 
-.git-ref-tag--branch {
-  /* 动态背景色通过 style 设置 */
-  color: white;
-  border-color: rgba(255, 255, 255, 0.2);
+.git-graph-ref-tag--branch {
+  background: transparent;
+  border: 1px solid currentColor;
 }
 
-.git-ref-tag--tag {
-  background: #f59e0b;
-  color: white;
-  border-color: rgba(245, 158, 11, 0.3);
+.git-graph-ref-tag--tag {
+  background: rgba(245, 200, 66, 0.15);
+  color: #f5c842;
+  border: 1px solid rgba(245, 200, 66, 0.3);
 }
 
-.git-ref-tag--remote {
-  background: rgba(14, 165, 233, 0.15);
-  color: #0ea5e9;
-  border-color: rgba(14, 165, 233, 0.3);
+.git-graph-ref-tag--remote {
+  background: rgba(14, 165, 233, 0.1);
+  color: #4dc5e2;
+  border: 1px solid rgba(77, 197, 226, 0.25);
+  font-size: 10px;
 }
 
-.git-ref-tag--head {
-  background: rgba(236, 72, 153, 0.15);
-  color: #ec4899;
-  border-color: rgba(236, 72, 153, 0.3);
+.git-graph-ref-tag--head {
+  background: rgba(236, 72, 153, 0.12);
+  color: #e560a4;
+  border: 1px solid rgba(229, 96, 164, 0.3);
   font-weight: 600;
+}
+
+/* Author & Time */
+.git-graph-commit-author {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.git-graph-commit-time {
+  font-size: 11px;
+  color: var(--text-muted);
+  opacity: 0.7;
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-width: 55px;
+  text-align: right;
 }
 
 /* Log 底部状态栏 */

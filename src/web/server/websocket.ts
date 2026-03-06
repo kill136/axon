@@ -45,6 +45,8 @@ import {
   handleGitPush,
   handleGitPull,
   handleGitCheckout,
+  handleGitStashAndCheckout,
+  handleGitForceCheckout,
   handleGitCreateBranch,
   handleGitDeleteBranch,
   handleGitStashSave,
@@ -84,6 +86,7 @@ import {
   handleGitCompareBranches,
   handleGitGetMergeStatus,
   handleGitGetConflicts,
+  handleGitResolveLock,
 } from './websocket-git-handlers.js';
 
 // ============================================================================
@@ -1651,6 +1654,14 @@ async function handleClientMessage(
       await handleGitCheckout(client, message.payload.branch, conversationManager);
       break;
 
+    case 'git:stash_and_checkout':
+      await handleGitStashAndCheckout(client, message.payload.branch, conversationManager);
+      break;
+
+    case 'git:force_checkout':
+      await handleGitForceCheckout(client, message.payload.branch, conversationManager);
+      break;
+
     case 'git:create_branch':
       await handleGitCreateBranch(client, message.payload.name, conversationManager, message.payload.startPoint);
       break;
@@ -1806,6 +1817,10 @@ async function handleClientMessage(
 
     case 'git:get_conflicts':
       await handleGitGetConflicts(client, message.payload.file, conversationManager);
+      break;
+
+    case 'git:resolve_lock':
+      await handleGitResolveLock(client, message.payload.action, conversationManager);
       break;
 
     case 'session_export':

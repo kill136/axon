@@ -120,6 +120,20 @@ export function GitPanel({ isOpen, onClose, send, addMessageHandler, projectPath
   const [reviewResult, setReviewResult] = useState<string | null>(null);
   const [explainResult, setExplainResult] = useState<string | null>(null);
 
+  // Checkout 冲突对话框状态
+  const [checkoutConflict, setCheckoutConflict] = useState<{
+    branch: string;
+    error: string;
+  } | null>(null);
+
+  // Lock 文件冲突对话框状态
+  const [lockConflict, setLockConflict] = useState<{
+    lockFile: string;
+    age: number;
+    suggestion: 'delete' | 'wait';
+    operation: string;
+  } | null>(null);
+
   // 订阅 WebSocket 消息
   useEffect(() => {
     if (!isOpen) return;
@@ -218,10 +232,34 @@ export function GitPanel({ isOpen, onClose, send, addMessageHandler, projectPath
           }
           break;
 
+        case 'git:checkout_conflict':
+          // 切换分支时有未提交的修改 → 弹出友好对话框
+          setCheckoutConflict({
+            branch: msg.payload.branch,
+            error: msg.payload.error,
+          });
+          break;
+
         case 'git:operation_result':
           // Git 操作完成后刷新状态（handler 已自动发送 status_response）
           if (!msg.payload?.success) {
-            setError(msg.payload?.error || 'Git operation failed');
+            // 检测是否为 lock 文件冲突 — 弹出智能诊断对话框而非普通错误
+            if (msg.payload?.lockConflict) {
+              setLockConflict({
+                lockFile: msg.payload.lockConflict.lockFile,
+                age: msg.payload.lockConflict.age,
+                suggestion: msg.payload.lockConflict.suggestion,
+                operation: msg.payload.operation || 'unknown',
+              });
+            } else {
+              setError(msg.payload?.error || 'Git operation failed');
+            }
+          } else if (msg.payload?.operation === 'stash_and_checkout' || msg.payload?.operation === 'force_checkout') {
+            // 切换分支成功后刷新分支列表和 log
+            if (projectPath) {
+              send({ type: 'git:get_branches', payload: { projectPath } });
+              send({ type: 'git:get_log', payload: { projectPath } });
+            }
           }
           break;
       }
@@ -422,6 +460,142 @@ export function GitPanel({ isOpen, onClose, send, addMessageHandler, projectPath
           {t('git.tab.remotes')}
         </button>
       </div>
+
+      {/* Checkout 冲突对话框 */}
+      {checkoutConflict && (
+        <div className="git-dialog-overlay" onClick={() => setCheckoutConflict(null)}>
+          <div className="git-dialog" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 520 }}>
+            <div className="git-dialog-header">
+              <h3>{t('git.checkoutConflictTitle')}</h3>
+            </div>
+            <div className="git-dialog-body">
+              <p style={{ margin: '0 0 12px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                {t('git.checkoutConflictDesc', { branch: checkoutConflict.branch })}
+              </p>
+              <div style={{
+                background: 'rgba(255,100,100,0.08)',
+                border: '1px solid rgba(255,100,100,0.2)',
+                borderRadius: 6,
+                padding: '8px 12px',
+                fontSize: 12,
+                color: 'var(--text-secondary)',
+                maxHeight: 120,
+                overflow: 'auto',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-all',
+              }}>
+                {checkoutConflict.error}
+              </div>
+            </div>
+            <div className="git-dialog-footer" style={{ gap: 8 }}>
+              <button
+                className="git-dialog-cancel"
+                onClick={() => setCheckoutConflict(null)}
+              >
+                {t('git.cancel')}
+              </button>
+              <button
+                className="git-dialog-confirm"
+                style={{ background: '#e15a60' }}
+                onClick={() => {
+                  if (projectPath) {
+                    send({
+                      type: 'git:force_checkout',
+                      payload: { projectPath, branch: checkoutConflict.branch },
+                    });
+                  }
+                  setCheckoutConflict(null);
+                }}
+              >
+                {t('git.forceCheckout')}
+              </button>
+              <button
+                className="git-dialog-confirm"
+                onClick={() => {
+                  if (projectPath) {
+                    send({
+                      type: 'git:stash_and_checkout',
+                      payload: { projectPath, branch: checkoutConflict.branch },
+                    });
+                  }
+                  setCheckoutConflict(null);
+                }}
+              >
+                {t('git.stashAndCheckout')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Lock 文件冲突智能诊断对话框 */}
+      {lockConflict && (
+        <div className="git-dialog-overlay" onClick={() => setLockConflict(null)}>
+          <div className="git-dialog" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 560 }}>
+            <div className="git-dialog-header">
+              <h3>{t('git.lockConflictTitle')}</h3>
+            </div>
+            <div className="git-dialog-body">
+              <p style={{ margin: '0 0 12px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                {t('git.lockConflictDesc')}
+              </p>
+              <div style={{
+                background: 'rgba(255,180,50,0.08)',
+                border: '1px solid rgba(255,180,50,0.3)',
+                borderRadius: 6,
+                padding: '10px 14px',
+                fontSize: 12,
+                color: 'var(--text-secondary)',
+                lineHeight: 1.6,
+              }}>
+                <div style={{ marginBottom: 6 }}>
+                  <strong>{t('git.lockFile')}:</strong>{' '}
+                  <code style={{ fontSize: 11, background: 'rgba(0,0,0,0.15)', padding: '1px 5px', borderRadius: 3 }}>
+                    {lockConflict.lockFile}
+                  </code>
+                </div>
+                <div style={{ marginBottom: 6 }}>
+                  <strong>{t('git.lockAge')}:</strong>{' '}
+                  {lockConflict.age > 60
+                    ? t('git.lockAgeMinutes', { minutes: Math.floor(lockConflict.age / 60) })
+                    : t('git.lockAgeSeconds', { seconds: lockConflict.age })
+                  }
+                </div>
+                <div>
+                  <strong>{t('git.lockDiagnosis')}:</strong>{' '}
+                  {lockConflict.suggestion === 'delete'
+                    ? t('git.lockDiagnosisStale')
+                    : t('git.lockDiagnosisRecent')
+                  }
+                </div>
+              </div>
+            </div>
+            <div className="git-dialog-footer" style={{ gap: 8 }}>
+              <button
+                className="git-dialog-cancel"
+                onClick={() => setLockConflict(null)}
+              >
+                {t('git.cancel')}
+              </button>
+              <button
+                className="git-dialog-confirm"
+                style={{ background: lockConflict.suggestion === 'delete' ? '#e15a60' : undefined }}
+                onClick={() => {
+                  if (projectPath) {
+                    send({
+                      type: 'git:resolve_lock',
+                      payload: { projectPath, action: 'delete' },
+                    });
+                  }
+                  setLockConflict(null);
+                }}
+              >
+                {t('git.lockDeleteAndRetry')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 内容区 - 三栏布局或单视图 */}
       <div className="git-panel-body">

@@ -4,6 +4,7 @@ import { useProject } from '../../contexts/ProjectContext';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import type { ChatMessage, ChatContent } from '../../types';
 import styles from './CodeBrowserPage.module.css';
+import { useLanguage } from '../../i18n';
 
 /** Tab 类型定义 */
 interface Tab {
@@ -31,12 +32,13 @@ interface CodeBrowserPageProps {
  * - Tab式聊天入口（类似VSCode）
  */
 export default function CodeBrowserPage({ context, onNavigateToChat }: CodeBrowserPageProps) {
+  const { t } = useLanguage();
   const { state: projectState } = useProject();
   const currentProject = projectState.currentProject;
 
   // Tab 状态管理
   const [tabs, setTabs] = useState<Tab[]>([
-    { id: 'welcome', type: 'welcome', title: '欢迎', icon: '🏠', closable: false }
+    { id: 'welcome', type: 'welcome', title: t('codeBrowser.welcome'), icon: '🏠', closable: false }
   ]);
   const [activeTabId, setActiveTabId] = useState('welcome');
 
@@ -151,7 +153,7 @@ export default function CodeBrowserPage({ context, onNavigateToChat }: CodeBrows
     const newTab: Tab = {
       id: `chat-${Date.now()}`,
       type: 'chat',
-      title: 'AI 聊天',
+      title: t('codeBrowser.aiChat'),
       icon: '💬',
       closable: true
     };
@@ -203,12 +205,12 @@ export default function CodeBrowserPage({ context, onNavigateToChat }: CodeBrows
         return (
           <div className={styles.chatTabContent}>
             <div className={styles.chatTabHeader}>
-              <button className={styles.backToCodeButton} onClick={switchToWelcome} title="返回代码浏览">
-                ← 代码
+              <button className={styles.backToCodeButton} onClick={switchToWelcome} title={t('codeBrowser.backToCode')}>
+                {t('codeBrowser.codeShort')}
               </button>
-              <span className={styles.chatTabTitle}>🤖 AI 助手</span>
+              <span className={styles.chatTabTitle}>{t('codeBrowser.aiAssistant')}</span>
               <span className={styles.chatTabStatus}>
-                {connected ? '🟢 已连接' : '🔴 断开'}
+                {connected ? t('codeBrowser.connected') : t('codeBrowser.disconnected')}
               </span>
             </div>
 
@@ -216,17 +218,17 @@ export default function CodeBrowserPage({ context, onNavigateToChat }: CodeBrows
               {chatMessages.length === 0 ? (
                 <div className={styles.chatTabWelcome}>
                   <div className={styles.welcomeIcon}>🤖</div>
-                  <h3>AI 代码助手</h3>
-                  <p>有任何关于代码的问题，随时问我！</p>
+                  <h3>{t('codeBrowser.aiCodeAssistant')}</h3>
+                  <p>{t('codeBrowser.askAnything')}</p>
                   <div className={styles.exampleQuestions}>
-                    <button onClick={() => setChatInput('帮我分析一下当前项目的架构')}>
-                      分析项目架构
+                    <button onClick={() => setChatInput(t('codeBrowser.exampleAnalyzeInput'))}>
+                      {t('codeBrowser.exampleAnalyze')}
                     </button>
-                    <button onClick={() => setChatInput('这段代码有什么可以优化的地方？')}>
-                      代码优化建议
+                    <button onClick={() => setChatInput(t('codeBrowser.exampleOptimizeInput'))}>
+                      {t('codeBrowser.exampleOptimize')}
                     </button>
-                    <button onClick={() => setChatInput('帮我解释一下这个函数的作用')}>
-                      解释代码功能
+                    <button onClick={() => setChatInput(t('codeBrowser.exampleExplainInput'))}>
+                      {t('codeBrowser.exampleExplain')}
                     </button>
                   </div>
                 </div>
@@ -241,7 +243,7 @@ export default function CodeBrowserPage({ context, onNavigateToChat }: CodeBrows
                     </div>
                     <div className={styles.messageBody}>
                       <div className={styles.messageRole}>
-                        {msg.role === 'user' ? '你' : 'Claude'}
+                        {msg.role === 'user' ? t('codeBrowser.you') : 'Claude'}
                       </div>
                       <div className={styles.messageText}>
                         {msg.content.map((c, i) => (
@@ -266,7 +268,7 @@ export default function CodeBrowserPage({ context, onNavigateToChat }: CodeBrows
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="输入消息... (Enter 发送, Shift+Enter 换行)"
+                placeholder={t('codeBrowser.inputPlaceholder')}
                 rows={3}
                 disabled={!connected || isSending}
               />
@@ -275,7 +277,7 @@ export default function CodeBrowserPage({ context, onNavigateToChat }: CodeBrows
                 onClick={handleSendMessage}
                 disabled={!chatInput.trim() || !connected || isSending}
               >
-                发送
+                {t('codeBrowser.send')}
               </button>
             </div>
           </div>
@@ -291,15 +293,13 @@ export default function CodeBrowserPage({ context, onNavigateToChat }: CodeBrows
     return (
       <div className={styles.emptyState}>
         <div className={styles.emptyIcon}>📁</div>
-        <h2 className={styles.emptyTitle}>请先选择项目</h2>
+        <h2 className={styles.emptyTitle}>{t('codeBrowser.selectProject')}</h2>
         <p className={styles.emptyDescription}>
-          请在聊天Tab中选择一个项目文件夹，
-          <br />
-          然后返回此页面浏览代码
+          {t('codeBrowser.selectProjectHint')}
         </p>
         {onNavigateToChat && (
           <button className={styles.goToChatButton} onClick={onNavigateToChat}>
-            💬 前往聊天
+            💬 {t('codeBrowser.goToChat')}
           </button>
         )}
       </div>

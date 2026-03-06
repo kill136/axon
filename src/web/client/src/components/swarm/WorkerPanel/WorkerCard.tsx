@@ -1,4 +1,5 @@
 import React from 'react';
+import { useLanguage } from '../../../i18n';
 import styles from './WorkerPanel.module.css';
 
 /**
@@ -51,17 +52,17 @@ interface WorkerCardProps {
  * 改为展示当前操作类型
  * v2.0 新增: explore（探索代码库）、analyze（分析目标文件）
  */
-const ACTION_TYPES = {
-  read: { icon: '📖', label: '读取文件' },
-  write: { icon: '✍️', label: '写入文件' },
-  edit: { icon: '📝', label: '编辑文件' },
-  run_test: { icon: '🧪', label: '运行测试' },
-  install_dep: { icon: '📦', label: '安装依赖' },
-  git: { icon: '🌿', label: 'Git 操作' },
-  think: { icon: '🤔', label: '思考分析' },
+const ACTION_TYPE_ICONS = {
+  read: '📖',
+  write: '✍️',
+  edit: '📝',
+  run_test: '🧪',
+  install_dep: '📦',
+  git: '🌿',
+  think: '🤔',
   // v2.0 新增：Agent 模式操作
-  explore: { icon: '🔍', label: '探索代码库' },
-  analyze: { icon: '🔬', label: '分析文件' },
+  explore: '🔍',
+  analyze: '🔬',
 } as const;
 
 /**
@@ -69,6 +70,8 @@ const ACTION_TYPES = {
  * 显示单个 Worker Agent 的详细状态
  */
 export const WorkerCard: React.FC<WorkerCardProps> = ({ worker }) => {
+  const { t } = useLanguage();
+
   // v2.0: 简化的状态图标映射
   const statusIcons: Record<WorkerAgent['status'], string> = {
     idle: '💤',
@@ -79,10 +82,10 @@ export const WorkerCard: React.FC<WorkerCardProps> = ({ worker }) => {
 
   // v2.0: 简化的状态文本映射
   const statusTexts: Record<WorkerAgent['status'], string> = {
-    idle: '空闲中',
-    working: '工作中',
-    waiting: '等待中',
-    error: '出错',
+    idle: t('workerCard.idle'),
+    working: t('workerCard.working'),
+    waiting: t('workerCard.waiting'),
+    error: t('workerCard.error'),
   };
 
   // 呼吸灯状态 - v2.0 新增 error 状态
@@ -106,11 +109,26 @@ export const WorkerCard: React.FC<WorkerCardProps> = ({ worker }) => {
     return `${secs}s`;
   };
 
+  // v2.0: Action type label 映射（i18n）
+  const actionTypeLabels: Record<string, string> = {
+    read: t('workerCard.actionRead'),
+    write: t('workerCard.actionWrite'),
+    edit: t('workerCard.actionEdit'),
+    run_test: t('workerCard.actionRunTest'),
+    install_dep: t('workerCard.actionInstallDep'),
+    git: t('workerCard.actionGit'),
+    think: t('workerCard.actionThink'),
+    explore: t('workerCard.actionExplore'),
+    analyze: t('workerCard.actionAnalyze'),
+  };
+
   // v2.0: 获取当前操作的显示信息
   const getCurrentActionDisplay = () => {
     if (!worker.currentAction) return null;
-    const actionConfig = ACTION_TYPES[worker.currentAction.type as keyof typeof ACTION_TYPES];
-    return actionConfig || { icon: '⚙️', label: '操作中' };
+    const type = worker.currentAction.type as keyof typeof ACTION_TYPE_ICONS;
+    const icon = ACTION_TYPE_ICONS[type] || '⚙️';
+    const label = actionTypeLabels[type] || t('workerCard.actionDefault');
+    return { icon, label };
   };
 
   // 重试次数警告
@@ -124,12 +142,12 @@ export const WorkerCard: React.FC<WorkerCardProps> = ({ worker }) => {
 
   // v2.0: 决策类型文本映射
   const decisionTypeTexts: Record<string, string> = {
-    strategy: '策略',
-    skip_test: '跳过测试',
-    add_test: '添加测试',
-    install_dep: '安装依赖',
-    retry: '重试',
-    other: '其他',
+    strategy: t('workerCard.decisionStrategy'),
+    skip_test: t('workerCard.decisionSkipTest'),
+    add_test: t('workerCard.decisionAddTest'),
+    install_dep: t('workerCard.decisionInstallDep'),
+    retry: t('workerCard.decisionRetry'),
+    other: t('workerCard.decisionOther'),
   };
 
   // v2.0: 模型文本映射
@@ -162,7 +180,7 @@ export const WorkerCard: React.FC<WorkerCardProps> = ({ worker }) => {
       {/* Worker 信息 */}
       <div className={styles.workerInfo}>
         <div className={styles.workerInfoRow}>
-          <span className={styles.workerInfoLabel}>状态:</span>
+          <span className={styles.workerInfoLabel}>{t('workerCard.statusLabel')}:</span>
           <span className={`${styles.workerInfoValue} ${styles.statusValue}`}>
             <span>{statusIcons[worker.status]}</span>
             <span>{statusTexts[worker.status]}</span>
@@ -171,12 +189,12 @@ export const WorkerCard: React.FC<WorkerCardProps> = ({ worker }) => {
 
         {/* 只在非空闲状态下显示当前任务，空闲状态下显示"等待分配" */}
         <div className={styles.workerInfoRow}>
-          <span className={styles.workerInfoLabel}>任务:</span>
+          <span className={styles.workerInfoLabel}>{t('workerCard.taskLabel')}:</span>
           <span className={styles.workerInfoValue}>
             {worker.status === 'idle' ? (
-              <span className={styles.noTask}>等待分配任务</span>
+              <span className={styles.noTask}>{t('workerCard.waitingForTask')}</span>
             ) : (
-              worker.taskName || '未知任务'
+              worker.taskName || t('workerCard.unknownTask')
             )}
           </span>
         </div>
@@ -184,17 +202,17 @@ export const WorkerCard: React.FC<WorkerCardProps> = ({ worker }) => {
         {/* v2.0: Git 分支信息 */}
         {worker.branchName && (
           <div className={styles.workerInfoRow}>
-            <span className={styles.workerInfoLabel}>分支:</span>
+            <span className={styles.workerInfoLabel}>{t('workerCard.branchLabel')}:</span>
             <span className={`${styles.workerInfoValue} ${styles.branchValue}`}>
               <span className={`${styles.branchIcon} ${styles[worker.branchStatus || 'active']}`}>
                 🌿
               </span>
               <span className={styles.branchName}>{worker.branchName}</span>
               {worker.branchStatus === 'conflict' && (
-                <span className={styles.conflictBadge}>冲突</span>
+                <span className={styles.conflictBadge}>{t('workerCard.conflict')}</span>
               )}
               {worker.branchStatus === 'merged' && (
-                <span className={styles.mergedBadge}>已合并</span>
+                <span className={styles.mergedBadge}>{t('workerCard.merged')}</span>
               )}
             </span>
           </div>
@@ -204,7 +222,7 @@ export const WorkerCard: React.FC<WorkerCardProps> = ({ worker }) => {
       {/* v2.0: 当前操作展示（替代旧的 TDD 阶段指示器） */}
       {worker.status === 'working' && worker.currentAction && (
         <div className={styles.currentActionSection}>
-          <div className={styles.currentActionTitle}>当前操作</div>
+          <div className={styles.currentActionTitle}>{t('workerCard.currentAction')}</div>
           <div className={styles.currentActionContent}>
             {(() => {
               const actionDisplay = getCurrentActionDisplay();
@@ -224,7 +242,7 @@ export const WorkerCard: React.FC<WorkerCardProps> = ({ worker }) => {
       {worker.status !== 'idle' && (
         <div className={styles.progressSection}>
           <div className={styles.progressHeader}>
-            <span className={styles.progressLabel}>进度</span>
+            <span className={styles.progressLabel}>{t('workerCard.progress')}</span>
             <span className={styles.progressValue}>{worker.progress}%</span>
           </div>
           <div className={styles.progressBar}>
@@ -241,11 +259,11 @@ export const WorkerCard: React.FC<WorkerCardProps> = ({ worker }) => {
         <div className={styles.workerMeta}>
           <div className={`${styles.retryInfo} ${styles[getRetryClass()]}`}>
             <span>🔄</span>
-            <span>重试: {worker.retryCount}/{worker.maxRetries}</span>
+            <span>{t('workerCard.retry')}: {worker.retryCount}/{worker.maxRetries}</span>
           </div>
           <div className={styles.duration}>
             <span>⏱️</span>
-            <span>耗时: {formatDuration(worker.duration)}</span>
+            <span>{t('workerCard.duration')}: {formatDuration(worker.duration)}</span>
           </div>
         </div>
       )}
@@ -255,7 +273,7 @@ export const WorkerCard: React.FC<WorkerCardProps> = ({ worker }) => {
         <div className={styles.decisionsSection}>
           <div className={styles.decisionsSectionTitle}>
             <span>🤖</span>
-            <span>自主决策</span>
+            <span>{t('workerCard.autonomousDecisions')}</span>
           </div>
           <div className={styles.decisionsList}>
             {worker.decisions.slice(-3).map((decision, index) => (

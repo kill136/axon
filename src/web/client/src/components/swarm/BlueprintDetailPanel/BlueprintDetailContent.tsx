@@ -836,7 +836,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
       setFileDialog(prev => ({ ...prev, visible: false }));
     } catch (err: any) {
       console.error('创建文件失败:', err);
-      alert(`创建文件失败: ${err.message}`);
+      alert(t('bdc.createFileFailed', { error: err.message }));
     }
   }, [fileDialog.parentPath]);
 
@@ -852,7 +852,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
       setFileDialog(prev => ({ ...prev, visible: false }));
     } catch (err: any) {
       console.error('创建文件夹失败:', err);
-      alert(`创建文件夹失败: ${err.message}`);
+      alert(t('bdc.createFolderFailed', { error: err.message }));
     }
   }, [fileDialog.parentPath]);
 
@@ -870,7 +870,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
       setFileDialog(prev => ({ ...prev, visible: false }));
     } catch (err: any) {
       console.error('重命名失败:', err);
-      alert(`重命名失败: ${err.message}`);
+      alert(t('bdc.renameFailed', { error: err.message }));
     }
   }, [fileDialog.parentPath]);
 
@@ -879,7 +879,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
    */
   const handleDelete = useCallback(async () => {
     const targetPath = contextMenu.targetPath;
-    if (!confirm(`确定要删除 "${targetPath}" 吗？此操作不可恢复！`)) {
+    if (!confirm(t('bdc.confirmDelete', { path: targetPath }))) {
       return;
     }
     try {
@@ -892,7 +892,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
       }
     } catch (err: any) {
       console.error('删除失败:', err);
-      alert(`删除失败: ${err.message}`);
+      alert(t('bdc.deleteFailed', { error: err.message }));
     }
   }, [closeContentTab, contextMenu.targetPath, selectedPath]);
 
@@ -975,7 +975,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
       }
     } catch (err: any) {
       console.error('移动失败:', err);
-      alert(`移动失败: ${err.message}`);
+      alert(t('bdc.moveFailed', { error: err.message }));
     }
 
     setDraggedItem(null);
@@ -1024,7 +1024,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
       loadFileTree();
     } catch (err: any) {
       console.error('粘贴失败:', err);
-      alert(`粘贴失败: ${err.message}`);
+      alert(t('bdc.pasteFailed', { error: err.message }));
     }
   }, [clipboardItem]);
 
@@ -1889,7 +1889,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
       // 3. 重新分析
       await analyzeNode(selectedPath);
     } catch (err: any) {
-      setAnalysisError(`重新分析失败: ${err.message}`);
+      setAnalysisError(t('bdc.reanalyzeFailed', { error: err.message }));
     } finally {
       setAnalyzing(false);
     }
@@ -3205,7 +3205,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
       onRefresh?.();
       // 如果有跳转到蜂群页面的回调，询问用户是否跳转
       if (onNavigateToSwarm) {
-        const shouldNavigate = window.confirm('蓝图执行已启动！是否跳转到蜂群控制台查看执行进度？');
+        const shouldNavigate = window.confirm(t('bdc.executionStartedNavigate'));
         if (shouldNavigate) {
           onNavigateToSwarm();
         }
@@ -3261,7 +3261,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
    */
   const handleCompleteBlueprint = async () => {
     if (!blueprintId || blueprintOperating) return;
-    const confirmed = window.confirm('确定要标记蓝图为已完成吗？');
+    const confirmed = window.confirm(t('bdc.confirmMarkComplete'));
     if (!confirmed) return;
     setBlueprintOperating(true);
     setBlueprintOperationError(null);
@@ -3282,7 +3282,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
    */
   const handleDeleteBlueprint = async () => {
     if (!blueprintId || blueprintOperating) return;
-    const confirmed = window.confirm('确定要删除此蓝图吗？此操作不可恢复！');
+    const confirmed = window.confirm(t('bdc.confirmDeleteBlueprint'));
     if (!confirmed) return;
     setBlueprintOperating(true);
     setBlueprintOperationError(null);
@@ -3512,7 +3512,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
               <button
                 className={`${styles.codeBtn} ${styles.aiBtn} ${syntaxPanelEnabled ? styles.active : ''}`}
                 onClick={() => setSyntaxPanelEnabled(!syntaxPanelEnabled)}
-                title={syntaxPanelEnabled ? '关闭语法详情面板' : '开启语法详情面板'}
+                title={syntaxPanelEnabled ? t('bdc.syntaxPanelToggle.close') : t('bdc.syntaxPanelToggle.open')}
               >
                 {syntaxPanelEnabled ? '📖 关闭详情' : '📖 语法详情'}
               </button>
@@ -3520,7 +3520,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
               <button
                 className={`${styles.codeBtn} ${styles.aiBtn} ${minimapEnabled ? styles.active : ''}`}
                 onClick={() => setMinimapEnabled(!minimapEnabled)}
-                title={minimapEnabled ? '关闭小地图' : '开启小地图'}
+                title={minimapEnabled ? t('bdc.minimapToggle.close') : t('bdc.minimapToggle.open')}
               >
                 {minimapEnabled ? '🗺️ 关闭地图' : '🗺️ 小地图'}
               </button>
@@ -3531,14 +3531,14 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
             <button
               className={`${styles.codeBtn} ${isEditing ? styles.active : ''}`}
               onClick={() => setIsEditing(!isEditing)}
-              title={isEditing ? '切换到只读模式' : '切换到编辑模式'}
+              title={isEditing ? t('bdc.editModeToggle.readonly') : t('bdc.editModeToggle.edit')}
             >
               {isEditing ? '📖 只读' : '✏️ 编辑'}
             </button>
             <button
               className={styles.codeBtn}
               onClick={handleGoToDefinition}
-              title="跳转到定义 (F12)"
+              title={t('bdc.goToDefinition')}
             >
               🔗 跳转
             </button>
@@ -3547,7 +3547,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
                 className={`${styles.codeBtn} ${styles.saveBtn}`}
                 onClick={saveFile}
                 disabled={saving}
-                title="保存文件 (Ctrl+S)"
+                title={t('bdc.saveFile')}
               >
                 {saving ? '保存中...' : '💾 保存'}
               </button>
@@ -3752,7 +3752,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
               <div className={styles.askAIInput}>
                 <input
                   type="text"
-                  placeholder="输入你的问题，例如：这段代码有什么作用？"
+                  placeholder={t('bdc.askAIPlaceholder')}
                   value={askAI.question}
                   onChange={e => setAskAI(prev => ({ ...prev, question: e.target.value }))}
                   onKeyPress={e => e.key === 'Enter' && submitAIQuestion()}
@@ -3981,7 +3981,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
             <button
               className={styles.regenerateBtn}
               onClick={regenerateAnalysis}
-              title="重新生成分析"
+              title={t('bdc.regenerateAnalysis')}
             >
               🔄 重新分析
             </button>
@@ -4031,7 +4031,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
                       key={i}
                       className={`${styles.depItem} ${isInternal ? styles.clickable : ''}`}
                       onClick={() => isInternal && handleDependencyClick(d)}
-                      title={isInternal ? '点击跳转到文件' : '外部依赖'}
+                      title={isInternal ? t('bdc.depClickToJump') : t('bdc.depExternal')}
                     >
                       {isInternal && '→ '}{d}
                     </span>
@@ -4185,12 +4185,12 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
               分析时间: {new Date(currentAnalysis.analyzedAt).toLocaleString('zh-CN')}
             </span>
             {(currentAnalysis as any).fromCache && (
-              <span className={styles.cacheBadge} title="此分析结果来自缓存，文件未变化">
+              <span className={styles.cacheBadge} title={t('bdc.cacheHint')}>
                 ⚡ 缓存
               </span>
             )}
             {(currentAnalysis as any).fromCache === false && (
-              <span className={styles.freshBadge} title="此分析结果是新生成的">
+              <span className={styles.freshBadge} title={t('bdc.freshHint')}>
                 ✨ 新分析
               </span>
             )}
@@ -4249,7 +4249,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
             <button
               className={styles.collapseBtn}
               onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              title={sidebarCollapsed ? '展开边栏' : '折叠边栏'}
+              title={sidebarCollapsed ? t('bdc.sidebarToggle.expand') : t('bdc.sidebarToggle.collapse')}
             >
               {sidebarCollapsed ? '▶' : '◀'}
             </button>
@@ -4260,28 +4260,28 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
                   <button
                     className={`${styles.toolbarBtn} ${outlineEnabled ? styles.active : ''}`}
                     onClick={() => setOutlineEnabled(!outlineEnabled)}
-                    title={outlineEnabled ? '关闭大纲视图' : '开启大纲视图'}
+                    title={outlineEnabled ? t('bdc.outlineToggle.close') : t('bdc.outlineToggle.open')}
                   >
                     {outlineEnabled ? '📑' : '📄'}
                   </button>
                   <button
                     className={styles.toolbarBtn}
                     onClick={() => setFileDialog({ visible: true, type: 'newFile', parentPath: selectedPath || 'src' })}
-                    title="新建文件"
+                    title={t('bdc.newFile')}
                   >
                     📄+
                   </button>
                   <button
                     className={styles.toolbarBtn}
                     onClick={() => setFileDialog({ visible: true, type: 'newFolder', parentPath: selectedPath || 'src' })}
-                    title="新建文件夹"
+                    title={t('bdc.newFolder')}
                   >
                     📁+
                   </button>
                   <button
                     className={styles.toolbarBtn}
                     onClick={() => loadFileTree()}
-                    title="刷新目录"
+                    title={t('bdc.refreshDir')}
                   >
                     ↻
                   </button>
@@ -4337,7 +4337,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
                     e.stopPropagation();
                     closeContentTab();
                   }}
-                  title="关闭"
+                  title={t('bdc.close')}
                 >
                   ×
                 </span>
@@ -4367,7 +4367,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
                   <button
                     className={styles.tabBarActionBtn}
                     onClick={onAddChatTab}
-                    title="新建 AI 聊天"
+                    title={t('bdc.newAIChat')}
                   >
                     + 💬
                   </button>
@@ -4376,7 +4376,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
                   <button
                     className={styles.tabBarActionBtn}
                     onClick={onNavigateToChat}
-                    title="返回主聊天"
+                    title={t('bdc.backToMainChat')}
                   >
                     ← 返回主聊天
                   </button>
@@ -4620,7 +4620,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
           <button
             className={`${styles.statusBtn} ${beginnerMode ? styles.success : ''}`}
             onClick={() => setBeginnerMode(!beginnerMode)}
-            title={beginnerMode ? '关闭新手模式' : '开启新手模式（显示语法解释）'}
+            title={beginnerMode ? t('bdc.beginnerModeToggle.close') : t('bdc.beginnerModeToggle.open')}
           >
             {beginnerMode ? '📖 新手模式' : '💡 专家模式'}
           </button>
@@ -4705,11 +4705,11 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
                 loadFileTree();
                 setFileDialog(prev => ({ ...prev, visible: false }));
               } else {
-                alert(`打开失败: ${result.error}`);
+                alert(t('bdc.openFailed', { error: result.error }));
               }
             } catch (err: any) {
               console.error('打开文件夹失败:', err);
-              alert(`打开失败: ${err.message}`);
+              alert(t('bdc.openFailed', { error: err.message }));
             }
           }
         }}

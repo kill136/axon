@@ -237,9 +237,87 @@ export async function handleGitCheckout(
 ): Promise<void> {
   const git = getGitManager(client);
   const result = git.checkout(branch);
+
+  // 检测 "local changes would be overwritten" 冲突
+  if (!result.success && result.error && /would be overwritten by checkout/i.test(result.error)) {
+    sendMessage(client.ws, {
+      type: 'git:checkout_conflict',
+      payload: {
+        branch,
+        error: result.error,
+      },
+    });
+    return;
+  }
+
   sendMessage(client.ws, {
     type: 'git:operation_result',
     payload: { operation: 'checkout', ...result },
+  });
+  if (result.success) {
+    const status = git.getStatus();
+    sendMessage(client.ws, { type: 'git:status_response', payload: status });
+  }
+}
+
+/**
+ * Stash 当前更改后切换分支
+ */
+export async function handleGitStashAndCheckout(
+  client: ClientConnection,
+  branch: string,
+  conversationManager: ConversationManager
+): Promise<void> {
+  const git = getGitManager(client);
+
+  // Step 1: stash
+  const stashResult = git.stashSave(`Auto-stash before checkout to ${branch}`);
+  if (!stashResult.success) {
+    sendMessage(client.ws, {
+      type: 'git:operation_result',
+      payload: { operation: 'stash_and_checkout', success: false, error: stashResult.error },
+    });
+    return;
+  }
+
+  // Step 2: checkout
+  const checkoutResult = git.checkout(branch);
+  if (!checkoutResult.success) {
+    // checkout 失败，恢复 stash
+    git.stashPop(0);
+    sendMessage(client.ws, {
+      type: 'git:operation_result',
+      payload: { operation: 'stash_and_checkout', success: false, error: checkoutResult.error },
+    });
+    return;
+  }
+
+  sendMessage(client.ws, {
+    type: 'git:operation_result',
+    payload: { operation: 'stash_and_checkout', success: true },
+  });
+
+  // 刷新状态
+  const status = git.getStatus();
+  sendMessage(client.ws, { type: 'git:status_response', payload: status });
+  const stashes = git.getStashes();
+  sendMessage(client.ws, { type: 'git:stashes_response', payload: stashes });
+}
+
+/**
+ * 强制切换分支（丢弃本地更改）
+ */
+export async function handleGitForceCheckout(
+  client: ClientConnection,
+  branch: string,
+  conversationManager: ConversationManager
+): Promise<void> {
+  const git = getGitManager(client);
+  const result = git.forceCheckout(branch);
+
+  sendMessage(client.ws, {
+    type: 'git:operation_result',
+    payload: { operation: 'force_checkout', ...result },
   });
   if (result.success) {
     const status = git.getStatus();
@@ -1000,4 +1078,35 @@ export async function handleGitGetConflicts(
   const git = getGitManager(client);
   const result = git.getConflicts(file);
   sendMessage(client.ws, { type: 'git:conflicts_response', payload: result });
+}
+
+/**
+ * 处理 Git Lock 文件冲突
+ * action: 'delete' 删除 lock 文件, 'retry' 只重试（先检查 lock 是否还在）
+ */
+export async function handleGitResolveLock(
+  client: ClientConnection,
+  action: 'delete' | 'retry',
+  conversationManager: ConversationManager
+): Promise<void> {
+  const git = getGitManager(client);
+
+  if (action === 'delete') {
+    const removeResult = git.removeLockFile();
+    if (!removeResult.success) {
+      sendMessage(client.ws, {
+        type: 'git:operation_result',
+        payload: { operation: 'resolve_lock', success: false, error: removeResult.error },
+      });
+      return;
+    }
+  }
+
+  // 删除后 / retry 时刷新状态
+  const status = git.getStatus();
+  sendMessage(client.ws, {
+    type: 'git:operation_result',
+    payload: { operation: 'resolve_lock', success: true },
+  });
+  sendMessage(client.ws, { type: 'git:status_response', payload: status });
 }

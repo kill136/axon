@@ -1,24 +1,24 @@
 /**
- * Commit Graph 布局算法
- * 实现 lane assignment 和连线计算
+ * Commit Graph 布局算法 (GitLens 风格)
  * 
  * 核心原则：
  * 1. 每个 commit 占据一个 lane（列）
  * 2. 第一个 parent 尽量继承当前 lane（直线向下）
  * 3. 其他 parent（merge 来源）分配新 lane
  * 4. 当 child→parent 跨多行时，中间行需要画穿越线（pass-through）
+ * 5. Merge commit（多 parent）用空心圆，普通 commit 用实心圆
  */
 
-// 颜色调色板（8色）
+// 颜色调色板（GitLens 风格，更饱和鲜明）
 export const GRAPH_COLORS = [
-  '#6366f1', // 紫
-  '#10b981', // 绿
-  '#f59e0b', // 橙
-  '#ef4444', // 红
-  '#0ea5e9', // 蓝
-  '#ec4899', // 粉
-  '#8b5cf6', // 浅紫
-  '#14b8a6', // 青
+  '#e15a60', // 红
+  '#f5c842', // 黄
+  '#6cc644', // 绿
+  '#4dc5e2', // 青
+  '#cd6cec', // 紫
+  '#ef6e4a', // 橙
+  '#e560a4', // 粉
+  '#49c5b1', // 薄荷
 ];
 
 export interface GraphNode {
@@ -26,6 +26,7 @@ export interface GraphNode {
   lane: number;       // 此 commit 所在列
   color: number;      // 颜色索引
   row: number;        // 行号
+  isMerge: boolean;   // 是否 merge commit（多 parent）
 }
 
 export interface GraphEdge {
@@ -36,10 +37,18 @@ export interface GraphEdge {
   color: number;
 }
 
+/** 每行需要的穿越线（pass-through）信息 */
+export interface PassThrough {
+  lane: number;
+  color: number;
+}
+
 export interface GraphLayout {
   nodes: Map<string, GraphNode>;
   edges: GraphEdge[];
   maxLane: number;
+  /** 每行的穿越线列表，key = row index */
+  passThroughs: Map<number, PassThrough[]>;
 }
 
 /**
@@ -49,24 +58,20 @@ export interface GraphLayout {
 export function computeGraphLayout(commits: Array<{hash: string; parents: string[]}>): GraphLayout {
   const nodes = new Map<string, GraphNode>();
   const edges: GraphEdge[] = [];
+  const passThroughs = new Map<number, PassThrough[]>();
   
   // 预建 hash→row 索引
   const hashToRow = new Map<string, number>();
   commits.forEach((c, i) => hashToRow.set(c.hash, i));
   
   // lanes[i] = 第 i 列当前被哪个 hash 预定（等待该 hash 出现时占据此列）
-  // 用数组模拟，null 表示空闲
   const lanes: (string | null)[] = [];
   
   // lane → color index
   const laneColors: number[] = [];
   let nextColor = 0;
   
-  /**
-   * 找到一个空闲 lane 或分配新 lane
-   */
   function allocLane(hash: string): number {
-    // 找空闲位置
     for (let i = 0; i < lanes.length; i++) {
       if (lanes[i] === null) {
         lanes[i] = hash;
@@ -75,7 +80,6 @@ export function computeGraphLayout(commits: Array<{hash: string; parents: string
         return i;
       }
     }
-    // 没有空闲，新建
     const idx = lanes.length;
     lanes.push(hash);
     laneColors[idx] = nextColor % GRAPH_COLORS.length;
@@ -83,9 +87,6 @@ export function computeGraphLayout(commits: Array<{hash: string; parents: string
     return idx;
   }
   
-  /**
-   * 找到 hash 在 lanes 中的位置，-1 表示不在
-   */
   function findLane(hash: string): number {
     for (let i = 0; i < lanes.length; i++) {
       if (lanes[i] === hash) return i;
@@ -97,18 +98,18 @@ export function computeGraphLayout(commits: Array<{hash: string; parents: string
   
   for (let row = 0; row < commits.length; row++) {
     const commit = commits[row];
+    const isMerge = commit.parents.length > 1;
     
     // 1. 确定当前 commit 的 lane
     let currentLane = findLane(commit.hash);
     
     if (currentLane === -1) {
-      // 第一个 commit 或分支起点，分配新 lane
       currentLane = allocLane(commit.hash);
     }
     
     const currentColor = laneColors[currentLane];
     
-    // 释放当前 lane（这个 commit 已到达）
+    // 释放当前 lane
     lanes[currentLane] = null;
     
     // 记录节点
@@ -117,6 +118,7 @@ export function computeGraphLayout(commits: Array<{hash: string; parents: string
       lane: currentLane,
       color: currentColor,
       row,
+      isMerge,
     });
     
     maxLane = Math.max(maxLane, currentLane);
@@ -124,26 +126,24 @@ export function computeGraphLayout(commits: Array<{hash: string; parents: string
     // 2. 处理 parents
     commit.parents.forEach((parentHash, idx) => {
       const parentRow = hashToRow.get(parentHash);
-      if (parentRow === undefined) return; // parent 不在可视列表中
+      if (parentRow === undefined) return;
       
       let targetLane = findLane(parentHash);
       
       if (targetLane !== -1) {
-        // parent 已经被其他 commit 预定了某个 lane
-        // 画从当前 commit 到那个 lane 的连线
+        const edgeColor = laneColors[targetLane];
         edges.push({
           fromLane: currentLane,
           fromRow: row,
           toLane: targetLane,
           toRow: parentRow,
-          color: laneColors[targetLane],
+          color: edgeColor,
         });
+        // 添加中间行的穿越线
+        addPassThroughs(passThroughs, targetLane, edgeColor, row + 1, parentRow);
       } else {
-        // parent 还没被预定
         if (idx === 0) {
-          // 第一个 parent：继承当前 lane（直线向下）
           lanes[currentLane] = parentHash;
-          // 保持同色
           laneColors[currentLane] = currentColor;
           
           edges.push({
@@ -153,18 +153,22 @@ export function computeGraphLayout(commits: Array<{hash: string; parents: string
             toRow: parentRow,
             color: currentColor,
           });
+          // 添加中间行的穿越线
+          addPassThroughs(passThroughs, currentLane, currentColor, row + 1, parentRow);
         } else {
-          // 第 2+ 个 parent（merge 来源）：分配新 lane
           const newLane = allocLane(parentHash);
           maxLane = Math.max(maxLane, newLane);
+          const edgeColor = laneColors[newLane];
           
           edges.push({
             fromLane: currentLane,
             fromRow: row,
             toLane: newLane,
             toRow: parentRow,
-            color: laneColors[newLane],
+            color: edgeColor,
           });
+          // 添加中间行的穿越线（从变道完成后到 parent）
+          addPassThroughs(passThroughs, newLane, edgeColor, row + 1, parentRow);
         }
       }
     });
@@ -174,5 +178,27 @@ export function computeGraphLayout(commits: Array<{hash: string; parents: string
     nodes,
     edges,
     maxLane,
+    passThroughs,
   };
+}
+
+/** 为跨越多行的边添加中间行的穿越线记录 */
+function addPassThroughs(
+  map: Map<number, PassThrough[]>,
+  lane: number,
+  color: number,
+  fromRow: number,
+  toRow: number
+) {
+  for (let r = fromRow; r < toRow; r++) {
+    let list = map.get(r);
+    if (!list) {
+      list = [];
+      map.set(r, list);
+    }
+    // 避免同一行同一 lane 重复
+    if (!list.some(p => p.lane === lane)) {
+      list.push({ lane, color });
+    }
+  }
 }

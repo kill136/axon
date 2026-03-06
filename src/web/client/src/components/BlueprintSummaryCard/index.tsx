@@ -1,5 +1,6 @@
 import React from 'react';
 import styles from './BlueprintSummaryCard.module.css';
+import { useLanguage } from '../../i18n';
 
 export interface BlueprintSummaryCardProps {
   content: {
@@ -22,6 +23,7 @@ export function BlueprintSummaryCard({
   onOpenInCodeTab
 }: BlueprintSummaryCardProps) {
   const { blueprintId, name, moduleCount, processCount, nfrCount } = content;
+  const { t } = useLanguage();
 
   return (
     <div className={styles.blueprintCard}>
@@ -35,15 +37,15 @@ export function BlueprintSummaryCard({
       <div className={styles.statsContainer}>
         <div className={styles.statItem}>
           <div className={styles.statValue}>{moduleCount}</div>
-          <div className={styles.statLabel}>模块数</div>
+          <div className={styles.statLabel}>{t('blueprint.moduleCount')}</div>
         </div>
         <div className={styles.statItem}>
           <div className={styles.statValue}>{processCount}</div>
-          <div className={styles.statLabel}>流程数</div>
+          <div className={styles.statLabel}>{t('blueprint.processCount')}</div>
         </div>
         <div className={styles.statItem}>
           <div className={styles.statValue}>{nfrCount}</div>
-          <div className={styles.statLabel}>NFR数</div>
+          <div className={styles.statLabel}>{t('blueprint.nfrCount')}</div>
         </div>
       </div>
 
@@ -53,7 +55,7 @@ export function BlueprintSummaryCard({
           className={`${styles.actionButton} ${styles.secondaryButton}`}
           onClick={() => onViewDetails(blueprintId)}
         >
-          <span>查看完整蓝图</span>
+          <span>{t('blueprint.viewFullBlueprint')}</span>
           <span>→</span>
         </button>
         {onOpenInCodeTab && (
@@ -61,7 +63,7 @@ export function BlueprintSummaryCard({
             className={`${styles.actionButton} ${styles.codeTabButton}`}
             onClick={() => onOpenInCodeTab(blueprintId)}
           >
-            <span>在代码Tab打开</span>
+            <span>{t('blueprint.openInCodeTab')}</span>
             <span>📂</span>
           </button>
         )}
@@ -69,7 +71,7 @@ export function BlueprintSummaryCard({
           className={`${styles.actionButton} ${styles.primaryButton}`}
           onClick={() => onStartExecution(blueprintId)}
         >
-          <span>直接执行</span>
+          <span>{t('blueprint.executeDirectly')}</span>
           <span>⚡</span>
         </button>
       </div>

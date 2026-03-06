@@ -1,6 +1,6 @@
 {
   "name": "axon",
-  "version": "2.1.39",
+  "version": "2.1.40",
   "description": "Free & open source AI coding assistant with Web IDE, multi-agent system, and self-evolution",
   "type": "module",
   "main": "electron/main.cjs",
@@ -91,7 +91,9 @@
       "node_modules/sharp/**/*"
     ],
     "win": {
-      "target": ["portable"],
+      "target": [
+        "portable"
+      ],
       "icon": "electron/icon.png"
     }
   },
@@ -188,7 +190,7 @@
     "tree-sitter-wasms": "^0.1.13"
   },
   "devDependencies": {
-    "@anthropic-ai/claude-code": "^2.1.41",
+    "@anthropic-ai/claude-code": "^2.1.70",
     "@types/better-sqlite3": "^7.6.13",
     "@types/chokidar": "^1.7.5",
     "@types/eventsource": "^1.1.15",

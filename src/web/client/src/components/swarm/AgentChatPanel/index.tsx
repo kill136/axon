@@ -7,6 +7,7 @@
  */
 
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
+import { useLanguage } from '../../../i18n';
 import { CliToolCall } from '../../CliToolCall';
 import { CliThinkingBlock } from '../../CliThinkingBlock';
 import { MarkdownContent } from '../../MarkdownContent';
@@ -97,6 +98,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
   onInterject,
   interjectStatus,
 }) => {
+  const { t } = useLanguage();
   const chatAreaRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
   const [showSystemPrompt, setShowSystemPrompt] = useState(false);
@@ -187,7 +189,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
           const content = extractInterjectContent(block.text);
           return (
             <div key={`interject-${index}`} className={styles.userInterjectMessage}>
-              <div className={styles.userInterjectLabel}>你</div>
+              <div className={styles.userInterjectLabel}>{t('agentChat.you')}</div>
               <div>{content}</div>
             </div>
           );
@@ -226,9 +228,9 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
           <button
             className={styles.systemPromptToggle}
             onClick={() => setShowSystemPrompt(!showSystemPrompt)}
-            title="查看 Agent 指令（System Prompt）"
+            title={t('agentChat.viewSystemPrompt')}
           >
-            📜 {showSystemPrompt ? '隐藏' : '指令'}
+            📜 {showSystemPrompt ? t('agentChat.hide') : t('agentChat.instructions')}
           </button>
         )}
       </div>
@@ -255,10 +257,10 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
 
       {/* Chat Header */}
       <div className={styles.chatHeader}>
-        <span>📜 对话日志</span>
-        <span className={styles.chatLogCount}>{totalMessageCount} 条</span>
+        <span>📜 {t('agentChat.chatLog')}</span>
+        <span className={styles.chatLogCount}>{t('agentChat.messageCount', { count: totalMessageCount })}</span>
         {status === 'running' && (
-          <span className={styles.chatLiveIndicator}>● 实时</span>
+          <span className={styles.chatLiveIndicator}>● {t('agentChat.live')}</span>
         )}
       </div>
 
@@ -273,9 +275,9 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
               {status === 'pending' ? '⏳' : status === 'running' ? '🔄' : '📝'}
             </div>
             <div className={styles.emptyStateText}>
-              {status === 'pending' ? '等待启动...' :
-               status === 'running' ? `${agentTypeLabel} 正在启动...` :
-               '暂无对话日志'}
+              {status === 'pending' ? t('agentChat.waitingToStart') :
+               status === 'running' ? t('agentChat.starting', { agent: agentTypeLabel }) :
+               t('agentChat.noChatLog')}
             </div>
           </div>
         )}
@@ -286,7 +288,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
         <div className={styles.interjectArea}>
           <div className={styles.interjectHeader}>
             <span>💬</span>
-            <span>向 {agentTypeLabel} 发送指令</span>
+            <span>{t('agentChat.sendInstruction', { agent: agentTypeLabel })}</span>
           </div>
           <div className={styles.interjectInputWrapper}>
             <textarea
@@ -294,7 +296,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
               value={interjectInput}
               onChange={(e) => setInterjectInput(e.target.value)}
               onKeyDown={handleInterjectKeyDown}
-              placeholder="输入指令或反馈... (Enter 发送, Shift+Enter 换行)"
+              placeholder={t('agentChat.interjectPlaceholder')}
               disabled={isSending}
               rows={2}
             />
@@ -303,7 +305,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
               onClick={handleInterjectSubmit}
               disabled={!interjectInput.trim() || isSending}
             >
-              {isSending ? '...' : '发送'}
+              {isSending ? '...' : t('agentChat.send')}
             </button>
           </div>
           {interjectStatus ? (
@@ -312,7 +314,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
             </div>
           ) : (
             <div className={styles.interjectHint}>
-              提示：{agentTypeLabel} 会在下一轮对话中收到您的消息
+              {t('agentChat.interjectHint', { agent: agentTypeLabel })}
             </div>
           )}
         </div>

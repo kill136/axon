@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import styles from './TaskTree.module.css';
+import { useLanguage } from '../../../i18n';
 
 /**
  * TaskNode 类型定义 - v2.0 简化版
@@ -41,31 +42,31 @@ interface StatusConfigItem {
   animated?: string;
 }
 
-// v2.0: 与后端一致的状态配置
+// v2.0: 与后端一致的状态配置（label 使用 i18n key）
 const STATUS_CONFIG: Record<TaskNode['status'], StatusConfigItem> = {
-  pending: { icon: '⏳', label: '等待', color: '#999' },
-  running: { icon: '💻', label: '执行中', color: '#3b82f6', animated: 'pulse' },
-  completed: { icon: '✅', label: '完成', color: '#10b981' },
-  failed: { icon: '❌', label: '失败', color: '#ef4444' },
-  skipped: { icon: '⏭️', label: '跳过', color: '#6b7280' },
+  pending: { icon: '⏳', label: 'taskNode.status.pending', color: '#999' },
+  running: { icon: '💻', label: 'taskNode.status.running', color: '#3b82f6', animated: 'pulse' },
+  completed: { icon: '✅', label: 'taskNode.status.completed', color: '#10b981' },
+  failed: { icon: '❌', label: 'taskNode.status.failed', color: '#ef4444' },
+  skipped: { icon: '⏭️', label: 'taskNode.status.skipped', color: '#6b7280' },
 };
 
-// v2.0: 任务类型配置
+// v2.0: 任务类型配置（label 使用 i18n key）
 const TYPE_CONFIG: Record<string, { icon: string; label: string }> = {
-  code: { icon: '💻', label: '代码' },
-  config: { icon: '⚙️', label: '配置' },
-  test: { icon: '🧪', label: '测试' },
-  refactor: { icon: '♻️', label: '重构' },
-  docs: { icon: '📚', label: '文档' },
-  integrate: { icon: '🔗', label: '集成' },
+  code: { icon: '💻', label: 'taskNode.type.code' },
+  config: { icon: '⚙️', label: 'taskNode.type.config' },
+  test: { icon: '🧪', label: 'taskNode.type.test' },
+  refactor: { icon: '♻️', label: 'taskNode.type.refactor' },
+  docs: { icon: '📚', label: 'taskNode.type.docs' },
+  integrate: { icon: '🔗', label: 'taskNode.type.integrate' },
 };
 
-// v2.0: 复杂度配置
+// v2.0: 复杂度配置（label 使用 i18n key）
 const COMPLEXITY_CONFIG: Record<string, { label: string; color: string }> = {
-  trivial: { label: '简单', color: '#4ade80' },
-  simple: { label: '普通', color: '#60a5fa' },
-  moderate: { label: '中等', color: '#fbbf24' },
-  complex: { label: '复杂', color: '#f87171' },
+  trivial: { label: 'taskNode.complexity.trivial', color: '#4ade80' },
+  simple: { label: 'taskNode.complexity.simple', color: '#60a5fa' },
+  moderate: { label: 'taskNode.complexity.moderate', color: '#fbbf24' },
+  complex: { label: 'taskNode.complexity.complex', color: '#f87171' },
 };
 
 export const TaskNodeComponent: React.FC<TaskNodeProps> = ({
@@ -74,6 +75,7 @@ export const TaskNodeComponent: React.FC<TaskNodeProps> = ({
   selectedTaskId,
   onTaskSelect,
 }) => {
+  const { t } = useLanguage();
   const [isExpanded, setIsExpanded] = useState(true);
   const hasChildren = node.children && node.children.length > 0;
   const statusConfig = STATUS_CONFIG[node.status];
@@ -152,7 +154,7 @@ export const TaskNodeComponent: React.FC<TaskNodeProps> = ({
 
         {/* v2.0: 任务类型标签 */}
         {node.type && TYPE_CONFIG[node.type] && (
-          <span className={styles.typeTag} title={TYPE_CONFIG[node.type].label}>
+          <span className={styles.typeTag} title={t(TYPE_CONFIG[node.type].label)}>
             {TYPE_CONFIG[node.type].icon}
           </span>
         )}
@@ -162,7 +164,7 @@ export const TaskNodeComponent: React.FC<TaskNodeProps> = ({
           <span
             className={styles.complexityTag}
             style={{ color: COMPLEXITY_CONFIG[node.complexity].color }}
-            title={`复杂度: ${COMPLEXITY_CONFIG[node.complexity].label}`}
+            title={`${t('taskNode.complexityLabel')}: ${t(COMPLEXITY_CONFIG[node.complexity].label)}`}
           >
             {node.complexity === 'complex' ? '◆' :
              node.complexity === 'moderate' ? '◇' :
@@ -172,7 +174,7 @@ export const TaskNodeComponent: React.FC<TaskNodeProps> = ({
 
         {/* v2.0: 需要测试标记 */}
         {node.needsTest && (
-          <span className={styles.needsTestTag} title="需要测试">
+          <span className={styles.needsTestTag} title={t('taskNode.needsTest')}>
             🧪
           </span>
         )}
@@ -200,7 +202,7 @@ export const TaskNodeComponent: React.FC<TaskNodeProps> = ({
           style={{ color: statusConfig.color }}
         >
           <span className={styles.statusIcon}>{statusConfig.icon}</span>
-          <span className={styles.statusLabel}>{statusConfig.label}</span>
+          <span className={styles.statusLabel}>{t(statusConfig.label)}</span>
         </span>
 
         {/* 失败原因显示 */}
@@ -216,7 +218,7 @@ export const TaskNodeComponent: React.FC<TaskNodeProps> = ({
 
         {/* v2.0: 预估时间 */}
         {node.estimatedMinutes !== undefined && node.estimatedMinutes > 0 && (
-          <span className={styles.estimatedTime} title="预估时间">
+          <span className={styles.estimatedTime} title={t('taskNode.estimatedTime')}>
             ⏱️ {node.estimatedMinutes}m
           </span>
         )}

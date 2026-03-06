@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import styles from './AgentExplorer.module.css';
+import { useLanguage } from '../../../i18n';
 
 /**
  * Agent 元数据类型
@@ -37,6 +38,7 @@ interface AgentCategory {
  * - 包含使用示例和代码片段
  */
 export const AgentExplorer: React.FC = () => {
+  const { t } = useLanguage();
   const [agents, setAgents] = useState<AgentMetadata[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -55,12 +57,12 @@ export const AgentExplorer: React.FC = () => {
 
       const response = await fetch('/api/agents');
       if (!response.ok) {
-        throw new Error('获取 Agent 列表失败');
+        throw new Error(t('agentExplorer.fetchFailed'));
       }
 
       const data = await response.json();
       if (!data.success) {
-        throw new Error(data.error || '获取 Agent 列表失败');
+        throw new Error(data.error || t('agentExplorer.fetchFailed'));
       }
 
       setAgents(data.data);
@@ -70,7 +72,7 @@ export const AgentExplorer: React.FC = () => {
         setSelectedAgent(data.data[0]);
       }
     } catch (err: any) {
-      setError(err.message || '未知错误');
+      setError(err.message || t('agentExplorer.unknownError'));
     } finally {
       setLoading(false);
     }
@@ -80,12 +82,12 @@ export const AgentExplorer: React.FC = () => {
   const categorizeAgents = (): AgentCategory[] => {
     const categories: AgentCategory[] = [
       {
-        name: '代码探索',
+        name: t('agentExplorer.category.codeExploration'),
         icon: '🔍',
         agents: agents.filter(a => a.agentType === 'Explore' || a.agentType === 'code-analyzer'),
       },
       {
-        name: '任务执行',
+        name: t('agentExplorer.category.taskExecution'),
         icon: '⚙️',
         agents: agents.filter(a =>
           a.agentType === 'general-purpose' ||
@@ -93,12 +95,12 @@ export const AgentExplorer: React.FC = () => {
         ),
       },
       {
-        name: '规划设计',
+        name: t('agentExplorer.category.planDesign'),
         icon: '📐',
         agents: agents.filter(a => a.agentType === 'Plan'),
       },
       {
-        name: '文档助手',
+        name: t('agentExplorer.category.docAssistant'),
         icon: '📚',
         agents: agents.filter(a => a.agentType === 'claude-code-guide'),
       },
@@ -131,7 +133,7 @@ export const AgentExplorer: React.FC = () => {
       <div className={styles.container}>
         <div className={styles.loadingContainer}>
           <div className={styles.spinner}></div>
-          <p>正在加载 Agents...</p>
+          <p>{t('agentExplorer.loading')}</p>
         </div>
       </div>
     );
@@ -144,7 +146,7 @@ export const AgentExplorer: React.FC = () => {
         <div className={styles.errorContainer}>
           <p className={styles.errorText}>{error}</p>
           <button className={styles.retryButton} onClick={fetchAgents}>
-            重试
+            {t('agentExplorer.retry')}
           </button>
         </div>
       </div>
@@ -220,23 +222,23 @@ export const AgentExplorer: React.FC = () => {
 
             {/* 描述 */}
             <div className={styles.section}>
-              <h2 className={styles.sectionTitle}>📋 描述</h2>
+              <h2 className={styles.sectionTitle}>📋 {t('agentExplorer.section.description')}</h2>
               <p className={styles.description}>{selectedAgent.description}</p>
             </div>
 
             {/* 何时使用 */}
             <div className={styles.section}>
-              <h2 className={styles.sectionTitle}>🎯 何时使用</h2>
+              <h2 className={styles.sectionTitle}>🎯 {t('agentExplorer.section.whenToUse')}</h2>
               <p className={styles.whenToUse}>{selectedAgent.whenToUse}</p>
             </div>
 
             {/* 可用工具 */}
             <div className={styles.section}>
-              <h2 className={styles.sectionTitle}>🛠️ 可用工具</h2>
+              <h2 className={styles.sectionTitle}>🛠️ {t('agentExplorer.section.availableTools')}</h2>
               <div className={styles.toolList}>
                 {selectedAgent.tools.map((tool, i) => (
                   <span key={i} className={styles.toolBadge}>
-                    {tool === '*' ? '全部工具' : tool}
+                    {tool === '*' ? t('agentExplorer.allTools') : tool}
                   </span>
                 ))}
               </div>
@@ -245,7 +247,7 @@ export const AgentExplorer: React.FC = () => {
             {/* 特性 */}
             {selectedAgent.features && selectedAgent.features.length > 0 && (
               <div className={styles.section}>
-                <h2 className={styles.sectionTitle}>✨ 特性</h2>
+                <h2 className={styles.sectionTitle}>✨ {t('agentExplorer.section.features')}</h2>
                 <ul className={styles.featureList}>
                   {selectedAgent.features.map((feature, i) => (
                     <li key={i}>{feature}</li>
@@ -257,15 +259,15 @@ export const AgentExplorer: React.FC = () => {
             {/* 彻底程度级别（仅 Explore Agent） */}
             {selectedAgent.thoroughnessLevels && selectedAgent.thoroughnessLevels.length > 0 && (
               <div className={styles.section}>
-                <h2 className={styles.sectionTitle}>📊 彻底程度级别</h2>
+                <h2 className={styles.sectionTitle}>📊 {t('agentExplorer.section.thoroughnessLevels')}</h2>
                 <div className={styles.levelList}>
                   {selectedAgent.thoroughnessLevels.map((level, i) => (
                     <div key={i} className={styles.levelItem}>
                       <code>{level}</code>
                       <span className={styles.levelDesc}>
-                        {level === 'quick' && '基础搜索，快速返回结果'}
-                        {level === 'medium' && '中等深度探索'}
-                        {level === 'very thorough' && '全面深入分析'}
+                        {level === 'quick' && t('agentExplorer.level.quick')}
+                        {level === 'medium' && t('agentExplorer.level.medium')}
+                        {level === 'very thorough' && t('agentExplorer.level.veryThorough')}
                       </span>
                     </div>
                   ))}
@@ -276,7 +278,7 @@ export const AgentExplorer: React.FC = () => {
             {/* 使用示例 */}
             {selectedAgent.examples && selectedAgent.examples.length > 0 && (
               <div className={styles.section}>
-                <h2 className={styles.sectionTitle}>💡 使用示例</h2>
+                <h2 className={styles.sectionTitle}>💡 {t('agentExplorer.section.examples')}</h2>
                 <div className={styles.exampleList}>
                   {selectedAgent.examples.map((example, i) => (
                     <div key={i} className={styles.exampleItem}>
@@ -290,7 +292,7 @@ export const AgentExplorer: React.FC = () => {
 
             {/* 代码示例 */}
             <div className={styles.section}>
-              <h2 className={styles.sectionTitle}>💻 代码示例</h2>
+              <h2 className={styles.sectionTitle}>💻 {t('agentExplorer.section.codeExample')}</h2>
               <div className={styles.codeExample}>
                 <pre className={styles.codeBlock}>
                   <code>{generateCodeExample(selectedAgent)}</code>
@@ -300,21 +302,21 @@ export const AgentExplorer: React.FC = () => {
 
             {/* 元信息 */}
             <div className={styles.section}>
-              <h2 className={styles.sectionTitle}>ℹ️ 元信息</h2>
+              <h2 className={styles.sectionTitle}>ℹ️ {t('agentExplorer.section.metaInfo')}</h2>
               <div className={styles.metaInfo}>
                 <div className={styles.metaItem}>
-                  <span className={styles.metaLabel}>Agent 类型:</span>
+                  <span className={styles.metaLabel}>{t('agentExplorer.meta.agentType')}:</span>
                   <code className={styles.metaValue}>{selectedAgent.agentType}</code>
                 </div>
                 <div className={styles.metaItem}>
-                  <span className={styles.metaLabel}>访问父上下文:</span>
+                  <span className={styles.metaLabel}>{t('agentExplorer.meta.forkContext')}:</span>
                   <code className={styles.metaValue}>
                     {selectedAgent.forkContext ? 'true' : 'false'}
                   </code>
                 </div>
                 {selectedAgent.permissionMode && (
                   <div className={styles.metaItem}>
-                    <span className={styles.metaLabel}>权限模式:</span>
+                    <span className={styles.metaLabel}>{t('agentExplorer.meta.permissionMode')}:</span>
                     <code className={styles.metaValue}>{selectedAgent.permissionMode}</code>
                   </div>
                 )}
@@ -323,9 +325,9 @@ export const AgentExplorer: React.FC = () => {
           </div>
         ) : (
           <div className={styles.welcomePanel}>
-            <h2 className={styles.welcomeTitle}>Agent 浏览器</h2>
+            <h2 className={styles.welcomeTitle}>{t('agentExplorer.welcomeTitle')}</h2>
             <p className={styles.welcomeText}>
-              选择左侧的 Agent 查看详细信息
+              {t('agentExplorer.welcomeText')}
             </p>
           </div>
         )}
@@ -338,64 +340,64 @@ export const AgentExplorer: React.FC = () => {
  * 生成代码示例
  */
 function generateCodeExample(agent: AgentMetadata): string {
-  const example = agent.examples?.[0] || '执行任务';
+  const example = agent.examples?.[0] || 'Execute task';
 
   switch (agent.agentType) {
     case 'Explore':
-      return `// 使用 Explore Agent 搜索代码
+      return `// Use Explore Agent to search code
 const result = await executeAgent({
   subagent_type: "Explore",
-  description: "查找 API 端点",
+  description: "Find API endpoints",
   prompt: "${example}",
-  model: "haiku" // 快速模型
+  model: "haiku" // Fast model
 });`;
 
     case 'general-purpose':
-      return `// 使用 General Purpose Agent 执行多步骤任务
+      return `// Use General Purpose Agent for multi-step tasks
 const result = await executeAgent({
   subagent_type: "general-purpose",
-  description: "研究问题",
+  description: "Research problem",
   prompt: "${example}",
 });`;
 
     case 'Plan':
-      return `// 使用 Plan Agent 设计实现方案
+      return `// Use Plan Agent to design implementation
 const result = await executeAgent({
   subagent_type: "Plan",
-  description: "规划实现",
+  description: "Plan implementation",
   prompt: "${example}",
 });`;
 
     case 'code-analyzer':
-      return `// 使用 Code Analyzer Agent 分析代码
+      return `// Use Code Analyzer Agent to analyze code
 const result = await executeAgent({
   subagent_type: "code-analyzer",
-  description: "分析文件",
-  prompt: "分析 src/core/client.ts 的导出和依赖",
-  model: "opus" // 使用 Opus 以获得最佳分析质量
+  description: "Analyze file",
+  prompt: "Analyze exports and dependencies of src/core/client.ts",
+  model: "opus" // Use Opus for best analysis quality
 });`;
 
     case 'blueprint-worker':
-      return `// Blueprint Worker Agent（仅供 Queen Agent 调用）
+      return `// Blueprint Worker Agent (called by Queen Agent only)
 const result = await executeAgent({
   subagent_type: "blueprint-worker",
-  description: "实现功能",
-  prompt: "使用 TDD 方式实现用户认证模块",
+  description: "Implement feature",
+  prompt: "Implement user auth module using TDD",
 });`;
 
     case 'claude-code-guide':
-      return `// 使用 Axon Guide 查询文档
+      return `// Use Axon Guide to query docs
 const result = await executeAgent({
   subagent_type: "claude-code-guide",
-  description: "查询文档",
-  prompt: "如何配置 MCP 服务器？",
+  description: "Query docs",
+  prompt: "How to configure MCP servers?",
 });`;
 
     default:
-      return `// 使用 ${agent.agentType} Agent
+      return `// Use ${agent.agentType} Agent
 const result = await executeAgent({
   subagent_type: "${agent.agentType}",
-  description: "执行任务",
+  description: "Execute task",
   prompt: "${example}",
 });`;
   }

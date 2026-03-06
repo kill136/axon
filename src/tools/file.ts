@@ -61,6 +61,52 @@ function resolveFilePath(filePath: string): string {
 }
 
 /**
+ * v2.1.69: 检查写入路径是否通过 symlink 逃逸工作目录
+ *
+ * 攻击向量：如果工作目录中有一个 symlink 指向外部目录，
+ * 模型可以通过该 symlink 写入任意位置的文件。
+ *
+ * 修复：解析所有父目录的真实路径，确保最终目标在工作目录内。
+ */
+function validateWritePath(filePath: string): { safe: boolean; realPath: string; reason?: string } {
+  const cwd = getCurrentCwd();
+
+  try {
+    // 找到最深的已存在的父目录，解析其真实路径
+    let checkPath = filePath;
+    while (!fs.existsSync(checkPath)) {
+      const parent = path.dirname(checkPath);
+      if (parent === checkPath) break; // 到达根目录
+      checkPath = parent;
+    }
+
+    // 如果已存在部分是 symlink 或包含 symlink，解析真实路径
+    const realParent = fs.existsSync(checkPath) ? fs.realpathSync(checkPath) : checkPath;
+    const relativePart = path.relative(checkPath, filePath);
+    const realPath = relativePart ? path.join(realParent, relativePart) : realParent;
+
+    // 检查真实路径是否在工作目录内
+    const realCwd = fs.realpathSync(cwd);
+    const normalizedRealPath = path.normalize(realPath).toLowerCase();
+    const normalizedRealCwd = path.normalize(realCwd).toLowerCase();
+
+    if (!normalizedRealPath.startsWith(normalizedRealCwd + path.sep) &&
+        normalizedRealPath !== normalizedRealCwd) {
+      return {
+        safe: false,
+        realPath,
+        reason: `Path resolves to '${realPath}' which is outside the working directory '${realCwd}' (possible symlink escape)`,
+      };
+    }
+
+    return { safe: true, realPath };
+  } catch {
+    // 如果无法解析，默认允许（不阻止正常操作）
+    return { safe: true, realPath: filePath };
+  }
+}
+
+/**
  * 差异预览接口
  */
 interface DiffPreview {
@@ -1104,6 +1150,12 @@ Usage:
       // 注意：蓝图边界检查已移除
       // 新架构中，边界检查由 SmartPlanner 在任务规划阶段处理
 
+      // v2.1.69: symlink 逃逸检查
+      const pathCheck = validateWritePath(file_path);
+      if (!pathCheck.safe) {
+        return { success: false, error: pathCheck.reason || 'Path escapes working directory via symlink' };
+      }
+
       // 确保目录存在
       const dir = path.dirname(file_path);
       if (!fs.existsSync(dir)) {
@@ -1398,6 +1450,12 @@ Usage:
 
       // 注意：蓝图边界检查已移除
       // 新架构中，边界检查由 SmartPlanner 在任务规划阶段处理
+
+      // v2.1.69: symlink 逃逸检查
+      const pathCheck = validateWritePath(file_path);
+      if (!pathCheck.safe) {
+        return { success: false, error: pathCheck.reason || 'Path escapes working directory via symlink' };
+      }
 
       const hookResult = await runPreToolUseHooks('Edit', input);
       if (!hookResult.allowed) {

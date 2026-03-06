@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useLanguage } from '../../i18n';
 
 interface ImpactAnalysisData {
   risk: {
@@ -39,6 +40,7 @@ export const ImpactAnalysisCard: React.FC<ImpactAnalysisCardProps> = ({
   onApprove, 
   onReject 
 }) => {
+  const { t } = useLanguage();
   const [expanded, setExpanded] = useState(false);
 
   const riskLevel = data.risk?.overallLevel || 'low';
@@ -67,39 +69,39 @@ export const ImpactAnalysisCard: React.FC<ImpactAnalysisCardProps> = ({
       <div className="flex justify-between items-start mb-2">
         <div>
           <h3 className="text-lg font-semibold flex items-center gap-2">
-            📊 影响分析报告
+            📊 {t('impact.title')}
             <span className={`text-xs px-2 py-0.5 rounded-full border ${riskBg[riskLevel]} ${riskColor[riskLevel]}`}>
-              {riskLevel.toUpperCase()} RISK
+              {riskLevel.toUpperCase()} {t('impact.risk')}
             </span>
           </h3>
-          <p className="text-sm text-gray-400 mt-1">{data.risk?.summary || '暂无摘要'}</p>
+          <p className="text-sm text-gray-400 mt-1">{data.risk?.summary || t('impact.noSummary')}</p>
         </div>
       </div>
 
       <div className="space-y-3 mt-4">
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div className="bg-black/20 p-2 rounded">
-            <div className="text-gray-500 text-xs mb-1">受影响模块</div>
-            <div className="font-mono">{data.impact?.byModule?.length || 0} 个</div>
+            <div className="text-gray-500 text-xs mb-1">{t('impact.affectedModules')}</div>
+            <div className="font-mono">{data.impact?.byModule?.length || 0} {t('impact.countUnit')}</div>
           </div>
           <div className="bg-black/20 p-2 rounded">
-            <div className="text-gray-500 text-xs mb-1">受影响文件</div>
-            <div className="font-mono">{impactedFiles.length} 个文件</div>
+            <div className="text-gray-500 text-xs mb-1">{t('impact.affectedFiles')}</div>
+            <div className="font-mono">{impactedFiles.length} {t('impact.filesUnit')}</div>
           </div>
           <div className="bg-black/20 p-2 rounded">
-            <div className="text-gray-500 text-xs mb-1">破坏性变更</div>
-            <div className="font-mono">{data.risk?.breakingChanges || 0} 个</div>
+            <div className="text-gray-500 text-xs mb-1">{t('impact.breakingChanges')}</div>
+            <div className="font-mono">{data.risk?.breakingChanges || 0} {t('impact.countUnit')}</div>
           </div>
           <div className="bg-black/20 p-2 rounded">
-            <div className="text-gray-500 text-xs mb-1">回归测试预计</div>
-            <div className="font-mono">{Math.round(data.regressionScope?.estimatedDuration || 0)} 秒</div>
+            <div className="text-gray-500 text-xs mb-1">{t('impact.regressionEstimate')}</div>
+            <div className="font-mono">{Math.round(data.regressionScope?.estimatedDuration || 0)} {t('impact.seconds')}</div>
           </div>
         </div>
 
         {expanded && (
           <div className="space-y-3 text-sm border-t border-white/10 pt-3 mt-3">
             <div>
-              <h4 className="font-medium mb-1 text-gray-300">安全边界 (允许修改)</h4>
+              <h4 className="font-medium mb-1 text-gray-300">{t('impact.safetyBoundary')}</h4>
               <ul className="list-disc list-inside text-gray-400 font-mono text-xs max-h-32 overflow-y-auto">
                 {(data.safetyBoundary?.allowedPaths || []).map((entry, i) => (
                   <li key={i}>
@@ -111,7 +113,7 @@ export const ImpactAnalysisCard: React.FC<ImpactAnalysisCardProps> = ({
             
             {(data.safetyBoundary?.forbiddenPaths || []).length > 0 && (
               <div>
-                <h4 className="font-medium mb-1 text-red-400">禁止修改 (保护中)</h4>
+                <h4 className="font-medium mb-1 text-red-400">{t('impact.forbiddenPaths')}</h4>
                 <ul className="list-disc list-inside text-gray-400 font-mono text-xs max-h-32 overflow-y-auto">
                   {(data.safetyBoundary?.forbiddenPaths || []).map((entry, i) => (
                     <li key={i}>{entry.path} - {entry.reason}</li>
@@ -122,7 +124,7 @@ export const ImpactAnalysisCard: React.FC<ImpactAnalysisCardProps> = ({
 
             {(data.safetyBoundary?.readOnlyPaths || []).length > 0 && (
               <div>
-                <h4 className="font-medium mb-1 text-yellow-400">只读路径</h4>
+                <h4 className="font-medium mb-1 text-yellow-400">{t('impact.readOnlyPaths')}</h4>
                 <ul className="list-disc list-inside text-gray-400 font-mono text-xs max-h-24 overflow-y-auto">
                   {(data.safetyBoundary?.readOnlyPaths || []).map((entry, i) => (
                     <li key={i}>{entry}</li>
@@ -133,7 +135,7 @@ export const ImpactAnalysisCard: React.FC<ImpactAnalysisCardProps> = ({
 
             {(data.safetyBoundary?.requireReviewPaths || []).length > 0 && (
               <div>
-                <h4 className="font-medium mb-1 text-yellow-400">需要审核</h4>
+                <h4 className="font-medium mb-1 text-yellow-400">{t('impact.requireReview')}</h4>
                 <ul className="list-disc list-inside text-gray-400 font-mono text-xs max-h-24 overflow-y-auto">
                   {(data.safetyBoundary?.requireReviewPaths || []).map((entry, i) => (
                     <li key={i}>{entry.path} - {entry.reason}</li>
@@ -148,12 +150,12 @@ export const ImpactAnalysisCard: React.FC<ImpactAnalysisCardProps> = ({
           onClick={() => setExpanded(!expanded)}
           className="text-xs text-blue-400 hover:text-blue-300 transition-colors w-full text-center py-1"
         >
-          {expanded ? '收起详情 ▲' : '查看完整报告 ▼'}
+          {expanded ? t('impact.collapseDetails') : t('impact.viewFullReport')}
         </button>
 
         {(data.recommendations || []).length > 0 && (
           <div className="text-sm text-gray-400 border-t border-white/10 pt-3">
-            <div className="text-gray-300 font-medium mb-1">建议</div>
+            <div className="text-gray-300 font-medium mb-1">{t('impact.recommendations')}</div>
             <ul className="list-disc list-inside space-y-1">
               {(data.recommendations || []).map((rec, i) => (
                 <li key={i}>{rec}</li>
@@ -167,13 +169,13 @@ export const ImpactAnalysisCard: React.FC<ImpactAnalysisCardProps> = ({
             onClick={onApprove}
             className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded-md transition-colors text-sm font-medium"
           >
-            批准执行
+            {t('impact.approve')}
           </button>
           <button
             onClick={onReject}
             className="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-2 rounded-md transition-colors text-sm font-medium"
           >
-            取消
+            {t('impact.cancel')}
           </button>
         </div>
       </div>

@@ -9,6 +9,7 @@
  */
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { useLanguage } from '../../../i18n';
 import { sanitizeSvg } from '../../../utils/sanitize';
 import styles from './ArchitectureFlowGraph.module.css';
 
@@ -58,10 +59,10 @@ export interface ArchitectureFlowGraphProps {
 }
 
 /** 图表类型配置 */
-const GRAPH_TYPES: { type: ArchitectureGraphType; label: string; icon: string }[] = [
-  { type: 'dataflow', label: '数据流', icon: '🔀' },
-  { type: 'modulerelation', label: '模块关系', icon: '📦' },
-  { type: 'full', label: '完整架构', icon: '🏗️' },
+const GRAPH_TYPES: { type: ArchitectureGraphType; labelKey: string; icon: string }[] = [
+  { type: 'dataflow', labelKey: 'archGraph.dataflow', icon: '🔀' },
+  { type: 'modulerelation', labelKey: 'archGraph.moduleRelation', icon: '📦' },
+  { type: 'full', labelKey: 'archGraph.fullArchitecture', icon: '🏗️' },
 ];
 
 /**
@@ -73,7 +74,8 @@ const GRAPH_TYPES: { type: ArchitectureGraphType; label: string; icon: string }[
 function bindNodeClickEvents(
   svgElement: SVGSVGElement,
   nodePathMap: Record<string, NodePathMapping>,
-  onNodeClick: (nodeId: string, mapping: NodePathMapping) => void
+  onNodeClick: (nodeId: string, mapping: NodePathMapping) => void,
+  clickToJumpText: string
 ) {
   // 获取所有节点组
   const nodeGroups = svgElement.querySelectorAll('g.node, g.nodeGroup, g[class*="node"]');
@@ -106,7 +108,7 @@ function bindNodeClickEvents(
 
     // 添加 title 提示
     const titleElement = document.createElementNS('http://www.w3.org/2000/svg', 'title');
-    titleElement.textContent = `点击跳转: ${mapping.path}`;
+    titleElement.textContent = `${clickToJumpText}: ${mapping.path}`;
     nodeGroup.appendChild(titleElement);
 
     // 绑定点击事件
@@ -168,6 +170,7 @@ export const ArchitectureFlowGraph: React.FC<ArchitectureFlowGraphProps> = ({
   onNodeClick,
   loadingTypes = new Set(),
 }) => {
+  const { t } = useLanguage();
   const containerRef = useRef<HTMLDivElement>(null);
   const mermaidContainerRef = useRef<HTMLDivElement>(null);
   const graphContentRef = useRef<HTMLDivElement>(null);
@@ -228,7 +231,7 @@ export const ArchitectureFlowGraph: React.FC<ArchitectureFlowGraphProps> = ({
           document.head.appendChild(script);
         } catch (err) {
           console.error('Failed to load mermaid:', err);
-          setRenderError('加载 Mermaid 库失败');
+          setRenderError(t('archGraph.loadMermaidFailed'));
         }
       } else if ((window as any).mermaid) {
         setMermaidLoaded(true);
@@ -267,12 +270,12 @@ export const ArchitectureFlowGraph: React.FC<ArchitectureFlowGraphProps> = ({
 
           // 为有路径映射的节点添加点击事件
           if (data.nodePathMap && onNodeClick) {
-            bindNodeClickEvents(svgElement, data.nodePathMap, onNodeClick);
+            bindNodeClickEvents(svgElement, data.nodePathMap, onNodeClick, t('archGraph.clickToJump'));
           }
         }
       } catch (err: any) {
         console.error('Mermaid render error:', err);
-        setRenderError(err.message || '渲染图表失败');
+        setRenderError(err.message || t('archGraph.renderFailed'));
       }
     };
 
@@ -367,7 +370,7 @@ export const ArchitectureFlowGraph: React.FC<ArchitectureFlowGraphProps> = ({
     >
       {/* 类型选择器 */}
       <div className={styles.typeSelector}>
-        {GRAPH_TYPES.map(({ type, label, icon }) => {
+        {GRAPH_TYPES.map(({ type, labelKey, icon }) => {
           const isLoading = loadingTypes.has(type);
           return (
             <button
@@ -379,7 +382,7 @@ export const ArchitectureFlowGraph: React.FC<ArchitectureFlowGraphProps> = ({
               }}
             >
               <span className={styles.typeIcon}>{isLoading ? '⏳' : icon}</span>
-              <span className={styles.typeLabel}>{label}</span>
+              <span className={styles.typeLabel}>{t(labelKey)}</span>
             </button>
           );
         })}
@@ -390,7 +393,7 @@ export const ArchitectureFlowGraph: React.FC<ArchitectureFlowGraphProps> = ({
         <button
           className={styles.toolButton}
           onClick={handleZoomOut}
-          title="缩小"
+          title={t('archGraph.zoomOut')}
           disabled={scale <= MIN_SCALE}
         >
           −
@@ -399,14 +402,14 @@ export const ArchitectureFlowGraph: React.FC<ArchitectureFlowGraphProps> = ({
         <button
           className={styles.toolButton}
           onClick={handleZoomIn}
-          title="放大"
+          title={t('archGraph.zoomIn')}
         >
           +
         </button>
         <button
           className={styles.toolButton}
           onClick={handleResetZoom}
-          title="重置缩放"
+          title={t('archGraph.resetZoom')}
         >
           ⊙
         </button>
@@ -414,7 +417,7 @@ export const ArchitectureFlowGraph: React.FC<ArchitectureFlowGraphProps> = ({
         <button
           className={styles.toolButton}
           onClick={() => onRefresh(selectedType, true)}
-          title="AI 重新生成（强制刷新）"
+          title={t('archGraph.aiRegenerate')}
           disabled={loading}
         >
           {loading ? '⏳' : '🤖'}
@@ -422,7 +425,7 @@ export const ArchitectureFlowGraph: React.FC<ArchitectureFlowGraphProps> = ({
         <button
           className={styles.toolButton}
           onClick={toggleFullscreen}
-          title={isFullscreen ? '退出全屏' : '全屏'}
+          title={isFullscreen ? t('archGraph.exitFullscreen') : t('archGraph.fullscreen')}
         >
           {isFullscreen ? '⛶' : '⛶'}
         </button>
@@ -441,7 +444,7 @@ export const ArchitectureFlowGraph: React.FC<ArchitectureFlowGraphProps> = ({
         {loading && (
           <div className={styles.loadingState}>
             <div className={styles.loadingSpinner} />
-            <span>AI 正在分析代码库并生成架构图...</span>
+            <span>{t('archGraph.analyzing')}</span>
           </div>
         )}
 
@@ -453,7 +456,7 @@ export const ArchitectureFlowGraph: React.FC<ArchitectureFlowGraphProps> = ({
               className={styles.retryButton}
               onClick={() => onRefresh(selectedType, true)}
             >
-              重试
+              {t('archGraph.retry')}
             </button>
           </div>
         )}
@@ -461,7 +464,7 @@ export const ArchitectureFlowGraph: React.FC<ArchitectureFlowGraphProps> = ({
         {!loading && !error && renderError && (
           <div className={styles.errorState}>
             <span className={styles.errorIcon}>🔧</span>
-            <span className={styles.errorText}>渲染错误: {renderError}</span>
+            <span className={styles.errorText}>{t('archGraph.renderError')}: {renderError}</span>
             <div className={styles.mermaidCodeFallback}>
               <pre>{data?.mermaidCode}</pre>
             </div>
@@ -483,7 +486,7 @@ export const ArchitectureFlowGraph: React.FC<ArchitectureFlowGraphProps> = ({
         {!loading && !error && !data && (
           <div className={styles.emptyState}>
             <span className={styles.emptyIcon}>📊</span>
-            <span className={styles.emptyText}>点击上方按钮选择图表类型</span>
+            <span className={styles.emptyText}>{t('archGraph.selectType')}</span>
             <button
               className={styles.generateButton}
               onClick={() => {
@@ -491,7 +494,7 @@ export const ArchitectureFlowGraph: React.FC<ArchitectureFlowGraphProps> = ({
                 onRefresh(selectedType, true);
               }}
             >
-              🤖 AI 生成架构图
+              {t('archGraph.aiGenerate')}
             </button>
           </div>
         )}

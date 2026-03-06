@@ -1,4 +1,5 @@
 import React from 'react';
+import { useLanguage } from '../../i18n';
 
 interface DevProgressData {
   phase: 'idle' | 'analyzing_codebase' | 'analyzing_requirement' | 'generating_blueprint' | 'awaiting_approval' | 'executing' | 'validating' | 'cycle_review' | 'completed' | 'failed' | 'paused';
@@ -22,18 +23,20 @@ export const DevProgressBar: React.FC<DevProgressBarProps> = ({
   onResume,
   onCancel
 }) => {
+  const { t } = useLanguage();
+
   const phaseLabels: Record<string, string> = {
-    idle: '空闲',
-    analyzing_codebase: '分析代码库...',
-    analyzing_requirement: '分析需求...',
-    generating_blueprint: '生成蓝图...',
-    awaiting_approval: '等待审批...',
-    executing: '执行中...',
-    validating: '回归测试...',
-    cycle_review: '周期评审...',
-    paused: '已暂停',
-    completed: '已完成',
-    failed: '已失败',
+    idle: t('devProgress.phaseIdle'),
+    analyzing_codebase: t('devProgress.phaseAnalyzingCodebase'),
+    analyzing_requirement: t('devProgress.phaseAnalyzingRequirement'),
+    generating_blueprint: t('devProgress.phaseGeneratingBlueprint'),
+    awaiting_approval: t('devProgress.phaseAwaitingApproval'),
+    executing: t('devProgress.phaseExecuting'),
+    validating: t('devProgress.phaseValidating'),
+    cycle_review: t('devProgress.phaseCycleReview'),
+    paused: t('devProgress.phasePaused'),
+    completed: t('devProgress.phaseCompleted'),
+    failed: t('devProgress.phaseFailed'),
   };
 
   const getStatusColor = () => {
@@ -72,11 +75,11 @@ export const DevProgressBar: React.FC<DevProgressBarProps> = ({
               <span className="text-blue-400">▶</span> {data.currentTask}
             </span>
           ) : (
-            <span>等待中...</span>
+            <span>{t('devProgress.waiting')}</span>
           )}
         </div>
         <div className="text-xs font-mono text-gray-500">
-          {data.tasksCompleted}/{data.tasksTotal} 任务
+          {data.tasksCompleted}/{data.tasksTotal} {t('devProgress.tasks')}
         </div>
       </div>
 
@@ -84,17 +87,17 @@ export const DevProgressBar: React.FC<DevProgressBarProps> = ({
         <div className="flex gap-2 mt-3 pt-2 border-t border-white/5 justify-end">
           {(data.status || 'running') === 'running' && onPause && (
             <button onClick={onPause} className="text-xs px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-white">
-              暂停
+              {t('devProgress.pause')}
             </button>
           )}
           {(data.status || 'running') === 'paused' && onResume && (
             <button onClick={onResume} className="text-xs px-2 py-1 bg-blue-600 hover:bg-blue-500 rounded text-white">
-              恢复
+              {t('devProgress.resume')}
             </button>
           )}
           {onCancel && (
             <button onClick={onCancel} className="text-xs px-2 py-1 bg-red-900/30 hover:bg-red-900/50 text-red-200 rounded border border-red-900/50">
-              取消
+              {t('devProgress.cancel')}
             </button>
           )}
         </div>

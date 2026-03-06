@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import type { OutlineSymbol, OutlineSymbolKind } from '../../hooks/useOutlineSymbols';
+import { useLanguage } from '../../i18n';
 import styles from './FileTree.module.css';
 
 /**
@@ -653,6 +654,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
   cursorLine,
   onSymbolClick,
 }) => {
+  const { t } = useLanguage();
   const [tree, setTree] = useState<FileTreeNode | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -769,13 +771,13 @@ export const FileTree: React.FC<FileTreeProps> = ({
       const response = await fetch(`/api/files/tree?root=${encodeURIComponent(projectPath)}&path=.&depth=3`);
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || '加载文件树失败');
+        throw new Error(errorData.error || t('fileTree.loadFailed'));
       }
       const data = await response.json();
       setTree(data);
     } catch (err) {
       console.error('[FileTree] 加载失败:', err);
-      setError(err instanceof Error ? err.message : '未知错误');
+      setError(err instanceof Error ? err.message : t('fileTree.unknownError'));
     } finally {
       setLoading(false);
     }
@@ -1108,7 +1110,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
           }
         }
       } catch (err) {
-        errors.push(`${srcNode.name}: 操作失败`);
+        errors.push(`${srcNode.name}: ${t('fileTree.operationFailed')}`);
       }
     }
 
@@ -1117,7 +1119,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
     }
 
     if (errors.length > 0) {
-      alert(`部分操作失败:\n${errors.join('\n')}`);
+      alert(`${t('fileTree.partialOperationFailed')}\n${errors.join('\n')}`);
     }
 
     await fetchTree();
@@ -1132,7 +1134,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
   }, []);
 
   const handleDelete = useCallback(async (node: FileTreeNode) => {
-    if (!window.confirm(`确定删除 "${node.name}"？`)) return;
+    if (!window.confirm(t('fileTree.confirmDelete', { name: node.name }))) return;
 
     try {
       const response = await fetch('/api/files/delete', {
@@ -1145,20 +1147,20 @@ export const FileTree: React.FC<FileTreeProps> = ({
         await fetchTree();
       } else {
         const error = await response.json();
-        alert(`删除失败: ${error.error}`);
+        alert(t('fileTree.deleteFailed', { error: error.error }));
       }
     } catch (err) {
       console.error('[FileTree] 删除失败:', err);
-      alert('删除失败');
+      alert(t('fileTree.deleteFailedGeneric'));
     }
-  }, [projectPath, fetchTree]);
+  }, [projectPath, fetchTree, t]);
 
   const handleBatchDelete = useCallback(async (paths: Set<string>) => {
     const nodeNames = Array.from(paths)
       .map(p => nodeByPath.get(p)?.name || p)
       .slice(0, 10);
-    const suffix = paths.size > 10 ? `\n...等 ${paths.size} 个文件` : '';
-    const msg = `确定删除以下 ${paths.size} 个文件/文件夹？\n\n${nodeNames.join('\n')}${suffix}`;
+    const suffix = paths.size > 10 ? `\n${t('fileTree.andMoreFiles', { count: paths.size })}` : '';
+    const msg = `${t('fileTree.confirmBatchDelete', { count: paths.size })}\n\n${nodeNames.join('\n')}${suffix}`;
 
     if (!window.confirm(msg)) return;
 
@@ -1175,12 +1177,12 @@ export const FileTree: React.FC<FileTreeProps> = ({
           errors.push(`${path}: ${error.error}`);
         }
       } catch (err) {
-        errors.push(`${path}: 操作失败`);
+        errors.push(`${path}: ${t('fileTree.operationFailed')}`);
       }
     }
 
     if (errors.length > 0) {
-      alert(`部分删除失败:\n${errors.join('\n')}`);
+      alert(`${t('fileTree.partialDeleteFailed')}\n${errors.join('\n')}`);
     }
 
     setSelectedPaths(new Set());
@@ -1241,7 +1243,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
 
         if (!response.ok) {
           const error = await response.json();
-          alert(`重命名失败: ${error.error}`);
+          alert(t('fileTree.renameFailed', { error: error.error }));
           return;
         }
       } else if (inlineEdit.type === 'newFile') {
@@ -1255,7 +1257,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
 
         if (!response.ok) {
           const error = await response.json();
-          alert(`创建文件失败: ${error.error}`);
+          alert(t('fileTree.createFileFailed', { error: error.error }));
           return;
         }
       } else if (inlineEdit.type === 'newFolder') {
@@ -1269,7 +1271,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
 
         if (!response.ok) {
           const error = await response.json();
-          alert(`创建文件夹失败: ${error.error}`);
+          alert(t('fileTree.createFolderFailed', { error: error.error }));
           return;
         }
       }
@@ -1278,7 +1280,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
       await fetchTree();
     } catch (err) {
       console.error('[FileTree] 内联编辑失败:', err);
-      alert('操作失败');
+      alert(t('fileTree.operationFailed'));
     }
   }, [inlineEdit, projectPath, fetchTree]);
 
@@ -1373,14 +1375,14 @@ export const FileTree: React.FC<FileTreeProps> = ({
           errors.push(`${srcName}: ${error.error}`);
         }
       } catch (err) {
-        errors.push(`${srcName}: 移动失败`);
+        errors.push(`${srcName}: ${t('fileTree.moveFailed')}`);
       }
     }
 
     setDragState({ dragging: false, sourcePaths: new Set(), overPath: null });
 
     if (errors.length > 0) {
-      alert(`部分移动失败:\n${errors.join('\n')}`);
+      alert(`${t('fileTree.partialMoveFailed')}\n${errors.join('\n')}`);
     }
 
     await fetchTree();
@@ -1406,46 +1408,46 @@ export const FileTree: React.FC<FileTreeProps> = ({
 
     if (targetType === 'blank') {
       return [
-        { label: '新建文件...', onClick: () => handleNewFile({ name: '', path: '.', type: 'directory' }) },
-        { label: '新建文件夹...', onClick: () => handleNewFolder({ name: '', path: '.', type: 'directory' }) },
+        { label: t('fileTree.newFile'), onClick: () => handleNewFile({ name: '', path: '.', type: 'directory' }) },
+        { label: t('fileTree.newFolder'), onClick: () => handleNewFolder({ name: '', path: '.', type: 'directory' }) },
         { divider: true } as ContextMenuItem,
-        { label: '粘贴', shortcut: 'Ctrl+V', disabled: !clipboard, onClick: () => handlePaste({ name: '', path: '.', type: 'directory' }) },
+        { label: t('fileTree.paste'), shortcut: 'Ctrl+V', disabled: !clipboard, onClick: () => handlePaste({ name: '', path: '.', type: 'directory' }) },
       ];
     }
 
     if (isMultiSelection && targetNode) {
       // 多选右键菜单
       return [
-        { label: `剪切 ${selCount} 个项目`, shortcut: 'Ctrl+X', onClick: () => handleCut(targetNode) },
-        { label: `复制 ${selCount} 个项目`, shortcut: 'Ctrl+C', onClick: () => handleCopy(targetNode) },
-        { label: '粘贴', shortcut: 'Ctrl+V', disabled: !clipboard, onClick: () => handlePaste(targetNode) },
+        { label: t('fileTree.cutItems', { count: selCount }), shortcut: 'Ctrl+X', onClick: () => handleCut(targetNode) },
+        { label: t('fileTree.copyItems', { count: selCount }), shortcut: 'Ctrl+C', onClick: () => handleCopy(targetNode) },
+        { label: t('fileTree.paste'), shortcut: 'Ctrl+V', disabled: !clipboard, onClick: () => handlePaste(targetNode) },
         { divider: true } as ContextMenuItem,
-        { label: `复制 ${selCount} 个路径`, onClick: () => handleCopyPath(targetNode, false) },
-        { label: `复制 ${selCount} 个相对路径`, onClick: () => handleCopyPath(targetNode, true) },
+        { label: t('fileTree.copyPaths', { count: selCount }), onClick: () => handleCopyPath(targetNode, false) },
+        { label: t('fileTree.copyRelativePaths', { count: selCount }), onClick: () => handleCopyPath(targetNode, true) },
         { divider: true } as ContextMenuItem,
-        { label: `删除 ${selCount} 个项目`, shortcut: 'Delete', onClick: () => handleBatchDelete(selectedPaths) },
+        { label: t('fileTree.deleteItems', { count: selCount }), shortcut: 'Delete', onClick: () => handleBatchDelete(selectedPaths) },
       ];
     }
 
     if (targetNode) {
       const isFile = targetType === 'file';
       return [
-        { label: '剪切', shortcut: 'Ctrl+X', onClick: () => handleCut(targetNode) },
-        { label: '复制', shortcut: 'Ctrl+C', onClick: () => handleCopy(targetNode) },
-        { label: '粘贴', shortcut: 'Ctrl+V', disabled: !clipboard, onClick: () => handlePaste(targetNode) },
+        { label: t('fileTree.cut'), shortcut: 'Ctrl+X', onClick: () => handleCut(targetNode) },
+        { label: t('fileTree.copy'), shortcut: 'Ctrl+C', onClick: () => handleCopy(targetNode) },
+        { label: t('fileTree.paste'), shortcut: 'Ctrl+V', disabled: !clipboard, onClick: () => handlePaste(targetNode) },
         { divider: true } as ContextMenuItem,
-        { label: '复制路径', onClick: () => handleCopyPath(targetNode, false) },
-        { label: '复制相对路径', onClick: () => handleCopyPath(targetNode, true) },
+        { label: t('fileTree.copyPath'), onClick: () => handleCopyPath(targetNode, false) },
+        { label: t('fileTree.copyRelativePath'), onClick: () => handleCopyPath(targetNode, true) },
         { divider: true } as ContextMenuItem,
         ...(isFile ? [] : [
-          { label: '新建文件...', onClick: () => handleNewFile(targetNode) } as ContextMenuItem,
-          { label: '新建文件夹...', onClick: () => handleNewFolder(targetNode) } as ContextMenuItem,
+          { label: t('fileTree.newFile'), onClick: () => handleNewFile(targetNode) } as ContextMenuItem,
+          { label: t('fileTree.newFolder'), onClick: () => handleNewFolder(targetNode) } as ContextMenuItem,
           { divider: true } as ContextMenuItem,
         ]),
-        { label: '重命名', shortcut: 'F2', onClick: () => handleRename(targetNode) },
-        { label: '删除', shortcut: 'Delete', onClick: () => handleDelete(targetNode) },
+        { label: t('fileTree.rename'), shortcut: 'F2', onClick: () => handleRename(targetNode) },
+        { label: t('fileTree.delete'), shortcut: 'Delete', onClick: () => handleDelete(targetNode) },
         { divider: true } as ContextMenuItem,
-        { label: '在文件管理器中显示', onClick: () => handleReveal(targetNode) },
+        { label: t('fileTree.revealInExplorer'), onClick: () => handleReveal(targetNode) },
       ];
     }
 
@@ -1502,11 +1504,11 @@ export const FileTree: React.FC<FileTreeProps> = ({
     return (
       <div className={styles.fileTree}>
         <div className={styles.header}>
-          <span className={styles.projectName}>{projectName || '加载中...'}</span>
+          <span className={styles.projectName}>{projectName || t('fileTree.loading')}</span>
         </div>
         <div className={styles.loadingContainer}>
           <div className={styles.loadingSpinner} />
-          <span className={styles.loadingText}>加载文件树...</span>
+          <span className={styles.loadingText}>{t('fileTree.loadingFileTree')}</span>
         </div>
       </div>
     );
@@ -1516,7 +1518,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
     return (
       <div className={styles.fileTree}>
         <div className={styles.header}>
-          <span className={styles.projectName}>{projectName || '项目'}</span>
+          <span className={styles.projectName}>{projectName || t('fileTree.project')}</span>
         </div>
         <div className={styles.errorContainer}>
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
@@ -1575,13 +1577,13 @@ export const FileTree: React.FC<FileTreeProps> = ({
       {selectedPaths.size > 1 && (
         <div className={styles.batchToolbar}>
           <span className={styles.batchCount}>
-            已选 {selectedPaths.size} 项
+            {t('fileTree.selectedCount', { count: selectedPaths.size })}
           </span>
           <div className={styles.batchActions}>
             <button
               className={styles.batchButton}
               onClick={handleBatchCopyPaths}
-              title="复制路径"
+              title={t('fileTree.copyPath')}
             >
               <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
                 <rect x="5" y="5" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none"/>
@@ -1591,7 +1593,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
             <button
               className={`${styles.batchButton} ${styles.batchDanger}`}
               onClick={() => handleBatchDelete(selectedPaths)}
-              title="删除选中项"
+              title={t('fileTree.deleteSelected')}
             >
               <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
                 <path d="M3 4h10M6 4V3h4v1M5 4v8a1 1 0 001 1h4a1 1 0 001-1V4" stroke="currentColor" strokeWidth="1.5" fill="none"/>
@@ -1600,7 +1602,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
             <button
               className={styles.batchButton}
               onClick={handleClearSelection}
-              title="取消选择 (Esc)"
+              title={t('fileTree.clearSelection')}
             >
               <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
                 <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>

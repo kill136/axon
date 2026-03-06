@@ -6,7 +6,10 @@ import DOMPurify from 'dompurify';
  */
 export function sanitizeHtml(html: string): string {
   return DOMPurify.sanitize(html, {
-    ADD_ATTR: ['download', 'target', 'data-code-ref', 'data-file-path', 'data-line'],
+    ADD_TAGS: ['img', 'video', 'audio', 'source'],
+    ADD_ATTR: ['download', 'target', 'data-code-ref', 'data-file-path', 'data-line',
+      'controls', 'autoplay', 'muted', 'loop', 'preload', 'poster',
+      'src', 'alt', 'loading', 'type'],
   });
 }
 

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { TOOL_DISPLAY_NAMES, TOOL_ICONS } from '../utils/constants';
+import { useLanguage } from '../i18n';
 import type { ToolUse, SubagentToolCall } from '../types';
 
 interface ToolCallProps {
@@ -11,15 +12,16 @@ interface ToolCallProps {
  */
 function SubagentToolItem({ toolCall }: { toolCall: SubagentToolCall }) {
   const [expanded, setExpanded] = useState(false);
+  const { t } = useLanguage();
   const icon = TOOL_ICONS[toolCall.name] || '🔧';
   const displayName = TOOL_DISPLAY_NAMES[toolCall.name] || toolCall.name;
 
   const getStatusText = () => {
     switch (toolCall.status) {
-      case 'running': return '执行中...';
-      case 'completed': return '完成';
-      case 'error': return '错误';
-      default: return '等待中';
+      case 'running': return t('toolCall.running');
+      case 'completed': return t('toolCall.completed');
+      case 'error': return t('toolCall.error');
+      default: return t('toolCall.waiting');
     }
   };
 
@@ -46,7 +48,7 @@ function SubagentToolItem({ toolCall }: { toolCall: SubagentToolCall }) {
         <div className="subagent-tool-body">
           {toolCall.input && (
             <div className="tool-input">
-              <div className="tool-label">输入参数</div>
+              <div className="tool-label">{t('toolCall.inputParams')}</div>
               <pre>
                 <code>{JSON.stringify(toolCall.input, null, 2)}</code>
               </pre>
@@ -54,9 +56,9 @@ function SubagentToolItem({ toolCall }: { toolCall: SubagentToolCall }) {
           )}
           {(toolCall.result || toolCall.error) && (
             <div className="tool-output">
-              <div className="tool-label">{toolCall.error ? '错误信息' : '输出结果'}</div>
+              <div className="tool-label">{toolCall.error ? t('toolCall.errorInfo') : t('toolCall.outputResult')}</div>
               <pre>
-                <code>{toolCall.result || toolCall.error || '(无输出)'}</code>
+                <code>{toolCall.result || toolCall.error || t('toolCall.noOutput')}</code>
               </pre>
             </div>
           )}
@@ -81,6 +83,7 @@ function formatCountdown(ms: number): string {
 
 export function ToolCall({ toolUse }: ToolCallProps) {
   const [expanded, setExpanded] = useState(false);
+  const { t } = useLanguage();
   const { name, input, status, result, subagentToolCalls, toolUseCount, lastToolInfo, scheduleCountdown } = toolUse;
 
   const icon = TOOL_ICONS[name] || '🔧';
@@ -113,19 +116,19 @@ export function ToolCall({ toolUse }: ToolCallProps) {
     if (isScheduleTask && scheduleCountdown) {
       switch (scheduleCountdown.phase) {
         case 'countdown':
-          return `倒计时 ${formatCountdown(scheduleCountdown.remainingMs)}`;
+          return t('toolCall.countdown', { time: formatCountdown(scheduleCountdown.remainingMs) });
         case 'executing':
-          return '执行中...';
+          return t('toolCall.running');
         case 'done':
-          return (result && !result.success) || status === 'error' ? '错误' : '完成';
+          return (result && !result.success) || status === 'error' ? t('toolCall.error') : t('toolCall.completed');
       }
     }
 
     switch (status) {
-      case 'running': return '执行中...';
-      case 'completed': return '完成';
-      case 'error': return '错误';
-      default: return '等待中';
+      case 'running': return t('toolCall.running');
+      case 'completed': return t('toolCall.completed');
+      case 'error': return t('toolCall.error');
+      default: return t('toolCall.waiting');
     }
   };
 
@@ -143,7 +146,7 @@ export function ToolCall({ toolUse }: ToolCallProps) {
     }
 
     if (toolUseCount && toolUseCount > 0) {
-      parts.push(`${toolUseCount} 工具调用`);
+      parts.push(t('toolCall.toolCallCount', { count: toolUseCount }));
     }
     if (lastToolInfo) {
       parts.push(lastToolInfo);
@@ -174,7 +177,7 @@ export function ToolCall({ toolUse }: ToolCallProps) {
         <div className="countdown-bar-track">
           <div className="countdown-bar-fill" style={{ width: `${progress}%` }} />
         </div>
-        <span className="countdown-time">还剩 {formatCountdown(remainingMs)}</span>
+        <span className="countdown-time">{t('toolCall.remaining', { time: formatCountdown(remainingMs) })}</span>
       </div>
     );
   };
@@ -195,7 +198,7 @@ export function ToolCall({ toolUse }: ToolCallProps) {
       {expanded && (
         <div className="tool-call-body">
           <div className="tool-input">
-            <div className="tool-label">输入参数</div>
+            <div className="tool-label">{t('toolCall.inputParams')}</div>
             <pre>
               <code>{JSON.stringify(input, null, 2)}</code>
             </pre>
@@ -204,7 +207,7 @@ export function ToolCall({ toolUse }: ToolCallProps) {
           {/* 子 agent 工具调用列表 */}
           {hasSubagentFeatures && subagentToolCalls && subagentToolCalls.length > 0 && (
             <div className="subagent-tools">
-              <div className="tool-label">子 Agent 工具调用 ({subagentToolCalls.length})</div>
+              <div className="tool-label">{t('toolCall.subAgentToolCalls', { count: subagentToolCalls.length })}</div>
               <div className="subagent-tools-list">
                 {subagentToolCalls.map((tc) => (
                   <SubagentToolItem key={tc.id} toolCall={tc} />
@@ -215,9 +218,9 @@ export function ToolCall({ toolUse }: ToolCallProps) {
 
           {result && (
             <div className="tool-output">
-              <div className="tool-label">{result.success ? '输出结果' : '错误信息'}</div>
+              <div className="tool-label">{result.success ? t('toolCall.outputResult') : t('toolCall.errorInfo')}</div>
               <pre>
-                <code>{result.output || result.error || '(无输出)'}</code>
+                <code>{result.output || result.error || t('toolCall.noOutput')}</code>
               </pre>
             </div>
           )}

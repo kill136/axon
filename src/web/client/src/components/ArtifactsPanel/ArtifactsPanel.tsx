@@ -206,16 +206,16 @@ function formatCountdown(ms: number): string {
 /**
  * 定时任务状态 badge 文字
  */
-function getScheduleStatusText(artifact: ScheduleArtifact): string {
+function getScheduleStatusText(artifact: ScheduleArtifact, t: (key: string, params?: Record<string, any>) => string): string {
   switch (artifact.phase) {
     case 'countdown':
-      return artifact.remainingMs != null ? `倒计时 ${formatCountdown(artifact.remainingMs)}` : '倒计时';
+      return artifact.remainingMs != null ? t('artifacts.countdown', { time: formatCountdown(artifact.remainingMs) }) : t('artifacts.countdownLabel');
     case 'executing':
-      return '执行中...';
+      return t('artifacts.executing');
     case 'done':
-      return artifact.result && !artifact.result.success ? '失败' : '完成';
+      return artifact.result && !artifact.result.success ? t('artifacts.failed') : t('artifacts.completed');
     default:
-      return '等待中';
+      return t('artifacts.waiting');
   }
 }
 
@@ -244,8 +244,9 @@ function ScheduleArtifactItem({
   isSelected: boolean;
   onClick: () => void;
 }) {
+  const { t } = useLanguage();
   const statusClass = getScheduleStatusClass(artifact);
-  const statusText = getScheduleStatusText(artifact);
+  const statusText = getScheduleStatusText(artifact, t);
 
   // 倒计时进度
   const progress = useMemo(() => {
@@ -294,7 +295,7 @@ function ScheduleDetailOverlay({
 }) {
   const { t } = useLanguage();
   const statusClass = getScheduleStatusClass(artifact);
-  const statusText = getScheduleStatusText(artifact);
+  const statusText = getScheduleStatusText(artifact, t);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -324,14 +325,14 @@ function ScheduleDetailOverlay({
         <div className="artifacts-overlay-body">
           <div className="schedule-detail">
             <div className="schedule-detail-row">
-              <span className="schedule-detail-label">状态</span>
+              <span className="schedule-detail-label">{t('artifacts.status')}</span>
               <span className={`schedule-artifact-status schedule-artifact-status--${statusClass}`}>
                 {statusText}
               </span>
             </div>
             {artifact.triggerAt && (
               <div className="schedule-detail-row">
-                <span className="schedule-detail-label">触发时间</span>
+                <span className="schedule-detail-label">{t('artifacts.triggerTime')}</span>
                 <span className="schedule-detail-value">
                   {new Date(artifact.triggerAt).toLocaleString()}
                 </span>
@@ -339,17 +340,17 @@ function ScheduleDetailOverlay({
             )}
             {artifact.prompt && (
               <div className="schedule-detail-section">
-                <div className="schedule-detail-label">提示词</div>
+                <div className="schedule-detail-label">{t('artifacts.prompt')}</div>
                 <pre className="schedule-detail-prompt"><code>{artifact.prompt}</code></pre>
               </div>
             )}
             {artifact.result && (
               <div className="schedule-detail-section">
                 <div className="schedule-detail-label">
-                  {artifact.result.success ? '执行结果' : '错误信息'}
+                  {artifact.result.success ? t('artifacts.executionResult') : t('artifacts.errorInfo')}
                 </div>
                 <pre className={`schedule-detail-result ${artifact.result.success ? '' : 'schedule-detail-result--error'}`}>
-                  <code>{artifact.result.output || artifact.result.error || '(无输出)'}</code>
+                  <code>{artifact.result.output || artifact.result.error || t('artifacts.noOutput')}</code>
                 </pre>
               </div>
             )}
@@ -445,7 +446,7 @@ export function ArtifactsPanel({
           {scheduleArtifacts && scheduleArtifacts.length > 0 && (
             <div className="artifacts-section">
               {hasBothSections && (
-                <div className="artifacts-section-header">定时任务</div>
+                <div className="artifacts-section-header">{t('artifacts.scheduledTasks')}</div>
               )}
               <div className="artifacts-file-list">
                 {scheduleArtifacts.map(sa => (
@@ -467,7 +468,7 @@ export function ArtifactsPanel({
           {groups.length > 0 && (
             <div className="artifacts-section">
               {hasBothSections && (
-                <div className="artifacts-section-header">文件变更</div>
+                <div className="artifacts-section-header">{t('artifacts.fileChanges')}</div>
               )}
               <div className="artifacts-file-list">
               {groups.map(group => {
