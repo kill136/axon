@@ -313,7 +313,6 @@ jobs:
           codesign --force --options runtime \
             --sign "$SIGNING_IDENTITY" \
             --timestamp \
-            --entitlements /dev/null \
             "$APP_DIR"
 
           # Verify signature
