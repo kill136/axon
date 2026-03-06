@@ -250,10 +250,89 @@ jobs:
           mkdir -p node_modules/electron/dist
           cp -R /tmp/Electron.app node_modules/electron/dist/
 
-      - name: Build macOS .dmg
+      - name: Build macOS .app and .dmg
         run: |
           chmod +x build-macos.sh
           ./build-macos.sh
+
+      - name: Import Apple certificate
+        env:
+          APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          # Create temporary keychain
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          # Import certificate
+          echo "$APPLE_CERTIFICATE_P12" | base64 --decode > $RUNNER_TEMP/certificate.p12
+          security import $RUNNER_TEMP/certificate.p12 \
+            -k "$KEYCHAIN_PATH" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security
+
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
+
+          # Find signing identity
+          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | head -1 | grep -o '"[^"]*"' | tr -d '"')
+          echo "SIGNING_IDENTITY=$IDENTITY" >> $GITHUB_ENV
+          echo "Found signing identity: $IDENTITY"
+
+      - name: Sign the .app bundle
+        run: |
+          APP_DIR="release/axon-macos/Axon.app"
+          echo "Signing with identity: $SIGNING_IDENTITY"
+
+          # Sign all binaries and frameworks inside the app (deep sign)
+          codesign --deep --force --options runtime \
+            --sign "$SIGNING_IDENTITY" \
+            --timestamp \
+            "$APP_DIR"
+
+          # Verify signature
+          codesign --verify --deep --strict "$APP_DIR"
+          echo "Signature verified OK"
+
+      - name: Re-create signed DMG
+        run: |
+          # Remove unsigned DMG, rebuild with signed .app
+          rm -f release/Axon-Setup.dmg
+          DMG_STAGING="release/dmg-staging"
+          rm -rf "$DMG_STAGING"
+          mkdir -p "$DMG_STAGING"
+          cp -R release/axon-macos/Axon.app "$DMG_STAGING/"
+          ln -s /Applications "$DMG_STAGING/Applications"
+          hdiutil create -volname "Axon" \
+            -srcfolder "$DMG_STAGING" \
+            -ov -format UDZO \
+            release/Axon-Setup.dmg
+          rm -rf "$DMG_STAGING"
+
+          # Sign the DMG itself
+          codesign --force --sign "$SIGNING_IDENTITY" --timestamp release/Axon-Setup.dmg
+
+      - name: Notarize DMG
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: |
+          # Submit for notarization
+          xcrun notarytool submit release/Axon-Setup.dmg \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --wait
+
+          # Staple the notarization ticket to the DMG
+          xcrun stapler staple release/Axon-Setup.dmg
+          echo "Notarization complete and stapled"
 
       - name: Upload DMG to Release
         uses: softprops/action-gh-release@v2
