@@ -137,21 +137,34 @@ if [ -f "electron/icon.png" ]; then
     ICONSET_DIR="$(pwd)/release/axon.iconset"
     mkdir -p "$ICONSET_DIR"
 
-    # Generate icon sizes required for .icns
-    sips -z 16 16     electron/icon.png --out "$ICONSET_DIR/icon_16x16.png"     >/dev/null 2>&1
-    sips -z 32 32     electron/icon.png --out "$ICONSET_DIR/icon_16x16@2x.png"  >/dev/null 2>&1
-    sips -z 32 32     electron/icon.png --out "$ICONSET_DIR/icon_32x32.png"     >/dev/null 2>&1
-    sips -z 64 64     electron/icon.png --out "$ICONSET_DIR/icon_32x32@2x.png"  >/dev/null 2>&1
-    sips -z 128 128   electron/icon.png --out "$ICONSET_DIR/icon_128x128.png"   >/dev/null 2>&1
-    sips -z 256 256   electron/icon.png --out "$ICONSET_DIR/icon_128x128@2x.png" >/dev/null 2>&1
-    sips -z 256 256   electron/icon.png --out "$ICONSET_DIR/icon_256x256.png"   >/dev/null 2>&1
-    sips -z 512 512   electron/icon.png --out "$ICONSET_DIR/icon_256x256@2x.png" >/dev/null 2>&1
-    sips -z 512 512   electron/icon.png --out "$ICONSET_DIR/icon_512x512.png"   >/dev/null 2>&1
-    sips -z 1024 1024 electron/icon.png --out "$ICONSET_DIR/icon_512x512@2x.png" >/dev/null 2>&1
+    # First convert to sRGB to avoid colorspace issues with iconutil
+    ICON_SRC="$(pwd)/release/icon_srgb.png"
+    sips -s format png -s formatOptions best electron/icon.png --out "$ICON_SRC" >/dev/null 2>&1
 
-    iconutil -c icns "$ICONSET_DIR" -o "$RESOURCES_DIR/icon.icns"
+    # Generate icon sizes required for .icns
+    for sz in 16 32 64 128 256 512 1024; do
+        sips -z $sz $sz "$ICON_SRC" --out "$ICONSET_DIR/tmp_${sz}.png" >/dev/null 2>&1
+    done
+
+    # Map to correct iconset filenames
+    cp "$ICONSET_DIR/tmp_16.png"   "$ICONSET_DIR/icon_16x16.png"
+    cp "$ICONSET_DIR/tmp_32.png"   "$ICONSET_DIR/icon_16x16@2x.png"
+    cp "$ICONSET_DIR/tmp_32.png"   "$ICONSET_DIR/icon_32x32.png"
+    cp "$ICONSET_DIR/tmp_64.png"   "$ICONSET_DIR/icon_32x32@2x.png"
+    cp "$ICONSET_DIR/tmp_128.png"  "$ICONSET_DIR/icon_128x128.png"
+    cp "$ICONSET_DIR/tmp_256.png"  "$ICONSET_DIR/icon_128x128@2x.png"
+    cp "$ICONSET_DIR/tmp_256.png"  "$ICONSET_DIR/icon_256x256.png"
+    cp "$ICONSET_DIR/tmp_512.png"  "$ICONSET_DIR/icon_256x256@2x.png"
+    cp "$ICONSET_DIR/tmp_512.png"  "$ICONSET_DIR/icon_512x512.png"
+    cp "$ICONSET_DIR/tmp_1024.png" "$ICONSET_DIR/icon_512x512@2x.png"
+    rm -f "$ICONSET_DIR"/tmp_*.png "$ICON_SRC"
+
+    if iconutil -c icns "$ICONSET_DIR" -o "$RESOURCES_DIR/icon.icns" 2>&1; then
+        echo "  Created icon.icns"
+    else
+        echo "  WARNING: iconutil failed, using default Electron icon"
+    fi
     rm -rf "$ICONSET_DIR"
-    echo "  Created icon.icns"
 else
     echo "  WARNING: electron/icon.png not found, using default icon"
 fi
