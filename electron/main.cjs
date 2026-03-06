@@ -22,17 +22,28 @@ let serverProcess;
 const SERVER_PORT = 3456;
 
 /**
- * 查找内嵌的 node.exe
- * 打包后在 <app根>/node/node.exe
+ * 查找内嵌的 node 二进制
  * 开发模式下用系统 node
  */
 function findNodeExe() {
   const appRoot = path.join(__dirname, '..');
+  const isWin = process.platform === 'win32';
+  const nodeBin = isWin ? 'node.exe' : 'node';
 
-  // 打包模式：内嵌的 node.exe
-  const embeddedNode = path.join(appRoot, '..', '..', 'node', 'node.exe');
-  if (fs.existsSync(embeddedNode)) {
-    return embeddedNode;
+  // 候选路径（按平台不同）
+  const candidates = [
+    // Windows: <installDir>/node/node.exe
+    //   appRoot = <installDir>/resources/app → ../../node/node.exe
+    path.join(appRoot, '..', '..', 'node', nodeBin),
+    // macOS: Axon.app/Contents/Resources/node/node
+    //   appRoot = Contents/Resources/app → ../node/node
+    path.join(appRoot, '..', 'node', nodeBin),
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
   }
 
   // 开发模式：用系统 node
@@ -70,7 +81,7 @@ function startServer() {
         ELECTRON_MODE: '1',
         NODE_ENV: 'production',
       },
-      // Windows 上隐藏控制台窗口
+      // Windows 上隐藏控制台窗口（macOS/Linux 无影响）
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe'],
     }
@@ -197,7 +208,7 @@ function showError(message) {
   <div class="error">
     <h1>Failed to Start</h1>
     <p>${message}</p>
-    <p>Check logs at: <code>%APPDATA%/axon/logs/server.log</code></p>
+    <p>Check logs at: <code>${process.platform === 'win32' ? '%APPDATA%' : '~/Library/Application Support'}/axon/logs/server.log</code></p>
   </div>
 </body>
 </html>`)}`);
@@ -220,8 +231,30 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', () => {
-  killServer();
-  app.quit();
+  // macOS 上关闭窗口不退出应用（标准 macOS 行为）
+  if (process.platform !== 'darwin') {
+    killServer();
+    app.quit();
+  }
+});
+
+// macOS: 点击 dock 图标重新打开窗口
+app.on('activate', () => {
+  if (!mainWindow) {
+    createWindow();
+    if (serverProcess) {
+      // 服务器还在跑，直接加载
+      waitForServer(5, 500).then(url => {
+        if (url && mainWindow) mainWindow.loadURL(url);
+      });
+    } else {
+      startServer();
+      waitForServer().then(url => {
+        if (url && mainWindow) mainWindow.loadURL(url);
+        else showError('The server did not respond within 30 seconds.');
+      });
+    }
+  }
 });
 
 app.on('before-quit', killServer);
