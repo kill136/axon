@@ -372,3 +372,56 @@ jobs:
         with:
           files: release/Axon-Setup.dmg
           fail_on_unmatched_files: true
+
+  build-electron-linux:
+    name: Build Linux Installer (.AppImage)
+    runs-on: ubuntu-22.04
+    needs: release
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: npm
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential python3 libfuse2 file
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build backend
+        run: npm run build
+
+      - name: Build frontend
+        run: |
+          cd src/web/client
+          npm install
+          npm run build
+
+      - name: Reinstall production-only dependencies
+        run: |
+          # Save Electron dist before removing devDependencies
+          cp -R node_modules/electron/dist /tmp/electron-dist
+          rm -rf node_modules
+          npm ci --omit=dev
+          # Restore Electron dist for build-linux.sh
+          mkdir -p node_modules/electron
+          cp -R /tmp/electron-dist node_modules/electron/dist
+
+      - name: Build Linux AppImage
+        run: |
+          chmod +x build-linux.sh
+          ./build-linux.sh
+
+      - name: Upload AppImage to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/Axon-Setup.AppImage
+          fail_on_unmatched_files: true

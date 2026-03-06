@@ -35,8 +35,7 @@ function findNodeExe() {
     // Windows: <installDir>/node/node.exe
     //   appRoot = <installDir>/resources/app → ../../node/node.exe
     path.join(appRoot, '..', '..', 'node', nodeBin),
-    // macOS: Axon.app/Contents/Resources/node/node
-    //   appRoot = Contents/Resources/app → ../node/node
+    // macOS / Linux AppImage: Contents/Resources/app (or usr/share/axon/app) → ../node/node
     path.join(appRoot, '..', 'node', nodeBin),
   ];
 
@@ -208,7 +207,7 @@ function showError(message) {
   <div class="error">
     <h1>Failed to Start</h1>
     <p>${message}</p>
-    <p>Check logs at: <code>${process.platform === 'win32' ? '%APPDATA%' : '~/Library/Application Support'}/axon/logs/server.log</code></p>
+    <p>Check logs at: <code>${process.platform === 'win32' ? '%APPDATA%' : process.platform === 'darwin' ? '~/Library/Application Support' : '~/.config'}/axon/logs/server.log</code></p>
   </div>
 </body>
 </html>`)}`);
