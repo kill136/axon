@@ -212,3 +212,51 @@ jobs:
         with:
           files: ${{ env.ASSET_NAME }}
           fail_on_unmatched_files: true
+
+  build-electron-macos:
+    name: Build macOS Installer (.dmg)
+    runs-on: macos-latest
+    needs: release
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build backend
+        run: npm run build
+
+      - name: Build frontend
+        run: |
+          cd src/web/client
+          npm install
+          npm run build
+
+      - name: Reinstall production-only dependencies
+        run: |
+          # Save Electron.app before removing devDependencies
+          cp -R node_modules/electron/dist/Electron.app /tmp/Electron.app
+          rm -rf node_modules
+          npm ci --omit=dev
+          # Restore Electron.app for build-macos.sh
+          mkdir -p node_modules/electron/dist
+          cp -R /tmp/Electron.app node_modules/electron/dist/
+
+      - name: Build macOS .dmg
+        run: |
+          chmod +x build-macos.sh
+          ./build-macos.sh
+
+      - name: Upload DMG to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/Axon-Setup.dmg
+          fail_on_unmatched_files: true

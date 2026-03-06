@@ -155,6 +155,16 @@ export interface ChannelStatusInfo {
   lastActiveAt?: number;
   /** 已处理的消息计数 */
   messageCount?: number;
+  /** 已保存的配置（凭据脱敏），供前端回显 */
+  savedConfig?: {
+    /** 脱敏后的凭据（只显示前几位） */
+    credentials: Record<string, string>;
+    allowList?: string[];
+    dmPolicy?: DmPolicy;
+    allowGroups?: boolean;
+    groupTrigger?: GroupTriggerMode;
+    fixedSessionId?: string;
+  };
 }
 
 // ============================================================================

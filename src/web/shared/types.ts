@@ -462,6 +462,15 @@ export interface ChannelStatusInfo {
   error?: string;
   lastActiveAt?: number;
   messageCount?: number;
+  /** 已保存的配置（凭据脱敏），供前端回显 */
+  savedConfig?: {
+    credentials: Record<string, string>;
+    allowList?: string[];
+    dmPolicy?: string;
+    allowGroups?: boolean;
+    groupTrigger?: string;
+    fixedSessionId?: string;
+  };
 }
 
 export interface PairingRequestInfo {

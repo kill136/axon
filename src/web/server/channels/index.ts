@@ -194,11 +194,14 @@ export class ChannelManager {
     channelsConfig[channelId] = merged;
     configManager.save({ channels: channelsConfig } as any);
 
-    // 如果正在运行，重启以应用新配置
-    if (this.adapters.has(channelId) && merged.enabled) {
-      await this.stopChannel(channelId);
+    // 根据状态决定下一步
+    if (merged.enabled) {
+      // 重启或首次启动
+      if (this.adapters.has(channelId)) {
+        await this.stopChannel(channelId);
+      }
       await this.startChannel(channelId, merged);
-    } else if (!merged.enabled) {
+    } else {
       await this.stopChannel(channelId);
     }
   }
@@ -215,6 +218,25 @@ export class ChannelManager {
       const adapter = this.adapters.get(channelId);
       const configured = !!(config?.credentials && Object.values(config.credentials).some(v => !!v));
 
+      // 脱敏凭据：只保留前 4 个字符 + ...
+      let savedConfig: ChannelStatusInfo['savedConfig'];
+      if (config) {
+        const maskedCreds: Record<string, string> = {};
+        if (config.credentials) {
+          for (const [k, v] of Object.entries(config.credentials)) {
+            maskedCreds[k] = v && v.length > 4 ? v.slice(0, 4) + '...' : v ? '***' : '';
+          }
+        }
+        savedConfig = {
+          credentials: maskedCreds,
+          allowList: config.allowList,
+          dmPolicy: config.dmPolicy,
+          allowGroups: config.allowGroups,
+          groupTrigger: config.groupTrigger,
+          fixedSessionId: config.fixedSessionId,
+        };
+      }
+
       result.push({
         id: channelId,
         name: adapter?.name || channelId.charAt(0).toUpperCase() + channelId.slice(1),
@@ -222,6 +244,7 @@ export class ChannelManager {
         enabled: config?.enabled || false,
         configured,
         configureHint: !configured ? CONFIG_HINTS[channelId] : undefined,
+        savedConfig,
       });
     }
 
