@@ -157,13 +157,18 @@ export default function ChannelsPanel({ onClose, onSendMessage, addMessageHandle
   const handleSaveConfig = useCallback((channelId: string) => {
     setLoading(channelId);
     setError(null);
+    // 只发送用户实际填写了的凭据字段，空字段不发（保留已有值）
+    const filledCredentials: Record<string, string> = {};
+    for (const [k, v] of Object.entries(configForm)) {
+      if (v?.trim()) filledCredentials[k] = v.trim();
+    }
     const config: Record<string, any> = {
       enabled: true,
-      credentials: { ...configForm },
+      ...(Object.keys(filledCredentials).length > 0 ? { credentials: filledCredentials } : {}),
       allowGroups,
       dmPolicy,
       groupTrigger,
-      ...(fixedSessionId.trim() ? { fixedSessionId: fixedSessionId.trim() } : {}),
+      ...(fixedSessionId.trim() ? { fixedSessionId: fixedSessionId.trim() } : { fixedSessionId: undefined }),
     };
     if (allowList.trim()) {
       config.allowList = allowList.split(',').map(s => s.trim()).filter(Boolean);
@@ -268,9 +273,24 @@ export default function ChannelsPanel({ onClose, onSendMessage, addMessageHandle
           <button
             onClick={() => {
               setSelectedChannel(ch.id);
-              setConfigForm({});
-              setAllowList('');
-              setAllowGroups(false);
+              // 回填已保存配置
+              const saved = ch.savedConfig;
+              if (saved) {
+                // 凭据字段：脱敏后的值作为 placeholder 提示，不填入 value（避免用户误以为是真实值）
+                setConfigForm({});
+                setAllowList(saved.allowList?.join(', ') || '');
+                setAllowGroups(saved.allowGroups || false);
+                setDmPolicy(saved.dmPolicy || 'allowlist');
+                setGroupTrigger(saved.groupTrigger || 'mention');
+                setFixedSessionId(saved.fixedSessionId || '');
+              } else {
+                setConfigForm({});
+                setAllowList('');
+                setAllowGroups(false);
+                setDmPolicy('allowlist');
+                setGroupTrigger('mention');
+                setFixedSessionId('');
+              }
             }}
             style={btnStyle('#6b7280')}
           >
@@ -285,6 +305,10 @@ export default function ChannelsPanel({ onClose, onSendMessage, addMessageHandle
     if (!selectedChannel) return null;
     const meta = CHANNEL_META[selectedChannel];
     if (!meta) return null;
+
+    // 获取已保存配置用于 placeholder 提示
+    const currentChannel = channels.find(ch => ch.id === selectedChannel);
+    const savedCreds = currentChannel?.savedConfig?.credentials;
 
     return (
       <div style={{
@@ -302,20 +326,25 @@ export default function ChannelsPanel({ onClose, onSendMessage, addMessageHandle
           </h3>
 
           {/* Credential fields */}
-          {meta.fields.map(field => (
-            <div key={field.key} style={{ marginBottom: 12 }}>
-              <label style={{ display: 'block', fontSize: 13, marginBottom: 4, color: 'var(--text-secondary, #999)' }}>
-                {field.label}
-              </label>
-              <input
-                type={field.type}
-                placeholder={field.placeholder}
-                value={configForm[field.key] || ''}
-                onChange={e => setConfigForm(prev => ({ ...prev, [field.key]: e.target.value }))}
-                style={inputStyle()}
-              />
-            </div>
-          ))}
+          {meta.fields.map(field => {
+            const savedValue = savedCreds?.[field.key];
+            const placeholder = savedValue ? `Saved: ${savedValue} (leave empty to keep)` : field.placeholder;
+            return (
+              <div key={field.key} style={{ marginBottom: 12 }}>
+                <label style={{ display: 'block', fontSize: 13, marginBottom: 4, color: 'var(--text-secondary, #999)' }}>
+                  {field.label}
+                  {savedValue && <span style={{ color: '#4ade80', marginLeft: 6, fontSize: 11 }}>configured</span>}
+                </label>
+                <input
+                  type={field.type}
+                  placeholder={placeholder}
+                  value={configForm[field.key] || ''}
+                  onChange={e => setConfigForm(prev => ({ ...prev, [field.key]: e.target.value }))}
+                  style={inputStyle()}
+                />
+              </div>
+            );
+          })}
 
           {/* Allow list */}
           <div style={{ marginBottom: 12 }}>
@@ -425,7 +454,7 @@ export default function ChannelsPanel({ onClose, onSendMessage, addMessageHandle
             </button>
             <button
               onClick={() => handleSaveConfig(selectedChannel)}
-              disabled={!meta.fields.every(f => configForm[f.key]?.trim())}
+              disabled={!meta.fields.every(f => configForm[f.key]?.trim() || savedCreds?.[f.key])}
               style={btnStyle('#3b82f6')}
             >
               Save & Connect
