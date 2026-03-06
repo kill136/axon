@@ -287,34 +287,48 @@ jobs:
       - name: Sign the .app bundle
         run: |
           APP_DIR="release/axon-macos/Axon.app"
+          ENTITLEMENTS="electron/entitlements.plist"
           echo "Signing with identity: $SIGNING_IDENTITY"
+          echo "Entitlements: $ENTITLEMENTS"
 
           # Remove broken symlinks inside the app (node_modules may have dangling links)
           find "$APP_DIR" -type l ! -exec test -e {} \; -delete 2>/dev/null || true
 
-          # Find and sign ALL Mach-O binaries (not just by extension)
-          # This catches native addons, executables without extensions, etc.
+          # Find and sign ALL Mach-O binaries with entitlements
+          # Entitlements grant JIT (for V8), unsigned executable memory, and library validation bypass
           echo "Signing all Mach-O binaries..."
           find "$APP_DIR" -type f | while read f; do
             if file "$f" | grep -q "Mach-O"; then
-              codesign --force --options runtime --sign "$SIGNING_IDENTITY" --timestamp "$f" 2>/dev/null || true
+              codesign --force --options runtime \
+                --sign "$SIGNING_IDENTITY" \
+                --timestamp \
+                --entitlements "$ENTITLEMENTS" \
+                "$f" 2>/dev/null || true
             fi
           done
 
-          # Sign all .framework bundles
+          # Sign all .framework bundles with entitlements
           find "$APP_DIR/Contents/Frameworks" -name "*.framework" -maxdepth 1 2>/dev/null | while read fw; do
-            codesign --force --options runtime --sign "$SIGNING_IDENTITY" --timestamp "$fw" 2>/dev/null || true
+            codesign --force --options runtime \
+              --sign "$SIGNING_IDENTITY" \
+              --timestamp \
+              --entitlements "$ENTITLEMENTS" \
+              "$fw" 2>/dev/null || true
           done
 
-          # Sign the main app bundle last
+          # Sign the main app bundle last with entitlements
           codesign --force --options runtime \
             --sign "$SIGNING_IDENTITY" \
             --timestamp \
+            --entitlements "$ENTITLEMENTS" \
             "$APP_DIR"
 
           # Verify signature
           codesign --verify --strict "$APP_DIR"
           echo "Signature verified OK"
+
+          # Show entitlements for verification
+          codesign -d --entitlements - "$APP_DIR" 2>/dev/null || true
 
       - name: Re-create signed DMG
         run: |
