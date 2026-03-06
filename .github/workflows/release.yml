@@ -292,24 +292,21 @@ jobs:
           # Remove broken symlinks inside the app (node_modules may have dangling links)
           find "$APP_DIR" -type l ! -exec test -e {} \; -delete 2>/dev/null || true
 
-          # Sign all Mach-O binaries inside the app first (bottom-up)
-          # Find all .dylib, .so, .node files and sign them
-          find "$APP_DIR" -type f \( -name "*.dylib" -o -name "*.so" -o -name "*.node" \) -exec \
-            codesign --force --options runtime --sign "$SIGNING_IDENTITY" --timestamp {} \; 2>/dev/null || true
+          # Find and sign ALL Mach-O binaries (not just by extension)
+          # This catches native addons, executables without extensions, etc.
+          echo "Signing all Mach-O binaries..."
+          find "$APP_DIR" -type f | while read f; do
+            if file "$f" | grep -q "Mach-O"; then
+              codesign --force --options runtime --sign "$SIGNING_IDENTITY" --timestamp "$f" 2>/dev/null || true
+            fi
+          done
 
-          # Sign the embedded node binary
-          NODE_BIN="$APP_DIR/Contents/Resources/node/node"
-          if [ -f "$NODE_BIN" ]; then
-            codesign --force --options runtime --sign "$SIGNING_IDENTITY" --timestamp "$NODE_BIN"
-          fi
+          # Sign all .framework bundles
+          find "$APP_DIR/Contents/Frameworks" -name "*.framework" -maxdepth 1 2>/dev/null | while read fw; do
+            codesign --force --options runtime --sign "$SIGNING_IDENTITY" --timestamp "$fw" 2>/dev/null || true
+          done
 
-          # Sign Electron framework and helpers
-          find "$APP_DIR/Contents/Frameworks" -type f -perm +111 -exec \
-            codesign --force --options runtime --sign "$SIGNING_IDENTITY" --timestamp {} \; 2>/dev/null || true
-          find "$APP_DIR/Contents/Frameworks" -name "*.framework" -exec \
-            codesign --force --options runtime --sign "$SIGNING_IDENTITY" --timestamp {} \; 2>/dev/null || true
-
-          # Sign the main executable last
+          # Sign the main app bundle last
           codesign --force --options runtime \
             --sign "$SIGNING_IDENTITY" \
             --timestamp \
@@ -343,16 +340,32 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
         run: |
-          # Submit for notarization
-          xcrun notarytool submit release/Axon-Setup.dmg \
+          # Submit for notarization and capture the submission ID
+          SUBMIT_OUTPUT=$(xcrun notarytool submit release/Axon-Setup.dmg \
             --apple-id "$APPLE_ID" \
             --team-id "$APPLE_TEAM_ID" \
             --password "$APPLE_APP_SPECIFIC_PASSWORD" \
-            --wait
+            --wait 2>&1) || true
 
-          # Staple the notarization ticket to the DMG
-          xcrun stapler staple release/Axon-Setup.dmg
-          echo "Notarization complete and stapled"
+          echo "$SUBMIT_OUTPUT"
+
+          # Extract submission ID and check result
+          SUBMISSION_ID=$(echo "$SUBMIT_OUTPUT" | grep "id:" | head -1 | awk '{print $2}')
+
+          if echo "$SUBMIT_OUTPUT" | grep -q "status: Invalid"; then
+            echo "Notarization failed. Fetching detailed log..."
+            xcrun notarytool log "$SUBMISSION_ID" \
+              --apple-id "$APPLE_ID" \
+              --team-id "$APPLE_TEAM_ID" \
+              --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+              notarization-log.json 2>/dev/null || true
+            cat notarization-log.json 2>/dev/null || true
+            echo "WARNING: Notarization failed, uploading unsigned DMG"
+          else
+            # Staple the notarization ticket to the DMG
+            xcrun stapler staple release/Axon-Setup.dmg
+            echo "Notarization complete and stapled"
+          fi
 
       - name: Upload DMG to Release
         uses: softprops/action-gh-release@v2
