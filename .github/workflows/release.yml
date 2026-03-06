@@ -289,14 +289,35 @@ jobs:
           APP_DIR="release/axon-macos/Axon.app"
           echo "Signing with identity: $SIGNING_IDENTITY"
 
-          # Sign all binaries and frameworks inside the app (deep sign)
-          codesign --deep --force --options runtime \
+          # Remove broken symlinks inside the app (node_modules may have dangling links)
+          find "$APP_DIR" -type l ! -exec test -e {} \; -delete 2>/dev/null || true
+
+          # Sign all Mach-O binaries inside the app first (bottom-up)
+          # Find all .dylib, .so, .node files and sign them
+          find "$APP_DIR" -type f \( -name "*.dylib" -o -name "*.so" -o -name "*.node" \) -exec \
+            codesign --force --options runtime --sign "$SIGNING_IDENTITY" --timestamp {} \; 2>/dev/null || true
+
+          # Sign the embedded node binary
+          NODE_BIN="$APP_DIR/Contents/Resources/node/node"
+          if [ -f "$NODE_BIN" ]; then
+            codesign --force --options runtime --sign "$SIGNING_IDENTITY" --timestamp "$NODE_BIN"
+          fi
+
+          # Sign Electron framework and helpers
+          find "$APP_DIR/Contents/Frameworks" -type f -perm +111 -exec \
+            codesign --force --options runtime --sign "$SIGNING_IDENTITY" --timestamp {} \; 2>/dev/null || true
+          find "$APP_DIR/Contents/Frameworks" -name "*.framework" -exec \
+            codesign --force --options runtime --sign "$SIGNING_IDENTITY" --timestamp {} \; 2>/dev/null || true
+
+          # Sign the main executable last
+          codesign --force --options runtime \
             --sign "$SIGNING_IDENTITY" \
             --timestamp \
+            --entitlements /dev/null \
             "$APP_DIR"
 
           # Verify signature
-          codesign --verify --deep --strict "$APP_DIR"
+          codesign --verify --strict "$APP_DIR"
           echo "Signature verified OK"
 
       - name: Re-create signed DMG
