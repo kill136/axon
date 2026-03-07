@@ -8,6 +8,7 @@
 import * as crypto from 'node:crypto';
 import { configManager } from '../../../config/index.js';
 import { webAuth } from '../web-auth.js';
+import { oauthManager } from '../oauth-manager.js';
 
 // ============ 类型 ============
 
@@ -85,19 +86,24 @@ class ProxyService {
     try {
       const { createProxyServer } = await import('../../../proxy/server.js');
 
+      // 确定认证模式：优先 apiKey，其次 OAuth
+      const oauthConfig = oauthManager.getOAuthConfig();
+      const useOAuth = !creds.apiKey && creds.authToken;
+
       const proxyConfig: any = {
         port,
         host,
         proxyApiKey: proxyKey,
-        authMode: creds.apiKey ? 'api-key' : 'oauth',
+        authMode: useOAuth ? 'oauth' : 'api-key',
         targetBaseUrl: creds.baseUrl || 'https://api.anthropic.com',
       };
 
-      if (creds.apiKey) {
+      if (!useOAuth) {
         proxyConfig.anthropicApiKey = creds.apiKey;
-      }
-      if (creds.authToken) {
+      } else {
         proxyConfig.oauthAccessToken = creds.authToken;
+        proxyConfig.oauthRefreshToken = oauthConfig?.refreshToken || '';
+        proxyConfig.oauthExpiresAt = oauthConfig?.expiresAt || 0;
       }
 
       this.proxyInstance = await createProxyServer(proxyConfig);
