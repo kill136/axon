@@ -271,7 +271,17 @@ export type ClientMessage =
   // 前端错误上报
   | { type: 'client_error'; payload: { message: string; stack?: string; source?: string; lineno?: number; colno?: number; componentName?: string } }
   // 听觉：浏览器语音识别结果推送到后端 ear buffer
-  | { type: 'ear:transcript'; payload: { text: string; isFinal: boolean; lang?: string } };
+  | { type: 'ear:transcript'; payload: { text: string; isFinal: boolean; lang?: string } }
+  // 感知模块
+  | { type: 'perception:status' }
+  | { type: 'perception:eye:start'; payload?: any }
+  | { type: 'perception:eye:stop' }
+  | { type: 'perception:eye:config'; payload?: any }
+  | { type: 'perception:eye:capture' }
+  // API 代理
+  | { type: 'proxy:status' }
+  | { type: 'proxy:start'; payload?: any }
+  | { type: 'proxy:stop' };
 
 /**
  * 服务端发送的消息类型
@@ -455,7 +465,14 @@ export type ServerMessage =
   | { type: 'channel:pairing_list'; payload: { requests: PairingRequestInfo[] } }
   | { type: 'channel:pairing_new'; payload: PairingRequestInfo }
   // IM 新会话（自动打开 Web UI 对话）
-  | { type: 'channel:new_session'; payload: { sessionId: string; channel: string; senderName: string } };
+  | { type: 'channel:new_session'; payload: { sessionId: string; channel: string; senderName: string } }
+  // 感知模块
+  | { type: 'perception:status'; payload: any }
+  | { type: 'perception:eye:captured'; payload: { path: string; resolution?: string } }
+  | { type: 'perception:error'; payload: { module: string; error: string } }
+  // API 代理
+  | { type: 'proxy:status'; payload: any }
+  | { type: 'proxy:error'; payload: { error: string } };
 
 // ============ IM 通道状态类型 ============
 

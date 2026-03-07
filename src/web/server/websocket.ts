@@ -2288,6 +2288,22 @@ async function handleClientMessage(
       await handleChannelMessage(client, message as any);
       break;
 
+    // ======================== 感知模块 ========================
+    case 'perception:status':
+    case 'perception:eye:start':
+    case 'perception:eye:stop':
+    case 'perception:eye:config':
+    case 'perception:eye:capture':
+      await handlePerceptionMessage(client, message as any);
+      break;
+
+    // ======================== API 代理 ========================
+    case 'proxy:status':
+    case 'proxy:start':
+    case 'proxy:stop':
+      await handleProxyMessage(client, message as any);
+      break;
+
     default:
       console.warn('[WebSocket] Unknown message type:', (message as any).type);
   }
@@ -6947,6 +6963,210 @@ async function handleChannelMessage(
       type: 'channel:error',
       payload: {
         channelId,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    });
+  }
+}
+
+// ============================================================================
+// 感知模块消息处理
+// ============================================================================
+
+async function handlePerceptionMessage(
+  client: { ws: import('ws').WebSocket; sessionId: string },
+  message: { type: string; payload?: any },
+) {
+  const { ws } = client;
+
+  try {
+    switch (message.type) {
+      case 'perception:status': {
+        const eyeStatus = await getEyeStatusSafe();
+        const earStatus = await getEarStatus();
+        const eyeConfig = getEyeConfig();
+        sendMessage(ws, {
+          type: 'perception:status',
+          payload: {
+            eye: { ...eyeStatus, config: eyeConfig },
+            ear: earStatus,
+          },
+        });
+        break;
+      }
+
+      case 'perception:eye:start': {
+        const config = message.payload || {};
+        const { startEye } = await import('../../eye/index.js');
+        const result = await startEye(config);
+
+        // 保存配置到 settings.json
+        if (result.success && Object.keys(config).length > 0) {
+          saveEyeConfig(config);
+        }
+
+        // 返回更新后的状态
+        const eyeStatus = await getEyeStatusSafe();
+        const eyeConfig = getEyeConfig();
+        sendMessage(ws, {
+          type: 'perception:status',
+          payload: {
+            eye: { ...eyeStatus, config: eyeConfig },
+            ear: await getEarStatus(),
+          },
+        });
+
+        if (!result.success) {
+          sendMessage(ws, {
+            type: 'perception:error',
+            payload: { module: 'eye', error: result.message },
+          });
+        }
+        break;
+      }
+
+      case 'perception:eye:stop': {
+        const { stopEye } = await import('../../eye/index.js');
+        await stopEye();
+
+        const eyeStatus = await getEyeStatusSafe();
+        const eyeConfig = getEyeConfig();
+        sendMessage(ws, {
+          type: 'perception:status',
+          payload: {
+            eye: { ...eyeStatus, config: eyeConfig },
+            ear: await getEarStatus(),
+          },
+        });
+        break;
+      }
+
+      case 'perception:eye:config': {
+        const config = message.payload || {};
+        saveEyeConfig(config);
+        sendMessage(ws, {
+          type: 'perception:status',
+          payload: {
+            eye: { ...(await getEyeStatusSafe()), config: getEyeConfig() },
+            ear: await getEarStatus(),
+          },
+        });
+        break;
+      }
+
+      case 'perception:eye:capture': {
+        const { captureFrame } = await import('../../eye/index.js');
+        const result = await captureFrame();
+        if (result.success) {
+          sendMessage(ws, {
+            type: 'perception:eye:captured',
+            payload: { path: result.path, resolution: result.resolution },
+          });
+        } else {
+          sendMessage(ws, {
+            type: 'perception:error',
+            payload: { module: 'eye', error: result.error || 'Capture failed' },
+          });
+        }
+        break;
+      }
+    }
+  } catch (error) {
+    sendMessage(ws, {
+      type: 'perception:error',
+      payload: {
+        module: 'eye',
+        error: error instanceof Error ? error.message : String(error),
+      },
+    });
+  }
+}
+
+function getEyeConfig(): Record<string, any> {
+  const all = configManager.getAll() as any;
+  return all.eye || {};
+}
+
+function saveEyeConfig(config: Record<string, any>): void {
+  const current = getEyeConfig();
+  configManager.save({ eye: { ...current, ...config } } as any);
+}
+
+async function getEyeStatusSafe(): Promise<Record<string, unknown>> {
+  try {
+    const { getEyeStatus } = await import('../../eye/index.js');
+    return await getEyeStatus();
+  } catch {
+    return { running: false };
+  }
+}
+
+async function getEarStatus(): Promise<{ enabled: boolean; bufferSize: number; lastSpeech?: number }> {
+  try {
+    const { getEarBuffer } = await import('../../ear/index.js');
+    const buffer = getEarBuffer();
+    const recent = buffer.getRecent();
+    return {
+      enabled: buffer.size > 0,
+      bufferSize: buffer.size,
+      lastSpeech: recent.length > 0 ? recent[recent.length - 1].timestamp : undefined,
+    };
+  } catch {
+    return { enabled: false, bufferSize: 0 };
+  }
+}
+
+// ============================================================================
+// API 代理消息处理
+// ============================================================================
+
+async function handleProxyMessage(
+  client: { ws: import('ws').WebSocket; sessionId: string },
+  message: { type: string; payload?: any },
+) {
+  const { ws } = client;
+
+  try {
+    const { proxyService } = await import('./services/proxy-service.js');
+
+    switch (message.type) {
+      case 'proxy:status': {
+        sendMessage(ws, {
+          type: 'proxy:status',
+          payload: proxyService.getStatus(),
+        });
+        break;
+      }
+
+      case 'proxy:start': {
+        const config = message.payload || {};
+        const result = await proxyService.start(config);
+        sendMessage(ws, {
+          type: 'proxy:status',
+          payload: proxyService.getStatus(),
+        });
+        if (!result.success) {
+          sendMessage(ws, {
+            type: 'proxy:error',
+            payload: { error: result.message },
+          });
+        }
+        break;
+      }
+
+      case 'proxy:stop': {
+        await proxyService.stop();
+        sendMessage(ws, {
+          type: 'proxy:status',
+          payload: proxyService.getStatus(),
+        });
+        break;
+      }
+    }
+  } catch (error) {
+    sendMessage(ws, {
+      type: 'proxy:error',
+      payload: {
         error: error instanceof Error ? error.message : String(error),
       },
     });

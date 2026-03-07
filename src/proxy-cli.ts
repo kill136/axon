@@ -223,15 +223,17 @@ program
   .option(
     '--anthropic-key <key>',
     'Manually specify Anthropic API Key (overrides auto-detection)',
+    process.env.PROXY_ANTHROPIC_KEY,
   )
   .option(
     '--auth-token <token>',
     'Manually specify OAuth Access Token (overrides auto-detection)',
+    process.env.PROXY_AUTH_TOKEN,
   )
   .option(
     '--target <url>',
     'Forward target address',
-    'https://api.anthropic.com',
+    process.env.PROXY_TARGET || 'https://api.anthropic.com',
   )
   .action(async (options) => {
     // 确定认证方式

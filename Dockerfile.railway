@@ -41,10 +41,11 @@ COPY --from=builder /app/package.json ./
 COPY --from=builder /app/src/web/client/dist ./src/web/client/dist
 
 # Create working directories
-RUN mkdir -p /root/.claude /workspace
+RUN mkdir -p /root/.axon /root/.claude /workspace
 WORKDIR /workspace
 
 # Railway injects PORT env var
+# Set ANTHROPIC_API_KEY in Railway Variables panel to persist across deploys
 EXPOSE ${PORT:-3456}
 
 # Health check
