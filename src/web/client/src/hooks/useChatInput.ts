@@ -106,6 +106,10 @@ export function useChatInput({
       // 用 setTimeout 确保 setInput 先完成
       setTimeout(() => { handleSendRef.current(); }, 50);
     },
+    // Push all transcriptions to backend ear buffer via WebSocket
+    onTranscript: (text, isFinal) => {
+      send({ type: 'ear:transcript', payload: { text, isFinal, lang: 'zh-CN' } });
+    },
   });
 
   const toggleVoice = useCallback(() => {
@@ -115,6 +119,22 @@ export function useChatInput({
       stopListening();
     }
   }, [voiceState, startListening, stopListening]);
+
+  // 耳朵默认开启：连接成功后自动开始语音监听
+  const autoStartedRef = useRef(false);
+  useEffect(() => {
+    if (connected && isVoiceSupported && !autoStartedRef.current) {
+      autoStartedRef.current = true;
+      // 延迟一帧启动，确保组件完全挂载
+      requestAnimationFrame(() => {
+        startListening();
+      });
+    }
+    // 断开连接时重置，下次重连时重新自动启动
+    if (!connected) {
+      autoStartedRef.current = false;
+    }
+  }, [connected, isVoiceSupported, startListening]);
 
   // 会话切换时清空输入框
   useEffect(() => {

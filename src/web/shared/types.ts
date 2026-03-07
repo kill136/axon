@@ -269,7 +269,9 @@ export type ClientMessage =
   | { type: 'channel:pairing_approve'; payload: { channel: string; code: string } }
   | { type: 'channel:pairing_deny'; payload: { channel: string; code: string } }
   // 前端错误上报
-  | { type: 'client_error'; payload: { message: string; stack?: string; source?: string; lineno?: number; colno?: number; componentName?: string } };
+  | { type: 'client_error'; payload: { message: string; stack?: string; source?: string; lineno?: number; colno?: number; componentName?: string } }
+  // 听觉：浏览器语音识别结果推送到后端 ear buffer
+  | { type: 'ear:transcript'; payload: { text: string; isFinal: boolean; lang?: string } };
 
 /**
  * 服务端发送的消息类型

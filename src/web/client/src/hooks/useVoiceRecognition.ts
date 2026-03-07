@@ -1,6 +1,12 @@
 /**
  * useVoiceRecognition Hook
- * 使用 Web Speech API 实现语音识别，支持唤醒词检测
+ *
+ * The ear is always open. Uses Web Speech API for continuous speech recognition.
+ * All transcription results are pushed to the backend via onTranscript callback,
+ * building an in-memory buffer the AI can query at any time.
+ *
+ * The wake word mechanism still works for direct voice commands:
+ *   listening → (say wake word) → activated → (say command) → (silence) → send → listening
  */
 
 import { useState, useRef, useCallback, useEffect } from 'react';
@@ -13,6 +19,8 @@ export interface UseVoiceRecognitionOptions {
   lang?: string;            // 语言，默认 'zh-CN'
   onCommand?: (text: string) => void;  // 命令完成回调
   onWake?: () => void;      // 唤醒回调
+  /** Called for every transcription result — push to backend ear buffer */
+  onTranscript?: (text: string, isFinal: boolean) => void;
 }
 
 export interface UseVoiceRecognitionReturn {
@@ -68,6 +76,7 @@ export function useVoiceRecognition({
   lang = 'zh-CN',
   onCommand,
   onWake,
+  onTranscript,
 }: UseVoiceRecognitionOptions = {}): UseVoiceRecognitionReturn {
   const [voiceState, setVoiceState] = useState<VoiceState>('idle');
   const [transcript, setTranscript] = useState('');
@@ -78,10 +87,12 @@ export function useVoiceRecognition({
   const commandBufferRef = useRef<string>('');
   const onCommandRef = useRef(onCommand);
   const onWakeRef = useRef(onWake);
+  const onTranscriptRef = useRef(onTranscript);
 
   // 保持回调引用最新
   useEffect(() => { onCommandRef.current = onCommand; }, [onCommand]);
   useEffect(() => { onWakeRef.current = onWake; }, [onWake]);
+  useEffect(() => { onTranscriptRef.current = onTranscript; }, [onTranscript]);
 
   // 同步 voiceState 到 ref（避免闭包陈旧值）
   const updateVoiceState = useCallback((state: VoiceState) => {
@@ -160,6 +171,11 @@ export function useVoiceRecognition({
       const combinedText = (finalText || interimText).trim();
       if (!combinedText) return;
 
+      // Push ALL transcriptions to backend ear buffer (the ear hears everything)
+      if (finalText.trim()) {
+        onTranscriptRef.current?.(finalText.trim(), true);
+      }
+
       const currentState = voiceStateRef.current;
 
       if (currentState === 'listening') {
@@ -181,10 +197,9 @@ export function useVoiceRecognition({
             setTranscript(afterWake);
             resetSilenceTimer(afterWake);
           }
-        } else if (finalText.trim()) {
-          // 非唤醒词的终态文本 → 直接作为命令发送
-          fireCommand(finalText.trim());
         }
+        // 非唤醒词的文本在 listening 状态下忽略（不触发命令）
+        // 但已经通过 onTranscript 推送到后端 ear buffer
       } else if (currentState === 'activated') {
         // 累积命令文本
         if (finalText) {

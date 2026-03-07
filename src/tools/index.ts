@@ -30,6 +30,7 @@ export * from './browser.js';
 export * from './create-tool.js';
 export * from './mcp-manage.js';
 export * from './eye.js';
+export * from './ear.js';
 
 // 蓝图工具不通过此处 re-export
 // 蓝图模块直接 import 各自需要的工具文件 (如 ../tools/dispatch-worker.js)
@@ -58,6 +59,7 @@ import { MemorySearchTool } from './memory-search.js';
 import { CreateToolTool } from './create-tool.js';
 import { DatabaseTool } from './database.js';
 import { EyeTool } from './eye.js';
+import { EarTool } from './ear.js';
 import { McpManageTool } from './mcp-manage.js';
 
 // ============ 蓝图工具 imports (lazy) ============
@@ -163,6 +165,9 @@ export function registerCoreTools(): void {
 
   // 21. Eye 视觉工具（感知 daemon）
   toolRegistry.register(new EyeTool());
+
+  // 22. Ear 听觉工具（浏览器 Web Speech API → 内存缓冲区）
+  toolRegistry.register(new EarTool());
 }
 
 /**

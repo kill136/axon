@@ -11,7 +11,7 @@
 import { BaseTool } from './base.js';
 import type { ToolDefinition, ToolResult } from '../types/index.js';
 import { readImageFile } from '../media/index.js';
-import { captureFrame, startEye, isEyeRunning, getEyeStatus, stopEye } from '../eye/index.js';
+import { captureFrame, startEye, isEyeReady, getEyeStatus, stopEye } from '../eye/index.js';
 
 interface EyeInput {
   /** Action: "look" (default), "status", "start", "stop" */
@@ -54,8 +54,8 @@ export class EyeTool extends BaseTool<EyeInput, ToolResult> {
   }
 
   private async look(): Promise<ToolResult> {
-    // Auto-start daemon if not running
-    if (!isEyeRunning()) {
+    // Auto-start daemon if not ready (process alive + HTTP responding)
+    if (!(await isEyeReady())) {
       const startResult = await startEye();
       if (!startResult.success) {
         return this.error(`Cannot see: daemon not running. ${startResult.message}`);

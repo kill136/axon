@@ -1370,6 +1370,10 @@ export function setupWebSocket(
         }
         clientTerminals.delete(clientId);
       }
+      // 清理 ear buffer
+      import('../../ear/index.js').then(({ removeEarBuffer }) => {
+        removeEarBuffer(client.sessionId);
+      }).catch(() => {});
       clients.delete(clientId);
     });
 
@@ -2267,6 +2271,16 @@ async function handleClientMessage(
     }
 
     // ======================== IM 通道管理 ========================
+    case 'ear:transcript': {
+      // Browser pushes speech transcription results to the server's in-memory buffer
+      const { text, isFinal, lang } = (message as any).payload || {};
+      if (text && typeof text === 'string') {
+        const { pushTranscript } = await import('../../ear/index.js');
+        pushTranscript(client.sessionId, text, !!isFinal, lang);
+      }
+      break;
+    }
+
     case 'channel:list':
     case 'channel:start':
     case 'channel:stop':

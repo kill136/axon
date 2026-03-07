@@ -93,12 +93,35 @@ function isProcessAlive(pid: number): boolean {
 }
 
 /**
- * Check if the daemon is running (process alive + HTTP responding).
+ * Check if the daemon process exists (PID file + process alive).
+ * This is a fast, synchronous check — does NOT verify HTTP readiness.
  */
-export function isEyeRunning(): boolean {
+export function isEyeProcessAlive(): boolean {
   const pid = readPid();
   if (pid === null) return false;
   return isProcessAlive(pid);
+}
+
+/**
+ * Check if the daemon is fully running (process alive + HTTP responding).
+ * This is async because it probes the HTTP endpoint.
+ */
+export async function isEyeReady(): Promise<boolean> {
+  if (!isEyeProcessAlive()) return false;
+  try {
+    const data = await daemonRequest('/status');
+    return data.daemon === 'running';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Synchronous check — kept for backward compatibility but only checks process.
+ * Prefer isEyeReady() for accurate readiness checks.
+ */
+export function isEyeRunning(): boolean {
+  return isEyeProcessAlive();
 }
 
 /**
@@ -147,9 +170,29 @@ export async function captureFrame(): Promise<{
  * Start the perception daemon.
  */
 export async function startEye(config: EyeConfig = {}): Promise<{ success: boolean; message: string; pid?: number }> {
-  if (isEyeRunning()) {
-    const pid = readPid()!;
-    return { success: true, message: 'Perception daemon already running', pid };
+  // If process is alive, check if HTTP is also ready
+  if (isEyeProcessAlive()) {
+    if (await isEyeReady()) {
+      const pid = readPid()!;
+      return { success: true, message: 'Perception daemon already running', pid };
+    }
+    // Process alive but HTTP not ready — wait for it instead of spawning a new one
+    const ready = await waitForDaemonReady(6000);
+    if (ready) {
+      const pid = readPid()!;
+      return { success: true, message: 'Perception daemon is now ready', pid };
+    }
+    // Still not ready after waiting — kill the stale process and restart
+    const stalePid = readPid();
+    if (stalePid) {
+      try {
+        if (process.platform === 'win32') {
+          execSync(`taskkill /F /PID ${stalePid}`, { stdio: 'pipe' });
+        } else {
+          process.kill(stalePid, 'SIGKILL');
+        }
+      } catch { /* ignore */ }
+    }
   }
 
   // Clean up stale files
@@ -305,4 +348,21 @@ function findPython(): string | null {
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Wait for the daemon HTTP endpoint to become ready.
+ */
+async function waitForDaemonReady(timeoutMs: number): Promise<boolean> {
+  const startTime = Date.now();
+  while (Date.now() - startTime < timeoutMs) {
+    try {
+      const data = await daemonRequest('/status');
+      if (data.daemon === 'running') return true;
+    } catch {
+      // Not ready yet
+    }
+    await sleep(500);
+  }
+  return false;
 }
