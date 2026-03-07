@@ -1373,6 +1373,32 @@ body {
   }
 }
 
+/* TTS 嘴巴按钮 */
+.tts-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: color 0.2s, background 0.2s;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.tts-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+}
+
+.tts-btn.tts-active {
+  color: var(--accent-primary);
+}
+
 /* Voice Status Bar */
 .voice-status-bar {
   position: absolute;

@@ -27,6 +27,7 @@ import CodeView from './components/CodeView';
 import type { SessionActions } from './types';
 import { useLanguage } from './i18n/LanguageContext';
 import InitAxonMdDialog from './components/InitAxonMdDialog';
+import { useSpeechSynthesis } from './hooks/useSpeechSynthesis';
 
 // 获取 WebSocket URL
 function getWebSocketUrl(): string {
@@ -203,6 +204,21 @@ function AppContent({
   // 产物面板
   const artifactsState = useArtifacts(messages);
   const scheduleState = useScheduleArtifacts(messages);
+
+  // TTS 语音合成（嘴巴）
+  const tts = useSpeechSynthesis();
+
+  // 监听流式消息事件，喂给 TTS
+  useEffect(() => {
+    const remove = addMessageHandler((msg: any) => {
+      if (msg.type === 'text_delta' && msg.payload?.text) {
+        tts.feedText(msg.payload.text);
+      } else if (msg.type === 'message_complete') {
+        tts.flush();
+      }
+    });
+    return remove;
+  }, [addMessageHandler, tts.feedText, tts.flush]);
 
   // 定时任务产物出现时自动打开面板
   useEffect(() => {
@@ -609,6 +625,9 @@ function AppContent({
               isVoiceSupported={chatInput.isVoiceSupported}
               voiceTranscript={chatInput.voiceTranscript}
               onToggleVoice={chatInput.toggleVoice}
+              ttsEnabled={tts.enabled}
+              isTtsSupported={tts.isSupported}
+              onToggleTts={tts.toggle}
             />
           </div>
 
