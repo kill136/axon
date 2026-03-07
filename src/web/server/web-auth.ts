@@ -47,24 +47,52 @@ class WebAuthProvider {
   // ---------- 读取 settings.json ----------
 
   /**
-   * 从 settings.json 直接读取，不走 configManager.getAll()，避免环境变量污染
+   * 从 settings.json 直接读取，不走 configManager.getAll()，避免环境变量污染。
+   * 当 settings.json 没有 apiKey 时，回退到环境变量 ANTHROPIC_API_KEY / AXON_API_KEY。
+   * 这样 Railway/Docker 等容器化部署只需设置环境变量，无需持久化 settings.json。
    */
   private readSettings(): WebUiSettings {
     try {
       const settingsPath = configManager.getConfigPaths().userSettings;
       if (fs.existsSync(settingsPath)) {
         const raw = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
-        return {
+        const result: WebUiSettings = {
           apiKey: raw.apiKey,
           authPriority: raw.authPriority || 'auto',
           apiBaseUrl: raw.apiBaseUrl,
           customModelName: raw.customModelName,
         };
+
+        // settings.json 没有 apiKey 时，回退到环境变量
+        if (!result.apiKey) {
+          const envKey = process.env.ANTHROPIC_API_KEY || process.env.AXON_API_KEY;
+          if (envKey) {
+            result.apiKey = envKey;
+          }
+        }
+
+        // apiBaseUrl 也支持环境变量回退
+        if (!result.apiBaseUrl) {
+          const envBaseUrl = process.env.ANTHROPIC_BASE_URL;
+          if (envBaseUrl) {
+            result.apiBaseUrl = envBaseUrl;
+          }
+        }
+
+        return result;
       }
     } catch {
       // 忽略
     }
-    return { authPriority: 'auto' };
+
+    // settings.json 不存在时，也检查环境变量
+    const envKey = process.env.ANTHROPIC_API_KEY || process.env.AXON_API_KEY;
+    const envBaseUrl = process.env.ANTHROPIC_BASE_URL;
+    return {
+      apiKey: envKey,
+      authPriority: 'auto',
+      apiBaseUrl: envBaseUrl,
+    };
   }
 
   // ---------- Token 有效性保障（对齐官方 NM() 语义） ----------

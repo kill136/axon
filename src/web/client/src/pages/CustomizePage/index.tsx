@@ -5,9 +5,11 @@ import SkillsPanel from './SkillsPanel';
 import McpServerPanel from './McpServerPanel';
 import SchedulePage from '../SchedulePage';
 import ChannelsPanel from '../../components/ChannelsPanel';
+import PerceptionPanel from '../../components/PerceptionPanel';
+import ProxyPanel from '../../components/ProxyPanel';
 import styles from './CustomizePage.module.css';
 
-type ActiveSection = 'skills' | 'mcp' | 'connectors' | 'channels' | 'schedule';
+type ActiveSection = 'skills' | 'mcp' | 'connectors' | 'channels' | 'schedule' | 'perception' | 'proxy';
 
 interface CustomizePageProps {
   onNavigateBack?: () => void;
@@ -59,6 +61,24 @@ const ScheduleIcon = () => (
   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="8" cy="8" r="6" />
     <path d="M8 4v4l3 2" />
+  </svg>
+);
+
+const PerceptionIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="8" cy="6" r="3" />
+    <path d="M2 6c0-3.3 2.7-4 6-4s6 .7 6 4" />
+    <path d="M4 10c0 2 1.8 4 4 4s4-2 4-4" />
+  </svg>
+);
+
+const ProxyIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M2 8h4M10 8h4" />
+    <rect x="6" y="5" width="4" height="6" rx="1" />
+    <path d="M1 8h1M14 8h1" />
+    <circle cx="3" cy="8" r="0.5" fill="currentColor" />
+    <circle cx="13" cy="8" r="0.5" fill="currentColor" />
   </svg>
 );
 
@@ -143,6 +163,26 @@ export default function CustomizePage({
             </span>
             <span className={styles.navLabel}>{t('customize.schedule')}</span>
           </button>
+
+          <button
+            className={`${styles.navItem} ${activeSection === 'perception' ? styles.active : ''}`}
+            onClick={() => setActiveSection('perception')}
+          >
+            <span className={styles.navIcon}>
+              <PerceptionIcon />
+            </span>
+            <span className={styles.navLabel}>{t('customize.perception')}</span>
+          </button>
+
+          <button
+            className={`${styles.navItem} ${activeSection === 'proxy' ? styles.active : ''}`}
+            onClick={() => setActiveSection('proxy')}
+          >
+            <span className={styles.navIcon}>
+              <ProxyIcon />
+            </span>
+            <span className={styles.navLabel}>{t('customize.proxy')}</span>
+          </button>
         </nav>
       </div>
 
@@ -172,6 +212,18 @@ export default function CustomizePage({
         )}
         {activeSection === 'schedule' && (
           <SchedulePage />
+        )}
+        {activeSection === 'perception' && (
+          <PerceptionPanel
+            onSendMessage={onSendMessage}
+            addMessageHandler={addMessageHandler}
+          />
+        )}
+        {activeSection === 'proxy' && (
+          <ProxyPanel
+            onSendMessage={onSendMessage}
+            addMessageHandler={addMessageHandler}
+          />
         )}
       </div>
     </div>
