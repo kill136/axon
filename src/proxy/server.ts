@@ -238,6 +238,11 @@ function persistOAuthToken(state: OAuthState): void {
  * 刷新 OAuth token
  */
 async function refreshOAuthToken(state: OAuthState): Promise<boolean> {
+  if (!state.refreshToken) {
+    console.error('[AUTH] No refresh token available, cannot refresh');
+    return false;
+  }
+
   try {
     const body = new URLSearchParams({
       grant_type: 'refresh_token',
@@ -255,7 +260,7 @@ async function refreshOAuthToken(state: OAuthState): Promise<boolean> {
       const errorBody = await response.text().catch(() => '<unreadable>');
       console.error(`[AUTH] Token refresh failed: ${response.status} ${response.statusText}`);
       console.error(`[AUTH] Response body: ${errorBody}`);
-      console.error(`[AUTH] Refresh token (first 10): ${state.refreshToken.slice(0, 10)}...`);
+      console.error(`[AUTH] Refresh token (first 10): ${state.refreshToken ? state.refreshToken.slice(0, 10) + '...' : '<empty>'}`);
       return false;
     }
 
