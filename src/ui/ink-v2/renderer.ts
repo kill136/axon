@@ -230,6 +230,7 @@ export class Renderer {
     // 处理差异
     let currentStyles: number[] = [];
     let currentHyperlink: string | undefined;
+    let currentRow = -1;
 
     for (const [pos, prevCell, nextCell] of diffScreens(prev.screen, next.screen)) {
       // 跳过新增行（如果屏幕增长）
@@ -243,6 +244,15 @@ export class Renderer {
       }
       if (prevCell && (prevCell.width === 2 || prevCell.width === 3) && !nextCell) {
         continue;
+      }
+
+      // v2.1.69: 跨行时重置超链接状态（终端 OSC 8 不跨行持续）
+      if (pos.y !== currentRow) {
+        if (currentHyperlink) {
+          ops.push({ type: 'hyperlink', uri: '' });
+          currentHyperlink = undefined;
+        }
+        currentRow = pos.y;
       }
 
       // 移动光标
@@ -296,21 +306,48 @@ export class Renderer {
 
     // 处理新增行
     if (screenGrown) {
-      // 输出新行
+      // 输出新行（v2.1.69: 正确处理跨行超链接）
       for (let y = prev.screen.height; y < next.screen.height; y++) {
         ops.push({ type: 'carriageReturn' });
         ops.push({ type: 'stdout', content: '\n' });
 
         const row = next.screen.cells[y];
         if (row) {
-          let lineContent = '';
+          let lineHyperlink: string | undefined;
+          let lineStyles: number[] = [];
+
           for (const cell of row) {
-            if (cell && cell.width !== 3) {
-              lineContent += cell.char;
+            if (!cell || cell.width === 3) continue;
+
+            // 处理样式
+            const cellStyles = this.options.stylePool.get(cell.styleId);
+            if (!arraysEqual(lineStyles, cellStyles)) {
+              const diff = getStyleDiff(lineStyles, cellStyles);
+              if (diff.length > 0) {
+                ops.push({ type: 'style', codes: diff });
+              }
+              lineStyles = cellStyles;
             }
+
+            // 处理超链接
+            if (cell.hyperlink !== lineHyperlink) {
+              if (cell.hyperlink) {
+                ops.push({ type: 'hyperlink', uri: cell.hyperlink });
+              } else {
+                ops.push({ type: 'hyperlink', uri: '' });
+              }
+              lineHyperlink = cell.hyperlink;
+            }
+
+            ops.push({ type: 'stdout', content: cell.char });
           }
-          if (lineContent.trim()) {
-            ops.push({ type: 'stdout', content: lineContent });
+
+          // 行尾关闭超链接和样式
+          if (lineHyperlink) {
+            ops.push({ type: 'hyperlink', uri: '' });
+          }
+          if (lineStyles.length > 0) {
+            ops.push({ type: 'style', codes: [0] });
           }
         }
       }

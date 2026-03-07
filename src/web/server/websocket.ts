@@ -1370,10 +1370,7 @@ export function setupWebSocket(
         }
         clientTerminals.delete(clientId);
       }
-      // 清理 ear buffer
-      import('../../ear/index.js').then(({ removeEarBuffer }) => {
-        removeEarBuffer(client.sessionId);
-      }).catch(() => {});
+      // Ear buffer is global (physical device) — no per-session cleanup needed
       clients.delete(clientId);
     });
 
@@ -2276,7 +2273,7 @@ async function handleClientMessage(
       const { text, isFinal, lang } = (message as any).payload || {};
       if (text && typeof text === 'string') {
         const { pushTranscript } = await import('../../ear/index.js');
-        pushTranscript(client.sessionId, text, !!isFinal, lang);
+        pushTranscript(text, !!isFinal, lang);
       }
       break;
     }

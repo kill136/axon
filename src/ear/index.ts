@@ -1,13 +1,16 @@
 /**
  * Ear Buffer — Claude's auditory memory.
  *
- * A ring buffer that stores recent speech transcriptions pushed from the
+ * A global ring buffer that stores recent speech transcriptions pushed from the
  * browser's Web Speech API via WebSocket. The AI calls the Ear tool to
  * "recall" what it heard recently.
  *
  * Design: the ear is always open. The browser continuously transcribes
  * ambient speech, pushes fragments to the server, and the server keeps
  * the last N seconds in memory. No disk writes.
+ *
+ * The ear is a physical device — it's global, not per-session.
+ * Switching chat sessions doesn't make you deaf.
  */
 
 export interface TranscriptEntry {
@@ -26,7 +29,7 @@ const DEFAULT_MAX_ENTRIES = 200;       // Max entries in buffer
 
 /**
  * Ring buffer for speech transcriptions.
- * One instance per active session (keyed by sessionId).
+ * Global singleton — the ear is a physical device, not per-session.
  */
 class EarBuffer {
   private entries: TranscriptEntry[] = [];
@@ -117,33 +120,21 @@ class EarBuffer {
   }
 }
 
-// ── Global registry (one buffer per session) ───────────────────────────────
+// ── Global singleton ─────────────────────────────────────────────────────
 
-const buffers = new Map<string, EarBuffer>();
+const globalBuffer = new EarBuffer();
 
 /**
- * Get or create the ear buffer for a session.
+ * Get the global ear buffer.
  */
-export function getEarBuffer(sessionId: string): EarBuffer {
-  let buf = buffers.get(sessionId);
-  if (!buf) {
-    buf = new EarBuffer();
-    buffers.set(sessionId, buf);
-  }
-  return buf;
+export function getEarBuffer(): EarBuffer {
+  return globalBuffer;
 }
 
 /**
- * Push a transcript to a session's ear buffer.
+ * Push a transcript to the global ear buffer.
  * Called from the WebSocket handler when receiving 'ear:transcript' messages.
  */
-export function pushTranscript(sessionId: string, text: string, isFinal: boolean, lang?: string): void {
-  getEarBuffer(sessionId).push(text, isFinal, lang);
-}
-
-/**
- * Remove a session's ear buffer (on disconnect).
- */
-export function removeEarBuffer(sessionId: string): void {
-  buffers.delete(sessionId);
+export function pushTranscript(text: string, isFinal: boolean, lang?: string): void {
+  globalBuffer.push(text, isFinal, lang);
 }

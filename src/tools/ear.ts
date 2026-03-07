@@ -11,7 +11,6 @@
 import { BaseTool } from './base.js';
 import type { ToolDefinition, ToolResult } from '../types/index.js';
 import { getEarBuffer } from '../ear/index.js';
-import { getSessionId } from '../core/session-context.js';
 
 interface EarInput {
   /** How many seconds back to listen (default: 30, max: 60) */
@@ -39,10 +38,7 @@ export class EarTool extends BaseTool<EarInput, ToolResult> {
     const seconds = Math.min(Math.max(input.seconds ?? 30, 1), 60);
     const withinMs = seconds * 1000;
 
-    // Get the current session ID from AsyncLocalStorage context
-    const sessionId = getSessionId();
-
-    const buffer = getEarBuffer(sessionId);
+    const buffer = getEarBuffer();
     const formatted = buffer.getRecentFormatted(withinMs);
     const hasSpeech = buffer.hasSpeech(withinMs);
 

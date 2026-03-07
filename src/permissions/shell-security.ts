@@ -739,3 +739,43 @@ export function normalizeCommand(command: string): string {
     // 压缩多个空格
     .replace(/\s+/g, ' ');
 }
+
+/**
+ * v2.1.38: 从命令中提取实际命令（跳过环境变量前缀和 shell wrapper 关键字）
+ *
+ * 例如:
+ * - "KEY=value npm install" → "npm install"
+ * - "A=1 B=2 command arg" → "command arg"
+ * - "command builtin noglob npm test" → "npm test"
+ * - "npm install" → "npm install" (无变化)
+ */
+const SHELL_WRAPPER_KEYWORDS = new Set(['command', 'builtin', 'noglob', 'nocorrect']);
+const ENV_VAR_PREFIX_PATTERN = /^[A-Za-z_]\w*=/;
+
+export function extractActualCommand(command: string): string {
+  const trimmed = command.trim();
+  const tokens = trimmed.split(/\s+/);
+  let actualStartIndex = 0;
+
+  for (let i = 0; i < tokens.length; i++) {
+    // 跳过 KEY=value 格式的环境变量前缀
+    if (ENV_VAR_PREFIX_PATTERN.test(tokens[i])) {
+      actualStartIndex = i + 1;
+      continue;
+    }
+    // 跳过 shell wrapper 关键字
+    if (SHELL_WRAPPER_KEYWORDS.has(tokens[i])) {
+      actualStartIndex = i + 1;
+      continue;
+    }
+    // 找到了实际命令
+    break;
+  }
+
+  // 如果所有 token 都是前缀/wrapper，返回原始命令
+  if (actualStartIndex >= tokens.length) {
+    return trimmed;
+  }
+
+  return tokens.slice(actualStartIndex).join(' ');
+}

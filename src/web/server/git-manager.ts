@@ -17,6 +17,8 @@ export interface GitResult<T = any> {
   success: boolean;
   data?: T;
   error?: string;
+  /** 网络操作错误分类，前端可据此展示针对性提示 */
+  errorType?: 'auth' | 'network' | 'timeout' | 'rejected' | 'unknown';
   /** 当检测到 index.lock 问题时，包含 lock 文件信息 */
   lockConflict?: {
     lockFile: string;
@@ -97,6 +99,34 @@ export class GitManager {
   }
 
   /**
+   * 对网络操作的错误进行分类
+   */
+  private classifyNetworkError(msg: string): { errorType: GitResult['errorType']; friendlyMsg: string } {
+    const lower = msg.toLowerCase();
+    // 认证失败
+    if (lower.includes('authentication failed') || lower.includes('could not read username') ||
+        lower.includes('invalid credentials') || lower.includes('authorization failed') ||
+        lower.includes('permission denied') || lower.includes('403')) {
+      return { errorType: 'auth', friendlyMsg: 'Authentication failed. Check your git credentials or access token.' };
+    }
+    // 推送被拒绝（远程有新提交）
+    if (lower.includes('rejected') || lower.includes('non-fast-forward') || lower.includes('fetch first')) {
+      return { errorType: 'rejected', friendlyMsg: 'Push rejected: remote has newer commits. Pull first, then push again.' };
+    }
+    // 超时
+    if (lower.includes('timed out') || lower.includes('timeout')) {
+      return { errorType: 'timeout', friendlyMsg: 'Network timeout. Check your internet connection or proxy settings.' };
+    }
+    // 网络不通
+    if (lower.includes('could not resolve host') || lower.includes('unable to access') ||
+        lower.includes('failed to connect') || lower.includes('network is unreachable') ||
+        lower.includes('connection refused') || lower.includes('ssl')) {
+      return { errorType: 'network', friendlyMsg: 'Network error. Check your internet connection or proxy settings.' };
+    }
+    return { errorType: 'unknown', friendlyMsg: msg };
+  }
+
+  /**
    * 检测 .git/index.lock 是否存在并返回诊断信息
    */
   checkLockFile(): { exists: boolean; lockFile: string; age: number; suggestion: 'delete' | 'wait' } {
@@ -174,6 +204,7 @@ export class GitManager {
 
   /**
    * 异步执行 git 命令（用于网络操作，避免阻塞事件循环）
+   * 设置 GIT_TERMINAL_PROMPT=0 和 GCM_INTERACTIVE=never 防止认证弹窗导致进程挂起
    */
   private async execGitNetwork(command: string): Promise<string> {
     try {
@@ -181,6 +212,11 @@ export class GitManager {
         cwd: this.cwd,
         encoding: 'utf-8',
         timeout: this.networkTimeout,
+        env: {
+          ...process.env,
+          GIT_TERMINAL_PROMPT: '0',
+          GCM_INTERACTIVE: 'never',
+        },
       });
       return (stdout || '').trim();
     } catch (error: any) {
@@ -547,7 +583,9 @@ export class GitManager {
       await this.execGitNetwork('push origin HEAD');
       return { success: true };
     } catch (error: any) {
-      return { success: false, error: error.message || String(error) };
+      const msg = error.message || String(error);
+      const { errorType, friendlyMsg } = this.classifyNetworkError(msg);
+      return { success: false, error: friendlyMsg, errorType };
     }
   }
 
@@ -559,7 +597,9 @@ export class GitManager {
       await this.execGitNetwork('pull');
       return { success: true };
     } catch (error: any) {
-      return { success: false, error: error.message || String(error) };
+      const msg = error.message || String(error);
+      const { errorType, friendlyMsg } = this.classifyNetworkError(msg);
+      return { success: false, error: friendlyMsg, errorType };
     }
   }
 
@@ -1728,7 +1768,9 @@ export class GitManager {
       await this.execGitNetwork(cmd);
       return { success: true };
     } catch (error: any) {
-      return { success: false, error: error.message || String(error) };
+      const msg = error.message || String(error);
+      const { errorType, friendlyMsg } = this.classifyNetworkError(msg);
+      return { success: false, error: friendlyMsg, errorType };
     }
   }
 }

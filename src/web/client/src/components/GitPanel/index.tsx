@@ -93,6 +93,7 @@ export function GitPanel({ isOpen, onClose, send, addMessageHandler, projectPath
   const [remotes, setRemotes] = useState<GitRemote[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorType, setErrorType] = useState<string | null>(null);
 
   // 三栏布局相关状态
   const [selectedCommitHash, setSelectedCommitHash] = useState<string | null>(null);
@@ -153,7 +154,7 @@ export function GitPanel({ isOpen, onClose, send, addMessageHandler, projectPath
           setLoading(false);
           if (msg.payload?.success) {
             setGitStatus(msg.payload.data);
-            setError(null);
+            setError(null); setErrorType(null);
           } else {
             setError(msg.payload?.error || t('error.gitStatusFailed'));
           }
@@ -163,7 +164,7 @@ export function GitPanel({ isOpen, onClose, send, addMessageHandler, projectPath
           setLoading(false);
           if (msg.payload?.success) {
             setCommits(msg.payload.data || []);
-            setError(null);
+            setError(null); setErrorType(null);
           } else {
             setError(msg.payload?.error || t('error.gitLogFailed'));
           }
@@ -276,6 +277,7 @@ export function GitPanel({ isOpen, onClose, send, addMessageHandler, projectPath
               });
             } else {
               setError(msg.payload?.error || 'Git operation failed');
+              setErrorType(msg.payload?.errorType || null);
             }
           } else if (msg.payload?.operation === 'stash_and_checkout' || msg.payload?.operation === 'force_checkout') {
             // 切换分支成功后刷新分支列表和 log
@@ -305,6 +307,7 @@ export function GitPanel({ isOpen, onClose, send, addMessageHandler, projectPath
 
     setLoading(true);
     setError(null);
+    setErrorType(null);
 
     // 请求 git status
     send({
@@ -636,7 +639,15 @@ export function GitPanel({ isOpen, onClose, send, addMessageHandler, projectPath
         {error && (
           <div className="git-error-banner">
             <span>⚠️ {error}</span>
-            <button onClick={refreshGitData}>{t('git.retry')}</button>
+            {errorType === 'rejected' && projectPath ? (
+              <button onClick={() => {
+                setError(null);
+                setErrorType(null);
+                send({ type: 'git:pull', payload: { projectPath } });
+              }}>{t('git.pull')}</button>
+            ) : (
+              <button onClick={() => { setError(null); setErrorType(null); refreshGitData(); }}>{t('git.retry')}</button>
+            )}
           </div>
         )}
 

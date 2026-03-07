@@ -1000,7 +1000,7 @@ export class ConversationManager {
     const workingDir = projectPath || this.cwd;
     console.log(`[ConversationManager] Creating new session ${sessionId}, workingDir: ${workingDir}, permissionMode: ${permissionMode || 'default'}`);
 
-    const session = new Session(workingDir);
+    const session = new Session(workingDir, sessionId);
     await session.initializeGitInfo();
 
     // 使用与核心 loop.ts 一致的认证逻辑
