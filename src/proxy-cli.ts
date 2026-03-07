@@ -154,25 +154,41 @@ function detectLocalAuth(): DetectedAuth | null {
       const oa = settings.oauthAccount;
       if (oa?.accessToken) {
         const scopes = oa.scopes || [];
-        // Web UI OAuth 登录可能没有 user:inference（订阅用户通过 oauthApiKey 推理）
-        if (hasInferenceScope(scopes)) {
+        const hasRefresh = !!oa.refreshToken;
+
+        // 有 user:inference scope 且有 refreshToken → OAuth 模式（可自动续期）
+        if (hasInferenceScope(scopes) && hasRefresh) {
           const expiresAt = oa.expiresAt || 0;
           const remainMin = Math.max(0, Math.round((expiresAt - Date.now()) / 60000));
           return {
             mode: 'oauth',
             source: `~/.axon/settings.json oauthAccount (Web UI login, token expires in ${remainMin} min)`,
             accessToken: oa.accessToken,
-            refreshToken: oa.refreshToken || '',
+            refreshToken: oa.refreshToken,
             expiresAt,
             scopes,
           };
         }
-        // 没有 user:inference 但有 oauthApiKey（通过 org:create_api_key 换取的推理 key）
+        // 有 oauthApiKey → API Key 模式（无需 refreshToken）
         if (oa.oauthApiKey) {
           return {
             mode: 'api-key',
             source: '~/.axon/settings.json oauthAccount.oauthApiKey (Web UI login)',
             apiKey: oa.oauthApiKey,
+          };
+        }
+        // 有 user:inference 但没 refreshToken → 仍用 OAuth 但警告无法续期
+        if (hasInferenceScope(scopes)) {
+          const expiresAt = oa.expiresAt || 0;
+          const remainMin = Math.max(0, Math.round((expiresAt - Date.now()) / 60000));
+          console.warn(`[WARN] OAuth token has no refresh_token, cannot auto-renew (expires in ${remainMin} min)`);
+          return {
+            mode: 'oauth',
+            source: `~/.axon/settings.json oauthAccount (Web UI login, NO refresh_token, expires in ${remainMin} min)`,
+            accessToken: oa.accessToken,
+            refreshToken: '',
+            expiresAt,
+            scopes,
           };
         }
       }

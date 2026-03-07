@@ -175,6 +175,12 @@ router.post('/submit-code', async (req: Request, res: Response) => {
       session.state
     );
 
+    // 打印 token exchange 返回值（调试）
+    console.log('[OAuth] Token response keys:', Object.keys(tokenResponse));
+    console.log('[OAuth] Has refresh_token:', !!tokenResponse.refresh_token);
+    console.log('[OAuth] Has scope:', !!tokenResponse.scope);
+    console.log('[OAuth] expires_in:', tokenResponse.expires_in);
+
     // 创建认证配置
     const authConfig: AuthConfig = {
       type: 'oauth',
