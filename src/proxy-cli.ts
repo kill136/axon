@@ -62,6 +62,8 @@ const OFFICIAL_CC_CONFIG_FILE = path.join(OFFICIAL_CLAUDE_DIR, 'config.json');
 const OFFICIAL_CREDENTIALS_FILE = path.join(AXON_DIR, '.credentials.json');
 /** Axon 自身的配置文件（~/.axon/config.json） */
 const CONFIG_FILE = path.join(AXON_DIR, 'config.json');
+/** Axon Web UI 的配置文件（~/.axon/settings.json，存储 oauthAccount） */
+const SETTINGS_FILE = path.join(AXON_DIR, 'settings.json');
 
 interface DetectedAuth {
   mode: AuthMode;
@@ -87,7 +89,7 @@ function hasInferenceScope(scopes: string[]): boolean {
 
 /**
  * 自动检测本地认证信息
- * 优先级：环境变量 > 官方 OAuth 凭据 > 官方配置 API Key
+ * 优先级：环境变量 > .credentials.json OAuth > settings.json OAuth (Web UI) > config.json API Key
  */
 function detectLocalAuth(): DetectedAuth | null {
   // 1. 环境变量 ANTHROPIC_AUTH_TOKEN（OAuth）
@@ -145,7 +147,41 @@ function detectLocalAuth(): DetectedAuth | null {
   }
 
 
-  // 4. config.json 中的 primaryApiKey（先查 ~/.claude/ 再查 ~/.axon/）
+  // 4. Axon Web UI 的 settings.json（oauthAccount 字段，由 Web UI OAuth 登录写入）
+  if (fs.existsSync(SETTINGS_FILE)) {
+    try {
+      const settings = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf-8'));
+      const oa = settings.oauthAccount;
+      if (oa?.accessToken) {
+        const scopes = oa.scopes || [];
+        // Web UI OAuth 登录可能没有 user:inference（订阅用户通过 oauthApiKey 推理）
+        if (hasInferenceScope(scopes)) {
+          const expiresAt = oa.expiresAt || 0;
+          const remainMin = Math.max(0, Math.round((expiresAt - Date.now()) / 60000));
+          return {
+            mode: 'oauth',
+            source: `~/.axon/settings.json oauthAccount (Web UI login, token expires in ${remainMin} min)`,
+            accessToken: oa.accessToken,
+            refreshToken: oa.refreshToken || '',
+            expiresAt,
+            scopes,
+          };
+        }
+        // 没有 user:inference 但有 oauthApiKey（通过 org:create_api_key 换取的推理 key）
+        if (oa.oauthApiKey) {
+          return {
+            mode: 'api-key',
+            source: '~/.axon/settings.json oauthAccount.oauthApiKey (Web UI login)',
+            apiKey: oa.oauthApiKey,
+          };
+        }
+      }
+    } catch {
+      // 忽略解析错误
+    }
+  }
+
+  // 5. config.json 中的 primaryApiKey（先查 ~/.claude/ 再查 ~/.axon/）
   for (const [configFile, label] of [
     [OFFICIAL_CC_CONFIG_FILE, '~/.claude/config.json'],
     [CONFIG_FILE, '~/.axon/config.json'],

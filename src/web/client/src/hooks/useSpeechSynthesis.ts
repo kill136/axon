@@ -11,6 +11,7 @@
  * - Code blocks and tool output are skipped (only natural language is spoken)
  * - flush() speaks any remaining buffered text
  * - cancel() stops all speech immediately
+ * - onSpeechEnd callback fires when all queued speech finishes
  */
 
 import { useState, useRef, useCallback, useEffect } from 'react';
@@ -20,6 +21,8 @@ export interface UseSpeechSynthesisReturn {
   enabled: boolean;
   /** Toggle TTS on/off */
   toggle: () => void;
+  /** Programmatically set enabled state */
+  setEnabled: (enabled: boolean) => void;
   /** Whether currently speaking */
   isSpeaking: boolean;
   /** Feed streaming text (call on each text_delta) */
@@ -30,6 +33,8 @@ export interface UseSpeechSynthesisReturn {
   cancel: () => void;
   /** Whether browser supports speech synthesis */
   isSupported: boolean;
+  /** Register callback for when all speech finishes */
+  onSpeechEnd: (cb: (() => void) | null) => void;
 }
 
 // Sentence boundary pattern: Chinese/English punctuation + newline
@@ -43,23 +48,29 @@ function getIsSupported(): boolean {
 }
 
 export function useSpeechSynthesis(): UseSpeechSynthesisReturn {
-  const [enabled, setEnabled] = useState(false);
+  const [enabled, setEnabledState] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const isSupported = getIsSupported();
 
   const bufferRef = useRef('');
   const inCodeBlockRef = useRef(false);
   const enabledRef = useRef(false);
-  const utteranceQueueRef = useRef<SpeechSynthesisUtterance[]>([]);
+  const activeCountRef = useRef(0);
+  const speechEndCallbackRef = useRef<(() => void) | null>(null);
 
   // Keep ref in sync
   useEffect(() => { enabledRef.current = enabled; }, [enabled]);
 
-  // Monitor speaking state
+  // Monitor speaking state via polling
   useEffect(() => {
     if (!isSupported) return;
     const interval = setInterval(() => {
-      setIsSpeaking(speechSynthesis.speaking);
+      const speaking = speechSynthesis.speaking;
+      setIsSpeaking(speaking);
+      // Fire onSpeechEnd when all utterances done
+      if (!speaking && activeCountRef.current === 0) {
+        // Already handled by utterance.onend
+      }
     }, 200);
     return () => clearInterval(interval);
   }, [isSupported]);
@@ -81,10 +92,25 @@ export function useSpeechSynthesis(): UseSpeechSynthesisReturn {
 
     const utterance = new SpeechSynthesisUtterance(cleaned);
     utterance.lang = 'zh-CN';
-    utterance.rate = 1.1;
+    utterance.rate = 1.4;
     utterance.pitch = 1.0;
 
-    utteranceQueueRef.current.push(utterance);
+    activeCountRef.current++;
+
+    utterance.onend = () => {
+      activeCountRef.current = Math.max(0, activeCountRef.current - 1);
+      if (activeCountRef.current === 0 && !speechSynthesis.speaking) {
+        speechEndCallbackRef.current?.();
+      }
+    };
+
+    utterance.onerror = () => {
+      activeCountRef.current = Math.max(0, activeCountRef.current - 1);
+      if (activeCountRef.current === 0 && !speechSynthesis.speaking) {
+        speechEndCallbackRef.current?.();
+      }
+    };
+
     speechSynthesis.speak(utterance);
   }, [isSupported]);
 
@@ -142,18 +168,18 @@ export function useSpeechSynthesis(): UseSpeechSynthesisReturn {
   const cancel = useCallback(() => {
     if (!isSupported) return;
     speechSynthesis.cancel();
-    utteranceQueueRef.current = [];
+    activeCountRef.current = 0;
     bufferRef.current = '';
     inCodeBlockRef.current = false;
   }, [isSupported]);
 
   const toggle = useCallback(() => {
-    setEnabled(prev => {
+    setEnabledState(prev => {
       const next = !prev;
       if (!next) {
         // Turning off — stop all speech
         speechSynthesis.cancel();
-        utteranceQueueRef.current = [];
+        activeCountRef.current = 0;
         bufferRef.current = '';
         inCodeBlockRef.current = false;
       }
@@ -161,13 +187,32 @@ export function useSpeechSynthesis(): UseSpeechSynthesisReturn {
     });
   }, []);
 
+  const setEnabled = useCallback((value: boolean) => {
+    setEnabledState(prev => {
+      if (prev === value) return prev;
+      if (!value) {
+        speechSynthesis.cancel();
+        activeCountRef.current = 0;
+        bufferRef.current = '';
+        inCodeBlockRef.current = false;
+      }
+      return value;
+    });
+  }, []);
+
+  const onSpeechEnd = useCallback((cb: (() => void) | null) => {
+    speechEndCallbackRef.current = cb;
+  }, []);
+
   return {
     enabled,
     toggle,
+    setEnabled,
     isSpeaking,
     feedText,
     flush,
     cancel,
     isSupported,
+    onSpeechEnd,
   };
 }

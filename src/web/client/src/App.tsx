@@ -208,6 +208,30 @@ function AppContent({
   // TTS 语音合成（嘴巴）
   const tts = useSpeechSynthesis();
 
+  // 对话模式：自动启用 TTS
+  useEffect(() => {
+    if (chatInput.conversationMode) {
+      tts.setEnabled(true);
+    }
+  }, [chatInput.conversationMode, tts.setEnabled]);
+
+  // 对话模式：AI 开始说话时暂停麦克风（回声消除）
+  useEffect(() => {
+    if (!chatInput.conversationMode) return;
+    if (tts.isSpeaking) {
+      chatInput.pauseMic();
+    }
+  }, [chatInput.conversationMode, tts.isSpeaking, chatInput.pauseMic]);
+
+  // 对话模式：AI 说完后恢复麦克风
+  useEffect(() => {
+    if (!chatInput.conversationMode) return;
+    tts.onSpeechEnd(() => {
+      chatInput.resumeMic();
+    });
+    return () => { tts.onSpeechEnd(null); };
+  }, [chatInput.conversationMode, tts.onSpeechEnd, chatInput.resumeMic]);
+
   // 监听流式消息事件，喂给 TTS
   useEffect(() => {
     const remove = addMessageHandler((msg: any) => {
@@ -621,13 +645,10 @@ function AppContent({
               isPinned={chatInput.isPinned}
               onTogglePin={chatInput.togglePin}
               onVisibilityChange={setIsInputVisible}
-              voiceState={chatInput.voiceState}
               isVoiceSupported={chatInput.isVoiceSupported}
               voiceTranscript={chatInput.voiceTranscript}
-              onToggleVoice={chatInput.toggleVoice}
-              ttsEnabled={tts.enabled}
-              isTtsSupported={tts.isSupported}
-              onToggleTts={tts.toggle}
+              conversationMode={chatInput.conversationMode}
+              onToggleConversationMode={chatInput.toggleConversationMode}
             />
           </div>
 
