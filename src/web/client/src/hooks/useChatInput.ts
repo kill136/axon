@@ -65,6 +65,12 @@ interface UseChatInputReturn {
   isVoiceSupported: boolean;
   voiceTranscript: string;
   toggleVoice: () => void;
+  // 语音对话模式
+  conversationMode: boolean;
+  toggleConversationMode: () => void;
+  /** Pause/resume mic (used by TTS to avoid echo) */
+  pauseMic: () => void;
+  resumeMic: () => void;
 }
 
 export function useChatInput({
@@ -90,21 +96,33 @@ export function useChatInput({
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [isPinned, setIsPinned] = useState(true);
+  const [conversationMode, setConversationMode] = useState(false);
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const conversationModeRef = useRef(false);
+
+  // Keep ref in sync
+  useEffect(() => { conversationModeRef.current = conversationMode; }, [conversationMode]);
 
   // 语音识别 - 使用 ref 持有 handleSend，避免循环依赖
   const handleSendRef = useRef<() => Promise<void>>(async () => {});
 
-  const { voiceState, transcript: voiceTranscript, isSupported: isVoiceSupported, startListening, stopListening } = useVoiceRecognition({
+  const { voiceState, transcript: voiceTranscript, isSupported: isVoiceSupported, startListening, stopListening, pauseListening, resumeListening } = useVoiceRecognition({
     wakeWord: 'claude',
-    silenceTimeout: 2000,
+    // 对话模式下静默超时更短（用户说完即发送），普通模式保持2秒
+    silenceTimeout: conversationMode ? 1500 : 2000,
     lang: 'zh-CN',
+    // 对话模式下跳过唤醒词，直接把语音当命令发送
+    skipWakeWord: conversationMode,
     onCommand: (text) => {
       setInput(text);
       // 用 setTimeout 确保 setInput 先完成
       setTimeout(() => { handleSendRef.current(); }, 50);
+    },
+    // Push all transcriptions to backend ear buffer via WebSocket
+    onTranscript: (text, isFinal) => {
+      send({ type: 'ear:transcript', payload: { text, isFinal, lang: 'zh-CN' } });
     },
   });
 
@@ -113,8 +131,41 @@ export function useChatInput({
       startListening();
     } else {
       stopListening();
+      // Also turn off conversation mode if stopping voice
+      if (conversationModeRef.current) {
+        setConversationMode(false);
+      }
     }
   }, [voiceState, startListening, stopListening]);
+
+  const toggleConversationMode = useCallback(() => {
+    setConversationMode(prev => {
+      const next = !prev;
+      if (next) {
+        // Entering conversation mode: ensure mic is on and in activated state
+        if (voiceState === 'idle') {
+          startListening();
+        }
+      }
+      return next;
+    });
+  }, [voiceState, startListening]);
+
+  // 耳朵默认开启：连接成功后自动开始语音监听
+  const autoStartedRef = useRef(false);
+  useEffect(() => {
+    if (connected && isVoiceSupported && !autoStartedRef.current) {
+      autoStartedRef.current = true;
+      // 延迟一帧启动，确保组件完全挂载
+      requestAnimationFrame(() => {
+        startListening();
+      });
+    }
+    // 断开连接时重置，下次重连时重新自动启动
+    if (!connected) {
+      autoStartedRef.current = false;
+    }
+  }, [connected, isVoiceSupported, startListening]);
 
   // 会话切换时清空输入框
   useEffect(() => {
@@ -493,5 +544,10 @@ export function useChatInput({
     isVoiceSupported,
     voiceTranscript,
     toggleVoice,
+    // 语音对话模式
+    conversationMode,
+    toggleConversationMode,
+    pauseMic: pauseListening,
+    resumeMic: resumeListening,
   };
 }

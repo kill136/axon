@@ -7,8 +7,6 @@
 
 import { Router, Request, Response } from 'express';
 import { ClaudeClient } from '../../../core/client.js';
-import { configManager } from '../../../config/index.js';
-import { getAuth } from '../../../auth/index.js';
 import { webAuth } from '../web-auth.js';
 import { LRUCache } from 'lru-cache';
 
@@ -43,6 +41,8 @@ interface AIHoverRequest {
   language?: string;
   /** 类型签名（如果 TypeScript 已经推断出来） */
   typeSignature?: string;
+  /** UI 语言（en/zh），用于控制 AI 回复语言 */
+  locale?: string;
 }
 
 /**
@@ -90,9 +90,9 @@ function getCacheKey(req: AIHoverRequest): string {
  */
 function createClient(): ClaudeClient | null {
   try {
-    const auth = getAuth();
-    const apiKey = auth?.apiKey || configManager.getApiKey();
-    const authToken = auth?.type === 'oauth' ? (auth.accessToken || auth.authToken) : undefined;
+    const creds = webAuth.getCredentials();
+    const apiKey = creds.apiKey;
+    const authToken = creds.authToken;
 
     if (!apiKey && !authToken) {
       return null;
@@ -101,7 +101,8 @@ function createClient(): ClaudeClient | null {
     return new ClaudeClient({
       apiKey,
       authToken,
-      baseUrl: process.env.ANTHROPIC_BASE_URL,
+      baseUrl: creds.baseUrl || process.env.ANTHROPIC_BASE_URL,
+      model: 'haiku',
     });
   } catch (error) {
     console.error('[AI Hover] Failed to initialize client:', error);
@@ -201,6 +202,12 @@ function buildPrompt(req: AIHoverRequest): string {
   parts.push(`- notes: Notes array (optional, important usage notes)`);
   parts.push(``);
   parts.push(`Only output JSON, no other content. Keep it concise, only analyze the line marked with >>>.`);
+
+  // 根据 locale 设定回复语言
+  if (req.locale === 'zh') {
+    parts.push(``);
+    parts.push(`IMPORTANT: All text values in the JSON (brief, detail, params descriptions, returns description, examples, notes) MUST be written in Chinese (中文).`);
+  }
 
   return parts.join('\n');
 }

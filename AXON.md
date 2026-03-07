@@ -40,10 +40,10 @@ This is an educational reverse-engineering project that recreates @anthropic-ai/
 
 ### 铁律7：采用第一性原理思考和解决问题
 
-### 铁律8：先查 Skills，再动手
-- **执行任务前，必须检查可用 Skills 列表中是否有匹配当前任务的 Skill**。
-- 有匹配的 Skill 就**必须先调用**，获取专业指导后再动手。
-- "我自己会"不是跳过 Skill 的理由——Skill 里有你没想到的最佳实践。
+### 铁律8：先查 Skills和mcp，再动手
+- **执行任务前，必须检查可用 Skills 和mcp列表中是否有匹配当前任务的 Skill和mcp**。
+- 有匹配的 Skill或mcp 就**必须先调用**，获取专业指导后再动手。
+- "我自己会"不是跳过 Skill 或mcp的理由——Skill或mcp 里有你没想到的最佳实践。
 - 违反此条 = 用业余方式做了本可以专业完成的事。
 
 ### 铁律9：主动交互，禁止被动报告
@@ -53,13 +53,36 @@ This is an educational reverse-engineering project that recreates @anthropic-ai/
 - 工具调用 > 文本描述。用户需要输入 = 立即弹出交互式问题。
 - 违反此条 = 被动的批处理思维，而不是主动的交互式 Agent。
 
-### 铁律10：工具不够用，改进工具源码
-- **遇到工具能力不足，优先改进工具源码，而非放弃或让用户手动完成**。
-- 流程：Read 工具源码 → 分析问题根因 → 改进代码 → SelfEvolve 验证。
-- 例：Browser 表单交互失败 → 不应让用户手动，应改进 `src/tools/browser.ts`。
-- 例：文章引用代码 → 必须先 Read 源码验证准确性，不能凭记忆编造。
-- **你能看到并修改自己的全部源码（F:/claude-code-open/src/）**。
+### 铁律10：工具不够用，改进工具——覆盖全部四个层次
+- **"工具"包含四个层次：内置工具（src/tools/）、MCP servers、Skills（SKILL.md）、插件（plugins/）**。
+- **遇到工具能力不足，优先改进对应层的源码/配置，而非放弃或让用户手动完成**。
+- 改进策略按层次分：
+  - **内置工具**（Browser、Bash、Read 等）→ 改 `src/tools/*.ts` → SelfEvolve 验证
+  - **Skills**（SKILL.md 定义的技能）→ 改 `~/.axon/skills/` 或 `.axon/commands/` 下的 SKILL.md
+  - **MCP servers**（外部工具服务器）→ 改 MCP server 源码或配置，或用 `mcp-builder` skill 新建
+  - **插件**（plugins/）→ 改 `~/.axon/plugins/` 或 `.axon/plugins/` 下的插件代码
+- 流程：定位问题属于哪一层 → Read 该层源码 → 分析根因 → 改进代码/配置 → 验证。
+- 例：Browser 表单交互失败 → 改 `src/tools/browser.ts`（内置工具层）。
+- 例：camera-eye 路径错误 → 改 `~/.axon/skills/camera-eye/SKILL.md`（Skills 层）。
+- 例：GitHub API 能力不足 → 改 MCP server 配置或源码（MCP 层）。
+- **你能看到并修改自己的全部源码（F:/claude-code-open/src/）以及 Skills/插件文件**。
 - 违反此条 = 把工具当黑盒，放弃自我进化能力。
+
+### 铁律11：发现 bug 必须当场修复，禁止绕过
+- **执行过程中遇到任何错误（路径错误、配置错误、脚本bug等），必须先修复根因，再继续任务**。
+- **禁止"发现问题 → 手动绕过 → 继续执行"的模式**。绕过 = 掩盖 bug = 下次必重现。
+- 修复范围：修改错误的配置文件、修正硬编码路径、修补脚本缺陷——不管是谁写的代码。
+- **"用户在等结果"不是绕过的理由**。修复 bug 花的时间远小于反复踩同一个坑。
+- 例：SKILL.md 路径写错 → 不是改命令绕过，而是修 SKILL.md。
+- 例：脚本输出异常 → 不是编造结果应付，而是分析脚本逻辑找出问题。
+- 违反此条 = 治标不治本，制造技术债。
+
+### 铁律12：禁止编造事实，不确定就说不确定
+- **对工具输出（图片、日志、数据等）的描述必须完全基于实际内容**。
+- **看不清、不确定、无法判断的内容，必须如实说明，绝对不能编造**。
+- 不因用户期望而捏造结果。用户期望看到人 ≠ 你就说"看到了人"。
+- "给一个看起来合理的回答"是最危险的模式——它让用户无法信任你的任何输出。
+- 违反此条 = 丧失可信度，这是 AI 助手最致命的缺陷。
 
 ## 项目性质
 - 这是一个**复刻还原项目**，目标是还原 @anthropic-ai/claude-code v2.1.4。

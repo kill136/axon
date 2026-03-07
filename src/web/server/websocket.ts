@@ -45,6 +45,8 @@ import {
   handleGitPush,
   handleGitPull,
   handleGitCheckout,
+  handleGitStashAndCheckout,
+  handleGitForceCheckout,
   handleGitCreateBranch,
   handleGitDeleteBranch,
   handleGitStashSave,
@@ -56,6 +58,7 @@ import {
   handleGitGetCommitFileDiff,
   handleGitSmartCommit,
   handleGitSmartReview,
+  handleGitSmartCommitAndReview,
   handleGitExplainCommit,
   handleGitMerge,
   handleGitRebase,
@@ -84,6 +87,7 @@ import {
   handleGitCompareBranches,
   handleGitGetMergeStatus,
   handleGitGetConflicts,
+  handleGitResolveLock,
 } from './websocket-git-handlers.js';
 
 // ============================================================================
@@ -1366,6 +1370,7 @@ export function setupWebSocket(
         }
         clientTerminals.delete(clientId);
       }
+      // Ear buffer is global (physical device) — no per-session cleanup needed
       clients.delete(clientId);
     });
 
@@ -1651,6 +1656,14 @@ async function handleClientMessage(
       await handleGitCheckout(client, message.payload.branch, conversationManager);
       break;
 
+    case 'git:stash_and_checkout':
+      await handleGitStashAndCheckout(client, message.payload.branch, conversationManager);
+      break;
+
+    case 'git:force_checkout':
+      await handleGitForceCheckout(client, message.payload.branch, conversationManager);
+      break;
+
     case 'git:create_branch':
       await handleGitCreateBranch(client, message.payload.name, conversationManager, message.payload.startPoint);
       break;
@@ -1685,6 +1698,10 @@ async function handleClientMessage(
 
     case 'git:smart_review':
       await handleGitSmartReview(client, conversationManager);
+      break;
+
+    case 'git:smart_commit_and_review':
+      await handleGitSmartCommitAndReview(client, conversationManager);
       break;
 
     case 'git:get_commit_detail':
@@ -1806,6 +1823,10 @@ async function handleClientMessage(
 
     case 'git:get_conflicts':
       await handleGitGetConflicts(client, message.payload.file, conversationManager);
+      break;
+
+    case 'git:resolve_lock':
+      await handleGitResolveLock(client, message.payload.action, conversationManager);
       break;
 
     case 'session_export':
@@ -2247,6 +2268,16 @@ async function handleClientMessage(
     }
 
     // ======================== IM 通道管理 ========================
+    case 'ear:transcript': {
+      // Browser pushes speech transcription results to the server's in-memory buffer
+      const { text, isFinal, lang } = (message as any).payload || {};
+      if (text && typeof text === 'string') {
+        const { pushTranscript } = await import('../../ear/index.js');
+        pushTranscript(text, !!isFinal, lang);
+      }
+      break;
+    }
+
     case 'channel:list':
     case 'channel:start':
     case 'channel:stop':

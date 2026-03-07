@@ -1,4 +1,5 @@
 import React from 'react';
+import { useLanguage } from '../../../i18n';
 import styles from './WorkerPanel.module.css';
 
 /**
@@ -18,6 +19,8 @@ interface QueenStatusProps {
  * 显示 Queen Agent 的当前状态和决策信息
  */
 export const QueenStatus: React.FC<QueenStatusProps> = ({ queen }) => {
+  const { t } = useLanguage();
+
   // 状态图标映射
   const statusIcons: Record<QueenAgent['status'], string> = {
     idle: '💤',
@@ -29,11 +32,11 @@ export const QueenStatus: React.FC<QueenStatusProps> = ({ queen }) => {
 
   // 状态文本映射
   const statusTexts: Record<QueenAgent['status'], string> = {
-    idle: '空闲中',
-    planning: '规划中',
-    coordinating: '协调中',
-    reviewing: '审查中',
-    paused: '已暂停',
+    idle: t('queenStatus.idle'),
+    planning: t('queenStatus.planning'),
+    coordinating: t('queenStatus.coordinating'),
+    reviewing: t('queenStatus.reviewing'),
+    paused: t('queenStatus.paused'),
   };
 
   return (
@@ -50,7 +53,7 @@ export const QueenStatus: React.FC<QueenStatusProps> = ({ queen }) => {
 
       {queen.decision && (
         <div className={styles.queenDecision}>
-          <strong>当前决策:</strong> {queen.decision}
+          <strong>{t('queenStatus.currentDecision')}:</strong> {queen.decision}
         </div>
       )}
     </div>

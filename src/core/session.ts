@@ -79,7 +79,7 @@ export class Session {
    * const session = new Session('/path/to/project');
    * const session2 = new Session(); // 使用当前工作目录
    */
-  constructor(cwd: string = process.cwd()) {
+  constructor(cwd: string = process.cwd(), externalSessionId?: string) {
     // 从环境变量读取配置目录
     this.configDir =
       process.env.AXON_CONFIG_DIR ||
@@ -87,8 +87,8 @@ export class Session {
 
     this.originalCwd = cwd;
 
-    // 从环境变量读取 Session ID，或生成新 ID
-    const sessionId = process.env.AXON_SESSION_ID || randomUUID();
+    // 优先使用外部传入的 sessionId（WebUI 场景），否则从环境变量读取或生成新 ID
+    const sessionId = externalSessionId || process.env.AXON_SESSION_ID || randomUUID();
 
     // 初始化 Session 状态
     this.state = {

@@ -4,6 +4,7 @@ import Editor, { OnMount } from '@monaco-editor/react';
 import type * as Monaco from 'monaco-editor';
 import styles from './CodeEditor.module.css';
 import { useAIHover, type LineAnalysisData } from '../../hooks/useAIHover';
+import { useSelectionExplain } from '../../hooks/useSelectionExplain';
 import { useCodeTour } from '../../hooks/useCodeTour';
 import { useAskAI } from '../../hooks/useAskAI';
 import { useMonacoDecorations } from '../../hooks/useMonacoDecorations';
@@ -110,7 +111,7 @@ const CloseIcon: React.FC = () => (
  */
 export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
   ({ projectPath, onSelectionChange, onActiveFileChange, onCursorLineChange }, ref) => {
-    const { t } = useLanguage();
+    const { t, locale } = useLanguage();
     const [tabs, setTabs] = useState<EditorTab[]>([]);
     const [activeTabIndex, setActiveTabIndex] = useState<number>(-1);
     const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -132,11 +133,12 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
     const [currentVisibleLine, setCurrentVisibleLine] = useState(1);
     const [autoCompleteEnabled, setAutoCompleteEnabled] = useState(true);
     const [apiDocEnabled, setApiDocEnabled] = useState(false); // API Doc Overlay 默认关闭
+    const [selectionExplainEnabled, setSelectionExplainEnabled] = useState(true); // 选中解释默认开启
 
     // 工具栏按钮显隐配置
     const TOOLBAR_STORAGE_KEY = 'codeEditor.toolbarButtons';
     const DEFAULT_VISIBLE_BUTTONS = new Set([
-      'autocomplete', 'review', 'intent', 'test', 'diff',
+      'autocomplete', 'review', 'intent', 'test', 'diff', 'selectionExplain',
     ]);
     const [visibleButtons, setVisibleButtons] = useState<Set<string>>(() => {
       try {
@@ -283,6 +285,15 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
       editorRef,
       monacoRef,
       onLineAnalysis: handleLineAnalysis,
+    });
+
+    // 选中文本 AI 解释浮动卡片
+    const { dispose: disposeSelectionExplain } = useSelectionExplain({
+      editorRef,
+      monacoRef,
+      filePath: currentTab?.path || null,
+      enabled: selectionExplainEnabled && editorReady,
+      locale,
     });
 
     // 语法详情面板：独立监听光标变化，主动获取行分析数据
@@ -523,7 +534,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
           if (!response.ok) {
             const errorData = await response.json();
             console.error('[CodeEditor] 读取文件失败:', errorData.error);
-            alert(`读取文件失败: ${errorData.error}`);
+            alert(t('codeEditor.readFileFailed', { error: errorData.error }));
             return;
           }
 
@@ -543,7 +554,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
           setActiveTabIndex(tabs.length);
         } catch (err) {
           console.error('[CodeEditor] 读取文件异常:', err);
-          alert(`读取文件异常: ${err instanceof Error ? err.message : '未知错误'}`);
+          alert(t('codeEditor.readFileError', { error: err instanceof Error ? err.message : 'Unknown error' }));
         }
       },
       getActiveFilePath: () => currentTab?.path || null,
@@ -611,7 +622,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
       // 注册右键菜单 "问 AI" action
       editor.addAction({
         id: 'ask-ai-about-selection',
-        label: '\u{1F916} 问 AI 关于这段代码',
+        label: '\u{1F916} ' + t('codeEditor.askAIAboutCode'),
         contextMenuGroupId: 'navigation',
         contextMenuOrder: 0,
         run: () => {
@@ -622,7 +633,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
       // 注册右键菜单 "意图编程" action
       editor.addAction({
         id: 'intent-to-code',
-        label: '✏️ 意图编程',
+        label: '✏️ ' + t('codeEditor.intentProgramming'),
         contextMenuGroupId: 'navigation',
         contextMenuOrder: 1,
         run: () => {
@@ -633,7 +644,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
       // 注册右键菜单 "生成测试" action
       editor.addAction({
         id: 'generate-test',
-        label: '\u{1F9EA} 生成测试',
+        label: '\u{1F9EA} ' + t('codeEditor.generateTest'),
         contextMenuGroupId: 'navigation',
         contextMenuOrder: 2,
         run: () => {
@@ -644,7 +655,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
       // 注册右键菜单 "代码时光机" action
       editor.addAction({
         id: 'time-machine',
-        label: '⏰ 代码时光机',
+        label: '⏰ ' + t('codeEditor.codeTimeMachine'),
         contextMenuGroupId: 'navigation',
         contextMenuOrder: 3,
         run: () => {
@@ -731,7 +742,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
         if (!response.ok) {
           const errorData = await response.json();
           console.error('[CodeEditor] 保存文件失败:', errorData.error);
-          alert(`保存失败: ${errorData.error}`);
+          alert(t('codeEditor.saveFailed', { error: errorData.error }));
           return;
         }
 
@@ -747,7 +758,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
         });
       } catch (err) {
         console.error('[CodeEditor] 保存文件异常:', err);
-        alert(`保存异常: ${err instanceof Error ? err.message : '未知错误'}`);
+        alert(t('codeEditor.saveError', { error: err instanceof Error ? err.message : 'Unknown error' }));
       }
     };
 
@@ -766,7 +777,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
 
       const tab = tabs[index];
       if (tab.modified) {
-        const confirmed = confirm(`文件 "${getFileName(tab.path)}" 未保存，确认关闭？`);
+        const confirmed = confirm(t('codeEditor.confirmClose', { fileName: getFileName(tab.path) }));
         if (!confirmed) return;
       }
 
@@ -911,7 +922,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
             <div className={styles.lineDetailPanel}>
               <div className={styles.lineDetailHeader}>
                 <span className={styles.lineDetailTitle}>
-                  第 {lineAnalysis.lineNumber} 行
+                  {t('codeEditor.lineNumber', { line: lineAnalysis.lineNumber })}
                 </span>
                 <button
                   className={styles.lineDetailClose}
@@ -929,7 +940,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
               {/* 关键字解释 */}
               {lineAnalysis.keywords.length > 0 && (
                 <div className={styles.lineDetailSection}>
-                  <div className={styles.lineDetailSectionTitle}>🔑 语法关键字</div>
+                  <div className={styles.lineDetailSectionTitle}>🔑 {t('codeEditor.syntaxKeywords')}</div>
                   {lineAnalysis.keywords.map((kw, i) => (
                     <div key={i} className={styles.lineDetailKeyword}>
                       <span className={styles.keywordName}>{kw.keyword}</span>
@@ -943,11 +954,11 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
 
               {/* AI 分析结果 */}
               {lineAnalysis.loading && (
-                <div className={styles.lineDetailLoading}>🤖 AI 分析中...</div>
+                <div className={styles.lineDetailLoading}>🤖 {t('codeEditor.aiAnalyzing')}</div>
               )}
               {lineAnalysis.aiAnalysis && (
                 <div className={styles.lineDetailSection}>
-                  <div className={styles.lineDetailSectionTitle}>🤖 AI 分析</div>
+                  <div className={styles.lineDetailSectionTitle}>🤖 {t('codeEditor.aiAnalysis')}</div>
                   {lineAnalysis.aiAnalysis.brief && (
                     <div className={styles.aiAnalysisBrief}>{lineAnalysis.aiAnalysis.brief}</div>
                   )}
@@ -956,7 +967,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
                   )}
                   {lineAnalysis.aiAnalysis.params && lineAnalysis.aiAnalysis.params.length > 0 && (
                     <div className={styles.aiAnalysisParams}>
-                      <div className={styles.aiAnalysisParamsTitle}>参数：</div>
+                      <div className={styles.aiAnalysisParamsTitle}>{t('codeEditor.parameters')}</div>
                       {lineAnalysis.aiAnalysis.params.map((param: any, idx: number) => (
                         <div key={idx} className={styles.aiAnalysisParam}>
                           <span className={styles.paramName}>{param.name}</span>
@@ -967,7 +978,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
                   )}
                   {lineAnalysis.aiAnalysis.returns && (
                     <div className={styles.aiAnalysisReturns}>
-                      <span className={styles.returnsLabel}>返回：</span>
+                      <span className={styles.returnsLabel}>{t('codeEditor.returns')}</span>
                       {typeof lineAnalysis.aiAnalysis.returns === 'string'
                         ? lineAnalysis.aiAnalysis.returns
                         : `${lineAnalysis.aiAnalysis.returns.type}: ${lineAnalysis.aiAnalysis.returns.description}`}
@@ -975,7 +986,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
                   )}
                   {lineAnalysis.aiAnalysis.examples && lineAnalysis.aiAnalysis.examples.length > 0 && (
                     <div className={styles.aiAnalysisExamples}>
-                      <div className={styles.aiAnalysisExamplesTitle}>示例：</div>
+                      <div className={styles.aiAnalysisExamplesTitle}>{t('codeEditor.examples')}</div>
                       {lineAnalysis.aiAnalysis.examples.map((example: any, idx: number) => (
                         <pre key={idx} className={styles.aiAnalysisExample}>
                           {typeof example === 'string' ? example : (example.code || JSON.stringify(example))}
@@ -992,8 +1003,8 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
           {showReviewPanel && (
             <div className={styles.reviewPanel}>
               <div className={styles.reviewHeader}>
-                <span className={styles.reviewTitle}>🎯 代码审查</span>
-                <span className={styles.reviewCount}>{codeReview.issues.length} 个问题</span>
+                <span className={styles.reviewTitle}>🎯 {t('codeEditor.codeReview')}</span>
+                <span className={styles.reviewCount}>{t('codeEditor.issueCount', { count: codeReview.issues.length })}</span>
                 <button
                   className={styles.reviewClose}
                   onClick={codeReview.toggle}
@@ -1053,8 +1064,8 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
           {showConversationPanel && (
             <div className={styles.conversationPanel}>
               <div className={styles.conversationHeader}>
-                <span className={styles.conversationTitle}>💬 代码对话</span>
-                <button className={styles.conversationClear} onClick={conversation.clear} title="清空对话">
+                <span className={styles.conversationTitle}>💬 {t('codeEditor.codeConversation')}</span>
+                <button className={styles.conversationClear} onClick={conversation.clear} title={t('codeEditor.clearConversation')}>
                   🗑️
                 </button>
                 <button className={styles.conversationClose} onClick={conversation.close}>
@@ -1066,14 +1077,14 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
               <div className={styles.conversationMessages}>
                 {conversation.state.messages.length === 0 ? (
                   <div className={styles.conversationHints}>
-                    <div className={styles.conversationHintItem} onClick={() => conversation.setInput('这段代码做什么？')}>
-                      💡 这段代码做什么？
+                    <div className={styles.conversationHintItem} onClick={() => conversation.setInput(t('codeEditor.hintWhatDoesThisCodeDo'))}>
+                      💡 {t('codeEditor.hintWhatDoesThisCodeDo')}
                     </div>
-                    <div className={styles.conversationHintItem} onClick={() => conversation.setInput('有什么替代方案？')}>
-                      💡 有什么替代方案？
+                    <div className={styles.conversationHintItem} onClick={() => conversation.setInput(t('codeEditor.hintAlternatives'))}>
+                      💡 {t('codeEditor.hintAlternatives')}
                     </div>
-                    <div className={styles.conversationHintItem} onClick={() => conversation.setInput('如何测试这个功能？')}>
-                      💡 如何测试这个功能？
+                    <div className={styles.conversationHintItem} onClick={() => conversation.setInput(t('codeEditor.hintHowToTest'))}>
+                      💡 {t('codeEditor.hintHowToTest')}
                     </div>
                   </div>
                 ) : (
@@ -1084,7 +1095,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
                         className={msg.role === 'user' ? styles.userMessage : styles.assistantMessage}
                       >
                         <div className={styles.messageRole}>
-                          {msg.role === 'user' ? '👤 你' : '🤖 AI'}
+                          {msg.role === 'user' ? '👤 ' + t('codeEditor.you') : '🤖 ' + t('codeEditor.ai')}
                         </div>
                         <div className={styles.messageContent}>{msg.content}</div>
                       </div>
@@ -1094,8 +1105,8 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
 
                 {conversation.state.loading && (
                   <div className={styles.assistantMessage}>
-                    <div className={styles.messageRole}>🤖 AI</div>
-                    <div className={styles.messageContent}>🤔 思考中...</div>
+                    <div className={styles.messageRole}>🤖 {t('codeEditor.ai')}</div>
+                    <div className={styles.messageContent}>🤔 {t('codeEditor.thinking')}</div>
                   </div>
                 )}
               </div>
@@ -1104,7 +1115,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
               <div className={styles.conversationInputArea}>
                 <textarea
                   className={styles.conversationInput}
-                  placeholder="输入你的问题..."
+                  placeholder={t('codeEditor.inputPlaceholder')}
                   value={conversation.state.input}
                   onChange={(e) => conversation.setInput(e.target.value)}
                   onKeyDown={(e) => {
@@ -1120,7 +1131,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
                   onClick={conversation.send}
                   disabled={conversation.state.loading || !conversation.state.input.trim()}
                 >
-                  {conversation.state.loading ? '⏳ 发送中' : '📤 发送'}
+                  {conversation.state.loading ? '⏳ ' + t('codeEditor.sending') : '📤 ' + t('codeEditor.send')}
                 </button>
               </div>
             </div>
@@ -1130,8 +1141,8 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
           {showPatternPanel && (
             <div className={styles.patternPanel}>
               <div className={styles.patternHeader}>
-                <span className={styles.patternTitle}>🔍 代码模式</span>
-                <span className={styles.patternCount}>{pattern.patterns.length} 个模式</span>
+                <span className={styles.patternTitle}>🔍 {t('codeEditor.codePatterns')}</span>
+                <span className={styles.patternCount}>{t('codeEditor.patternCount', { count: pattern.patterns.length })}</span>
                 <button className={styles.patternClose} onClick={pattern.toggle}>
                   ×
                 </button>
@@ -1166,10 +1177,10 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
                       </div>
                       <div className={styles.patternDescription}>{p.description}</div>
                       <div className={styles.patternSuggestion}>
-                        💡 <strong>建议</strong>: {p.suggestion}
+                        💡 <strong>{t('codeEditor.suggestion')}</strong>: {p.suggestion}
                       </div>
                       <div className={styles.patternLocations}>
-                        <strong>位置</strong>:
+                        <strong>{t('codeEditor.location')}</strong>:
                         {p.locations.map((loc, locIdx) => (
                           <button
                             key={locIdx}
@@ -1186,7 +1197,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
                               }
                             }}
                           >
-                            行 {loc.line}-{loc.endLine}
+                            {t('codeEditor.lineRange', { start: loc.line, end: loc.endLine })}
                           </button>
                         ))}
                       </div>
@@ -1222,7 +1233,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
                 <button
                   className={styles.closeButton}
                   onClick={(e) => handleCloseTab(index, e)}
-                  aria-label="关闭"
+                  aria-label={t('codeEditor.close')}
                 >
                   <CloseIcon />
                 </button>
@@ -1396,6 +1407,15 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
                   ⏰ {t('codeEditor.timeMachine')}
                 </button>
               )}
+              {visibleButtons.has('selectionExplain') && (
+                <button
+                  className={`${styles.aiBtn} ${selectionExplainEnabled ? styles.active : ''}`}
+                  onClick={() => setSelectionExplainEnabled(!selectionExplainEnabled)}
+                  title={t('codeEditor.selectionExplainTitle')}
+                >
+                  💬 {t('codeEditor.selectionExplain')}
+                </button>
+              )}
               {visibleButtons.has('apidoc') && (
                 <button
                   className={`${styles.aiBtn} ${apiDocEnabled ? styles.active : ''}`}
@@ -1432,7 +1452,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
               {/* 导游面板 */}
               <div className={styles.tourPanel}>
                 <div className={styles.tourHeader}>
-                  <span className={styles.tourTitle}>🚀 代码导游</span>
+                  <span className={styles.tourTitle}>🚀 {t('codeEditor.codeTour')}</span>
                   <span className={styles.tourProgress}>
                     {tourState.currentStep + 1} / {tourState.steps.length}
                   </span>
@@ -1449,7 +1469,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
                         {currentTourStep.name}
                       </div>
                       <div className={styles.tourStepLine}>
-                        第 {currentTourStep.line} 行
+                        {t('codeEditor.lineNumber', { line: currentTourStep.line })}
                       </div>
                       <div className={styles.tourDescription}>
                         {currentTourStep.description}
@@ -1459,7 +1479,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
                 </div>
 
                 <div className={styles.tourStepsList}>
-                  <div className={styles.tourStepsTitle}>所有步骤</div>
+                  <div className={styles.tourStepsTitle}>{t('codeEditor.allSteps')}</div>
                   {tourState.steps.map((step, index) => (
                     <div
                       key={index}
@@ -1479,14 +1499,14 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
                     onClick={() => navigate('prev')}
                     disabled={tourState.currentStep === 0}
                   >
-                    ← 上一步
+                    {t('codeEditor.prevStep')}
                   </button>
                   <button
                     className={styles.tourNavBtn}
                     onClick={() => navigate('next')}
                     disabled={tourState.currentStep === tourState.steps.length - 1}
                   >
-                    下一步 →
+                    {t('codeEditor.nextStep')}
                   </button>
                 </div>
               </div>
@@ -1516,9 +1536,9 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
           <div className={styles.askAIOverlay}>
             <div className={styles.askAIDialog}>
               <div className={styles.askAIHeader}>
-                <span className={styles.askAITitle}>🤖 问 AI</span>
+                <span className={styles.askAITitle}>🤖 {t('codeEditor.askAI')}</span>
                 <span className={styles.askAIRange}>
-                  第 {askAIState.selectedRange?.startLine}-{askAIState.selectedRange?.endLine} 行
+                  {t('codeEditor.lineRange', { start: askAIState.selectedRange?.startLine, end: askAIState.selectedRange?.endLine })}
                 </span>
                 <button className={styles.askAIClose} onClick={closeAskAI}>×</button>
               </div>
@@ -1527,7 +1547,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
 
               <input
                 className={styles.askAIInput}
-                placeholder="输入你的问题（例如：这段代码做什么？）"
+                placeholder={t('codeEditor.askAIPlaceholder')}
                 value={askAIState.question}
                 onChange={(e) => setQuestion(e.target.value)}
                 onKeyDown={(e) => {
@@ -1544,12 +1564,12 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
                 onClick={() => submitQuestion(askAIState.question)}
                 disabled={askAIState.loading || !askAIState.question.trim()}
               >
-                {askAIState.loading ? '⏳ AI 思考中...' : '🚀 提交问题'}
+                {askAIState.loading ? '⏳ ' + t('codeEditor.aiThinking') : '🚀 ' + t('codeEditor.submitQuestion')}
               </button>
 
               {askAIState.answer && (
                 <div className={styles.askAIAnswer}>
-                  <div className={styles.askAIAnswerLabel}>💡 AI 回答：</div>
+                  <div className={styles.askAIAnswerLabel}>💡 {t('codeEditor.aiAnswer')}</div>
                   <div className={styles.askAIAnswerContent}>
                     {typeof askAIState.answer === 'string'
                       ? askAIState.answer
@@ -1559,14 +1579,14 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
               )}
 
               <div className={styles.askAIHints}>
-                <div className={styles.askAIHint} onClick={() => setQuestion('这段代码做什么？')}>
-                  💡 提示1：这段代码做什么？
+                <div className={styles.askAIHint} onClick={() => setQuestion(t('codeEditor.hintQ1'))}>
+                  💡 {t('codeEditor.hint1')}
                 </div>
-                <div className={styles.askAIHint} onClick={() => setQuestion('有什么潜在问题？')}>
-                  ⚠️ 提示2：有什么潜在问题？
+                <div className={styles.askAIHint} onClick={() => setQuestion(t('codeEditor.hintQ2'))}>
+                  ⚠️ {t('codeEditor.hint2')}
                 </div>
-                <div className={styles.askAIHint} onClick={() => setQuestion('如何优化？')}>
-                  ✨ 提示3：如何优化？
+                <div className={styles.askAIHint} onClick={() => setQuestion(t('codeEditor.hintQ3'))}>
+                  ✨ {t('codeEditor.hint3')}
                 </div>
               </div>
             </div>
@@ -1579,14 +1599,11 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
             <div className={styles.askAIDialog}>
               <div className={styles.askAIHeader}>
                 <span className={styles.askAITitle}>
-                  ✏️ 意图编程（{intentToCode.state.mode === 'rewrite' ? '改写' : '生成'}）
+                  ✏️ {t('codeEditor.intentProgrammingMode', { mode: intentToCode.state.mode === 'rewrite' ? t('codeEditor.modeRewrite') : t('codeEditor.modeGenerate') })}
                 </span>
                 {intentToCode.state.selectedRange && (
                   <span className={styles.askAIRange}>
-                    第 {intentToCode.state.selectedRange.startLine}
-                    {intentToCode.state.selectedRange.endLine !== intentToCode.state.selectedRange.startLine
-                      ? `-${intentToCode.state.selectedRange.endLine}`
-                      : ''} 行
+                    {t('codeEditor.lineRange', { start: intentToCode.state.selectedRange.startLine, end: intentToCode.state.selectedRange.endLine !== intentToCode.state.selectedRange.startLine ? intentToCode.state.selectedRange.endLine : intentToCode.state.selectedRange.startLine })}
                   </span>
                 )}
                 <button className={styles.askAIClose} onClick={intentToCode.close}>×</button>
@@ -1598,8 +1615,8 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
                 className={styles.askAIInput}
                 placeholder={
                   intentToCode.state.mode === 'rewrite'
-                    ? '输入你的意图（例如：添加错误处理）'
-                    : '输入你的意图（例如：实现这个函数）'
+                    ? t('codeEditor.intentPlaceholderRewrite')
+                    : t('codeEditor.intentPlaceholderGenerate')
                 }
                 value={intentToCode.state.intent}
                 onChange={(e) => intentToCode.setIntent(e.target.value)}
@@ -1617,12 +1634,12 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
                 onClick={intentToCode.executeIntent}
                 disabled={intentToCode.state.loading || !intentToCode.state.intent.trim()}
               >
-                {intentToCode.state.loading ? '⏳ AI 生成中...' : '🚀 执行意图'}
+                {intentToCode.state.loading ? '⏳ ' + t('codeEditor.aiGenerating') : '🚀 ' + t('codeEditor.executeIntent')}
               </button>
 
               {intentToCode.state.result && (
                 <div className={styles.askAIAnswer}>
-                  <div className={styles.askAIAnswerLabel}>✨ 生成的代码：</div>
+                  <div className={styles.askAIAnswerLabel}>✨ {t('codeEditor.generatedCode')}</div>
                   <pre className={styles.askAICode}>{intentToCode.state.result.code}</pre>
                   {intentToCode.state.result.explanation && (
                     <div className={styles.askAIAnswerContent}>
@@ -1634,7 +1651,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
                     onClick={intentToCode.applyResult}
                     style={{ marginTop: '10px' }}
                   >
-                    ✅ 应用到编辑器
+                    ✅ {t('codeEditor.applyToEditor')}
                   </button>
                 </div>
               )}
@@ -1647,9 +1664,9 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
           <div className={styles.askAIOverlay}>
             <div className={styles.askAIDialog}>
               <div className={styles.askAIHeader}>
-                <span className={styles.askAITitle}>🧪 测试生成</span>
+                <span className={styles.askAITitle}>🧪 {t('codeEditor.testGeneration')}</span>
                 <span className={styles.askAIRange}>
-                  函数: {testGenerator.state.functionName}
+                  {t('codeEditor.function')}: {testGenerator.state.functionName}
                 </span>
                 <button className={styles.askAIClose} onClick={testGenerator.close}>×</button>
               </div>
@@ -1661,13 +1678,13 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
                 onClick={testGenerator.generate}
                 disabled={testGenerator.state.loading}
               >
-                {testGenerator.state.loading ? '⏳ AI 生成中...' : '🚀 生成测试'}
+                {testGenerator.state.loading ? '⏳ ' + t('codeEditor.aiGenerating') : '🚀 ' + t('codeEditor.generateTestBtn')}
               </button>
 
               {testGenerator.state.result && (
                 <div className={styles.askAIAnswer}>
                   <div className={styles.askAIAnswerLabel}>
-                    ✨ 测试代码（{testGenerator.state.result.testFramework} - {testGenerator.state.result.testCount} 个用例）：
+                    ✨ {t('codeEditor.testCode', { framework: testGenerator.state.result.testFramework, count: testGenerator.state.result.testCount })}
                   </div>
                   <pre className={styles.askAICode}>{testGenerator.state.result.testCode}</pre>
                   {testGenerator.state.result.explanation && (
@@ -1680,7 +1697,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
                     onClick={testGenerator.copyToClipboard}
                     style={{ marginTop: '10px' }}
                   >
-                    📋 复制到剪贴板
+                    📋 {t('codeEditor.copyToClipboard')}
                   </button>
                 </div>
               )}
@@ -1693,12 +1710,12 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
           <div className={styles.askAIOverlay}>
             <div className={styles.askAIDialog}>
               <div className={styles.askAIHeader}>
-                <span className={styles.askAITitle}>🔍 语义 Diff 分析</span>
+                <span className={styles.askAITitle}>🔍 {t('codeEditor.semanticDiffAnalysis')}</span>
                 {smartDiff.state.analysis && (
                   <span className={`${styles.diffImpact} ${styles[`diffImpact_${smartDiff.state.analysis.impact}`]}`}>
-                    {smartDiff.state.analysis.impact === 'safe' && '✅ 安全'}
-                    {smartDiff.state.analysis.impact === 'warning' && '⚠️ 警告'}
-                    {smartDiff.state.analysis.impact === 'danger' && '🚨 危险'}
+                    {smartDiff.state.analysis.impact === 'safe' && '✅ ' + t('codeEditor.impactSafe')}
+                    {smartDiff.state.analysis.impact === 'warning' && '⚠️ ' + t('codeEditor.impactWarning')}
+                    {smartDiff.state.analysis.impact === 'danger' && '🚨 ' + t('codeEditor.impactDanger')}
                   </span>
                 )}
                 <button className={styles.askAIClose} onClick={smartDiff.close}>×</button>
@@ -1706,12 +1723,12 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
 
               {smartDiff.state.loading ? (
                 <div style={{ padding: '20px', textAlign: 'center', color: 'rgba(255,255,255,0.6)' }}>
-                  🤖 AI 分析改动中...
+                  🤖 {t('codeEditor.analyzingChanges')}
                 </div>
               ) : smartDiff.state.analysis ? (
                 <div style={{ padding: '16px', overflow: 'auto', maxHeight: '500px' }}>
                   {/* 摘要 */}
-                  <div className={styles.askAIAnswerLabel}>改动摘要：</div>
+                  <div className={styles.askAIAnswerLabel}>{t('codeEditor.changeSummary')}</div>
                   <div className={styles.askAIAnswerContent} style={{ marginBottom: '16px' }}>
                     {smartDiff.state.analysis.summary}
                   </div>
@@ -1719,7 +1736,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
                   {/* 改动列表 */}
                   {smartDiff.state.analysis.changes.length > 0 && (
                     <>
-                      <div className={styles.askAIAnswerLabel}>具体改动：</div>
+                      <div className={styles.askAIAnswerLabel}>{t('codeEditor.specificChanges')}</div>
                       <div style={{ marginBottom: '16px' }}>
                         {smartDiff.state.analysis.changes.map((change, idx) => (
                           <div key={idx} className={styles.diffChange} style={{ marginBottom: '8px' }}>
@@ -1747,7 +1764,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
                   {/* 警告列表 */}
                   {smartDiff.state.analysis.warnings.length > 0 && (
                     <>
-                      <div className={styles.askAIAnswerLabel}>⚠️ 警告：</div>
+                      <div className={styles.askAIAnswerLabel}>⚠️ {t('codeEditor.warnings')}</div>
                       <div>
                         {smartDiff.state.analysis.warnings.map((warning, idx) => (
                           <div key={idx} className={styles.diffWarning} style={{ marginBottom: '6px' }}>
@@ -1768,7 +1785,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
           <div className={styles.overlay} onClick={timeMachine.close}>
             <div className={styles.dialog} onClick={(e) => e.stopPropagation()}>
               <div className={styles.dialogHeader}>
-                <span className={styles.dialogTitle}>⏰ 代码时光机</span>
+                <span className={styles.dialogTitle}>⏰ {t('codeEditor.codeTimeMachineTitle')}</span>
                 <button className={styles.dialogClose} onClick={timeMachine.close}>
                   ×
                 </button>
@@ -1777,21 +1794,21 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
               <div className={styles.dialogBody}>
                 {timeMachine.state.loading ? (
                   <div className={styles.dialogLoading}>
-                    🤖 正在分析代码历史...
+                    🤖 {t('codeEditor.analyzingHistory')}
                   </div>
                 ) : timeMachine.state.result ? (
                   <>
                     {/* 选中的代码 */}
                     {timeMachine.state.selectedRange && (
                       <div className={styles.timeMachineSelection}>
-                        <strong>分析范围</strong>: 第 {timeMachine.state.selectedRange.startLine}-{timeMachine.state.selectedRange.endLine} 行
+                        <strong>{t('codeEditor.analysisRange')}</strong>: {t('codeEditor.lineRange', { start: timeMachine.state.selectedRange.startLine, end: timeMachine.state.selectedRange.endLine })}
                       </div>
                     )}
 
                     {/* Commits 时间线 */}
                     {timeMachine.state.result.commits.length > 0 && (
                       <div className={styles.timeMachineSection}>
-                        <h4>📜 提交历史 ({timeMachine.state.result.commits.length} 条)</h4>
+                        <h4>📜 {t('codeEditor.commitHistory', { count: timeMachine.state.result.commits.length })}</h4>
                         <div className={styles.timeMachineTimeline}>
                           {timeMachine.state.result.commits.map((commit, idx) => (
                             <div key={idx} className={styles.timeMachineCommit}>
@@ -1807,14 +1824,14 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
 
                     {/* AI 讲述的演变故事 */}
                     <div className={styles.timeMachineSection}>
-                      <h4>📖 演变故事</h4>
+                      <h4>📖 {t('codeEditor.evolutionStory')}</h4>
                       <div className={styles.timeMachineStory}>{timeMachine.state.result.story}</div>
                     </div>
 
                     {/* 关键改动 */}
                     {timeMachine.state.result.keyChanges.length > 0 && (
                       <div className={styles.timeMachineSection}>
-                        <h4>🔑 关键改动</h4>
+                        <h4>🔑 {t('codeEditor.keyChanges')}</h4>
                         <div className={styles.timeMachineKeyChanges}>
                           {timeMachine.state.result.keyChanges.map((change, idx) => (
                             <div key={idx} className={styles.timeMachineChange}>
@@ -1827,7 +1844,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
                     )}
                   </>
                 ) : (
-                  <div className={styles.dialogError}>无法获取代码历史</div>
+                  <div className={styles.dialogError}>{t('codeEditor.cannotGetHistory')}</div>
                 )}
               </div>
             </div>
@@ -1862,6 +1879,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
               { key: 'beginner', label: `🎓 ${t('codeEditor.beginner')}` },
               { key: 'minimap', label: `🗺️ ${t('codeEditor.minimap')}` },
               { key: 'timemachine', label: `⏰ ${t('codeEditor.timeMachine')}` },
+              { key: 'selectionExplain', label: `💬 ${t('codeEditor.selectionExplain')}` },
               { key: 'apidoc', label: `📚 ${t('codeEditor.apiDoc')}` },
             ].map(item => (
               <label key={item.key} className={styles.toolbarMenuItem}>

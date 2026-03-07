@@ -141,7 +141,6 @@
     ]
   },
   "disabledMcpServers": [
-    "email",
     "server1",
     "server2",
     "update-test",
@@ -151,6 +150,7 @@
     "connector-github",
     "connector-google",
     "connector-notion",
-    "connector-slack"
+    "connector-slack",
+    "email"
   ]
 }

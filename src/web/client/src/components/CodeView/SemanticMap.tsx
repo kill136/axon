@@ -1,5 +1,6 @@
 import React from 'react';
 import type { TourStep } from '../../api/ai-editor';
+import { useLanguage } from '../../i18n';
 import styles from './SemanticMap.module.css';
 
 /**
@@ -63,18 +64,19 @@ export const SemanticMap: React.FC<SemanticMapProps> = ({
   onNavigate,
   totalLines,
 }) => {
+  const { t } = useLanguage();
   return (
     <div className={styles.semanticMap}>
       {/* 标题栏 */}
       <div className={styles.semanticMapHeader}>
-        📋 文件结构 ({steps.length})
+        📋 {t('semanticMap.fileStructure')} ({steps.length})
       </div>
 
       {/* 区块列表 */}
       {steps.length === 0 ? (
         <div className={styles.semanticMapEmpty}>
           <div className={styles.semanticMapEmptyIcon}>📄</div>
-          <div className={styles.semanticMapEmptyText}>暂无结构信息</div>
+          <div className={styles.semanticMapEmptyText}>{t('semanticMap.noStructure')}</div>
         </div>
       ) : (
         <div className={styles.semanticMapItems}>

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, forwardRef } from 'react';
 import { CompactMessage } from './CompactMessage';
 import type { ChatMessage } from '../../types';
+import { useLanguage } from '../../i18n';
 import styles from './CompactChatPanel.module.css';
 
 interface CompactChatPanelProps {
@@ -40,6 +41,7 @@ export const CompactChatPanel = forwardRef<HTMLTextAreaElement, CompactChatPanel
     },
     ref
   ) => {
+    const { t } = useLanguage();
     const [inputText, setInputText] = useState(initialInput);
     const internalInputRef = useRef<HTMLTextAreaElement>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -104,8 +106,8 @@ export const CompactChatPanel = forwardRef<HTMLTextAreaElement, CompactChatPanel
       <div className={styles.panel}>
         {/* 顶部标题栏 */}
         <div className={styles.header}>
-          <div className={styles.title}>对话</div>
-          <button className={styles.closeBtn} onClick={onClose} title="收起聊天面板">
+          <div className={styles.title}>{t('compactChat.title')}</div>
+          <button className={styles.closeBtn} onClick={onClose} title={t('compactChat.collapsePanel')}>
             <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
               <path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z" />
             </svg>
@@ -115,7 +117,7 @@ export const CompactChatPanel = forwardRef<HTMLTextAreaElement, CompactChatPanel
         {/* 消息列表 */}
         <div className={styles.messages}>
           {messages.length === 0 ? (
-            <div className={styles.emptyState}>开始对话...</div>
+            <div className={styles.emptyState}>{t('compactChat.startConversation')}</div>
           ) : (
             messages.map((message) => (
               <CompactMessage
@@ -136,7 +138,7 @@ export const CompactChatPanel = forwardRef<HTMLTextAreaElement, CompactChatPanel
             <textarea
               ref={textareaRef}
               className={styles.textarea}
-              placeholder={connected ? '输入消息...' : '未连接'}
+              placeholder={connected ? t('compactChat.inputPlaceholder') : t('compactChat.disconnected')}
               value={inputText}
               onChange={handleInput}
               onKeyDown={handleKeyDown}
@@ -147,7 +149,7 @@ export const CompactChatPanel = forwardRef<HTMLTextAreaElement, CompactChatPanel
               className={styles.sendBtn}
               onClick={handleSend}
               disabled={!connected || !inputText.trim() || isStreaming}
-              title="发送 (Enter)"
+              title={t('compactChat.send')}
             >
               <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
                 <path d="M2 2l12 6-12 6V9.5l8.5-1.5L2 6.5V2z" />
@@ -158,7 +160,7 @@ export const CompactChatPanel = forwardRef<HTMLTextAreaElement, CompactChatPanel
           {/* 工具栏 */}
           <div className={styles.toolbar}>
             <div className={styles.toolbarGroup}>
-              <label className={styles.toolbarLabel}>模型</label>
+              <label className={styles.toolbarLabel}>{t('compactChat.model')}</label>
               <select
                 className={styles.toolbarSelect}
                 value={model}
@@ -172,16 +174,16 @@ export const CompactChatPanel = forwardRef<HTMLTextAreaElement, CompactChatPanel
             </div>
 
             <div className={styles.toolbarGroup}>
-              <label className={styles.toolbarLabel}>权限</label>
+              <label className={styles.toolbarLabel}>{t('compactChat.permission')}</label>
               <select
                 className={styles.toolbarSelect}
                 value={permissionMode}
                 onChange={(e) => onPermissionModeChange(e.target.value)}
                 disabled={!connected || isStreaming}
               >
-                <option value="default">默认</option>
-                <option value="bypassPermissions">跳过</option>
-                <option value="dontAsk">不询问</option>
+                <option value="default">{t('compactChat.permDefault')}</option>
+                <option value="bypassPermissions">{t('compactChat.permBypass')}</option>
+                <option value="dontAsk">{t('compactChat.permDontAsk')}</option>
               </select>
             </div>
 
@@ -190,13 +192,13 @@ export const CompactChatPanel = forwardRef<HTMLTextAreaElement, CompactChatPanel
               {status === 'streaming' && (
                 <>
                   <div className={styles.statusDot} />
-                  <span>生成中...</span>
+                  <span>{t('compactChat.streaming')}</span>
                 </>
               )}
               {status === 'thinking' && (
                 <>
                   <div className={`${styles.statusDot} ${styles.thinking}`} />
-                  <span>思考中...</span>
+                  <span>{t('compactChat.thinking')}</span>
                 </>
               )}
             </div>

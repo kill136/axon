@@ -35,12 +35,20 @@ export interface QuestionConfig {
 export class UserInteractionHandler {
   private pendingQuestions = new Map<string, PendingQuestion>();
   private ws: WebSocket | null = null;
+  private sessionId: string | null = null;
 
   /**
    * 设置 WebSocket 连接
    */
   setWebSocket(ws: WebSocket): void {
     this.ws = ws;
+  }
+
+  /**
+   * 设置会话 ID（用于消息中携带 sessionId，让前端正确做跨会话隔离）
+   */
+  setSessionId(sessionId: string): void {
+    this.sessionId = sessionId;
   }
 
   /**
@@ -83,9 +91,9 @@ export class UserInteractionHandler {
       try {
         this.ws!.send(JSON.stringify({
           type: 'user_question',
-          payload,
+          payload: { ...payload, sessionId: this.sessionId },
         }));
-        console.log(`[UserInteraction] Sending question: ${config.header} (${requestId})`);
+        console.log(`[UserInteraction] Sending question: ${config.header} (${requestId}), session: ${this.sessionId}`);
       } catch (error) {
         this.cleanup(requestId);
         reject(error instanceof Error ? error : new Error(String(error)));

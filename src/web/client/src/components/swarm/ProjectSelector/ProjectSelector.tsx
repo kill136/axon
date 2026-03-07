@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useLanguage } from '../../../i18n';
 import styles from './ProjectSelector.module.css';
 
 /**
@@ -51,6 +52,7 @@ export default function ProjectSelector({
   onProjectRemove,
   className = '',
 }: ProjectSelectorProps) {
+  const { t } = useLanguage();
   // 下拉菜单开关状态
   const [isOpen, setIsOpen] = useState(false);
   // 项目列表
@@ -74,10 +76,10 @@ export default function ProjectSelector({
       if (result.success) {
         setProjects(result.data || []);
       } else {
-        setError(result.error || '获取项目列表失败');
+        setError(result.error || t('projectSelector.fetchFailed'));
       }
     } catch (err) {
-      setError('网络错误，无法获取项目列表');
+      setError(t('projectSelector.networkError'));
       console.error('获取项目列表失败:', err);
     } finally {
       setLoading(false);
@@ -193,7 +195,7 @@ export default function ProjectSelector({
         <div className={styles.projectInfo}>
           <span className={styles.projectIcon}>📁</span>
           <span className={`${styles.projectName} ${!currentProject ? styles.noProject : ''}`}>
-            {currentProject?.name || '未选择项目'}
+            {currentProject?.name || t('projectSelector.noProject')}
           </span>
         </div>
         <span className={`${styles.arrow} ${isOpen ? styles.open : ''}`}>▼</span>
@@ -205,19 +207,19 @@ export default function ProjectSelector({
           {/* 打开文件夹按钮 */}
           <button className={styles.openFolderButton} onClick={handleOpenFolder}>
             <span className={styles.openFolderIcon}>📂</span>
-            <span>打开文件夹...</span>
+            <span>{t('projectSelector.openFolder')}</span>
           </button>
 
           <div className={styles.divider} />
 
           {/* 最近项目标题 */}
-          <div className={styles.dropdownHeader}>最近项目</div>
+          <div className={styles.dropdownHeader}>{t('projectSelector.recentProjects')}</div>
 
           {/* 加载状态 */}
           {loading && (
             <div className={styles.loading}>
               <div className={styles.spinner} />
-              <span>加载中...</span>
+              <span>{t('projectSelector.loading')}</span>
             </div>
           )}
 
@@ -235,7 +237,7 @@ export default function ProjectSelector({
               {projects.length === 0 ? (
                 <div className={styles.emptyState}>
                   <div className={styles.emptyIcon}>📭</div>
-                  <div>暂无最近项目</div>
+                  <div>{t('projectSelector.noRecentProjects')}</div>
                 </div>
               ) : (
                 projects.map(project => (
@@ -252,7 +254,7 @@ export default function ProjectSelector({
                       <div className={styles.projectItemNameRow}>
                         <span className={styles.projectItemName}>{project.name}</span>
                         {project.hasBlueprint && (
-                          <span className={styles.blueprintTag}>蓝图</span>
+                          <span className={styles.blueprintTag}>{t('projectSelector.blueprint')}</span>
                         )}
                       </div>
                       <span className={styles.projectItemPath}>{project.path}</span>
@@ -260,8 +262,8 @@ export default function ProjectSelector({
                     <button
                       className={styles.removeButton}
                       onClick={(e) => handleRemoveProject(e, project)}
-                      title="从列表中移除"
-                      aria-label={`移除 ${project.name}`}
+                      title={t('projectSelector.removeFromList')}
+                      aria-label={t('projectSelector.removeProject', { name: project.name })}
                     >
                       ✕
                     </button>

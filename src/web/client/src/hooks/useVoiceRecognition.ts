@@ -1,6 +1,12 @@
 /**
  * useVoiceRecognition Hook
- * 使用 Web Speech API 实现语音识别，支持唤醒词检测
+ *
+ * The ear is always open. Uses Web Speech API for continuous speech recognition.
+ * All transcription results are pushed to the backend via onTranscript callback,
+ * building an in-memory buffer the AI can query at any time.
+ *
+ * The wake word mechanism still works for direct voice commands:
+ *   listening → (say wake word) → activated → (say command) → (silence) → send → listening
  */
 
 import { useState, useRef, useCallback, useEffect } from 'react';
@@ -13,6 +19,10 @@ export interface UseVoiceRecognitionOptions {
   lang?: string;            // 语言，默认 'zh-CN'
   onCommand?: (text: string) => void;  // 命令完成回调
   onWake?: () => void;      // 唤醒回调
+  /** Called for every transcription result — push to backend ear buffer */
+  onTranscript?: (text: string, isFinal: boolean) => void;
+  /** Skip wake word — go straight to activated state (for conversation mode) */
+  skipWakeWord?: boolean;
 }
 
 export interface UseVoiceRecognitionReturn {
@@ -21,6 +31,10 @@ export interface UseVoiceRecognitionReturn {
   isSupported: boolean;
   startListening: () => void;
   stopListening: () => void;
+  /** Temporarily pause recognition (e.g. during TTS playback to avoid echo) */
+  pauseListening: () => void;
+  /** Resume recognition after pause */
+  resumeListening: () => void;
 }
 
 // 检测浏览器是否支持 Web Speech API
@@ -68,6 +82,8 @@ export function useVoiceRecognition({
   lang = 'zh-CN',
   onCommand,
   onWake,
+  onTranscript,
+  skipWakeWord = false,
 }: UseVoiceRecognitionOptions = {}): UseVoiceRecognitionReturn {
   const [voiceState, setVoiceState] = useState<VoiceState>('idle');
   const [transcript, setTranscript] = useState('');
@@ -78,10 +94,17 @@ export function useVoiceRecognition({
   const commandBufferRef = useRef<string>('');
   const onCommandRef = useRef(onCommand);
   const onWakeRef = useRef(onWake);
+  const onTranscriptRef = useRef(onTranscript);
+  /** Whether recognition is paused (e.g. during TTS) — we stop the engine but remember we should resume */
+  const isPausedRef = useRef(false);
+  const pausedStateRef = useRef<VoiceState>('idle');
+  const skipWakeWordRef = useRef(skipWakeWord);
+  useEffect(() => { skipWakeWordRef.current = skipWakeWord; }, [skipWakeWord]);
 
   // 保持回调引用最新
   useEffect(() => { onCommandRef.current = onCommand; }, [onCommand]);
   useEffect(() => { onWakeRef.current = onWake; }, [onWake]);
+  useEffect(() => { onTranscriptRef.current = onTranscript; }, [onTranscript]);
 
   // 同步 voiceState 到 ref（避免闭包陈旧值）
   const updateVoiceState = useCallback((state: VoiceState) => {
@@ -160,30 +183,47 @@ export function useVoiceRecognition({
       const combinedText = (finalText || interimText).trim();
       if (!combinedText) return;
 
+      // Push ALL transcriptions to backend ear buffer (the ear hears everything)
+      if (finalText.trim()) {
+        onTranscriptRef.current?.(finalText.trim(), true);
+      }
+
       const currentState = voiceStateRef.current;
 
       if (currentState === 'listening') {
-        // 检测唤醒词
-        const lowerText = combinedText.toLowerCase();
-        if (lowerText.includes(wakeWord.toLowerCase())) {
-          // 触发唤醒
-          playWakeSound();
-          onWakeRef.current?.();
-          updateVoiceState('activated');
-          commandBufferRef.current = '';
-          setTranscript('');
-          // 去掉唤醒词之后的部分作为初始命令片段
-          const afterWake = combinedText.substring(
-            lowerText.indexOf(wakeWord.toLowerCase()) + wakeWord.length
-          ).trim();
-          if (afterWake) {
-            commandBufferRef.current = afterWake;
-            setTranscript(afterWake);
-            resetSilenceTimer(afterWake);
+        if (skipWakeWordRef.current) {
+          // Conversation mode: skip wake word, treat all speech as commands directly
+          if (finalText) {
+            updateVoiceState('activated');
+            commandBufferRef.current = finalText.trim();
+            setTranscript(commandBufferRef.current);
+            resetSilenceTimer(commandBufferRef.current);
+          } else {
+            // Show interim results
+            setTranscript(interimText);
           }
-        } else if (finalText.trim()) {
-          // 非唤醒词的终态文本 → 直接作为命令发送
-          fireCommand(finalText.trim());
+        } else {
+          // 检测唤醒词
+          const lowerText = combinedText.toLowerCase();
+          if (lowerText.includes(wakeWord.toLowerCase())) {
+            // 触发唤醒
+            playWakeSound();
+            onWakeRef.current?.();
+            updateVoiceState('activated');
+            commandBufferRef.current = '';
+            setTranscript('');
+            // 去掉唤醒词之后的部分作为初始命令片段
+            const afterWake = combinedText.substring(
+              lowerText.indexOf(wakeWord.toLowerCase()) + wakeWord.length
+            ).trim();
+            if (afterWake) {
+              commandBufferRef.current = afterWake;
+              setTranscript(afterWake);
+              resetSilenceTimer(afterWake);
+            }
+          }
+          // 非唤醒词的文本在 listening 状态下忽略（不触发命令）
+          // 但已经通过 onTranscript 推送到后端 ear buffer
         }
       } else if (currentState === 'activated') {
         // 累积命令文本
@@ -212,6 +252,8 @@ export function useVoiceRecognition({
     };
 
     recognition.onend = () => {
+      // If paused, don't restart — resumeListening will handle it
+      if (isPausedRef.current) return;
       // 如果状态不是 idle，说明是意外结束（如超时），需要重启
       if (voiceStateRef.current !== 'idle') {
         try {
@@ -246,11 +288,39 @@ export function useVoiceRecognition({
     };
   }, [clearSilenceTimer]);
 
+  // Pause: stop the speech recognition engine but remember we should resume
+  const pauseListening = useCallback(() => {
+    if (voiceStateRef.current === 'idle') return;
+    isPausedRef.current = true;
+    pausedStateRef.current = voiceStateRef.current;
+    clearSilenceTimer();
+    if (recognitionRef.current) {
+      try { recognitionRef.current.stop(); } catch { /* ignore */ }
+    }
+  }, [clearSilenceTimer]);
+
+  // Resume: restart recognition with the state we had before pause
+  const resumeListening = useCallback(() => {
+    if (!isPausedRef.current) return;
+    isPausedRef.current = false;
+    const prevState = pausedStateRef.current;
+    if (prevState !== 'idle' && recognitionRef.current) {
+      try {
+        recognitionRef.current.start();
+      } catch {
+        // If start fails, try creating a new recognition instance
+        // by calling startListening
+      }
+    }
+  }, []);
+
   return {
     voiceState,
     transcript,
     isSupported,
     startListening,
     stopListening,
+    pauseListening,
+    resumeListening,
   };
 }

@@ -75,6 +75,15 @@ interface InputAreaProps {
   isVoiceSupported?: boolean;
   voiceTranscript?: string;
   onToggleVoice?: () => void;
+
+  // TTS 语音合成（嘴巴）
+  ttsEnabled?: boolean;
+  isTtsSupported?: boolean;
+  onToggleTts?: () => void;
+
+  // 语音对话模式
+  conversationMode?: boolean;
+  onToggleConversationMode?: () => void;
 }
 
 export function InputArea({
@@ -116,6 +125,11 @@ export function InputArea({
   isVoiceSupported = false,
   voiceTranscript = '',
   onToggleVoice,
+  ttsEnabled = false,
+  isTtsSupported = false,
+  onToggleTts,
+  conversationMode = false,
+  onToggleConversationMode,
 }: InputAreaProps) {
   const { t } = useLanguage();
   const [isAutoHidden, setIsAutoHidden] = useState(false);
@@ -248,8 +262,13 @@ export function InputArea({
         />
         <div className="input-wrapper">
           {voiceState !== 'idle' && (
-            <div className="voice-status-bar">
-              {voiceState === 'listening' ? (
+            <div className={`voice-status-bar${conversationMode ? ' conversation-mode' : ''}`}>
+              {conversationMode ? (
+                <span>
+                  🗣️ {t('input.conversationListening')}
+                  {voiceTranscript && <em className="voice-transcript-preview"> {voiceTranscript}</em>}
+                </span>
+              ) : voiceState === 'listening' ? (
                 <span>🎤 {t('input.wakeWord')}</span>
               ) : (
                 <span>
@@ -310,17 +329,21 @@ export function InputArea({
                 <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
               </svg>
             </button>
-            {isVoiceSupported && onToggleVoice && (
+            {isVoiceSupported && onToggleConversationMode && (
               <button
-                className={`voice-btn${voiceState === 'listening' ? ' voice-listening' : voiceState === 'activated' ? ' voice-activated' : ''}`}
-                onClick={onToggleVoice}
-                title={voiceState === 'idle' ? t('input.voiceStart') : voiceState === 'listening' ? t('input.voiceListening') : t('input.voiceActivated')}
+                className={`conversation-mode-btn${conversationMode ? ' conversation-active' : ''}`}
+                onClick={onToggleConversationMode}
+                title={conversationMode ? t('input.conversationStop') : t('input.conversationStart')}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/>
-                  <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                  <line x1="12" y1="19" x2="12" y2="22"/>
-                  <line x1="8" y1="22" x2="16" y2="22"/>
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                  {conversationMode && (
+                    <>
+                      <circle cx="9" cy="10" r="1" fill="currentColor"/>
+                      <circle cx="12" cy="10" r="1" fill="currentColor"/>
+                      <circle cx="15" cy="10" r="1" fill="currentColor"/>
+                    </>
+                  )}
                 </svg>
               </button>
             )}

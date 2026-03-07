@@ -8,6 +8,7 @@
 import React, { useState } from 'react';
 import type { PendingConflict, ConflictDecision, ConflictFile } from '../types';
 import styles from '../SwarmConsole.module.css';
+import { useLanguage } from '../../../i18n';
 
 interface ConflictPanelProps {
   conflicts: PendingConflict[];
@@ -18,6 +19,7 @@ interface ConflictPanelProps {
  * 冲突解决面板
  */
 export const ConflictPanel: React.FC<ConflictPanelProps> = ({ conflicts, onResolve }) => {
+  const { t } = useLanguage();
   const [selectedConflict, setSelectedConflict] = useState<PendingConflict | null>(
     conflicts.length > 0 ? conflicts[0] : null
   );
@@ -46,8 +48,8 @@ export const ConflictPanel: React.FC<ConflictPanelProps> = ({ conflicts, onResol
       {/* 标题栏 */}
       <div className={styles.conflictHeader}>
         <span className={styles.conflictIcon}>🔴</span>
-        <h3>合并冲突需要处理</h3>
-        <span className={styles.conflictCount}>{conflicts.length} 个冲突</span>
+        <h3>{t('conflict.mergeRequired')}</h3>
+        <span className={styles.conflictCount}>{t('conflict.count', { count: conflicts.length })}</span>
       </div>
 
       {/* 冲突列表 */}
@@ -63,7 +65,7 @@ export const ConflictPanel: React.FC<ConflictPanelProps> = ({ conflicts, onResol
               }}
             >
               <span className={styles.taskName}>{conflict.taskName}</span>
-              <span className={styles.fileCount}>{conflict.files.length} 文件</span>
+              <span className={styles.fileCount}>{t('conflict.fileCount', { count: conflict.files.length })}</span>
             </button>
           ))}
         </div>
@@ -75,7 +77,7 @@ export const ConflictPanel: React.FC<ConflictPanelProps> = ({ conflicts, onResol
           {/* 任务信息 */}
           <div className={styles.conflictInfo}>
             <div className={styles.infoRow}>
-              <span className={styles.label}>任务:</span>
+              <span className={styles.label}>{t('conflict.task')}:</span>
               <span className={styles.value}>{selectedConflict.taskName}</span>
             </div>
             <div className={styles.infoRow}>
@@ -83,7 +85,7 @@ export const ConflictPanel: React.FC<ConflictPanelProps> = ({ conflicts, onResol
               <span className={styles.value}>{selectedConflict.workerId.slice(0, 8)}...</span>
             </div>
             <div className={styles.infoRow}>
-              <span className={styles.label}>分支:</span>
+              <span className={styles.label}>{t('conflict.branch')}:</span>
               <span className={styles.value}>{selectedConflict.branchName}</span>
             </div>
           </div>
@@ -116,7 +118,7 @@ export const ConflictPanel: React.FC<ConflictPanelProps> = ({ conflicts, onResol
                 onClick={() => handleResolve('use_suggested')}
                 disabled={isResolving}
               >
-                ✓ 使用蜂王建议
+                {t('conflict.useSuggested')}
               </button>
             )}
             <button
@@ -124,21 +126,21 @@ export const ConflictPanel: React.FC<ConflictPanelProps> = ({ conflicts, onResol
               onClick={() => handleResolve('use_both')}
               disabled={isResolving}
             >
-              合并双方
+              {t('conflict.useBoth')}
             </button>
             <button
               className={styles.actionBtn}
               onClick={() => handleResolve('use_ours')}
               disabled={isResolving}
             >
-              保留当前版本
+              {t('conflict.useOurs')}
             </button>
             <button
               className={styles.actionBtn}
               onClick={() => handleResolve('use_theirs')}
               disabled={isResolving}
             >
-              使用Worker版本
+              {t('conflict.useTheirs')}
             </button>
           </div>
         </div>
@@ -151,6 +153,7 @@ export const ConflictPanel: React.FC<ConflictPanelProps> = ({ conflicts, onResol
  * 文件对比组件
  */
 const FileCompare: React.FC<{ file: ConflictFile }> = ({ file }) => {
+  const { t } = useLanguage();
   const [viewMode, setViewMode] = useState<'split' | 'suggested'>('split');
 
   return (
@@ -161,14 +164,14 @@ const FileCompare: React.FC<{ file: ConflictFile }> = ({ file }) => {
           className={`${styles.viewTab} ${viewMode === 'split' ? styles.active : ''}`}
           onClick={() => setViewMode('split')}
         >
-          对比视图
+          {t('conflict.splitView')}
         </button>
         {file.suggestedMerge && (
           <button
             className={`${styles.viewTab} ${viewMode === 'suggested' ? styles.active : ''}`}
             onClick={() => setViewMode('suggested')}
           >
-            🐝 蜂王建议
+            {t('conflict.queenSuggestion')}
           </button>
         )}
       </div>
@@ -180,17 +183,17 @@ const FileCompare: React.FC<{ file: ConflictFile }> = ({ file }) => {
       {viewMode === 'split' ? (
         <div className={styles.splitView}>
           <div className={styles.codePane}>
-            <div className={styles.paneHeader}>当前版本 (main)</div>
+            <div className={styles.paneHeader}>{t('conflict.currentVersion')}</div>
             <pre className={styles.codeContent}>{file.oursContent}</pre>
           </div>
           <div className={styles.codePane}>
-            <div className={styles.paneHeader}>Worker版本</div>
+            <div className={styles.paneHeader}>{t('conflict.workerVersion')}</div>
             <pre className={styles.codeContent}>{file.theirsContent}</pre>
           </div>
         </div>
       ) : (
         <div className={styles.suggestedView}>
-          <div className={styles.paneHeader}>🐝 蜂王智能合并建议</div>
+          <div className={styles.paneHeader}>{t('conflict.queenMergeSuggestion')}</div>
           <pre className={styles.codeContent}>{file.suggestedMerge}</pre>
         </div>
       )}

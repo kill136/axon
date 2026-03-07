@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useLanguage } from '../../../i18n';
 import styles from './FileDialog.module.css';
 
 /**
@@ -33,60 +34,60 @@ export interface FileDialogProps {
 /**
  * 获取对话框配置
  */
-function getDialogConfig(type: DialogType) {
+function getDialogConfig(type: DialogType, t: (key: string, params?: Record<string, string | number>) => string) {
   switch (type) {
     case 'newFile':
       return {
-        title: '新建文件',
+        title: t('fileDialog.newFile'),
         icon: '📄',
-        label: '文件名',
-        placeholder: '输入文件名（如 index.ts）',
-        confirmText: '创建',
-        hint: '提示：包含扩展名可获得正确的语法高亮',
+        label: t('fileDialog.fileName'),
+        placeholder: t('fileDialog.fileNamePlaceholder'),
+        confirmText: t('fileDialog.create'),
+        hint: t('fileDialog.extensionHint'),
       };
     case 'newFolder':
       return {
-        title: '新建文件夹',
+        title: t('fileDialog.newFolder'),
         icon: '📁',
-        label: '文件夹名',
-        placeholder: '输入文件夹名',
-        confirmText: '创建',
+        label: t('fileDialog.folderName'),
+        placeholder: t('fileDialog.folderNamePlaceholder'),
+        confirmText: t('fileDialog.create'),
         hint: null,
       };
     case 'rename':
       return {
-        title: '重命名',
+        title: t('fileDialog.rename'),
         icon: '✏️',
-        label: '新名称',
-        placeholder: '输入新名称',
-        confirmText: '重命名',
+        label: t('fileDialog.newName'),
+        placeholder: t('fileDialog.newNamePlaceholder'),
+        confirmText: t('fileDialog.rename'),
         hint: null,
       };
     case 'delete':
       return {
-        title: '确认删除',
+        title: t('fileDialog.confirmDelete'),
         icon: '🗑️',
         label: null,
         placeholder: '',
-        confirmText: '删除',
+        confirmText: t('fileDialog.delete'),
         hint: null,
       };
     case 'openFolder':
       return {
-        title: '打开文件夹',
+        title: t('fileDialog.openFolder'),
         icon: '📂',
-        label: '文件夹路径',
-        placeholder: '输入文件夹的完整路径（如 C:\\Projects\\my-app）',
-        confirmText: '打开',
-        hint: '提示：输入项目根目录的完整路径',
+        label: t('fileDialog.folderPath'),
+        placeholder: t('fileDialog.folderPathPlaceholder'),
+        confirmText: t('fileDialog.open'),
+        hint: t('fileDialog.folderPathHint'),
       };
     default:
       return {
-        title: '输入',
+        title: t('fileDialog.input'),
         icon: '📝',
-        label: '名称',
-        placeholder: '输入内容',
-        confirmText: '确认',
+        label: t('fileDialog.name'),
+        placeholder: t('fileDialog.inputPlaceholder'),
+        confirmText: t('fileDialog.confirm'),
         hint: null,
       };
   }
@@ -95,11 +96,11 @@ function getDialogConfig(type: DialogType) {
 /**
  * 默认文件名验证
  */
-function defaultValidate(value: string, type: DialogType): string | null {
+function defaultValidate(value: string, type: DialogType, t: (key: string, params?: Record<string, string | number>) => string): string | null {
   if (type === 'delete') return null;
 
   if (!value.trim()) {
-    return type === 'openFolder' ? '路径不能为空' : '名称不能为空';
+    return type === 'openFolder' ? t('fileDialog.pathEmpty') : t('fileDialog.nameEmpty');
   }
 
   // openFolder 类型使用不同的验证逻辑
@@ -109,7 +110,7 @@ function defaultValidate(value: string, type: DialogType): string | null {
     // 检查是否像一个有效路径（包含盘符或以/开头）
     const isValidPath = /^([a-zA-Z]:[/\\]|\/|~\/)/.test(trimmed);
     if (!isValidPath) {
-      return '请输入有效的完整路径（如 C:\\Projects 或 /home/user/projects）';
+      return t('fileDialog.invalidPath');
     }
     return null;
   }
@@ -117,13 +118,13 @@ function defaultValidate(value: string, type: DialogType): string | null {
   // 检查非法字符
   const invalidChars = /[<>:"/\\|?*\x00-\x1f]/;
   if (invalidChars.test(value)) {
-    return '名称包含非法字符';
+    return t('fileDialog.invalidChars');
   }
 
   // 检查保留名称（Windows）
   const reservedNames = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
   if (reservedNames.test(value.split('.')[0])) {
-    return '此名称为系统保留名称';
+    return t('fileDialog.reservedName');
   }
 
   // 检查点开头（Unix 隐藏文件，允许但提示）
@@ -131,7 +132,7 @@ function defaultValidate(value: string, type: DialogType): string | null {
 
   // 检查长度
   if (value.length > 255) {
-    return '名称过长（最多 255 个字符）';
+    return t('fileDialog.nameTooLong');
   }
 
   return null;
@@ -162,6 +163,7 @@ export default function FileDialog({
   validate,
   className = '',
 }: FileDialogProps) {
+  const { t } = useLanguage();
   // 输入值
   const [value, setValue] = useState(initialValue);
   // 错误消息
@@ -169,7 +171,7 @@ export default function FileDialog({
   // 输入框引用
   const inputRef = useRef<HTMLInputElement>(null);
   // 对话框配置
-  const config = getDialogConfig(type);
+  const config = getDialogConfig(type, t);
 
   /**
    * 重置状态
@@ -209,7 +211,7 @@ export default function FileDialog({
         return false;
       }
 
-      const defaultError = defaultValidate(val, type);
+      const defaultError = defaultValidate(val, type, t);
       if (defaultError) {
         setError(defaultError);
         return false;
@@ -218,7 +220,7 @@ export default function FileDialog({
       setError(null);
       return true;
     },
-    [validate, type]
+    [validate, type, t]
   );
 
   /**
@@ -315,7 +317,7 @@ export default function FileDialog({
           <button
             className={styles.closeButton}
             onClick={onCancel}
-            aria-label="关闭"
+            aria-label={t('fileDialog.close')}
           >
             ✕
           </button>
@@ -327,10 +329,10 @@ export default function FileDialog({
             // 删除确认内容
             <div>
               <p style={{ color: '#cccccc', marginBottom: 8 }}>
-                确定要删除 <strong style={{ color: '#f14c4c' }}>{targetName}</strong> 吗？
+                {t('fileDialog.deleteConfirmPrefix')} <strong style={{ color: '#f14c4c' }}>{targetName}</strong> {t('fileDialog.deleteConfirmSuffix')}
               </p>
               <p style={{ color: '#858585', fontSize: 12 }}>
-                此操作不可撤销，文件将被永久删除。
+                {t('fileDialog.deleteWarning')}
               </p>
             </div>
           ) : (
@@ -371,7 +373,7 @@ export default function FileDialog({
           {/* 路径预览 */}
           {fullPath && (
             <div className={styles.pathPreview}>
-              <span className={styles.pathPreviewLabel}>路径：</span>
+              <span className={styles.pathPreviewLabel}>{t('fileDialog.pathLabel')}</span>
               <span>{fullPath}</span>
             </div>
           )}
@@ -383,7 +385,7 @@ export default function FileDialog({
             className={`${styles.button} ${styles.cancelButton}`}
             onClick={onCancel}
           >
-            取消
+            {t('fileDialog.cancel')}
           </button>
           <button
             className={`${styles.button} ${type === 'delete' ? styles.dangerButton : styles.confirmButton}`}

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import styles from './TDDPanel.module.css';
 import { tddApi, TDDLoopState, TDDPhase, TestResult, PhaseTransition } from '../../../api/blueprint';
 import { SplitPanes } from '../../common/SplitPanes';
+import { useLanguage } from '../../../i18n';
 
 // ============================================================================
 // 类型定义
@@ -20,43 +21,43 @@ interface TDDPanelProps {
   onStateChange?: (state: TDDLoopState) => void;
 }
 
-// TDD 阶段配置
-const PHASE_CONFIG: Record<TDDPhase, { label: string; icon: string; color: string; description: string }> = {
+// TDD 阶段配置（label/description 使用 i18n key，渲染时通过 t() 翻译）
+const PHASE_CONFIG: Record<TDDPhase, { labelKey: string; icon: string; color: string; descriptionKey: string }> = {
   write_test: {
-    label: '编写测试',
+    labelKey: 'tdd.phaseWriteTest',
     icon: '📝',
     color: '#9c27b0',
-    description: '根据任务需求编写测试用例',
+    descriptionKey: 'tdd.phaseWriteTestDesc',
   },
   run_test_red: {
-    label: '红灯阶段',
+    labelKey: 'tdd.phaseRedLight',
     icon: '🔴',
     color: '#f44336',
-    description: '运行测试，确认测试按预期失败',
+    descriptionKey: 'tdd.phaseRedLightDesc',
   },
   write_code: {
-    label: '编写代码',
+    labelKey: 'tdd.phaseWriteCode',
     icon: '💻',
     color: '#2196f3',
-    description: '编写最小可行代码使测试通过',
+    descriptionKey: 'tdd.phaseWriteCodeDesc',
   },
   run_test_green: {
-    label: '绿灯阶段',
+    labelKey: 'tdd.phaseGreenLight',
     icon: '🟢',
     color: '#4caf50',
-    description: '运行测试，验证所有测试通过',
+    descriptionKey: 'tdd.phaseGreenLightDesc',
   },
   refactor: {
-    label: '重构优化',
+    labelKey: 'tdd.phaseRefactor',
     icon: '🔧',
     color: '#ff9800',
-    description: '优化代码结构，消除重复',
+    descriptionKey: 'tdd.phaseRefactorDesc',
   },
   done: {
-    label: '已完成',
+    labelKey: 'tdd.phaseDone',
     icon: '✅',
     color: '#4caf50',
-    description: 'TDD循环完成',
+    descriptionKey: 'tdd.phaseDoneDesc',
   },
 };
 
@@ -74,6 +75,8 @@ export const TDDPanel: React.FC<TDDPanelProps> = ({
   refreshInterval = 3000,
   onStateChange,
 }) => {
+  const { t } = useLanguage();
+
   // 状态
   const [loopState, setLoopState] = useState<TDDLoopState | null>(null);
   const [activeLoops, setActiveLoops] = useState<TDDLoopState[]>([]);
@@ -127,7 +130,7 @@ export const TDDPanel: React.FC<TDDPanelProps> = ({
           setSelectedTaskId(null);
         }
       } else {
-        setError(err.message || '加载TDD状态失败');
+        setError(err.message || t('tdd.loadStateFailed'));
         setLoopState(null);
       }
     } finally {
@@ -163,7 +166,7 @@ export const TDDPanel: React.FC<TDDPanelProps> = ({
   // 启动新的TDD循环
   const startLoop = useCallback(async () => {
     if (!treeId || !taskId) {
-      setError('需要提供 treeId 和 taskId 才能启动TDD循环');
+      setError(t('tdd.requireTreeAndTaskId'));
       return;
     }
 
@@ -176,7 +179,7 @@ export const TDDPanel: React.FC<TDDPanelProps> = ({
       onStateChange?.(state);
       await loadActiveLoops();
     } catch (err: any) {
-      setError(err.message || '启动TDD循环失败');
+      setError(err.message || t('tdd.startLoopFailed'));
     } finally {
       setLoading(false);
     }
@@ -215,7 +218,7 @@ export const TDDPanel: React.FC<TDDPanelProps> = ({
       const guidanceText = await tddApi.getPhaseGuidance(selectedTaskId);
       setGuidance(guidanceText);
     } catch (err: any) {
-      setError(err.message || '阶段转换失败');
+      setError(err.message || t('tdd.transitionFailed'));
     } finally {
       setPhaseTransitioning(false);
     }
@@ -238,7 +241,7 @@ export const TDDPanel: React.FC<TDDPanelProps> = ({
         setGuidance(guidanceText);
       }
     } catch (err: any) {
-      setError(err.message || '完成阶段失败');
+      setError(err.message || t('tdd.completePhaseError'));
     } finally {
       setPhaseTransitioning(false);
     }
@@ -259,7 +262,7 @@ export const TDDPanel: React.FC<TDDPanelProps> = ({
       const guidanceText = await tddApi.getPhaseGuidance(selectedTaskId);
       setGuidance(guidanceText);
     } catch (err: any) {
-      setError(err.message || '回退阶段失败');
+      setError(err.message || t('tdd.revertPhaseError'));
     } finally {
       setPhaseTransitioning(false);
     }
@@ -274,7 +277,7 @@ export const TDDPanel: React.FC<TDDPanelProps> = ({
       setConsistencyCheck(result);
       setShowConsistencyPanel(true);
     } catch (err: any) {
-      setError(err.message || '检查状态一致性失败');
+      setError(err.message || t('tdd.checkConsistencyFailed'));
     } finally {
       setLoading(false);
     }
@@ -299,7 +302,7 @@ export const TDDPanel: React.FC<TDDPanelProps> = ({
         setError(result.message);
       }
     } catch (err: any) {
-      setError(err.message || '同步状态失败');
+      setError(err.message || t('tdd.syncStateFailed'));
     } finally {
       setSyncing(false);
     }
@@ -322,7 +325,7 @@ export const TDDPanel: React.FC<TDDPanelProps> = ({
         loadActiveLoops();
       }
     } catch (err: any) {
-      setError(err.message || '批量同步失败');
+      setError(err.message || t('tdd.syncAllFailed'));
     } finally {
       setSyncing(false);
     }
@@ -349,7 +352,7 @@ export const TDDPanel: React.FC<TDDPanelProps> = ({
         }
       }
     } catch (err: any) {
-      setError(err.message || '清理孤立循环失败');
+      setError(err.message || t('tdd.cleanupOrphanedFailed'));
     } finally {
       setLoading(false);
     }
@@ -386,7 +389,7 @@ export const TDDPanel: React.FC<TDDPanelProps> = ({
 
     return (
       <div className={styles.phaseIndicator}>
-        <div className={styles.phaseTitle}>TDD 循环进度</div>
+        <div className={styles.phaseTitle}>{t('tdd.loopProgress')}</div>
         <div className={styles.phaseTimeline}>
           {PHASE_ORDER.filter(p => p !== 'done').map((phase, index) => {
             const config = PHASE_CONFIG[phase];
@@ -400,7 +403,7 @@ export const TDDPanel: React.FC<TDDPanelProps> = ({
                 key={phase}
                 className={`${styles.phaseItem} ${isActive ? styles.active : ''} ${isCompleted ? styles.completed : ''} ${isPending ? styles.pending : ''} ${canClick ? styles.clickable : ''}`}
                 onClick={() => canClick && handleTransitionPhase(phase)}
-                title={canClick ? `点击跳转到: ${config.label}` : (isDone ? '任务已完成' : config.label)}
+                title={canClick ? t('tdd.clickToJump', { phase: t(config.labelKey) }) : (isDone ? t('tdd.taskCompleted') : t(config.labelKey))}
               >
                 <div
                   className={styles.phaseNode}
@@ -412,7 +415,7 @@ export const TDDPanel: React.FC<TDDPanelProps> = ({
                     <span className={styles.phaseIcon}>{config.icon}</span>
                   )}
                 </div>
-                <div className={styles.phaseLabel}>{config.label}</div>
+                <div className={styles.phaseLabel}>{t(config.labelKey)}</div>
                 {index < PHASE_ORDER.length - 2 && (
                   <div className={`${styles.phaseLine} ${isCompleted ? styles.completedLine : ''}`} />
                 )}
@@ -430,7 +433,7 @@ export const TDDPanel: React.FC<TDDPanelProps> = ({
 
     return (
       <div className={styles.testResults}>
-        <div className={styles.sectionTitle}>测试历史</div>
+        <div className={styles.sectionTitle}>{t('tdd.testHistory')}</div>
         <div className={styles.resultsList}>
           {loopState.testResults.slice(-5).reverse().map((result, index) => (
             <div
@@ -442,7 +445,7 @@ export const TDDPanel: React.FC<TDDPanelProps> = ({
               </span>
               <span className={styles.resultInfo}>
                 <span className={styles.resultStatus}>
-                  {result.passed ? '通过' : '失败'}
+                  {result.passed ? t('tdd.passed') : t('tdd.failed')}
                 </span>
                 <span className={styles.resultDuration}>
                   {result.duration}ms
@@ -466,7 +469,7 @@ export const TDDPanel: React.FC<TDDPanelProps> = ({
 
     return (
       <div className={styles.phaseHistory}>
-        <div className={styles.sectionTitle}>阶段转换历史</div>
+        <div className={styles.sectionTitle}>{t('tdd.phaseTransitionHistory')}</div>
         <div className={styles.historyList}>
           {loopState.phaseHistory.slice(-5).reverse().map((transition, index) => (
             <div key={index} className={styles.historyItem}>
@@ -491,20 +494,20 @@ export const TDDPanel: React.FC<TDDPanelProps> = ({
           <>
             <div className={styles.emptyHint}>
               <span className={styles.hintIcon}>💡</span>
-              <span>请先创建或选择一个任务树</span>
+              <span>{t('tdd.createOrSelectTree')}</span>
             </div>
             <div className={styles.emptySteps}>
               <div className={styles.stepItem}>
                 <span className={styles.stepNumber}>1</span>
-                <span>在蓝图管理中创建新蓝图</span>
+                <span>{t('tdd.step1CreateBlueprint')}</span>
               </div>
               <div className={styles.stepItem}>
                 <span className={styles.stepNumber}>2</span>
-                <span>生成任务分解树</span>
+                <span>{t('tdd.step2GenerateTree')}</span>
               </div>
               <div className={styles.stepItem}>
                 <span className={styles.stepNumber}>3</span>
-                <span>选择要执行TDD的任务</span>
+                <span>{t('tdd.step3SelectTask')}</span>
               </div>
             </div>
           </>
@@ -514,11 +517,11 @@ export const TDDPanel: React.FC<TDDPanelProps> = ({
           <>
             <div className={styles.emptyHint}>
               <span className={styles.hintIcon}>👈</span>
-              <span>请在任务树中选择一个任务</span>
+              <span>{t('tdd.selectTaskInTree')}</span>
             </div>
             <div className={styles.emptyDescription}>
-              选择任务后，可以为该任务启动TDD循环，<br />
-              按照 <strong>编写测试 → 红灯 → 编写代码 → 绿灯 → 重构</strong> 的流程进行开发
+              {t('tdd.selectTaskDescription')}<br />
+              {t('tdd.tddFlowDescription')}
             </div>
           </>
         );
@@ -527,11 +530,11 @@ export const TDDPanel: React.FC<TDDPanelProps> = ({
       return (
         <div className={styles.emptyLoops}>
           <div className={styles.emptyIcon}>🔄</div>
-          <div className={styles.emptyText}>暂无活跃的TDD循环</div>
+          <div className={styles.emptyText}>{t('tdd.noActiveLoops')}</div>
           {guidance}
           {treeId && taskId && (
             <button className={styles.startButton} onClick={startLoop} disabled={loading}>
-              {loading ? '启动中...' : '启动TDD循环'}
+              {loading ? t('tdd.starting') : t('tdd.startLoop')}
             </button>
           )}
         </div>
@@ -541,7 +544,7 @@ export const TDDPanel: React.FC<TDDPanelProps> = ({
     return (
       <div className={styles.loopsList}>
         <div className={styles.sectionTitle}>
-          活跃的TDD循环 ({activeLoops.length})
+          {t('tdd.activeLoops', { count: activeLoops.length })}
         </div>
         {activeLoops.map(loop => (
           <div
@@ -554,10 +557,10 @@ export const TDDPanel: React.FC<TDDPanelProps> = ({
             </span>
             <div className={styles.loopInfo}>
               <span className={styles.loopTaskId}>{loop.taskId.substring(0, 8)}...</span>
-              <span className={styles.loopPhase}>{PHASE_CONFIG[loop.phase]?.label}</span>
+              <span className={styles.loopPhase}>{t(PHASE_CONFIG[loop.phase]?.labelKey)}</span>
             </div>
             <span className={styles.loopIteration}>
-              迭代 {loop.iteration + 1}
+              {t('tdd.iteration', { count: loop.iteration + 1 })}
             </span>
           </div>
         ))}
@@ -572,10 +575,10 @@ export const TDDPanel: React.FC<TDDPanelProps> = ({
     return (
       <div className={styles.loopsHorizontal}>
         <div className={styles.loopsHeader}>
-          <span className={styles.loopsTitle}>活跃循环 ({activeLoops.length})</span>
+          <span className={styles.loopsTitle}>{t('tdd.activeLoopsShort', { count: activeLoops.length })}</span>
           {treeId && taskId && !loopState && (
             <button className={styles.startButtonSmall} onClick={startLoop} disabled={loading}>
-              {loading ? '...' : '+ 新建'}
+              {loading ? '...' : t('tdd.newLoop')}
             </button>
           )}
         </div>
@@ -607,12 +610,12 @@ export const TDDPanel: React.FC<TDDPanelProps> = ({
     return (
       <div className={styles.guidancePanel}>
         <div className={styles.sectionTitle}>
-          阶段指南
+          {t('tdd.phaseGuidance')}
           <button
             className={styles.reportButton}
             onClick={() => selectedTaskId && loadReport(selectedTaskId)}
           >
-            查看报告
+            {t('tdd.viewReport')}
           </button>
         </div>
         <pre className={styles.guidanceContent}>{guidance}</pre>
@@ -628,7 +631,7 @@ export const TDDPanel: React.FC<TDDPanelProps> = ({
       <div className={styles.modalOverlay} onClick={() => setShowReport(false)}>
         <div className={styles.modal} onClick={e => e.stopPropagation()}>
           <div className={styles.modalHeader}>
-            <span className={styles.modalTitle}>TDD 循环报告</span>
+            <span className={styles.modalTitle}>{t('tdd.loopReport')}</span>
             <button className={styles.modalClose} onClick={() => setShowReport(false)}>×</button>
           </div>
           <div className={styles.modalContent}>
@@ -649,7 +652,7 @@ export const TDDPanel: React.FC<TDDPanelProps> = ({
       <div className={styles.modalOverlay} onClick={() => setShowConsistencyPanel(false)}>
         <div className={styles.modal} onClick={e => e.stopPropagation()}>
           <div className={styles.modalHeader}>
-            <span className={styles.modalTitle}>状态一致性检查</span>
+            <span className={styles.modalTitle}>{t('tdd.consistencyCheck')}</span>
             <button className={styles.modalClose} onClick={() => setShowConsistencyPanel(false)}>×</button>
           </div>
           <div className={styles.modalContent}>
@@ -657,15 +660,15 @@ export const TDDPanel: React.FC<TDDPanelProps> = ({
               <div className={styles.consistencyContent}>
                 <div className={styles.consistencySummary}>
                   <div className={styles.consistencyStat}>
-                    <span className={styles.statLabel}>总数</span>
+                    <span className={styles.statLabel}>{t('tdd.total')}</span>
                     <span className={styles.statValue}>{consistencyCheck.total}</span>
                   </div>
                   <div className={styles.consistencyStat}>
-                    <span className={styles.statLabel}>一致</span>
+                    <span className={styles.statLabel}>{t('tdd.consistent')}</span>
                     <span className={styles.statValue} style={{ color: '#4caf50' }}>{consistencyCheck.consistent}</span>
                   </div>
                   <div className={styles.consistencyStat}>
-                    <span className={styles.statLabel}>不一致</span>
+                    <span className={styles.statLabel}>{t('tdd.inconsistent')}</span>
                     <span className={styles.statValue} style={{ color: '#f44336' }}>{consistencyCheck.inconsistent}</span>
                   </div>
                 </div>
@@ -678,21 +681,21 @@ export const TDDPanel: React.FC<TDDPanelProps> = ({
                         onClick={handleSyncAll}
                         disabled={syncing}
                       >
-                        {syncing ? '同步中...' : `同步全部 (${inconsistentItems.length})`}
+                        {syncing ? t('tdd.syncing') : t('tdd.syncAll', { count: inconsistentItems.length })}
                       </button>
                     </div>
 
                     <div className={styles.inconsistentList}>
-                      <div className={styles.listHeader}>不一致的任务</div>
+                      <div className={styles.listHeader}>{t('tdd.inconsistentTasks')}</div>
                       {inconsistentItems.map(item => (
                         <div key={item.taskId} className={styles.inconsistentItem}>
                           <div className={styles.itemInfo}>
                             <span className={styles.itemTaskId}>{item.taskId.substring(0, 8)}...</span>
                             <span className={styles.itemStatus}>
-                              TDD: {item.tddPhase} → 期望: {item.expectedTaskStatus}
+                              TDD: {item.tddPhase} → {t('tdd.expected')}: {item.expectedTaskStatus}
                             </span>
                             <span className={styles.itemActual}>
-                              实际: {item.actualTaskStatus || '未知'}
+                              {t('tdd.actual')}: {item.actualTaskStatus || t('tdd.unknown')}
                             </span>
                           </div>
                           <button
@@ -700,7 +703,7 @@ export const TDDPanel: React.FC<TDDPanelProps> = ({
                             onClick={() => handleSyncState(item.taskId)}
                             disabled={syncing}
                           >
-                            {syncing ? '...' : '同步'}
+                            {syncing ? '...' : t('tdd.sync')}
                           </button>
                         </div>
                       ))}
@@ -711,12 +714,12 @@ export const TDDPanel: React.FC<TDDPanelProps> = ({
                 {inconsistentItems.length === 0 && (
                   <div className={styles.allConsistent}>
                     <span className={styles.checkIcon}>✅</span>
-                    <span>所有 TDD 循环状态与任务树一致</span>
+                    <span>{t('tdd.allConsistent')}</span>
                   </div>
                 )}
               </div>
             ) : (
-              <div className={styles.loadingText}>加载中...</div>
+              <div className={styles.loadingText}>{t('tdd.loading')}</div>
             )}
           </div>
         </div>
@@ -785,25 +788,25 @@ export const TDDPanel: React.FC<TDDPanelProps> = ({
       <div className={styles.stats}>
         <div className={styles.statItem}>
           <span className={styles.statValue}>{stats.iteration}</span>
-          <span className={styles.statLabel}>当前迭代</span>
+          <span className={styles.statLabel}>{t('tdd.currentIteration')}</span>
         </div>
         <div className={styles.statItem}>
           <span className={styles.statValue} style={{ color: '#4caf50' }}>{stats.passedTests}</span>
-          <span className={styles.statLabel}>通过</span>
+          <span className={styles.statLabel}>{t('tdd.passed')}</span>
         </div>
         <div className={styles.statItem}>
           <span className={styles.statValue} style={{ color: '#f44336' }}>{stats.failedTests}</span>
-          <span className={styles.statLabel}>失败</span>
+          <span className={styles.statLabel}>{t('tdd.failed')}</span>
         </div>
         {hasPending && (
           <div className={styles.statItem}>
             <span className={styles.statValue} style={{ color: '#ff9800' }}>{stats.pendingTests}</span>
-            <span className={styles.statLabel}>待运行</span>
+            <span className={styles.statLabel}>{t('tdd.pendingRun')}</span>
           </div>
         )}
         <div className={styles.statItem}>
           <span className={styles.statValue}>{stats.totalDuration}s</span>
-          <span className={styles.statLabel}>耗时</span>
+          <span className={styles.statLabel}>{t('tdd.duration')}</span>
         </div>
       </div>
     );
@@ -822,10 +825,10 @@ export const TDDPanel: React.FC<TDDPanelProps> = ({
         <div className={styles.stateHeader}>
           <span className={styles.stateIcon}>{config.icon}</span>
           <span className={styles.statePhase} style={{ color: config.color }}>
-            {config.label}
+            {t(config.labelKey)}
           </span>
         </div>
-        <div className={styles.stateDescription}>{config.description}</div>
+        <div className={styles.stateDescription}>{t(config.descriptionKey)}</div>
         {loopState.lastError && (
           <div className={styles.stateError}>
             <span className={styles.errorIcon}>⚠️</span>
@@ -839,19 +842,18 @@ export const TDDPanel: React.FC<TDDPanelProps> = ({
             <div className={styles.warningHeader}>
               <span className={styles.warningIcon}>🔄</span>
               <span className={styles.warningTitle}>
-                检测到重复错误（连续 {loopState.consecutiveSameErrorCount} 次）
+                {t('tdd.repeatedError', { count: loopState.consecutiveSameErrorCount })}
               </span>
             </div>
             <div className={styles.warningDescription}>
               {loopState.consecutiveSameErrorCount >= 3 ? (
                 <>
-                  <strong>蜂王正在介入分析...</strong><br />
-                  可能是测试用例本身存在问题（如测试数据与验证规则不匹配）。
-                  蜂王将尝试自动修正测试用例。
+                  <strong>{t('tdd.queenIntervening')}</strong><br />
+                  {t('tdd.queenInterveningDesc')}
                 </>
               ) : (
                 <>
-                  连续遇到相同错误，如果再失败一次，蜂王将介入分析。
+                  {t('tdd.repeatedErrorHint')}
                 </>
               )}
             </div>
@@ -865,18 +867,18 @@ export const TDDPanel: React.FC<TDDPanelProps> = ({
               className={styles.revertButton}
               onClick={handleRevertPhase}
               disabled={isFirstPhase || phaseTransitioning}
-              title={isFirstPhase ? '已是第一个阶段' : '回退到上一阶段'}
+              title={isFirstPhase ? t('tdd.alreadyFirstPhase') : t('tdd.revertToPrevPhase')}
             >
               <span className={styles.buttonIcon}>⬅</span>
-              回退阶段
+              {t('tdd.revertPhase')}
             </button>
             <button
               className={styles.completeButton}
               onClick={handleCompletePhase}
               disabled={phaseTransitioning}
-              title="完成当前阶段，进入下一阶段"
+              title={t('tdd.completePhaseTooltip')}
             >
-              {phaseTransitioning ? '处理中...' : '完成当前阶段'}
+              {phaseTransitioning ? t('tdd.processing') : t('tdd.completeCurrentPhase')}
               <span className={styles.buttonIcon}>➡</span>
             </button>
           </div>
@@ -896,7 +898,7 @@ export const TDDPanel: React.FC<TDDPanelProps> = ({
           className={styles.consistencyButton}
           onClick={handleCleanupOrphaned}
           disabled={loading}
-          title="清理孤立的 TDD 循环（没有 Worker 执行的循环）"
+          title={t('tdd.cleanupOrphanedTooltip')}
         >
           🧹
         </button>
@@ -904,7 +906,7 @@ export const TDDPanel: React.FC<TDDPanelProps> = ({
           className={styles.consistencyButton}
           onClick={handleCheckConsistency}
           disabled={loading}
-          title="检查 TDD 状态与任务树的一致性"
+          title={t('tdd.checkConsistencyTooltip')}
         >
           🔍
         </button>
@@ -938,19 +940,19 @@ export const TDDPanel: React.FC<TDDPanelProps> = ({
                 {taskId ? (
                   <div className={styles.startLoopState}>
                     <div className={styles.emptyIcon}>🚀</div>
-                    <div className={styles.emptyText}>当前任务尚未启动TDD循环</div>
+                    <div className={styles.emptyText}>{t('tdd.noLoopStarted')}</div>
                     <div className={styles.emptyDescription}>
-                      点击下方按钮开始 TDD 流程
+                      {t('tdd.clickToStartTdd')}
                     </div>
                     <button className={styles.startButton} onClick={startLoop} disabled={loading}>
-                      {loading ? '启动中...' : '启动TDD循环'}
+                      {loading ? t('tdd.starting') : t('tdd.startLoop')}
                     </button>
                   </div>
                 ) : (
                   <>
                     <div className={styles.noSelectionIcon}>📋</div>
                     <div className={styles.noSelectionText}>
-                      选择一个TDD循环查看详情
+                      {t('tdd.selectLoopToView')}
                     </div>
                   </>
                 )}

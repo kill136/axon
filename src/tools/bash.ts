@@ -325,6 +325,27 @@ function fixWindowsPathsForBash(command: string): string {
   );
 }
 
+/**
+ * v2.1.69: 修复 Windows CMD 风格的 nul 重定向在 Git Bash 中创建真实文件
+ *
+ * 问题：模型有时会使用 CMD 风格的 `2>nul` 重定向（Windows 的 /dev/null），
+ * 但在 Git Bash 中 `nul` 不是特殊设备，会创建一个名为 "nul" 的真实文件。
+ *
+ * 修复：将 `>nul`、`2>nul`、`>NUL` 等替换为 `>/dev/null`。
+ */
+function fixWindowsNulRedirection(command: string): string {
+  if (!IS_WINDOWS) return command;
+
+  // 匹配 [fd]>nul 或 [fd]>NUL（不在引号内）
+  // 支持 >nul, 2>nul, 1>nul, >NUL, 2>NUL 等
+  return command.replace(
+    /(\d?)>(nul|NUL)\b/g,
+    (_match, fd: string) => {
+      return `${fd}>/dev/null`;
+    }
+  );
+}
+
 /** 获取平台适配的终止信号类型 */
 type TermSignal = 'SIGTERM' | 'SIGKILL' | 'SIGINT';
 
@@ -967,6 +988,9 @@ Important:
     // Windows 路径修复：将命令中的 Windows 反斜杠路径转为正斜杠
     // 防止 Git Bash 将 \t \n 等视为转义序列导致路径损坏
     command = fixWindowsPathsForBash(command);
+
+    // v2.1.69: 修复 CMD 风格 2>nul 在 Git Bash 中创建真实 nul 文件
+    command = fixWindowsNulRedirection(command);
 
     // v2.1.32: 修复 heredoc 中 JavaScript 模板字面量导致的 "Bad substitution" 错误
     // 当 heredoc 使用未引用的定界符且内容包含 ${...} 时，bash 会尝试变量展开

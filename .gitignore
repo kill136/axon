@@ -43,5 +43,8 @@ test-*.md
 demo-screenshots/make-video-twitter.py
 demo-screenshots/twitter-post-*.txt
 
+# Installer binaries (too large for GitHub)
+installer/
+
 # Windows: git-bash 中 > nul 会创建字面文件 nul（cmd.exe 的空设备名）
 nul

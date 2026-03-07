@@ -12,6 +12,7 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import styles from './CallGraphVizEnhanced.module.css';
+import { useLanguage } from '../../i18n';
 
 // 符号分类函数（简化版，前端使用）
 interface SymbolClassification {
@@ -85,6 +86,7 @@ export const CallGraphVizEnhanced: React.FC<CallGraphVizEnhancedProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { t } = useLanguage();
 
   // 过滤器状态
   const [nodeTypeFilter, setNodeTypeFilter] = useState<Set<string>>(new Set(['function', 'method', 'constructor']));
@@ -231,7 +233,7 @@ export const CallGraphVizEnhanced: React.FC<CallGraphVizEnhancedProps> = ({
 
   useEffect(() => {
     if (!filteredData || filteredData.nodes.length === 0) {
-      setError('无调用图数据');
+      setError(t('callGraphEnhanced.noData'));
       setLoading(false);
       return;
     }
@@ -240,7 +242,7 @@ export const CallGraphVizEnhanced: React.FC<CallGraphVizEnhancedProps> = ({
       renderGraph();
       setLoading(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '渲染失败');
+      setError(err instanceof Error ? err.message : t('callGraphEnhanced.renderFailed'));
       setLoading(false);
     }
   }, [filteredData, centerNodeId, highlightedPath]);
@@ -248,7 +250,7 @@ export const CallGraphVizEnhanced: React.FC<CallGraphVizEnhancedProps> = ({
   const renderGraph = () => {
     if (!svgRef.current || !containerRef.current) return;
     if (!(window as any).d3) {
-      throw new Error('D3.js 未加载');
+      throw new Error(t('callGraphEnhanced.d3NotLoaded'));
     }
 
     const d3 = (window as any).d3;
@@ -415,9 +417,9 @@ export const CallGraphVizEnhanced: React.FC<CallGraphVizEnhancedProps> = ({
     // Tooltip
     node.append('title')
       .text((d: any) => {
-        let text = `${d.name}\n类型: ${d.type}\n模块: ${d.moduleId}`;
-        if (d.className) text += `\n类: ${d.className}`;
-        if (d.inCycle) text += `\n⚠ 在循环依赖中`;
+        let text = `${d.name}\n${t('callGraphEnhanced.type')}: ${d.type}\n${t('callGraphEnhanced.module')}: ${d.moduleId}`;
+        if (d.className) text += `\n${t('callGraphEnhanced.class')}: ${d.className}`;
+        if (d.inCycle) text += `\n${t('callGraphEnhanced.inCycleDependency')}`;
         return text;
       });
 
@@ -449,7 +451,7 @@ export const CallGraphVizEnhanced: React.FC<CallGraphVizEnhancedProps> = ({
       <div className={styles.container} style={{ height }}>
         <div className={styles.loading}>
           <div className={styles.spinner}></div>
-          <p>正在渲染调用图...</p>
+          <p>{t('callGraphEnhanced.rendering')}</p>
         </div>
       </div>
     );
@@ -470,23 +472,23 @@ export const CallGraphVizEnhanced: React.FC<CallGraphVizEnhancedProps> = ({
     return (
       <div className={styles.container} style={{ height }}>
         <div className={styles.emptyState}>
-          <p>⚠️ 没有可执行符号可显示</p>
-          <p>调用图仅支持函数和方法，不支持 interface、type 或 property。</p>
+          <p>{t('callGraphEnhanced.noExecutableSymbols')}</p>
+          <p>{t('callGraphEnhanced.onlyFunctionsAndMethods')}</p>
           {filterStats.staticSymbolsCount > 0 && (
             <>
-              <p>共过滤掉 {filterStats.staticSymbolsCount} 个静态符号：</p>
+              <p>{t('callGraphEnhanced.filteredStaticSymbols', { count: filterStats.staticSymbolsCount })}</p>
               <div className={styles.staticSymbolsList}>
                 {filterStats.staticSymbols.slice(0, 5).map((s, i) => (
                   <div key={i}>{s}</div>
                 ))}
                 {filterStats.staticSymbols.length > 5 && (
-                  <div>... 还有 {filterStats.staticSymbols.length - 5} 个</div>
+                  <div>{t('callGraphEnhanced.andMore', { count: filterStats.staticSymbols.length - 5 })}</div>
                 )}
               </div>
             </>
           )}
           <p className={styles.suggestion}>
-            💡 建议使用"引用查找"或"类型层级"视图
+            {t('callGraphEnhanced.suggestAlternativeView')}
           </p>
         </div>
       </div>
@@ -500,14 +502,14 @@ export const CallGraphVizEnhanced: React.FC<CallGraphVizEnhancedProps> = ({
         <div className={styles.toolbarLeft}>
           {/* 工具栏提示 */}
           <div className={styles.toolbarHint}>
-            💡 调用图仅显示可执行符号（函数、方法）
+            {t('callGraphEnhanced.toolbarHint')}
           </div>
 
           {/* 搜索 */}
           <input
             type="text"
             className={styles.searchInput}
-            placeholder="搜索节点..."
+            placeholder={t('callGraphEnhanced.searchPlaceholder')}
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
           />
@@ -538,7 +540,7 @@ export const CallGraphVizEnhanced: React.FC<CallGraphVizEnhancedProps> = ({
           <input
             type="text"
             className={styles.moduleInput}
-            placeholder="模块过滤..."
+            placeholder={t('callGraphEnhanced.moduleFilterPlaceholder')}
             value={moduleFilter}
             onChange={e => setModuleFilter(e.target.value)}
           />
@@ -548,15 +550,15 @@ export const CallGraphVizEnhanced: React.FC<CallGraphVizEnhancedProps> = ({
           {/* 循环依赖提示 */}
           {data.cycles && data.cycles.length > 0 && (
             <div className={styles.cycleWarning}>
-              ⚠ {data.cycles.length} 个循环依赖
+              {t('callGraphEnhanced.cycleDependencies', { count: data.cycles.length })}
             </div>
           )}
 
           {/* 导出按钮 */}
-          <button className={styles.toolbarBtn} onClick={exportToPNG} title="导出PNG">
+          <button className={styles.toolbarBtn} onClick={exportToPNG} title={t('callGraphEnhanced.exportPNG')}>
             📷 PNG
           </button>
-          <button className={styles.toolbarBtn} onClick={exportToSVG} title="导出SVG">
+          <button className={styles.toolbarBtn} onClick={exportToSVG} title={t('callGraphEnhanced.exportSVG')}>
             🎨 SVG
           </button>
 
@@ -570,9 +572,9 @@ export const CallGraphVizEnhanced: React.FC<CallGraphVizEnhancedProps> = ({
                   setHighlightedPath(data.callChains[0]);
                 }
               }}
-              title={`显示调用链 (${data.callChains.length} 条)`}
+              title={t('callGraphEnhanced.showCallChains', { count: data.callChains.length })}
             >
-              📊 调用链
+              📊 {t('callGraphEnhanced.callChains')}
             </button>
           )}
 
@@ -581,9 +583,9 @@ export const CallGraphVizEnhanced: React.FC<CallGraphVizEnhancedProps> = ({
             <button
               className={styles.toolbarBtn}
               onClick={() => setHighlightedPath([])}
-              title="清除路径高亮"
+              title={t('callGraphEnhanced.clearPathHighlight')}
             >
-              ✕ 清除路径
+              ✕ {t('callGraphEnhanced.clearPath')}
             </button>
           )}
         </div>
@@ -592,7 +594,7 @@ export const CallGraphVizEnhanced: React.FC<CallGraphVizEnhancedProps> = ({
       {/* 过滤信息提示 */}
       {filterStats.staticSymbolsCount > 0 && (
         <div className={styles.filterInfo}>
-          ℹ️ 已过滤 {filterStats.staticSymbolsCount} 个静态符号（interface/type/property）
+          {t('callGraphEnhanced.filteredStaticInfo', { count: filterStats.staticSymbolsCount })}
         </div>
       )}
 
@@ -603,21 +605,21 @@ export const CallGraphVizEnhanced: React.FC<CallGraphVizEnhancedProps> = ({
 
       {/* 提示 */}
       <div className={styles.hint}>
-        💡 拖拽节点 | 滚轮缩放 | 单击选择 | 双击节点高亮路径
+        {t('callGraphEnhanced.hint')}
       </div>
 
       {/* 统计信息 */}
       <div className={styles.stats}>
-        <span>节点: {filteredData.nodes.length}</span>
-        <span>边: {filteredData.edges.length}</span>
-        {data.cycles && <span className={styles.cycleCount}>循环: {data.cycles.length}</span>}
+        <span>{t('callGraphEnhanced.nodes')}: {filteredData.nodes.length}</span>
+        <span>{t('callGraphEnhanced.edges')}: {filteredData.edges.length}</span>
+        {data.cycles && <span className={styles.cycleCount}>{t('callGraphEnhanced.cycles')}: {data.cycles.length}</span>}
         {data.entryPoints && data.entryPoints.length > 0 && (
           <span title={data.entryPoints.map(e => e.name).join(', ')}>
-            入口: {data.entryPoints.length}
+            {t('callGraphEnhanced.entryPoints')}: {data.entryPoints.length}
           </span>
         )}
         {data.callChains && data.callChains.length > 0 && (
-          <span>调用链: {data.callChains.length}</span>
+          <span>{t('callGraphEnhanced.callChainsLabel')}: {data.callChains.length}</span>
         )}
       </div>
     </div>

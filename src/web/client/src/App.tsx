@@ -27,6 +27,7 @@ import CodeView from './components/CodeView';
 import type { SessionActions } from './types';
 import { useLanguage } from './i18n/LanguageContext';
 import InitAxonMdDialog from './components/InitAxonMdDialog';
+import { useSpeechSynthesis } from './hooks/useSpeechSynthesis';
 
 // 获取 WebSocket URL
 function getWebSocketUrl(): string {
@@ -66,6 +67,8 @@ function AppContent({
   const { state: projectState, openFolder } = useProject();
   const currentProjectPath = projectState.currentProject?.path;
   const [showInitAxonMd, setShowInitAxonMd] = useState(false);
+  // 记录弹框打开时的项目路径，防止切换项目后 confirm 操作跑到错误的项目
+  const initAxonMdProjectRef = useRef<string | null>(null);
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [showTerminal, setShowTerminal] = useState(false);
   const [showLogsPanel, setShowLogsPanel] = useState(false);
@@ -108,6 +111,12 @@ function AppContent({
   // AXON.md 初始化检测：项目切换后检查是否缺少 AXON.md，且 AI 服务可用时才弹框
   useEffect(() => {
     const project = projectState.currentProject;
+
+    // 项目切换时先关闭已打开的弹框，避免 confirm 操作在错误的项目上执行
+    setShowInitAxonMd(false);
+    initAxonMdProjectRef.current = null;
+
+    // 条件：项目存在 + 没有 AXON.md + 已连接
     if (!project || project.hasAxonMd !== false || !connected) return;
 
     // 异步检查认证状态，只有 AI 可用时才弹框
@@ -118,6 +127,7 @@ function AppContent({
         if (!res.ok || cancelled) return;
         const data = await res.json();
         if (!cancelled && data.authenticated) {
+          initAxonMdProjectRef.current = project.path;
           setShowInitAxonMd(true);
         }
       } catch {
@@ -194,6 +204,45 @@ function AppContent({
   // 产物面板
   const artifactsState = useArtifacts(messages);
   const scheduleState = useScheduleArtifacts(messages);
+
+  // TTS 语音合成（嘴巴）
+  const tts = useSpeechSynthesis();
+
+  // 对话模式：自动启用 TTS
+  useEffect(() => {
+    if (chatInput.conversationMode) {
+      tts.setEnabled(true);
+    }
+  }, [chatInput.conversationMode, tts.setEnabled]);
+
+  // 对话模式：AI 开始说话时暂停麦克风（回声消除）
+  useEffect(() => {
+    if (!chatInput.conversationMode) return;
+    if (tts.isSpeaking) {
+      chatInput.pauseMic();
+    }
+  }, [chatInput.conversationMode, tts.isSpeaking, chatInput.pauseMic]);
+
+  // 对话模式：AI 说完后恢复麦克风
+  useEffect(() => {
+    if (!chatInput.conversationMode) return;
+    tts.onSpeechEnd(() => {
+      chatInput.resumeMic();
+    });
+    return () => { tts.onSpeechEnd(null); };
+  }, [chatInput.conversationMode, tts.onSpeechEnd, chatInput.resumeMic]);
+
+  // 监听流式消息事件，喂给 TTS
+  useEffect(() => {
+    const remove = addMessageHandler((msg: any) => {
+      if (msg.type === 'text_delta' && msg.payload?.text) {
+        tts.feedText(msg.payload.text);
+      } else if (msg.type === 'message_complete') {
+        tts.flush();
+      }
+    });
+    return remove;
+  }, [addMessageHandler, tts.feedText, tts.flush]);
 
   // 定时任务产物出现时自动打开面板
   useEffect(() => {
@@ -366,7 +415,7 @@ function AppContent({
   // 执行回滚（通过 WebSocket）
   const handleRewind = useCallback(async (messageId: string, option: RewindOption) => {
     if (!send) {
-      throw new Error('WebSocket 未连接');
+      throw new Error(t('app.wsNotConnected'));
     }
 
     console.log(`[App] 发送回滚请求: messageId=${messageId}, option=${option}`);
@@ -407,7 +456,7 @@ function AppContent({
 
       const timeout = setTimeout(() => {
         cleanup();
-        reject(new Error('回滚超时'));
+        reject(new Error(t('app.rewindTimeout')));
       }, 30000);
 
       const successHandler = (data: any) => {
@@ -432,7 +481,7 @@ function AppContent({
         // 避免不相关的工具执行错误误触发回滚失败
         if (data.type === 'error' && data.payload?.source === 'rewind') {
           cleanup();
-          reject(new Error(data.payload?.message || '回滚失败'));
+          reject(new Error(data.payload?.message || t('app.rewindFailed')));
         }
       };
 
@@ -596,10 +645,10 @@ function AppContent({
               isPinned={chatInput.isPinned}
               onTogglePin={chatInput.togglePin}
               onVisibilityChange={setIsInputVisible}
-              voiceState={chatInput.voiceState}
               isVoiceSupported={chatInput.isVoiceSupported}
               voiceTranscript={chatInput.voiceTranscript}
-              onToggleVoice={chatInput.toggleVoice}
+              conversationMode={chatInput.conversationMode}
+              onToggleConversationMode={chatInput.toggleConversationMode}
             />
           </div>
 
@@ -708,12 +757,19 @@ function AppContent({
       )}
       <InitAxonMdDialog
         visible={showInitAxonMd}
-        projectPath={currentProjectPath || ''}
+        projectPath={initAxonMdProjectRef.current || currentProjectPath || ''}
         onConfirm={() => {
           setShowInitAxonMd(false);
-          send({ type: 'slash_command', payload: { command: '/init' } });
+          // 只在记录的项目路径与当前项目路径一致时才执行，防止切换项目后误操作
+          if (initAxonMdProjectRef.current && initAxonMdProjectRef.current === currentProjectPath) {
+            send({ type: 'slash_command', payload: { command: '/init' } });
+          }
+          initAxonMdProjectRef.current = null;
         }}
-        onCancel={() => setShowInitAxonMd(false)}
+        onCancel={() => {
+          setShowInitAxonMd(false);
+          initAxonMdProjectRef.current = null;
+        }}
       />
     </div>
   );

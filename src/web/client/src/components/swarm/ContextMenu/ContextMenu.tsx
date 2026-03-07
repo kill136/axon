@@ -62,12 +62,12 @@ export function getFileContextMenuItems(options: {
   onCopyPath?: () => void;
   onCopyRelativePath?: () => void;
   onRevealInExplorer?: () => void;
-}): MenuItem[] {
+}, t: (key: string, params?: Record<string, string | number>) => string): MenuItem[] {
   return [
     {
       type: 'item',
       id: 'open',
-      label: '打开',
+      label: t('contextMenu.open'),
       icon: '📄',
       onClick: options.onOpen,
     },
@@ -75,7 +75,7 @@ export function getFileContextMenuItems(options: {
     {
       type: 'item',
       id: 'cut',
-      label: '剪切',
+      label: t('contextMenu.cut'),
       icon: '✂️',
       shortcut: 'Ctrl+X',
       onClick: options.onCut,
@@ -83,7 +83,7 @@ export function getFileContextMenuItems(options: {
     {
       type: 'item',
       id: 'copy',
-      label: '复制',
+      label: t('contextMenu.copy'),
       icon: '📋',
       shortcut: 'Ctrl+C',
       onClick: options.onCopy,
@@ -92,7 +92,7 @@ export function getFileContextMenuItems(options: {
     {
       type: 'item',
       id: 'rename',
-      label: '重命名',
+      label: t('contextMenu.rename'),
       icon: '✏️',
       shortcut: 'F2',
       onClick: options.onRename,
@@ -100,7 +100,7 @@ export function getFileContextMenuItems(options: {
     {
       type: 'item',
       id: 'delete',
-      label: '删除',
+      label: t('contextMenu.delete'),
       icon: '🗑️',
       shortcut: 'Delete',
       danger: true,
@@ -110,14 +110,14 @@ export function getFileContextMenuItems(options: {
     {
       type: 'item',
       id: 'copyPath',
-      label: '复制路径',
+      label: t('contextMenu.copyPath'),
       icon: '📋',
       onClick: options.onCopyPath,
     },
     {
       type: 'item',
       id: 'copyRelativePath',
-      label: '复制相对路径',
+      label: t('contextMenu.copyRelativePath'),
       icon: '📋',
       onClick: options.onCopyRelativePath,
     },
@@ -125,7 +125,7 @@ export function getFileContextMenuItems(options: {
     {
       type: 'item',
       id: 'revealInExplorer',
-      label: '在资源管理器中显示',
+      label: t('contextMenu.revealInExplorer'),
       icon: '📂',
       onClick: options.onRevealInExplorer,
     },
@@ -148,19 +148,19 @@ export function getFolderContextMenuItems(options: {
   onCopyRelativePath?: () => void;
   onRevealInExplorer?: () => void;
   onCollapseAll?: () => void;
-}): MenuItem[] {
+}, t: (key: string, params?: Record<string, string | number>) => string): MenuItem[] {
   return [
     {
       type: 'item',
       id: 'newFile',
-      label: '新建文件',
+      label: t('contextMenu.newFile'),
       icon: '📄',
       onClick: options.onNewFile,
     },
     {
       type: 'item',
       id: 'newFolder',
-      label: '新建文件夹',
+      label: t('contextMenu.newFolder'),
       icon: '📁',
       onClick: options.onNewFolder,
     },
@@ -168,7 +168,7 @@ export function getFolderContextMenuItems(options: {
     {
       type: 'item',
       id: 'cut',
-      label: '剪切',
+      label: t('contextMenu.cut'),
       icon: '✂️',
       shortcut: 'Ctrl+X',
       onClick: options.onCut,
@@ -176,7 +176,7 @@ export function getFolderContextMenuItems(options: {
     {
       type: 'item',
       id: 'copy',
-      label: '复制',
+      label: t('contextMenu.copy'),
       icon: '📋',
       shortcut: 'Ctrl+C',
       onClick: options.onCopy,
@@ -184,7 +184,7 @@ export function getFolderContextMenuItems(options: {
     {
       type: 'item',
       id: 'paste',
-      label: '粘贴',
+      label: t('contextMenu.paste'),
       icon: '📥',
       shortcut: 'Ctrl+V',
       disabled: !options.canPaste,
@@ -194,7 +194,7 @@ export function getFolderContextMenuItems(options: {
     {
       type: 'item',
       id: 'rename',
-      label: '重命名',
+      label: t('contextMenu.rename'),
       icon: '✏️',
       shortcut: 'F2',
       onClick: options.onRename,
@@ -202,7 +202,7 @@ export function getFolderContextMenuItems(options: {
     {
       type: 'item',
       id: 'delete',
-      label: '删除',
+      label: t('contextMenu.delete'),
       icon: '🗑️',
       shortcut: 'Delete',
       danger: true,
@@ -212,14 +212,14 @@ export function getFolderContextMenuItems(options: {
     {
       type: 'item',
       id: 'copyPath',
-      label: '复制路径',
+      label: t('contextMenu.copyPath'),
       icon: '📋',
       onClick: options.onCopyPath,
     },
     {
       type: 'item',
       id: 'copyRelativePath',
-      label: '复制相对路径',
+      label: t('contextMenu.copyRelativePath'),
       icon: '📋',
       onClick: options.onCopyRelativePath,
     },
@@ -227,14 +227,14 @@ export function getFolderContextMenuItems(options: {
     {
       type: 'item',
       id: 'revealInExplorer',
-      label: '在资源管理器中显示',
+      label: t('contextMenu.revealInExplorer'),
       icon: '📂',
       onClick: options.onRevealInExplorer,
     },
     {
       type: 'item',
       id: 'collapseAll',
-      label: '全部折叠',
+      label: t('contextMenu.collapseAll'),
       icon: '📂',
       onClick: options.onCollapseAll,
     },
@@ -249,19 +249,19 @@ export function getEmptyContextMenuItems(options: {
   onNewFolder?: () => void;
   onRefresh?: () => void;
   onCollapseAll?: () => void;
-}): MenuItem[] {
+}, t: (key: string, params?: Record<string, string | number>) => string): MenuItem[] {
   return [
     {
       type: 'item',
       id: 'newFile',
-      label: '新建文件',
+      label: t('contextMenu.newFile'),
       icon: '📄',
       onClick: options.onNewFile,
     },
     {
       type: 'item',
       id: 'newFolder',
-      label: '新建文件夹',
+      label: t('contextMenu.newFolder'),
       icon: '📁',
       onClick: options.onNewFolder,
     },
@@ -269,14 +269,14 @@ export function getEmptyContextMenuItems(options: {
     {
       type: 'item',
       id: 'refresh',
-      label: '刷新',
+      label: t('contextMenu.refresh'),
       icon: '🔄',
       onClick: options.onRefresh,
     },
     {
       type: 'item',
       id: 'collapseAll',
-      label: '全部折叠',
+      label: t('contextMenu.collapseAll'),
       icon: '📂',
       onClick: options.onCollapseAll,
     },

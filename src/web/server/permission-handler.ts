@@ -538,19 +538,26 @@ export class PermissionHandler {
         const command = args.command as string;
         if (!command) return `Bash()`;
 
+        const normalizedCmd = command.trim().replace(/\\\r?\n\s*/g, ' ').replace(/\s+/g, ' ');
+
+        // v2.1.59: 复合命令（包含 &&, ||, ; 等）保存完整命令字符串作为精确匹配规则
+        if (/(?:&&|\|\||;|\|)/.test(normalizedCmd)) {
+          return `Bash(${normalizedCmd})`;
+        }
+
         // 提取命令名称和主要参数
-        const parts = command.trim().split(/\s+/);
+        const parts = normalizedCmd.split(/\s+/);
         const cmdName = parts[0] || '';
 
         // 对于常见命令，生成更精确的规则
         if (['npm', 'yarn', 'pnpm', 'git', 'node', 'python', 'pip'].includes(cmdName)) {
           const subCmd = parts[1] || '';
           if (subCmd) {
-            return `Bash(${cmdName} ${subCmd}*)`;
+            return `Bash(${cmdName} ${subCmd}:*)`;
           }
         }
 
-        return `Bash(${cmdName}*)`;
+        return `Bash(${cmdName}:*)`;
       }
 
       case 'Write':

@@ -39,6 +39,17 @@ success() { echo -e "${GREEN}[OK]${NC} $*"; }
 warn()    { echo -e "${YELLOW}[WARN]${NC} $*"; }
 error()   { echo -e "${RED}[ERROR]${NC} $*"; exit 1; }
 
+# --- Sudo detection ---
+# If already root or sudo is unavailable, run commands directly
+if [ "$(id -u)" -eq 0 ]; then
+    SUDO=""
+elif command -v sudo &> /dev/null; then
+    SUDO="sudo"
+else
+    SUDO=""
+    warn "Not running as root and sudo not found. Package installs may fail."
+fi
+
 # --- Detect OS & Architecture ---
 detect_platform() {
     OS="$(uname -s)"
@@ -112,11 +123,11 @@ detect_pkg_manager() {
 pkg_install() {
     local packages="$*"
     case "$PKG_MGR" in
-        dnf)    sudo dnf install -y $packages ;;
-        yum)    sudo yum install -y $packages ;;
-        apt)    sudo apt-get update -qq && sudo apt-get install -y $packages ;;
-        pacman) sudo pacman -S --noconfirm $packages ;;
-        apk)    sudo apk add $packages ;;
+        dnf)    $SUDO dnf install -y $packages ;;
+        yum)    $SUDO yum install -y $packages ;;
+        apt)    $SUDO apt-get update -qq && $SUDO apt-get install -y $packages ;;
+        pacman) $SUDO pacman -S --noconfirm $packages ;;
+        apk)    $SUDO apk add $packages ;;
         *)      return 1 ;;
     esac
 }
@@ -257,14 +268,14 @@ ensure_memory_for_npm() {
         return
     fi
 
-    if [ "$(id -u)" -eq 0 ] || sudo -n true 2>/dev/null; then
-        sudo swapoff /swapfile 2>/dev/null || true
-        sudo rm -f /swapfile
-        if sudo fallocate -l "${swap_needed_mb}M" /swapfile 2>/dev/null || \
-           sudo dd if=/dev/zero of=/swapfile bs=1M count="$swap_needed_mb" status=progress; then
-            sudo chmod 600 /swapfile
-            sudo mkswap /swapfile
-            sudo swapon /swapfile
+    if [ "$(id -u)" -eq 0 ] || command -v sudo &> /dev/null && sudo -n true 2>/dev/null; then
+        $SUDO swapoff /swapfile 2>/dev/null || true
+        $SUDO rm -f /swapfile
+        if $SUDO fallocate -l "${swap_needed_mb}M" /swapfile 2>/dev/null || \
+           $SUDO dd if=/dev/zero of=/swapfile bs=1M count="$swap_needed_mb" status=progress; then
+            $SUDO chmod 600 /swapfile
+            $SUDO mkswap /swapfile
+            $SUDO swapon /swapfile
             success "Created and enabled ${swap_needed_mb}MB swap"
         else
             warn "Failed to create swap. npm install may fail on low-memory devices."
@@ -324,8 +335,12 @@ install_node_linux() {
         if ! command -v curl &> /dev/null; then
             pkg_install curl ca-certificates
         fi
-        curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
-        sudo apt-get install -y nodejs
+        if [ -n "$SUDO" ]; then
+            curl -fsSL https://deb.nodesource.com/setup_22.x | $SUDO -E bash -
+        else
+            curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+        fi
+        $SUDO apt-get install -y nodejs
         return
     fi
 
@@ -334,8 +349,12 @@ install_node_linux() {
         if ! command -v curl &> /dev/null; then
             pkg_install curl
         fi
-        curl -fsSL https://rpm.nodesource.com/setup_22.x | sudo bash -
-        sudo $PKG_MGR install -y nodejs
+        if [ -n "$SUDO" ]; then
+            curl -fsSL https://rpm.nodesource.com/setup_22.x | $SUDO bash -
+        else
+            curl -fsSL https://rpm.nodesource.com/setup_22.x | bash -
+        fi
+        $SUDO $PKG_MGR install -y nodejs
         return
     fi
 
@@ -379,7 +398,7 @@ install_node_macos() {
     tar xzf "$tmp_dir/$node_pkg" -C "$tmp_dir"
     local extracted
     extracted=$(ls -d "$tmp_dir"/node-v22.* | head -1)
-    sudo cp -r "$extracted"/* /usr/local/
+    $SUDO cp -r "$extracted"/* /usr/local/
     rm -rf "$tmp_dir"
 }
 
@@ -483,7 +502,7 @@ ensure_browser() {
                         wget -q "https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb" -O "$tmp_deb"
                     fi
                     if [ -f "$tmp_deb" ] && [ -s "$tmp_deb" ]; then
-                        sudo dpkg -i "$tmp_deb" 2>/dev/null || sudo apt-get install -f -y
+                        $SUDO dpkg -i "$tmp_deb" 2>/dev/null || $SUDO apt-get install -f -y
                         rm -f "$tmp_deb"
                     else
                         rm -f "$tmp_deb"
@@ -508,7 +527,7 @@ ensure_browser() {
                         wget -q "https://dl.google.com/linux/direct/google-chrome-stable_current_x86_64.rpm" -O "$tmp_rpm"
                     fi
                     if [ -f "$tmp_rpm" ] && [ -s "$tmp_rpm" ]; then
-                        sudo $PKG_MGR install -y "$tmp_rpm" || true
+                        $SUDO $PKG_MGR install -y "$tmp_rpm" || true
                         rm -f "$tmp_rpm"
                     else
                         rm -f "$tmp_rpm"

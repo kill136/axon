@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import styles from './TimeTravelPanel.module.css';
 import { timeTravelApi } from '../../../api/blueprint';
+import { useLanguage } from '../../../i18n';
 
 // ============================================================================
 // 类型定义
@@ -99,7 +100,7 @@ interface TimeTravelPanelProps {
 /**
  * 格式化时间为相对时间
  */
-function formatTimeAgo(timestamp: string): string {
+function formatTimeAgo(timestamp: string, t: (key: string, params?: Record<string, string | number>) => string): string {
   const date = new Date(timestamp);
   const now = new Date();
   const diff = now.getTime() - date.getTime();
@@ -110,13 +111,13 @@ function formatTimeAgo(timestamp: string): string {
   const days = Math.floor(hours / 24);
 
   if (days > 0) {
-    return `${days} 天前`;
+    return t('timeTravel.daysAgo', { count: days });
   } else if (hours > 0) {
-    return `${hours} 小时前`;
+    return t('timeTravel.hoursAgo', { count: hours });
   } else if (minutes > 0) {
-    return `${minutes} 分钟前`;
+    return t('timeTravel.minutesAgo', { count: minutes });
   } else {
-    return '刚刚';
+    return t('timeTravel.justNow');
   }
 }
 
@@ -137,20 +138,20 @@ function formatFullTime(timestamp: string): string {
 /**
  * 格式化时间差
  */
-function formatTimeDiff(ms: number): string {
+function formatTimeDiff(ms: number, t: (key: string, params?: Record<string, string | number>) => string): string {
   const seconds = Math.floor(ms / 1000);
   const minutes = Math.floor(seconds / 60);
   const hours = Math.floor(minutes / 60);
   const days = Math.floor(hours / 24);
 
   if (days > 0) {
-    return `${days} 天 ${hours % 24} 小时`;
+    return t('timeTravel.daysAndHours', { days, hours: hours % 24 });
   } else if (hours > 0) {
-    return `${hours} 小时 ${minutes % 60} 分钟`;
+    return t('timeTravel.hoursAndMinutes', { hours, minutes: minutes % 60 });
   } else if (minutes > 0) {
-    return `${minutes} 分钟`;
+    return t('timeTravel.minutes', { count: minutes });
   } else {
-    return `${seconds} 秒`;
+    return t('timeTravel.seconds', { count: seconds });
   }
 }
 
@@ -172,6 +173,8 @@ export const TimeTravelPanel: React.FC<TimeTravelPanelProps> = ({
   treeId,
   onRefresh,
 }) => {
+  const { t } = useLanguage();
+
   // 状态
   const [panelState, setPanelState] = useState<PanelState>('list');
   const [loading, setLoading] = useState(true);
@@ -215,7 +218,7 @@ export const TimeTravelPanel: React.FC<TimeTravelPanelProps> = ({
    */
   const fetchTimeline = useCallback(async () => {
     if (!treeId) {
-      setError('缺少任务树ID');
+      setError(t('timeTravel.missingTreeId'));
       setLoading(false);
       return;
     }
@@ -227,7 +230,7 @@ export const TimeTravelPanel: React.FC<TimeTravelPanelProps> = ({
       setTimeline(data);
     } catch (err: any) {
       console.error('[TimeTravelPanel] 获取时间线失败:', err);
-      setError(err.message || '获取时间线失败');
+      setError(err.message || t('timeTravel.fetchTimelineFailed'));
     } finally {
       setLoading(false);
     }
@@ -247,7 +250,7 @@ export const TimeTravelPanel: React.FC<TimeTravelPanelProps> = ({
    */
   const handleCreateCheckpoint = async () => {
     if (!createName.trim()) {
-      alert('请输入检查点名称');
+      alert(t('timeTravel.pleaseEnterCheckpointName'));
       return;
     }
 
@@ -274,7 +277,7 @@ export const TimeTravelPanel: React.FC<TimeTravelPanelProps> = ({
       onRefresh?.();
     } catch (err: any) {
       console.error('[TimeTravelPanel] 创建检查点失败:', err);
-      alert(`创建检查点失败: ${err.message}`);
+      alert(t('timeTravel.createCheckpointFailed', { error: err.message }));
     } finally {
       setCreating(false);
     }
@@ -292,7 +295,7 @@ export const TimeTravelPanel: React.FC<TimeTravelPanelProps> = ({
       setPanelState('preview');
     } catch (err: any) {
       console.error('[TimeTravelPanel] 预览回滚失败:', err);
-      alert(`预览回滚失败: ${err.message}`);
+      alert(t('timeTravel.previewRollbackFailed', { error: err.message }));
     } finally {
       setPreviewing(false);
     }
@@ -304,14 +307,14 @@ export const TimeTravelPanel: React.FC<TimeTravelPanelProps> = ({
   const handleRollback = async () => {
     if (!selectedCheckpoint) return;
 
-    if (!confirm(`确定要回滚到检查点 "${selectedCheckpoint.name}" 吗？此操作可能会丢失当前的进度。`)) {
+    if (!confirm(t('timeTravel.confirmRollbackMessage', { name: selectedCheckpoint.name }))) {
       return;
     }
 
     try {
       setRolling(true);
       await timeTravelApi.rollback(treeId, selectedCheckpoint.id);
-      alert('回滚成功！');
+      alert(t('timeTravel.rollbackSuccess'));
       setPanelState('list');
       setPreviewResult(null);
       setSelectedCheckpoint(null);
@@ -319,7 +322,7 @@ export const TimeTravelPanel: React.FC<TimeTravelPanelProps> = ({
       onRefresh?.();
     } catch (err: any) {
       console.error('[TimeTravelPanel] 回滚失败:', err);
-      alert(`回滚失败: ${err.message}`);
+      alert(t('timeTravel.rollbackFailed', { error: err.message }));
     } finally {
       setRolling(false);
     }
@@ -366,7 +369,7 @@ export const TimeTravelPanel: React.FC<TimeTravelPanelProps> = ({
       setCompareResult(result);
     } catch (err: any) {
       console.error('[TimeTravelPanel] 比较失败:', err);
-      alert(`比较失败: ${err.message}`);
+      alert(t('timeTravel.compareFailed', { error: err.message }));
     } finally {
       setComparing(false);
     }
@@ -390,14 +393,14 @@ export const TimeTravelPanel: React.FC<TimeTravelPanelProps> = ({
    */
   const handleCreateBranch = async () => {
     if (!selectedCheckpoint || !branchName.trim()) {
-      alert('请输入分支名称');
+      alert(t('timeTravel.pleaseEnterBranchName'));
       return;
     }
 
     try {
       setCreatingBranch(true);
       await timeTravelApi.createBranch(treeId, selectedCheckpoint.id, branchName.trim());
-      alert('分支创建成功！');
+      alert(t('timeTravel.branchCreateSuccess'));
       setPanelState('list');
       setBranchName('');
       setSelectedCheckpoint(null);
@@ -405,7 +408,7 @@ export const TimeTravelPanel: React.FC<TimeTravelPanelProps> = ({
       onRefresh?.();
     } catch (err: any) {
       console.error('[TimeTravelPanel] 创建分支失败:', err);
-      alert(`创建分支失败: ${err.message}`);
+      alert(t('timeTravel.createBranchFailed', { error: err.message }));
     } finally {
       setCreatingBranch(false);
     }
@@ -442,10 +445,10 @@ export const TimeTravelPanel: React.FC<TimeTravelPanelProps> = ({
             <div className={styles.checkpointName}>
               {checkpoint.name}
               <span className={`${styles.checkpointType} ${styles[checkpoint.type]}`}>
-                {checkpoint.type === 'global' ? '全局' : '任务'}
+                {checkpoint.type === 'global' ? t('timeTravel.global') : t('timeTravel.task')}
               </span>
               {!checkpoint.canRestore && (
-                <span className={styles.cannotRestore}>不可恢复</span>
+                <span className={styles.cannotRestore}>{t('timeTravel.cannotRestore')}</span>
               )}
             </div>
             {checkpoint.description && (
@@ -463,12 +466,12 @@ export const TimeTravelPanel: React.FC<TimeTravelPanelProps> = ({
           <div className={styles.metaItem}>
             <span className={styles.metaIcon}>&#128197;</span>
             <span title={formatFullTime(checkpoint.timestamp)}>
-              {formatTimeAgo(checkpoint.timestamp)}
+              {formatTimeAgo(checkpoint.timestamp, t)}
             </span>
           </div>
           <div className={styles.metaItem}>
             <span className={styles.metaIcon}>&#128196;</span>
-            <span>{checkpoint.codeChangesCount} 个文件变更</span>
+            <span>{t('timeTravel.fileChanges', { count: checkpoint.codeChangesCount })}</span>
           </div>
           {checkpoint.taskName && (
             <div className={styles.metaItem}>
@@ -491,7 +494,7 @@ export const TimeTravelPanel: React.FC<TimeTravelPanelProps> = ({
                   }}
                   disabled={previewing}
                 >
-                  {previewing ? '加载中...' : '预览回滚'}
+                  {previewing ? t('timeTravel.loading') : t('timeTravel.previewRollback')}
                 </button>
                 <button
                   className={`${styles.smallButton} ${styles.branchButton}`}
@@ -500,7 +503,7 @@ export const TimeTravelPanel: React.FC<TimeTravelPanelProps> = ({
                     handleStartBranch(checkpoint);
                   }}
                 >
-                  创建分支
+                  {t('timeTravel.createBranch')}
                 </button>
               </>
             )}
@@ -511,10 +514,10 @@ export const TimeTravelPanel: React.FC<TimeTravelPanelProps> = ({
         {isCompareMode && (
           <div className={styles.checkpointActions}>
             {isFromSelected && (
-              <span className={`${styles.smallButton} ${styles.selectButton}`}>起点</span>
+              <span className={`${styles.smallButton} ${styles.selectButton}`}>{t('timeTravel.startPoint')}</span>
             )}
             {isToSelected && (
-              <span className={`${styles.smallButton} ${styles.selectButton}`}>终点</span>
+              <span className={`${styles.smallButton} ${styles.selectButton}`}>{t('timeTravel.endPoint')}</span>
             )}
           </div>
         )}
@@ -532,7 +535,7 @@ export const TimeTravelPanel: React.FC<TimeTravelPanelProps> = ({
         {result.taskChanges.length > 0 && (
           <div className={styles.compareSection}>
             <div className={styles.compareSectionTitle}>
-              任务状态变更
+              {t('timeTravel.taskStatusChanges')}
               <span className={styles.compareSectionCount}>{result.taskChanges.length}</span>
             </div>
             <div className={styles.taskChangeList}>
@@ -554,7 +557,7 @@ export const TimeTravelPanel: React.FC<TimeTravelPanelProps> = ({
         {result.codeChanges.length > 0 && (
           <div className={styles.compareSection}>
             <div className={styles.compareSectionTitle}>
-              代码变更
+              {t('timeTravel.codeChanges')}
               <span className={styles.compareSectionCount}>{result.codeChanges.length}</span>
             </div>
             <div className={styles.codeChangeList}>
@@ -566,7 +569,7 @@ export const TimeTravelPanel: React.FC<TimeTravelPanelProps> = ({
                     <span className={styles.deletions}>-{change.deletions}</span>
                   </div>
                   <span className={`${styles.codeChangeType} ${styles[change.type]}`}>
-                    {change.type === 'added' ? '新增' : change.type === 'modified' ? '修改' : '删除'}
+                    {change.type === 'added' ? t('timeTravel.added') : change.type === 'modified' ? t('timeTravel.modified') : t('timeTravel.deleted')}
                   </span>
                 </div>
               ))}
@@ -577,10 +580,10 @@ export const TimeTravelPanel: React.FC<TimeTravelPanelProps> = ({
         {/* 时间差 */}
         <div className={styles.compareSection}>
           <div className={styles.compareSectionTitle}>
-            时间跨度
+            {t('timeTravel.timeSpan')}
           </div>
           <div className={styles.taskChange}>
-            {formatTimeDiff(Math.abs(result.timeElapsed))}
+            {formatTimeDiff(Math.abs(result.timeElapsed), t)}
           </div>
         </div>
       </div>
@@ -595,14 +598,14 @@ export const TimeTravelPanel: React.FC<TimeTravelPanelProps> = ({
 
     return (
       <div className={styles.branchSection}>
-        <div className={styles.branchTitle}>活跃分支</div>
+        <div className={styles.branchTitle}>{t('timeTravel.activeBranches')}</div>
         <div className={styles.branchList}>
           {branches.map(branch => (
             <div key={branch.id} className={styles.branchCard}>
               <div className={styles.branchInfo}>
                 <div className={styles.branchName}>{branch.name}</div>
                 <div className={styles.branchMeta}>
-                  创建于 {formatTimeAgo(branch.createdAt)}
+                  {t('timeTravel.createdAt')} {formatTimeAgo(branch.createdAt, t)}
                 </div>
               </div>
               <span className={`${styles.branchStatus} ${styles[branch.status]}`}>
@@ -625,7 +628,7 @@ export const TimeTravelPanel: React.FC<TimeTravelPanelProps> = ({
       <div className={styles.panel}>
         <div className={styles.loading}>
           <div className={styles.spinner}></div>
-          <p>加载时间线...</p>
+          <p>{t('timeTravel.loadingTimeline')}</p>
         </div>
       </div>
     );
@@ -642,7 +645,7 @@ export const TimeTravelPanel: React.FC<TimeTravelPanelProps> = ({
             onClick={fetchTimeline}
             style={{ marginTop: 12 }}
           >
-            重试
+            {t('timeTravel.retry')}
           </button>
         </div>
       </div>
@@ -655,7 +658,7 @@ export const TimeTravelPanel: React.FC<TimeTravelPanelProps> = ({
       <div className={styles.header}>
         <div className={styles.title}>
           <span className={styles.titleIcon}>&#9200;</span>
-          时光倒流
+          {t('timeTravel.title')}
         </div>
         <div className={styles.headerActions}>
           {panelState === 'list' && (
@@ -664,20 +667,20 @@ export const TimeTravelPanel: React.FC<TimeTravelPanelProps> = ({
                 className={`${styles.actionButton} ${styles.createButton}`}
                 onClick={() => setPanelState('create')}
               >
-                + 创建检查点
+                {t('timeTravel.createCheckpoint')}
               </button>
               <button
                 className={`${styles.actionButton} ${styles.compareButton}`}
                 onClick={handleStartCompare}
                 disabled={!timeline || timeline.checkpoints.length < 2}
               >
-                对比检查点
+                {t('timeTravel.compareCheckpoints')}
               </button>
               <button
                 className={`${styles.actionButton} ${styles.refreshButton}`}
                 onClick={fetchTimeline}
               >
-                刷新
+                {t('timeTravel.refresh')}
               </button>
             </>
           )}
@@ -693,7 +696,7 @@ export const TimeTravelPanel: React.FC<TimeTravelPanelProps> = ({
                 setSelectedCheckpoint(null);
               }}
             >
-              返回列表
+              {t('timeTravel.backToList')}
             </button>
           )}
         </div>
@@ -702,24 +705,24 @@ export const TimeTravelPanel: React.FC<TimeTravelPanelProps> = ({
       {/* 创建检查点表单 */}
       {panelState === 'create' && (
         <div className={`${styles.createForm} ${styles.fadeIn}`}>
-          <div className={styles.formTitle}>创建新检查点</div>
+          <div className={styles.formTitle}>{t('timeTravel.createNewCheckpoint')}</div>
 
           <div className={styles.formGroup}>
-            <label className={styles.formLabel}>检查点名称 *</label>
+            <label className={styles.formLabel}>{t('timeTravel.checkpointName')}</label>
             <input
               type="text"
               className={styles.formInput}
-              placeholder="例如: 功能开发完成"
+              placeholder={t('timeTravel.checkpointNamePlaceholder')}
               value={createName}
               onChange={(e) => setCreateName(e.target.value)}
             />
           </div>
 
           <div className={styles.formGroup}>
-            <label className={styles.formLabel}>描述 (可选)</label>
+            <label className={styles.formLabel}>{t('timeTravel.descriptionOptional')}</label>
             <textarea
               className={`${styles.formInput} ${styles.formTextarea}`}
-              placeholder="描述这个检查点的状态..."
+              placeholder={t('timeTravel.descriptionPlaceholder')}
               value={createDescription}
               onChange={(e) => setCreateDescription(e.target.value)}
             />
@@ -732,7 +735,7 @@ export const TimeTravelPanel: React.FC<TimeTravelPanelProps> = ({
                 checked={createIsGlobal}
                 onChange={(e) => setCreateIsGlobal(e.target.checked)}
               />
-              <span className={styles.formLabel}>全局检查点 (保存整棵任务树状态)</span>
+              <span className={styles.formLabel}>{t('timeTravel.globalCheckpointLabel')}</span>
             </label>
           </div>
 
@@ -746,14 +749,14 @@ export const TimeTravelPanel: React.FC<TimeTravelPanelProps> = ({
                 setCreateIsGlobal(true);
               }}
             >
-              取消
+              {t('timeTravel.cancel')}
             </button>
             <button
               className={`${styles.actionButton} ${styles.submitButton}`}
               onClick={handleCreateCheckpoint}
               disabled={creating || !createName.trim()}
             >
-              {creating ? '创建中...' : '创建检查点'}
+              {creating ? t('timeTravel.creating') : t('timeTravel.createCheckpointSubmit')}
             </button>
           </div>
         </div>
@@ -763,22 +766,22 @@ export const TimeTravelPanel: React.FC<TimeTravelPanelProps> = ({
       {panelState === 'compare' && (
         <div className={`${styles.comparePanel} ${styles.fadeIn}`}>
           <div className={styles.compareHeader}>
-            <div className={styles.compareTitle}>选择要比较的两个检查点</div>
+            <div className={styles.compareTitle}>{t('timeTravel.selectTwoCheckpoints')}</div>
           </div>
 
           {/* 比较选择状态 */}
           <div className={styles.compareSelection}>
             <div className={styles.compareFrom}>
-              <span className={styles.compareLabel}>起点</span>
+              <span className={styles.compareLabel}>{t('timeTravel.startPoint')}</span>
               <span className={styles.compareName}>
-                {compareFrom ? compareFrom.name : '点击下方列表选择'}
+                {compareFrom ? compareFrom.name : t('timeTravel.clickToSelect')}
               </span>
             </div>
             <span className={styles.compareArrow}>&#8594;</span>
             <div className={styles.compareTo}>
-              <span className={styles.compareLabel}>终点</span>
+              <span className={styles.compareLabel}>{t('timeTravel.endPoint')}</span>
               <span className={styles.compareName}>
-                {compareTo ? compareTo.name : '点击下方列表选择'}
+                {compareTo ? compareTo.name : t('timeTravel.clickToSelect')}
               </span>
             </div>
           </div>
@@ -791,7 +794,7 @@ export const TimeTravelPanel: React.FC<TimeTravelPanelProps> = ({
               disabled={comparing}
               style={{ alignSelf: 'center' }}
             >
-              {comparing ? '比较中...' : '开始比较'}
+              {comparing ? t('timeTravel.comparing') : t('timeTravel.startCompare')}
             </button>
           )}
 
@@ -815,12 +818,11 @@ export const TimeTravelPanel: React.FC<TimeTravelPanelProps> = ({
       {panelState === 'preview' && selectedCheckpoint && (
         <div className={`${styles.previewPanel} ${styles.fadeIn}`}>
           <div className={styles.previewTitle}>
-            &#9888; 预览回滚: {selectedCheckpoint.name}
+            &#9888; {t('timeTravel.previewRollbackTitle', { name: selectedCheckpoint.name })}
           </div>
 
           <div className={styles.previewWarning}>
-            回滚将把任务树状态恢复到该检查点时的状态。
-            当前检查点之后的所有进度可能会丢失。
+            {t('timeTravel.rollbackWarning')}
           </div>
 
           {/* 预览结果 */}
@@ -835,14 +837,14 @@ export const TimeTravelPanel: React.FC<TimeTravelPanelProps> = ({
                 setSelectedCheckpoint(null);
               }}
             >
-              取消
+              {t('timeTravel.cancel')}
             </button>
             <button
               className={`${styles.actionButton} ${styles.confirmRollback}`}
               onClick={handleRollback}
               disabled={rolling}
             >
-              {rolling ? '回滚中...' : '确认回滚'}
+              {rolling ? t('timeTravel.rollingBack') : t('timeTravel.confirmRollback')}
             </button>
           </div>
         </div>
@@ -852,15 +854,15 @@ export const TimeTravelPanel: React.FC<TimeTravelPanelProps> = ({
       {panelState === 'branch' && selectedCheckpoint && (
         <div className={`${styles.branchModal} ${styles.fadeIn}`}>
           <div className={styles.branchModalTitle}>
-            从检查点创建分支: {selectedCheckpoint.name}
+            {t('timeTravel.createBranchFrom', { name: selectedCheckpoint.name })}
           </div>
 
           <div className={styles.formGroup}>
-            <label className={styles.formLabel}>分支名称 *</label>
+            <label className={styles.formLabel}>{t('timeTravel.branchName')}</label>
             <input
               type="text"
               className={styles.formInput}
-              placeholder="例如: feature-new-approach"
+              placeholder={t('timeTravel.branchNamePlaceholder')}
               value={branchName}
               onChange={(e) => setBranchName(e.target.value)}
             />
@@ -875,14 +877,14 @@ export const TimeTravelPanel: React.FC<TimeTravelPanelProps> = ({
                 setSelectedCheckpoint(null);
               }}
             >
-              取消
+              {t('timeTravel.cancel')}
             </button>
             <button
               className={`${styles.actionButton} ${styles.branchButton}`}
               onClick={handleCreateBranch}
               disabled={creatingBranch || !branchName.trim()}
             >
-              {creatingBranch ? '创建中...' : '创建分支'}
+              {creatingBranch ? t('timeTravel.creating') : t('timeTravel.createBranch')}
             </button>
           </div>
         </div>
@@ -898,12 +900,12 @@ export const TimeTravelPanel: React.FC<TimeTravelPanelProps> = ({
           ) : (
             <div className={styles.empty}>
               <div className={styles.emptyIcon}>&#128368;</div>
-              <div className={styles.emptyText}>暂无检查点</div>
+              <div className={styles.emptyText}>{t('timeTravel.noCheckpoints')}</div>
               <button
                 className={`${styles.actionButton} ${styles.createButton}`}
                 onClick={() => setPanelState('create')}
               >
-                创建第一个检查点
+                {t('timeTravel.createFirstCheckpoint')}
               </button>
             </div>
           )}

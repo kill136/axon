@@ -12,7 +12,7 @@
  * 3. Electron GUI 没有 stdout，pipe 输出会 EPIPE 崩溃
  */
 
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
 const fs = require('fs');
@@ -35,8 +35,7 @@ function findNodeExe() {
     // Windows: <installDir>/node/node.exe
     //   appRoot = <installDir>/resources/app → ../../node/node.exe
     path.join(appRoot, '..', '..', 'node', nodeBin),
-    // macOS: Axon.app/Contents/Resources/node/node
-    //   appRoot = Contents/Resources/app → ../node/node
+    // macOS / Linux AppImage: Contents/Resources/app (or usr/share/axon/app) → ../node/node
     path.join(appRoot, '..', 'node', nodeBin),
   ];
 
@@ -150,9 +149,12 @@ function createWindow() {
     width: 1400,
     height: 900,
     title: 'Axon',
+    frame: false,       // 无边框窗口，去掉系统标题栏和菜单
+    titleBarStyle: 'hidden', // macOS 上隐藏标题栏但保留红绿灯（可选）
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      preload: path.join(__dirname, 'preload.cjs'),
     },
     icon: path.join(__dirname, 'icon.png'),
     show: false, // 先隐藏，等内容加载好再显示
@@ -208,7 +210,7 @@ function showError(message) {
   <div class="error">
     <h1>Failed to Start</h1>
     <p>${message}</p>
-    <p>Check logs at: <code>${process.platform === 'win32' ? '%APPDATA%' : '~/Library/Application Support'}/axon/logs/server.log</code></p>
+    <p>Check logs at: <code>${process.platform === 'win32' ? '%APPDATA%' : process.platform === 'darwin' ? '~/Library/Application Support' : '~/.config'}/axon/logs/server.log</code></p>
   </div>
 </body>
 </html>`)}`);
@@ -217,6 +219,21 @@ function showError(message) {
 // ============================================================
 // App Lifecycle
 // ============================================================
+
+// 窗口控制 IPC 处理
+ipcMain.on('window-minimize', () => {
+  mainWindow?.minimize();
+});
+ipcMain.on('window-maximize', () => {
+  if (mainWindow?.isMaximized()) {
+    mainWindow.unmaximize();
+  } else {
+    mainWindow?.maximize();
+  }
+});
+ipcMain.on('window-close', () => {
+  mainWindow?.close();
+});
 
 app.whenReady().then(async () => {
   createWindow();

@@ -285,6 +285,23 @@ The proxy auto-detects local credentials in this order: `ANTHROPIC_API_KEY` env 
 
 PRs and issues are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
+## Sponsors
+
+Thanks to the following people for supporting Axon:
+
+- **Jack Darcy** — jack@jackdarcy.com.au
+
+If you find Axon useful, consider supporting the project:
+
+<table>
+<tr>
+<td align="center"><img src="alipay.jpg" width="200" alt="Alipay"><br>Alipay</td>
+<td align="center"><img src="wechat.jpg" width="200" alt="WeChat Pay"><br>WeChat Pay</td>
+</tr>
+</table>
+
+[Buy me a coffee](https://buymeacoffee.com/anthropic.test) to support the project and get listed here.
+
 ## Acknowledgment
 
 This project is inspired by Anthropic's @anthropic-ai/claude-code. It is an independent open-source reimplementation using public APIs. For the official version, see [@anthropic-ai/claude-code](https://www.npmjs.com/package/@anthropic-ai/claude-code).

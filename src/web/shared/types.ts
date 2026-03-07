@@ -215,6 +215,8 @@ export type ClientMessage =
   | { type: 'git:push' }
   | { type: 'git:pull' }
   | { type: 'git:checkout'; payload: { branch: string } }
+  | { type: 'git:stash_and_checkout'; payload: { branch: string } }
+  | { type: 'git:force_checkout'; payload: { branch: string } }
   | { type: 'git:create_branch'; payload: { name: string; startPoint?: string } }
   | { type: 'git:delete_branch'; payload: { name: string } }
   | { type: 'git:stash_save'; payload: { message?: string } }
@@ -224,6 +226,7 @@ export type ClientMessage =
   | { type: 'git:get_diff'; payload?: { file?: string } }
   | { type: 'git:smart_commit' }
   | { type: 'git:smart_review' }
+  | { type: 'git:smart_commit_and_review' }
   | { type: 'git:explain_commit'; payload: { hash: string } }
   | { type: 'git:get_commit_detail'; payload: { hash: string } }
   | { type: 'git:get_commit_file_diff'; payload: { projectPath?: string; hash: string; file: string } }
@@ -255,6 +258,7 @@ export type ClientMessage =
   | { type: 'git:compare_branches'; payload: { base: string; target: string } }
   | { type: 'git:get_merge_status' }
   | { type: 'git:get_conflicts'; payload: { file: string } }
+  | { type: 'git:resolve_lock'; payload: { action: 'delete' | 'retry' } }
   // IM 通道管理消息
   | { type: 'channel:list' }
   | { type: 'channel:start'; payload: { channelId: string } }
@@ -265,7 +269,9 @@ export type ClientMessage =
   | { type: 'channel:pairing_approve'; payload: { channel: string; code: string } }
   | { type: 'channel:pairing_deny'; payload: { channel: string; code: string } }
   // 前端错误上报
-  | { type: 'client_error'; payload: { message: string; stack?: string; source?: string; lineno?: number; colno?: number; componentName?: string } };
+  | { type: 'client_error'; payload: { message: string; stack?: string; source?: string; lineno?: number; colno?: number; componentName?: string } }
+  // 听觉：浏览器语音识别结果推送到后端 ear buffer
+  | { type: 'ear:transcript'; payload: { text: string; isFinal: boolean; lang?: string } };
 
 /**
  * 服务端发送的消息类型
@@ -356,6 +362,7 @@ export type ServerMessage =
   | { type: 'git:diff_response'; payload: GitDiffResponsePayload }
   | { type: 'git:smart_commit_response'; payload: GitSmartCommitResponsePayload }
   | { type: 'git:smart_review_response'; payload: GitSmartReviewResponsePayload }
+  | { type: 'git:smart_commit_and_review_response'; payload: GitSmartCommitAndReviewResponsePayload }
   | { type: 'git:explain_commit_response'; payload: GitExplainCommitResponsePayload }
   | { type: 'git:commit_detail_response'; payload: { success: boolean; data?: { hash: string; shortHash: string; author: string; date: string; message: string; diff: string; files: { status: string; file: string }[] }; error?: string } }
   // Git Enhanced Features Responses
@@ -3378,6 +3385,17 @@ export interface GitSmartReviewResponsePayload {
   data?: {
     review: string;
   };
+  error?: string;
+}
+
+/**
+ * Git Smart Commit + Review 合并响应
+ */
+export interface GitSmartCommitAndReviewResponsePayload {
+  success: boolean;
+  review?: string;
+  message?: string;
+  needsStaging?: boolean;
   error?: string;
 }
 

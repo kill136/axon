@@ -1,4 +1,5 @@
 import React from 'react';
+import { useLanguage } from '../../i18n';
 
 interface RegressionResultData {
   passed: boolean;
@@ -16,7 +17,8 @@ interface RegressionResultCardProps {
 }
 
 export const RegressionResultCard: React.FC<RegressionResultCardProps> = ({ data, onRollback }) => {
-  const title = data.passed ? '回归测试通过' : '回归测试失败';
+  const { t } = useLanguage();
+  const title = data.passed ? t('regression.passed') : t('regression.failed');
   const statusColor = data.passed ? 'text-green-400' : 'text-red-400';
   const borderColor = data.passed ? 'border-green-500/20 bg-green-500/10' : 'border-red-500/20 bg-red-500/10';
 
@@ -31,22 +33,22 @@ export const RegressionResultCard: React.FC<RegressionResultCardProps> = ({ data
 
       {data.failureReason && (
         <div className="text-sm text-gray-300 mb-3">
-          失败原因: {data.failureReason}
+          {t('regression.failureReason')}: {data.failureReason}
         </div>
       )}
 
       <div className="grid grid-cols-2 gap-3 text-xs text-gray-400">
         <div className="bg-black/20 rounded p-2">
-          新功能测试: {data.newTests?.passed || 0}/{data.newTests?.total || 0}
+          {t('regression.newTests')}: {data.newTests?.passed || 0}/{data.newTests?.total || 0}
         </div>
         <div className="bg-black/20 rounded p-2">
-          回归测试: {data.regressionTests?.passed || 0}/{data.regressionTests?.total || 0}
+          {t('regression.regressionTests')}: {data.regressionTests?.passed || 0}/{data.regressionTests?.total || 0}
         </div>
       </div>
 
       {(data.failedTests || []).length > 0 && (
         <div className="mt-3 text-sm text-gray-300">
-          <div className="font-medium text-gray-200 mb-1">失败测试</div>
+          <div className="font-medium text-gray-200 mb-1">{t('regression.failedTestsTitle')}</div>
           <ul className="list-disc list-inside text-xs text-gray-400 max-h-28 overflow-y-auto">
             {(data.failedTests || []).slice(0, 6).map((test, i) => (
               <li key={i}>{test}</li>
@@ -57,7 +59,7 @@ export const RegressionResultCard: React.FC<RegressionResultCardProps> = ({ data
 
       {(data.recommendations || []).length > 0 && (
         <div className="mt-3 text-sm text-gray-300">
-          <div className="font-medium text-gray-200 mb-1">建议</div>
+          <div className="font-medium text-gray-200 mb-1">{t('regression.recommendations')}</div>
           <ul className="list-disc list-inside text-xs text-gray-400">
             {(data.recommendations || []).map((rec, i) => (
               <li key={i}>{rec}</li>
@@ -72,7 +74,7 @@ export const RegressionResultCard: React.FC<RegressionResultCardProps> = ({ data
             onClick={onRollback}
             className="text-xs px-3 py-1 bg-red-900/40 hover:bg-red-900/60 text-red-200 rounded border border-red-900/50"
           >
-            回滚
+            {t('regression.rollback')}
           </button>
         </div>
       )}

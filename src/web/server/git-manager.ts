@@ -3,7 +3,12 @@
  * 封装所有 git 命令操作
  */
 
-import { execSync, execFileSync } from 'child_process';
+import { execSync, execFileSync, exec } from 'child_process';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
+import { existsSync, unlinkSync, statSync } from 'fs';
+import { join } from 'path';
 
 /**
  * Git 操作统一返回格式
@@ -12,6 +17,14 @@ export interface GitResult<T = any> {
   success: boolean;
   data?: T;
   error?: string;
+  /** 网络操作错误分类，前端可据此展示针对性提示 */
+  errorType?: 'auth' | 'network' | 'timeout' | 'rejected' | 'unknown';
+  /** 当检测到 index.lock 问题时，包含 lock 文件信息 */
+  lockConflict?: {
+    lockFile: string;
+    age: number; // lock 文件已存在的秒数
+    suggestion: 'delete' | 'wait'; // 建议操作
+  };
 }
 
 /**
@@ -78,10 +91,97 @@ export interface GitDiff {
  */
 export class GitManager {
   private cwd: string;
-  private readonly timeout = 10000; // 10秒超时
+  private readonly timeout = 10000; // 10秒超时（本地操作）
+  private readonly networkTimeout = 60000; // 60秒超时（网络操作：push/pull/fetch）
 
   constructor(cwd: string) {
     this.cwd = cwd;
+  }
+
+  /**
+   * 对网络操作的错误进行分类
+   */
+  private classifyNetworkError(msg: string): { errorType: GitResult['errorType']; friendlyMsg: string } {
+    const lower = msg.toLowerCase();
+    // 认证失败
+    if (lower.includes('authentication failed') || lower.includes('could not read username') ||
+        lower.includes('invalid credentials') || lower.includes('authorization failed') ||
+        lower.includes('permission denied') || lower.includes('403')) {
+      return { errorType: 'auth', friendlyMsg: 'Authentication failed. Check your git credentials or access token.' };
+    }
+    // 推送被拒绝（远程有新提交）
+    if (lower.includes('rejected') || lower.includes('non-fast-forward') || lower.includes('fetch first')) {
+      return { errorType: 'rejected', friendlyMsg: 'Push rejected: remote has newer commits. Pull first, then push again.' };
+    }
+    // 超时
+    if (lower.includes('timed out') || lower.includes('timeout')) {
+      return { errorType: 'timeout', friendlyMsg: 'Network timeout. Check your internet connection or proxy settings.' };
+    }
+    // 网络不通
+    if (lower.includes('could not resolve host') || lower.includes('unable to access') ||
+        lower.includes('failed to connect') || lower.includes('network is unreachable') ||
+        lower.includes('connection refused') || lower.includes('ssl')) {
+      return { errorType: 'network', friendlyMsg: 'Network error. Check your internet connection or proxy settings.' };
+    }
+    return { errorType: 'unknown', friendlyMsg: msg };
+  }
+
+  /**
+   * 检测 .git/index.lock 是否存在并返回诊断信息
+   */
+  checkLockFile(): { exists: boolean; lockFile: string; age: number; suggestion: 'delete' | 'wait' } {
+    const lockFile = join(this.cwd, '.git', 'index.lock');
+    if (!existsSync(lockFile)) {
+      return { exists: false, lockFile, age: 0, suggestion: 'delete' };
+    }
+    try {
+      const stat = statSync(lockFile);
+      const age = Math.floor((Date.now() - stat.mtimeMs) / 1000);
+      // 如果 lock 文件超过 5 秒，大概率是残留文件，建议删除
+      // 如果不到 5 秒，可能有正在执行的 git 操作
+      return { exists: true, lockFile, age, suggestion: age > 5 ? 'delete' : 'wait' };
+    } catch {
+      return { exists: false, lockFile, age: 0, suggestion: 'delete' };
+    }
+  }
+
+  /**
+   * 删除 .git/index.lock 文件
+   */
+  removeLockFile(): GitResult {
+    const lockFile = join(this.cwd, '.git', 'index.lock');
+    if (!existsSync(lockFile)) {
+      return { success: true };
+    }
+    try {
+      unlinkSync(lockFile);
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message || String(error) };
+    }
+  }
+
+  /**
+   * 检查错误是否为 index.lock 冲突
+   */
+  private isLockError(errorMsg: string): boolean {
+    return errorMsg.includes('index.lock') || errorMsg.includes('.git/index.lock');
+  }
+
+  /**
+   * 当 git 操作因 lock 失败时，返回包含 lockConflict 信息的 GitResult
+   */
+  private buildLockErrorResult(errorMsg: string): GitResult {
+    const lockInfo = this.checkLockFile();
+    return {
+      success: false,
+      error: errorMsg,
+      lockConflict: lockInfo.exists ? {
+        lockFile: lockInfo.lockFile,
+        age: lockInfo.age,
+        suggestion: lockInfo.suggestion,
+      } : undefined,
+    };
   }
 
   /**
@@ -97,6 +197,29 @@ export class GitManager {
       }).trim();
     } catch (error: any) {
       // 捕获 stderr 并抛出
+      const stderr = error.stderr?.toString() || error.message || String(error);
+      throw new Error(stderr);
+    }
+  }
+
+  /**
+   * 异步执行 git 命令（用于网络操作，避免阻塞事件循环）
+   * 设置 GIT_TERMINAL_PROMPT=0 和 GCM_INTERACTIVE=never 防止认证弹窗导致进程挂起
+   */
+  private async execGitNetwork(command: string): Promise<string> {
+    try {
+      const { stdout, stderr } = await execAsync(`git ${command}`, {
+        cwd: this.cwd,
+        encoding: 'utf-8',
+        timeout: this.networkTimeout,
+        env: {
+          ...process.env,
+          GIT_TERMINAL_PROMPT: '0',
+          GCM_INTERACTIVE: 'never',
+        },
+      });
+      return (stdout || '').trim();
+    } catch (error: any) {
       const stderr = error.stderr?.toString() || error.message || String(error);
       throw new Error(stderr);
     }
@@ -367,10 +490,11 @@ export class GitManager {
         success: true,
       };
     } catch (error: any) {
-      return {
-        success: false,
-        error: error.message || String(error),
-      };
+      const msg = error.message || String(error);
+      if (this.isLockError(msg)) {
+        return this.buildLockErrorResult(msg);
+      }
+      return { success: false, error: msg };
     }
   }
 
@@ -382,7 +506,11 @@ export class GitManager {
       this.execGit('add -A');
       return { success: true };
     } catch (error: any) {
-      return { success: false, error: error.message || String(error) };
+      const msg = error.message || String(error);
+      if (this.isLockError(msg)) {
+        return this.buildLockErrorResult(msg);
+      }
+      return { success: false, error: msg };
     }
   }
 
@@ -405,10 +533,11 @@ export class GitManager {
         success: true,
       };
     } catch (error: any) {
-      return {
-        success: false,
-        error: error.message || String(error),
-      };
+      const msg = error.message || String(error);
+      if (this.isLockError(msg)) {
+        return this.buildLockErrorResult(msg);
+      }
+      return { success: false, error: msg };
     }
   }
 
@@ -438,47 +567,39 @@ export class GitManager {
       };
     } catch (error: any) {
       const stderr = error.stderr || '';
-      return {
-        success: false,
-        error: stderr || error.message || String(error),
-      };
+      const msg = stderr || error.message || String(error);
+      if (this.isLockError(msg)) {
+        return this.buildLockErrorResult(msg);
+      }
+      return { success: false, error: msg };
     }
   }
 
   /**
-   * 推送
+   * 推送（异步，60秒超时）
    */
-  push(): GitResult {
+  async push(): Promise<GitResult> {
     try {
-      // 使用 origin HEAD 避免本地分支名和远程跟踪分支名不匹配的问题
-      this.execGit('push origin HEAD');
-
-      return {
-        success: true,
-      };
+      await this.execGitNetwork('push origin HEAD');
+      return { success: true };
     } catch (error: any) {
-      return {
-        success: false,
-        error: error.message || String(error),
-      };
+      const msg = error.message || String(error);
+      const { errorType, friendlyMsg } = this.classifyNetworkError(msg);
+      return { success: false, error: friendlyMsg, errorType };
     }
   }
 
   /**
-   * 拉取
+   * 拉取（异步，60秒超时）
    */
-  pull(): GitResult {
+  async pull(): Promise<GitResult> {
     try {
-      this.execGit('pull');
-
-      return {
-        success: true,
-      };
+      await this.execGitNetwork('pull');
+      return { success: true };
     } catch (error: any) {
-      return {
-        success: false,
-        error: error.message || String(error),
-      };
+      const msg = error.message || String(error);
+      const { errorType, friendlyMsg } = this.classifyNetworkError(msg);
+      return { success: false, error: friendlyMsg, errorType };
     }
   }
 
@@ -495,6 +616,31 @@ export class GitManager {
       }
 
       this.execGit(`checkout "${branch}"`);
+
+      return {
+        success: true,
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.message || String(error),
+      };
+    }
+  }
+
+  /**
+   * 强制切换分支（丢弃本地更改）
+   */
+  forceCheckout(branch: string): GitResult {
+    try {
+      if (!branch || !branch.trim()) {
+        return {
+          success: false,
+          error: 'Branch name cannot be empty',
+        };
+      }
+
+      this.execGit(`checkout -f "${branch}"`);
 
       return {
         success: true,
@@ -906,7 +1052,11 @@ export class GitManager {
       this.execGit('reset HEAD');
       return { success: true };
     } catch (error: any) {
-      return { success: false, error: error.message || String(error) };
+      const msg = error.message || String(error);
+      if (this.isLockError(msg)) {
+        return this.buildLockErrorResult(msg);
+      }
+      return { success: false, error: msg };
     }
   }
 
@@ -1502,9 +1652,9 @@ export class GitManager {
   /**
    * 推送所有 Tags
    */
-  pushTags(): GitResult {
+  async pushTags(): Promise<GitResult> {
     try {
-      this.execGit('push --tags');
+      await this.execGitNetwork('push --tags');
       return { success: true };
     } catch (error: any) {
       return { success: false, error: error.message || String(error) };
@@ -1612,13 +1762,15 @@ export class GitManager {
   /**
    * Fetch 远程更新
    */
-  fetch(remote?: string): GitResult {
+  async fetch(remote?: string): Promise<GitResult> {
     try {
       const cmd = remote ? `fetch "${remote}"` : 'fetch --all';
-      this.execGit(cmd);
+      await this.execGitNetwork(cmd);
       return { success: true };
     } catch (error: any) {
-      return { success: false, error: error.message || String(error) };
+      const msg = error.message || String(error);
+      const { errorType, friendlyMsg } = this.classifyNetworkError(msg);
+      return { success: false, error: friendlyMsg, errorType };
     }
   }
 }

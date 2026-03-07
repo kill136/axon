@@ -143,6 +143,7 @@ process.on('beforeExit', async () => {
 });
 
 // 优雅退出清理（带超时保护）
+// v2.1.53: 改进 - session flush 在 hooks 之前，并行执行清理，缩短超时
 let cleanupInProgress = false;
 async function gracefulShutdown(): Promise<void> {
   if (cleanupInProgress) {
@@ -151,33 +152,27 @@ async function gracefulShutdown(): Promise<void> {
   }
   cleanupInProgress = true;
 
-  const CLEANUP_TIMEOUT = 5000; // 5 秒超时
-  const timeoutPromise = new Promise<void>((resolve) => {
-    setTimeout(() => {
-      console.error(chalk.yellow('\nCleanup timeout, forcing exit...'));
-      resolve();
-    }, CLEANUP_TIMEOUT);
-  });
+  const CLEANUP_TIMEOUT = 3000; // v2.1.53: 缩短到 3 秒
+  const timeoutHandle = setTimeout(() => {
+    console.error(chalk.yellow('\nCleanup timeout, forcing exit...'));
+    process.exit(0);
+  }, CLEANUP_TIMEOUT);
 
-  const cleanupPromise = (async () => {
-    if (activeLoop) {
-      try {
-        await activeLoop.autoMemorize();
-      } catch {
-        // 静默失败
-      }
-    }
-    try {
-      await runSessionEndHooks(activeSessionId || 'unknown', 'prompt_input_exit');
-    } catch {
-      // 不让 hook 失败阻止退出
-    }
-    await cleanupMcpServers();
-  })();
-
-  await Promise.race([cleanupPromise, timeoutPromise]);
-  showSessionResumeHint();
-  safeExit(0);
+  try {
+    // v2.1.50: session flush 优先于 hooks，防止断连丢失会话数据
+    // 并行执行所有清理操作，不让任何一个阻塞其他
+    await Promise.all([
+      activeLoop?.autoMemorize().catch(() => {}),
+      runSessionEndHooks(activeSessionId || 'unknown', 'prompt_input_exit').catch(() => {}),
+      cleanupMcpServers().catch(() => {}),
+    ]);
+  } catch {
+    // 忽略清理错误
+  } finally {
+    clearTimeout(timeoutHandle);
+    showSessionResumeHint();
+    safeExit(0);
+  }
 }
 
 // 注册 SIGINT 信号处理（Ctrl+C）
@@ -186,17 +181,33 @@ process.on('SIGINT', gracefulShutdown);
 // 注册 SIGTERM 信号处理
 process.on('SIGTERM', gracefulShutdown);
 
-// 注册未捕获异常处理
-process.on('uncaughtException', async (err) => {
-  console.error('Uncaught exception:', err);
-  await cleanupMcpServers();
+// v2.1.39: 修复致命错误被吞掉 - 先输出错误再清理
+process.on('uncaughtException', (err) => {
+  // 立即输出错误，确保不被后续清理吞掉
+  try {
+    process.stderr.write(`\n[FATAL] Uncaught exception: ${err?.message || err}\n`);
+    if (err?.stack) {
+      process.stderr.write(err.stack + '\n');
+    }
+  } catch {
+    // stderr 写入失败也不能阻止退出
+  }
+  // 同步退出，不等待异步清理（防止挂起）
   safeExit(1);
 });
 
-// 注册未处理的 Promise 拒绝
-process.on('unhandledRejection', async (reason, promise) => {
-  console.error('Unhandled rejection at:', promise, 'reason:', reason);
-  await cleanupMcpServers();
+// v2.1.39: 修复致命错误被吞掉
+process.on('unhandledRejection', (reason) => {
+  try {
+    const msg = reason instanceof Error ? reason.message : String(reason);
+    const stack = reason instanceof Error ? reason.stack : '';
+    process.stderr.write(`\n[FATAL] Unhandled rejection: ${msg}\n`);
+    if (stack) {
+      process.stderr.write(stack + '\n');
+    }
+  } catch {
+    // stderr 写入失败也不能阻止退出
+  }
   safeExit(1);
 });
 

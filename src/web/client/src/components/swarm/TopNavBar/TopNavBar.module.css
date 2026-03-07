@@ -421,6 +421,55 @@
   color: currentColor;
 }
 
+/* ===================== Electron 无边框窗口 ===================== */
+
+/* contextRow 在 Electron 模式下充当标题栏，整行可拖拽 */
+.electronDragRegion {
+  -webkit-app-region: drag;
+}
+
+/* 拖拽区域内的可交互元素需要排除拖拽，否则点不了 */
+.electronDragRegion button,
+.electronDragRegion input,
+.electronDragRegion select,
+.electronDragRegion .sessionSelector,
+.electronDragRegion .navProjectSelector,
+.electronDragRegion .windowControls {
+  -webkit-app-region: no-drag;
+}
+
+/* Electron 窗口控制按钮组 */
+.windowControls {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin-left: 4px;
+  -webkit-app-region: no-drag;
+}
+
+.windowBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 28px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.windowBtn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+}
+
+.windowBtnClose:hover {
+  background: #e81123;
+  color: #fff;
+}
+
 /* ===================== 响应式 ===================== */
 @media (max-width: 900px) {
   .navProjectSelector {

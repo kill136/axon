@@ -5,6 +5,7 @@ import { CompactChatPanel } from './CompactChatPanel';
 import { SearchPanel } from './SearchPanel';
 import { useOutlineSymbols } from '../../hooks/useOutlineSymbols';
 import type { ChatMessage } from '../../types';
+import { useLanguage } from '../../i18n';
 import styles from './CodeView.module.css';
 
 /**
@@ -48,6 +49,7 @@ export const CodeView = forwardRef<CodeViewRef, CodeViewProps>(({
   isStreaming = false,
   projectPath,
 }, ref) => {
+  const { t } = useLanguage();
   // 面板宽度和状态
   const [fileTreeWidth, setFileTreeWidth] = useState(220);
   const [chatPanelWidth, setChatPanelWidth] = useState(360);
@@ -259,7 +261,7 @@ export const CodeView = forwardRef<CodeViewRef, CodeViewProps>(({
             <button
               className={`${styles.panelButton} ${activePanel === 'explorer' ? styles.active : ''}`}
               onClick={() => setActivePanel('explorer')}
-              title="文件浏览器"
+              title={t('codeView.fileExplorer')}
             >
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                 <path
@@ -274,7 +276,7 @@ export const CodeView = forwardRef<CodeViewRef, CodeViewProps>(({
             <button
               className={`${styles.panelButton} ${activePanel === 'search' ? styles.active : ''}`}
               onClick={() => setActivePanel('search')}
-              title="搜索 (Ctrl+Shift+F)"
+              title={t('codeView.search')}
             >
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                 <circle
@@ -378,7 +380,7 @@ export const CodeView = forwardRef<CodeViewRef, CodeViewProps>(({
           <button
             className={styles.expandButton}
             onClick={handleChatPanelToggle}
-            title="展开聊天面板 (Ctrl+L)"
+            title={t('codeView.expandChatPanel')}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
               <path

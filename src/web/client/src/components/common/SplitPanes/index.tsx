@@ -4,6 +4,7 @@
  */
 import { useState, useRef, useCallback, useEffect, ReactNode } from 'react';
 import styles from './SplitPanes.module.css';
+import { useLanguage } from '../../../i18n';
 
 // ============================================
 // 类型定义
@@ -104,6 +105,7 @@ export function SplitPanes({
   onCollapseChange,
   className,
 }: SplitPanesProps) {
+  const { t } = useLanguage();
   const containerRef = useRef<HTMLDivElement>(null);
   const [paneStates, setPaneStates] = useState<Record<string, PaneState>>({});
   const [dragging, setDragging] = useState<number | null>(null);
@@ -292,7 +294,7 @@ export function SplitPanes({
           <button
             className={styles.collapseToggle}
             onClick={() => toggleCollapse(pane.id)}
-            title={`展开 ${pane.collapsedTitle || ''}`}
+            title={t('splitPanes.expand', { name: pane.collapsedTitle || '' })}
           >
             <span className={styles.collapseIcon}>
               {direction === 'horizontal'
@@ -310,7 +312,7 @@ export function SplitPanes({
               <button
                 className={styles.collapseToggle}
                 onClick={() => toggleCollapse(pane.id)}
-                title={`折叠 ${pane.collapsedTitle || ''}`}
+                title={t('splitPanes.collapse', { name: pane.collapsedTitle || '' })}
               >
                 <span className={styles.collapseIcon}>
                   {direction === 'horizontal'

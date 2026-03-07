@@ -93,6 +93,7 @@ export function GitPanel({ isOpen, onClose, send, addMessageHandler, projectPath
   const [remotes, setRemotes] = useState<GitRemote[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorType, setErrorType] = useState<string | null>(null);
 
   // 三栏布局相关状态
   const [selectedCommitHash, setSelectedCommitHash] = useState<string | null>(null);
@@ -119,6 +120,27 @@ export function GitPanel({ isOpen, onClose, send, addMessageHandler, projectPath
   const [smartCommitNeedsStaging, setSmartCommitNeedsStaging] = useState(false);
   const [reviewResult, setReviewResult] = useState<string | null>(null);
   const [explainResult, setExplainResult] = useState<string | null>(null);
+  // 合并审查+提交弹窗状态
+  const [commitAndReviewResult, setCommitAndReviewResult] = useState<{
+    review: string;
+    message: string;
+    needsStaging: boolean;
+  } | null>(null);
+  const [editableCommitMessage, setEditableCommitMessage] = useState('');
+
+  // Checkout 冲突对话框状态
+  const [checkoutConflict, setCheckoutConflict] = useState<{
+    branch: string;
+    error: string;
+  } | null>(null);
+
+  // Lock 文件冲突对话框状态
+  const [lockConflict, setLockConflict] = useState<{
+    lockFile: string;
+    age: number;
+    suggestion: 'delete' | 'wait';
+    operation: string;
+  } | null>(null);
 
   // 订阅 WebSocket 消息
   useEffect(() => {
@@ -132,7 +154,7 @@ export function GitPanel({ isOpen, onClose, send, addMessageHandler, projectPath
           setLoading(false);
           if (msg.payload?.success) {
             setGitStatus(msg.payload.data);
-            setError(null);
+            setError(null); setErrorType(null);
           } else {
             setError(msg.payload?.error || t('error.gitStatusFailed'));
           }
@@ -142,7 +164,7 @@ export function GitPanel({ isOpen, onClose, send, addMessageHandler, projectPath
           setLoading(false);
           if (msg.payload?.success) {
             setCommits(msg.payload.data || []);
-            setError(null);
+            setError(null); setErrorType(null);
           } else {
             setError(msg.payload?.error || t('error.gitLogFailed'));
           }
@@ -212,16 +234,57 @@ export function GitPanel({ isOpen, onClose, send, addMessageHandler, projectPath
           }
           break;
 
+        case 'git:smart_commit_and_review_response':
+          setIsGeneratingCommit(false);
+          setIsReviewing(false);
+          if (msg.payload?.success) {
+            const result = {
+              review: msg.payload.review || '',
+              message: msg.payload.message || '',
+              needsStaging: !!msg.payload.needsStaging,
+            };
+            setCommitAndReviewResult(result);
+            setEditableCommitMessage(result.message);
+          } else {
+            setError(msg.payload?.error || 'Smart commit & review failed');
+          }
+          break;
+
         case 'git:explain_commit_response':
           if (msg.payload?.success) {
             setExplainResult(msg.payload.explanation);
           }
           break;
 
+        case 'git:checkout_conflict':
+          // 切换分支时有未提交的修改 → 弹出友好对话框
+          setCheckoutConflict({
+            branch: msg.payload.branch,
+            error: msg.payload.error,
+          });
+          break;
+
         case 'git:operation_result':
           // Git 操作完成后刷新状态（handler 已自动发送 status_response）
           if (!msg.payload?.success) {
-            setError(msg.payload?.error || 'Git operation failed');
+            // 检测是否为 lock 文件冲突 — 弹出智能诊断对话框而非普通错误
+            if (msg.payload?.lockConflict) {
+              setLockConflict({
+                lockFile: msg.payload.lockConflict.lockFile,
+                age: msg.payload.lockConflict.age,
+                suggestion: msg.payload.lockConflict.suggestion,
+                operation: msg.payload.operation || 'unknown',
+              });
+            } else {
+              setError(msg.payload?.error || 'Git operation failed');
+              setErrorType(msg.payload?.errorType || null);
+            }
+          } else if (msg.payload?.operation === 'stash_and_checkout' || msg.payload?.operation === 'force_checkout') {
+            // 切换分支成功后刷新分支列表和 log
+            if (projectPath) {
+              send({ type: 'git:get_branches', payload: { projectPath } });
+              send({ type: 'git:get_log', payload: { projectPath } });
+            }
           }
           break;
       }
@@ -244,6 +307,7 @@ export function GitPanel({ isOpen, onClose, send, addMessageHandler, projectPath
 
     setLoading(true);
     setError(null);
+    setErrorType(null);
 
     // 请求 git status
     send({
@@ -341,6 +405,17 @@ export function GitPanel({ isOpen, onClose, send, addMessageHandler, projectPath
     });
   }, [projectPath, send]);
 
+  // AI 智能审查 + 提交（合并流程）
+  const handleSmartCommitAndReview = useCallback(() => {
+    if (!projectPath) return;
+    setIsGeneratingCommit(true);
+    setIsReviewing(true);
+    send({
+      type: 'git:smart_commit_and_review',
+      payload: { projectPath },
+    });
+  }, [projectPath, send]);
+
   // 分支选择回调
   const handleBranchSelect = useCallback((branch: string | null) => {
     setFilterBranch(branch);
@@ -377,7 +452,7 @@ export function GitPanel({ isOpen, onClose, send, addMessageHandler, projectPath
           {/* AI 合并按钮：同时触发提交 + 审查 v2 */}
           <button
             className="git-ai-button git-ai-button--compact"
-            onClick={() => { handleSmartCommit(); handleSmartReview(); }}
+            onClick={handleSmartCommitAndReview}
             disabled={isGeneratingCommit || isReviewing || !(gitStatus?.staged.length || gitStatus?.unstaged.length || gitStatus?.untracked.length)}
             title={`${t('git.smartCommit')} + ${t('git.smartReview')}`}
           >
@@ -423,12 +498,156 @@ export function GitPanel({ isOpen, onClose, send, addMessageHandler, projectPath
         </button>
       </div>
 
+      {/* Checkout 冲突对话框 */}
+      {checkoutConflict && (
+        <div className="git-dialog-overlay" onClick={() => setCheckoutConflict(null)}>
+          <div className="git-dialog" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 520 }}>
+            <div className="git-dialog-header">
+              <h3>{t('git.checkoutConflictTitle')}</h3>
+            </div>
+            <div className="git-dialog-body">
+              <p style={{ margin: '0 0 12px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                {t('git.checkoutConflictDesc', { branch: checkoutConflict.branch })}
+              </p>
+              <div style={{
+                background: 'rgba(255,100,100,0.08)',
+                border: '1px solid rgba(255,100,100,0.2)',
+                borderRadius: 6,
+                padding: '8px 12px',
+                fontSize: 12,
+                color: 'var(--text-secondary)',
+                maxHeight: 120,
+                overflow: 'auto',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-all',
+              }}>
+                {checkoutConflict.error}
+              </div>
+            </div>
+            <div className="git-dialog-footer" style={{ gap: 8 }}>
+              <button
+                className="git-dialog-cancel"
+                onClick={() => setCheckoutConflict(null)}
+              >
+                {t('git.cancel')}
+              </button>
+              <button
+                className="git-dialog-confirm"
+                style={{ background: '#e15a60' }}
+                onClick={() => {
+                  if (projectPath) {
+                    send({
+                      type: 'git:force_checkout',
+                      payload: { projectPath, branch: checkoutConflict.branch },
+                    });
+                  }
+                  setCheckoutConflict(null);
+                }}
+              >
+                {t('git.forceCheckout')}
+              </button>
+              <button
+                className="git-dialog-confirm"
+                onClick={() => {
+                  if (projectPath) {
+                    send({
+                      type: 'git:stash_and_checkout',
+                      payload: { projectPath, branch: checkoutConflict.branch },
+                    });
+                  }
+                  setCheckoutConflict(null);
+                }}
+              >
+                {t('git.stashAndCheckout')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Lock 文件冲突智能诊断对话框 */}
+      {lockConflict && (
+        <div className="git-dialog-overlay" onClick={() => setLockConflict(null)}>
+          <div className="git-dialog" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 560 }}>
+            <div className="git-dialog-header">
+              <h3>{t('git.lockConflictTitle')}</h3>
+            </div>
+            <div className="git-dialog-body">
+              <p style={{ margin: '0 0 12px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                {t('git.lockConflictDesc')}
+              </p>
+              <div style={{
+                background: 'rgba(255,180,50,0.08)',
+                border: '1px solid rgba(255,180,50,0.3)',
+                borderRadius: 6,
+                padding: '10px 14px',
+                fontSize: 12,
+                color: 'var(--text-secondary)',
+                lineHeight: 1.6,
+              }}>
+                <div style={{ marginBottom: 6 }}>
+                  <strong>{t('git.lockFile')}:</strong>{' '}
+                  <code style={{ fontSize: 11, background: 'rgba(0,0,0,0.15)', padding: '1px 5px', borderRadius: 3 }}>
+                    {lockConflict.lockFile}
+                  </code>
+                </div>
+                <div style={{ marginBottom: 6 }}>
+                  <strong>{t('git.lockAge')}:</strong>{' '}
+                  {lockConflict.age > 60
+                    ? t('git.lockAgeMinutes', { minutes: Math.floor(lockConflict.age / 60) })
+                    : t('git.lockAgeSeconds', { seconds: lockConflict.age })
+                  }
+                </div>
+                <div>
+                  <strong>{t('git.lockDiagnosis')}:</strong>{' '}
+                  {lockConflict.suggestion === 'delete'
+                    ? t('git.lockDiagnosisStale')
+                    : t('git.lockDiagnosisRecent')
+                  }
+                </div>
+              </div>
+            </div>
+            <div className="git-dialog-footer" style={{ gap: 8 }}>
+              <button
+                className="git-dialog-cancel"
+                onClick={() => setLockConflict(null)}
+              >
+                {t('git.cancel')}
+              </button>
+              <button
+                className="git-dialog-confirm"
+                style={{ background: lockConflict.suggestion === 'delete' ? '#e15a60' : undefined }}
+                onClick={() => {
+                  if (projectPath) {
+                    send({
+                      type: 'git:resolve_lock',
+                      payload: { projectPath, action: 'delete' },
+                    });
+                  }
+                  setLockConflict(null);
+                }}
+              >
+                {t('git.lockDeleteAndRetry')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 内容区 - 三栏布局或单视图 */}
       <div className="git-panel-body">
         {error && (
           <div className="git-error-banner">
             <span>⚠️ {error}</span>
-            <button onClick={refreshGitData}>{t('git.retry')}</button>
+            {errorType === 'rejected' && projectPath ? (
+              <button onClick={() => {
+                setError(null);
+                setErrorType(null);
+                send({ type: 'git:pull', payload: { projectPath } });
+              }}>{t('git.pull')}</button>
+            ) : (
+              <button onClick={() => { setError(null); setErrorType(null); refreshGitData(); }}>{t('git.retry')}</button>
+            )}
           </div>
         )}
 
@@ -597,6 +816,53 @@ export function GitPanel({ isOpen, onClose, send, addMessageHandler, projectPath
               <button onClick={() => setReviewResult(null)}>✕</button>
             </div>
             <div className="git-ai-result-content git-ai-result-content--markdown"><MarkdownContent content={reviewResult} /></div>
+          </div>
+        </div>
+      )}
+
+      {/* Smart Commit + Review 合并弹窗 */}
+      {commitAndReviewResult && (
+        <div className="git-ai-result-overlay" onClick={() => setCommitAndReviewResult(null)}>
+          <div className="git-ai-result git-ai-result--wide" onClick={e => e.stopPropagation()}>
+            <div className="git-ai-result-header">
+              <span>{t('git.smartReview')}</span>
+              <button onClick={() => setCommitAndReviewResult(null)}>✕</button>
+            </div>
+            {/* 审查结果区域 */}
+            <div className="git-ai-result-content git-ai-result-content--markdown git-ai-review-section">
+              <MarkdownContent content={commitAndReviewResult.review} />
+            </div>
+            {/* 分隔线 + Commit Message 区域 */}
+            <div className="git-ai-commit-section">
+              <div className="git-ai-commit-section-header">{t('git.commitMessage')}</div>
+              <textarea
+                className="git-ai-commit-textarea"
+                value={editableCommitMessage}
+                onChange={e => setEditableCommitMessage(e.target.value)}
+                rows={4}
+              />
+            </div>
+            <div className="git-ai-result-actions">
+              <button
+                className="git-ai-result-action-primary"
+                disabled={!editableCommitMessage.trim()}
+                onClick={() => {
+                  send({
+                    type: 'git:commit',
+                    payload: {
+                      projectPath,
+                      message: editableCommitMessage,
+                      autoStage: commitAndReviewResult.needsStaging,
+                    },
+                  });
+                  setCommitAndReviewResult(null);
+                  setEditableCommitMessage('');
+                }}
+              >
+                {t('git.commit')}
+              </button>
+              <button onClick={() => setCommitAndReviewResult(null)}>{t('git.cancel')}</button>
+            </div>
           </div>
         </div>
       )}

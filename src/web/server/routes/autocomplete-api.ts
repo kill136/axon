@@ -8,8 +8,6 @@
 
 import { Router, Request, Response } from 'express';
 import { ClaudeClient } from '../../../core/client.js';
-import { configManager } from '../../../config/index.js';
-import { getAuth } from '../../../auth/index.js';
 import { webAuth } from '../web-auth.js';
 import { LRUCache } from 'lru-cache';
 import crypto from 'crypto';
@@ -83,9 +81,9 @@ function hashContent(content: string): string {
  */
 function createClient(): ClaudeClient | null {
   try {
-    const auth = getAuth();
-    const apiKey = auth?.apiKey || configManager.getApiKey();
-    const authToken = auth?.type === 'oauth' ? (auth.accessToken || auth.authToken) : undefined;
+    const creds = webAuth.getCredentials();
+    const apiKey = creds.apiKey;
+    const authToken = creds.authToken;
 
     if (!apiKey && !authToken) {
       return null;
@@ -94,7 +92,7 @@ function createClient(): ClaudeClient | null {
     return new ClaudeClient({
       apiKey,
       authToken,
-      baseUrl: process.env.ANTHROPIC_BASE_URL,
+      baseUrl: creds.baseUrl || process.env.ANTHROPIC_BASE_URL,
       model: 'claude-haiku-4-5-20251001', // AI 补全使用 haiku 以节省成本
     });
   } catch (error) {

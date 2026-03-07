@@ -2,6 +2,7 @@ import React from 'react';
 import styles from './BlueprintCard.module.css';
 import { ProgressBar } from '../common/ProgressBar';
 import { blueprintApi, coordinatorApi } from '../../../api/blueprint';
+import { useLanguage } from '../../../i18n';
 
 /**
  * 蓝图数据类型（用于列表展示）
@@ -45,12 +46,6 @@ interface BlueprintCardProps {
 
 /**
  * BlueprintCard - 蓝图列表卡片组件
- *
- * 功能：
- * - 显示蓝图的基本信息和状态
- * - 根据状态显示不同的图标和操作按钮
- * - 执行中状态显示进度条和 Worker 统计
- * - 选中时高亮显示
  */
 export const BlueprintCard: React.FC<BlueprintCardProps> = ({
   blueprint,
@@ -60,6 +55,8 @@ export const BlueprintCard: React.FC<BlueprintCardProps> = ({
   variant = 'default',
   onRefresh,
 }) => {
+  const { t } = useLanguage();
+
   // 状态图标映射
   const statusIcons: Record<BlueprintCardData['status'], string> = {
     pending: '🟡',
@@ -71,11 +68,11 @@ export const BlueprintCard: React.FC<BlueprintCardProps> = ({
 
   // 状态文本映射
   const statusTexts: Record<BlueprintCardData['status'], string> = {
-    pending: '待审核',
-    running: '执行中',
-    paused: '已暂停',
-    completed: '已完成',
-    failed: '失败',
+    pending: t('blueprint.statusPending'),
+    running: t('blueprint.statusRunning'),
+    paused: t('blueprint.statusPaused'),
+    completed: t('blueprint.statusCompleted'),
+    failed: t('blueprint.statusFailed'),
   };
 
   // 格式化日期
@@ -89,11 +86,11 @@ export const BlueprintCard: React.FC<BlueprintCardProps> = ({
       const hours = Math.floor(diff / (1000 * 60 * 60));
       if (hours === 0) {
         const minutes = Math.floor(diff / (1000 * 60));
-        return `${minutes}分钟前`;
+        return t('blueprint.minutesAgo', { count: minutes });
       }
-      return `${hours}小时前`;
+      return t('blueprint.hoursAgo', { count: hours });
     } else if (days < 7) {
-      return `${days}天前`;
+      return t('blueprint.daysAgo', { count: days });
     } else {
       return date.toLocaleDateString('zh-CN');
     }
@@ -106,33 +103,29 @@ export const BlueprintCard: React.FC<BlueprintCardProps> = ({
 
   // 处理操作按钮点击
   const handleActionClick = async (e: React.MouseEvent, action: string) => {
-    e.stopPropagation(); // 阻止冒泡到卡片点击
+    e.stopPropagation();
     console.log(`[BlueprintCard] Action: ${action}, Blueprint: ${blueprint.id}`);
 
     try {
       switch (action) {
         case 'approve':
-          // 批准蓝图并触发列表刷新
           await blueprintApi.approveBlueprint(blueprint.id, 'admin');
           console.log('[BlueprintCard] 蓝图已批准');
-          // 调用父组件传入的刷新回调，更新列表状态
           onRefresh?.();
           break;
 
         case 'reject':
-          const reason = prompt('请输入拒绝原因:');
+          const reason = prompt(t('blueprint.rejectPrompt'));
           if (reason) {
             await blueprintApi.rejectBlueprint(blueprint.id, reason);
             console.log('[BlueprintCard] 蓝图已拒绝');
-            // 拒绝后也需要刷新列表
             onRefresh?.();
           }
           break;
 
         case 'pause':
         case 'stop':
-          // 暂停/停止执行
-          if (action === 'stop' && !confirm('确定要停止执行吗？')) {
+          if (action === 'stop' && !confirm(t('blueprint.confirmStop'))) {
             break;
           }
           await coordinatorApi.stop();
@@ -141,7 +134,6 @@ export const BlueprintCard: React.FC<BlueprintCardProps> = ({
           break;
 
         case 'resume':
-          // 恢复执行：调用协调器的恢复接口
           await coordinatorApi.resume(blueprint.id);
           console.log('[BlueprintCard] 蓝图执行已恢复');
           onRefresh?.();
@@ -152,7 +144,6 @@ export const BlueprintCard: React.FC<BlueprintCardProps> = ({
           break;
 
         case 'view-detail':
-          // 点击卡片已经会打开详情面板，这里不需要额外操作
           break;
 
         default:
@@ -160,7 +151,7 @@ export const BlueprintCard: React.FC<BlueprintCardProps> = ({
       }
     } catch (error) {
       console.error(`[BlueprintCard] 操作失败:`, error);
-      alert(`操作失败: ${error instanceof Error ? error.message : '未知错误'}`);
+      alert(t('blueprint.operationFailed', { message: error instanceof Error ? error.message : t('blueprint.unknownError') }));
     }
   };
 
@@ -173,16 +164,16 @@ export const BlueprintCard: React.FC<BlueprintCardProps> = ({
             <button
               className={`${styles.actionButton} ${styles.approve}`}
               onClick={(e) => handleActionClick(e, 'approve')}
-              title="批准并启动执行"
+              title={t('blueprint.approveTitle')}
             >
-              批准
+              {t('blueprint.approve')}
             </button>
             <button
               className={`${styles.actionButton} ${styles.reject}`}
               onClick={(e) => handleActionClick(e, 'reject')}
-              title="拒绝蓝图"
+              title={t('blueprint.rejectTitle')}
             >
-              拒绝
+              {t('blueprint.reject')}
             </button>
           </div>
         );
@@ -192,16 +183,16 @@ export const BlueprintCard: React.FC<BlueprintCardProps> = ({
             <button
               className={`${styles.actionButton} ${styles.pause}`}
               onClick={(e) => handleActionClick(e, 'pause')}
-              title="暂停执行"
+              title={t('blueprint.pauseTitle')}
             >
-              暂停
+              {t('blueprint.pause')}
             </button>
             <button
               className={`${styles.actionButton} ${styles.viewSwarm}`}
               onClick={(e) => handleActionClick(e, 'view-swarm')}
-              title="查看蜂群控制台"
+              title={t('blueprint.viewSwarmTitle')}
             >
-              查看蜂群
+              {t('blueprint.viewSwarm')}
             </button>
           </div>
         );
@@ -211,16 +202,16 @@ export const BlueprintCard: React.FC<BlueprintCardProps> = ({
             <button
               className={`${styles.actionButton} ${styles.resume}`}
               onClick={(e) => handleActionClick(e, 'resume')}
-              title="恢复执行"
+              title={t('blueprint.resumeTitle')}
             >
-              恢复
+              {t('blueprint.resume')}
             </button>
             <button
               className={`${styles.actionButton} ${styles.stop}`}
               onClick={(e) => handleActionClick(e, 'stop')}
-              title="停止执行"
+              title={t('blueprint.stopTitle')}
             >
-              停止
+              {t('blueprint.stop')}
             </button>
           </div>
         );
@@ -231,9 +222,9 @@ export const BlueprintCard: React.FC<BlueprintCardProps> = ({
             <button
               className={`${styles.actionButton} ${styles.viewDetail}`}
               onClick={(e) => handleActionClick(e, 'view-detail')}
-              title="查看详情"
+              title={t('blueprint.viewDetailTitle')}
             >
-              查看详情
+              {t('blueprint.viewDetail')}
             </button>
           </div>
         );
@@ -275,17 +266,17 @@ export const BlueprintCard: React.FC<BlueprintCardProps> = ({
       <div className={styles.stats}>
         <span className={styles.statItem}>
           <span className={styles.statIcon}>🧩</span>
-          {blueprint.moduleCount || 0}个模块
+          {t('blueprint.cardModules', { count: blueprint.moduleCount || 0 })}
         </span>
         <span className={styles.statSeparator}>·</span>
         <span className={styles.statItem}>
           <span className={styles.statIcon}>📊</span>
-          {blueprint.processCount || 0}个流程
+          {t('blueprint.cardProcesses', { count: blueprint.processCount || 0 })}
         </span>
         <span className={styles.statSeparator}>·</span>
         <span className={styles.statItem}>
           <span className={styles.statIcon}>🎯</span>
-          {blueprint.nfrCount || 0}个NFR
+          {t('blueprint.cardNfrs', { count: blueprint.nfrCount || 0 })}
         </span>
       </div>
 
@@ -293,7 +284,7 @@ export const BlueprintCard: React.FC<BlueprintCardProps> = ({
       {blueprint.status === 'running' && (
         <div className={styles.progressSection}>
           <div className={styles.progressHeader}>
-            <span className={styles.progressLabel}>执行进度</span>
+            <span className={styles.progressLabel}>{t('blueprint.executionProgress')}</span>
             <span className={styles.progressValue}>{blueprint.progress || 0}%</span>
           </div>
           <ProgressBar
@@ -305,15 +296,15 @@ export const BlueprintCard: React.FC<BlueprintCardProps> = ({
           {blueprint.workerStats && (
             <div className={styles.workerStats}>
               <span className={styles.workerStat}>
-                🐝 总计: {blueprint.workerStats.total}
+                🐝 {t('blueprint.workerTotal', { count: blueprint.workerStats.total })}
               </span>
               <span className={styles.workerSeparator}>|</span>
               <span className={styles.workerStat}>
-                💼 工作中: {blueprint.workerStats.working}
+                💼 {t('blueprint.workerWorking', { count: blueprint.workerStats.working })}
               </span>
               <span className={styles.workerSeparator}>|</span>
               <span className={styles.workerStat}>
-                💤 空闲: {blueprint.workerStats.idle}
+                💤 {t('blueprint.workerIdle', { count: blueprint.workerStats.idle })}
               </span>
             </div>
           )}
@@ -323,7 +314,7 @@ export const BlueprintCard: React.FC<BlueprintCardProps> = ({
       {/* 卡片底部 */}
       <div className={styles.footer}>
         <span className={styles.timestamp}>
-          创建于 {formatDate(blueprint.createdAt)}
+          {t('blueprint.createdAt', { time: formatDate(blueprint.createdAt) })}
         </span>
         {renderActionButtons()}
       </div>

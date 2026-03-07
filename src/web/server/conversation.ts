@@ -7,7 +7,7 @@ import { ClaudeClient } from '../../core/client.js';
 import { Session } from '../../core/session.js';
 import { runWithCwd } from '../../core/cwd-context.js';
 import { runWithSessionId } from '../../core/session-context.js';
-import { shouldAutoCompact, calculateAutoCompactThreshold, getContextWindowSize, generateSummaryPrompt, formatCompactSummaryContent, validateToolResults } from '../../core/loop.js';
+import { shouldAutoCompact, calculateAutoCompactThreshold, getContextWindowSize, generateSummaryPrompt, formatCompactSummaryContent, validateToolResults, extractImagesFromMessages } from '../../core/loop.js';
 import { toolRegistry, registerBlueprintTools } from '../../tools/index.js';
 import { systemPromptBuilder, type PromptContext, type PromptBlock } from '../../prompt/index.js';
 import { modelConfig } from '../../models/index.js';
@@ -1000,7 +1000,7 @@ export class ConversationManager {
     const workingDir = projectPath || this.cwd;
     console.log(`[ConversationManager] Creating new session ${sessionId}, workingDir: ${workingDir}, permissionMode: ${permissionMode || 'default'}`);
 
-    const session = new Session(workingDir);
+    const session = new Session(workingDir, sessionId);
     await session.initializeGitInfo();
 
     // 使用与核心 loop.ts 一致的认证逻辑
@@ -1012,6 +1012,7 @@ export class ConversationManager {
 
     // 创建用户交互处理器
     const userInteractionHandler = new UserInteractionHandler();
+    userInteractionHandler.setSessionId(sessionId);
 
     // 创建任务管理器
     const taskManager = new TaskManager();
@@ -3299,7 +3300,14 @@ export class ConversationManager {
 
             const savedTokens = Math.max(0, (state.lastActualInputTokens || threshold) - summaryTokens);
             console.log(`[AutoCompact/TJ1] Session Memory compaction succeeded, saved approximately ${savedTokens.toLocaleString()} tokens`);
-            return { wasCompacted: true, messages: [boundaryMarker, summaryMessage], savedTokens, boundaryUuid, summaryText: formattedContent };
+            // v2.1.70: 保留原始消息中的图片以复用 prompt cache
+            const compactedMsgs: Message[] = [boundaryMarker, summaryMessage];
+            const preservedImages = extractImagesFromMessages(messages);
+            if (preservedImages.length > 0) {
+              compactedMsgs.push({ role: 'user', content: preservedImages });
+              console.log(`[AutoCompact/TJ1] Preserved ${preservedImages.length} image(s) for prompt cache reuse`);
+            }
+            return { wasCompacted: true, messages: compactedMsgs, savedTokens, boundaryUuid, summaryText: formattedContent };
           }
         }
       } catch (err) {
@@ -3363,7 +3371,14 @@ export class ConversationManager {
         const summaryTokens = Math.ceil(formattedContent.length / 4);
         const savedTokens = Math.max(0, (state.lastActualInputTokens || threshold) - summaryTokens);
         console.log(`[AutoCompact/NJ1] Conversation summary compaction succeeded, saved approximately ${savedTokens.toLocaleString()} tokens`);
-        return { wasCompacted: true, messages: [boundaryMarker, summaryMessage], savedTokens, boundaryUuid, summaryText: formattedContent };
+        // v2.1.70: 保留原始消息中的图片以复用 prompt cache
+        const compactedMsgs: Message[] = [boundaryMarker, summaryMessage];
+        const preservedImages = extractImagesFromMessages(messages);
+        if (preservedImages.length > 0) {
+          compactedMsgs.push({ role: 'user', content: preservedImages });
+          console.log(`[AutoCompact/NJ1] Preserved ${preservedImages.length} image(s) for prompt cache reuse`);
+        }
+        return { wasCompacted: true, messages: compactedMsgs, savedTokens, boundaryUuid, summaryText: formattedContent };
       }
     } catch (err) {
       console.warn('[AutoCompact/NJ1] Conversation summary compaction failed:', err);
@@ -4420,6 +4435,9 @@ Guidelines:
         chatHistory = this.convertMessagesToChatHistory(sessionData.messages);
       }
 
+      const resumeUserInteractionHandler = new UserInteractionHandler();
+      resumeUserInteractionHandler.setSessionId(sessionId);
+
       const state: SessionState = {
         session,
         client,
@@ -4427,7 +4445,7 @@ Guidelines:
         model: sessionData.currentModel || sessionData.metadata.model,
         cancelled: false,
         chatHistory,
-        userInteractionHandler: new UserInteractionHandler(),
+        userInteractionHandler: resumeUserInteractionHandler,
         taskManager: new TaskManager(),
         permissionHandler: new PermissionHandler({ mode: (permissionMode as any) || 'default' }),
         rewindManager: new RewindManager(sessionId),

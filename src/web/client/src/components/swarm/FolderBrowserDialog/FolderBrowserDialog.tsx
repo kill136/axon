@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useLanguage } from '../../../i18n';
 import styles from './FolderBrowserDialog.module.css';
 
 /**
@@ -50,6 +51,7 @@ export default function FolderBrowserDialog({
   onCancel,
   initialPath,
 }: FolderBrowserDialogProps) {
+  const { t } = useLanguage();
   // 当前路径
   const [currentPath, setCurrentPath] = useState<string>('');
   // 父目录路径
@@ -82,7 +84,7 @@ export default function FolderBrowserDialog({
       const result = await response.json();
 
       if (!result.success) {
-        throw new Error(result.error || '加载目录失败');
+        throw new Error(result.error || t('folderBrowser.loadDirFailed'));
       }
 
       const data: DirData = result.data;
@@ -92,7 +94,7 @@ export default function FolderBrowserDialog({
       setPathInput(data.currentPath);
     } catch (err: any) {
       console.error('[FolderBrowserDialog] 加载目录失败:', err);
-      setError(err.message || '加载目录失败');
+      setError(err.message || t('folderBrowser.loadDirFailed'));
     } finally {
       setLoading(false);
     }
@@ -191,12 +193,12 @@ export default function FolderBrowserDialog({
         <div className={styles.header}>
           <div className={styles.title} id="folder-browser-title">
             <span className={styles.titleIcon}>📂</span>
-            <span>选择文件夹</span>
+            <span>{t('folderBrowser.selectFolder')}</span>
           </div>
           <button
             className={styles.closeButton}
             onClick={handleCancel}
-            aria-label="关闭"
+            aria-label={t('folderBrowser.close')}
           >
             ✕
           </button>
@@ -210,9 +212,9 @@ export default function FolderBrowserDialog({
               className={styles.navButton}
               onClick={handleGoUp}
               disabled={!parentPath || loading}
-              title="返回上级目录"
+              title={t('folderBrowser.goUpTitle')}
             >
-              ⬆️ 上级
+              ⬆️ {t('folderBrowser.goUp')}
             </button>
 
             {/* 地址栏 */}
@@ -223,7 +225,7 @@ export default function FolderBrowserDialog({
                 className={styles.pathInput}
                 value={pathInput}
                 onChange={(e) => setPathInput(e.target.value)}
-                placeholder="输入路径并回车跳转"
+                placeholder={t('folderBrowser.pathPlaceholder')}
                 disabled={loading}
               />
             </form>
@@ -242,12 +244,12 @@ export default function FolderBrowserDialog({
             {loading ? (
               <div className={styles.loadingState}>
                 <div className={styles.spinner}></div>
-                <span>加载中...</span>
+                <span>{t('folderBrowser.loading')}</span>
               </div>
             ) : dirs.length === 0 ? (
               <div className={styles.emptyState}>
                 <span className={styles.emptyIcon}>📁</span>
-                <span>此目录下没有子文件夹</span>
+                <span>{t('folderBrowser.noSubfolders')}</span>
               </div>
             ) : (
               dirs.map((dir) => (
@@ -274,7 +276,7 @@ export default function FolderBrowserDialog({
           {/* 当前路径显示 */}
           {currentPath && (
             <div className={styles.currentPathDisplay}>
-              <span className={styles.currentPathLabel}>当前路径：</span>
+              <span className={styles.currentPathLabel}>{t('folderBrowser.currentPath')}</span>
               <span className={styles.currentPathValue}>{currentPath}</span>
             </div>
           )}
@@ -286,14 +288,14 @@ export default function FolderBrowserDialog({
             className={`${styles.button} ${styles.cancelButton}`}
             onClick={handleCancel}
           >
-            取消
+            {t('folderBrowser.cancel')}
           </button>
           <button
             className={`${styles.button} ${styles.confirmButton}`}
             onClick={handleConfirm}
             disabled={!currentPath || loading}
           >
-            选择此文件夹
+            {t('folderBrowser.selectThisFolder')}
           </button>
         </div>
       </div>

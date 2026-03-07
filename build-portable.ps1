@@ -79,6 +79,7 @@ Write-Host "[5/9] Copying electron scripts..." -ForegroundColor Yellow
 $electronAppDir = Join-Path $appDir "electron"
 New-Item -ItemType Directory -Path $electronAppDir -Force | Out-Null
 Copy-Item -Force "electron\main.cjs" $electronAppDir
+Copy-Item -Force "electron\preload.cjs" $electronAppDir
 if (Test-Path "electron\icon.png") {
     Copy-Item -Force "electron\icon.png" $electronAppDir
 }

@@ -27,6 +27,8 @@ export interface AIHoverRequest {
   language?: string;
   /** 类型签名（如果 TypeScript 已经推断出来） */
   typeSignature?: string;
+  /** UI 语言（en/zh），用于控制 AI 回复语言 */
+  locale?: string;
 }
 
 /**

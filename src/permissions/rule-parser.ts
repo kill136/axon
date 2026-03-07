@@ -26,6 +26,7 @@ import {
   splitCompoundCommand,
   canSafelyMatchWildcardRule,
   normalizeCommand,
+  extractActualCommand,
   type ShellSecurityCheckResult,
 } from './shell-security.js';
 
@@ -414,6 +415,10 @@ export class RuleMatcher {
    * - 在匹配前检测 shell 操作符
    * - 复合命令需要拆分检查每个子命令
    * - 行续行符会阻止通配符匹配
+   *
+   * v2.1.38: Env var wrapper 支持
+   * - "KEY=value command" 格式的命令会提取实际命令进行匹配
+   * - 也会尝试用原始命令匹配（支持精确匹配带 env var 的完整命令）
    */
   private static matchBashCommand(
     matcher: ParameterMatcher,
@@ -438,6 +443,11 @@ export class RuleMatcher {
       }
     }
 
+    // v2.1.59: 对于复合命令，先尝试精确匹配完整命令（支持 Always Allow 保存的完整复合命令）
+    if (matcher.type === 'exact' && this.matchSingleBashCommand(normalizedCmd, matcher)) {
+      return true;
+    }
+
     // CVE-2.1.7: 如果是复合命令，需要检查每个子命令
     if (securityCheck.isCompoundCommand && securityCheck.subcommands) {
       // 对于通配符和前缀匹配，检查是否安全
@@ -450,8 +460,18 @@ export class RuleMatcher {
       }
     }
 
-    // 普通命令匹配逻辑
-    return this.matchSingleBashCommand(normalizedCmd, matcher);
+    // 尝试用原始规范化命令匹配
+    if (this.matchSingleBashCommand(normalizedCmd, matcher)) {
+      return true;
+    }
+
+    // v2.1.38: 提取实际命令（跳过 env var 前缀和 shell wrapper），再次尝试匹配
+    const actualCmd = extractActualCommand(normalizedCmd);
+    if (actualCmd !== normalizedCmd) {
+      return this.matchSingleBashCommand(actualCmd, matcher);
+    }
+
+    return false;
   }
 
   /**

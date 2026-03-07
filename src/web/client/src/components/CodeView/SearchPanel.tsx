@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useLanguage } from '../../i18n';
 import styles from './SearchPanel.module.css';
 
 /**
@@ -141,6 +142,7 @@ const SearchPanel: React.FC<SearchPanelProps> = ({
   onFileSelect,
   onGoToLine,
 }) => {
+  const { t } = useLanguage();
   // 搜索状态
   const [searchQuery, setSearchQuery] = useState('');
   const [replaceText, setReplaceText] = useState('');
@@ -190,7 +192,7 @@ const SearchPanel: React.FC<SearchPanelProps> = ({
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.message || '搜索失败');
+        throw new Error(errorData.message || t('searchPanel.searchFailed'));
       }
 
       const data: SearchResponse = await response.json();
@@ -206,7 +208,7 @@ const SearchPanel: React.FC<SearchPanelProps> = ({
       }
     } catch (err) {
       console.error('搜索失败:', err);
-      setError(err instanceof Error ? err.message : '搜索失败');
+      setError(err instanceof Error ? err.message : t('searchPanel.searchFailed'));
       setSearchResults([]);
       setTotalMatches(0);
     } finally {
@@ -289,14 +291,14 @@ const SearchPanel: React.FC<SearchPanelProps> = ({
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.message || '替换失败');
+        throw new Error(errorData.message || t('searchPanel.replaceFailed'));
       }
 
       // 替换成功后重新搜索
       await performSearch(searchQuery);
     } catch (err) {
       console.error('替换失败:', err);
-      setError(err instanceof Error ? err.message : '替换失败');
+      setError(err instanceof Error ? err.message : t('searchPanel.replaceFailed'));
     }
   }, [selectedMatch, replaceText, searchResults, projectPath, searchQuery, performSearch]);
 
@@ -330,7 +332,7 @@ const SearchPanel: React.FC<SearchPanelProps> = ({
 
         if (!response.ok) {
           const errorData = await response.json();
-          throw new Error(errorData.message || `替换文件 ${fileResult.file} 失败`);
+          throw new Error(errorData.message || t('searchPanel.replaceFileFailed', { file: fileResult.file }));
         }
       }
 
@@ -338,7 +340,7 @@ const SearchPanel: React.FC<SearchPanelProps> = ({
       await performSearch(searchQuery);
     } catch (err) {
       console.error('全部替换失败:', err);
-      setError(err instanceof Error ? err.message : '全部替换失败');
+      setError(err instanceof Error ? err.message : t('searchPanel.replaceAllFailed'));
     }
   }, [replaceText, searchResults, projectPath, searchQuery, performSearch]);
 
@@ -365,14 +367,14 @@ const SearchPanel: React.FC<SearchPanelProps> = ({
           <button
             className={styles.chevronButton}
             onClick={() => setShowReplace(!showReplace)}
-            title={showReplace ? '隐藏替换' : '显示替换'}
+            title={showReplace ? t('searchPanel.hideReplace') : t('searchPanel.showReplace')}
           >
             <ChevronIcon expanded={showReplace} />
           </button>
           <input
             type="text"
             className={styles.searchInput}
-            placeholder="搜索"
+            placeholder={t('searchPanel.searchPlaceholder')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onKeyDown={handleSearchKeyDown}
@@ -380,21 +382,21 @@ const SearchPanel: React.FC<SearchPanelProps> = ({
           <button
             className={`${styles.optionButton} ${isCaseSensitive ? styles.active : ''}`}
             onClick={() => setIsCaseSensitive(!isCaseSensitive)}
-            title="区分大小写"
+            title={t('searchPanel.caseSensitive')}
           >
             Aa
           </button>
           <button
             className={`${styles.optionButton} ${isWholeWord ? styles.active : ''}`}
             onClick={() => setIsWholeWord(!isWholeWord)}
-            title="全词匹配"
+            title={t('searchPanel.wholeWord')}
           >
             ab
           </button>
           <button
             className={`${styles.optionButton} ${isRegex ? styles.active : ''}`}
             onClick={() => setIsRegex(!isRegex)}
-            title="正则表达式"
+            title={t('searchPanel.regex')}
           >
             .*
           </button>
@@ -407,7 +409,7 @@ const SearchPanel: React.FC<SearchPanelProps> = ({
             <input
               type="text"
               className={styles.replaceInput}
-              placeholder="替换"
+              placeholder={t('searchPanel.replacePlaceholder')}
               value={replaceText}
               onChange={(e) => setReplaceText(e.target.value)}
             />
@@ -415,7 +417,7 @@ const SearchPanel: React.FC<SearchPanelProps> = ({
               className={styles.replaceButton}
               onClick={handleReplaceOne}
               disabled={!selectedMatch || !replaceText}
-              title="替换"
+              title={t('searchPanel.replace')}
             >
               <ReplaceIcon />
             </button>
@@ -423,7 +425,7 @@ const SearchPanel: React.FC<SearchPanelProps> = ({
               className={styles.replaceAllButton}
               onClick={handleReplaceAll}
               disabled={searchResults.length === 0 || !replaceText}
-              title="全部替换"
+              title={t('searchPanel.replaceAll')}
             >
               <ReplaceAllIcon />
             </button>
@@ -433,12 +435,12 @@ const SearchPanel: React.FC<SearchPanelProps> = ({
 
       {/* 结果统计栏 */}
       <div className={styles.resultStats}>
-        {isLoading && '搜索中...'}
+        {isLoading && t('searchPanel.searching')}
         {!isLoading && searchResults.length > 0 && (
-          `${searchResults.length} 个文件中有 ${totalMatches} 个结果`
+          t('searchPanel.resultStats', { files: searchResults.length, matches: totalMatches })
         )}
         {!isLoading && searchQuery && searchResults.length === 0 && !error && (
-          '未找到结果'
+          t('searchPanel.noResults')
         )}
         {error && <span className={styles.errorText}>{error}</span>}
       </div>
@@ -446,7 +448,7 @@ const SearchPanel: React.FC<SearchPanelProps> = ({
       {/* 结果树 */}
       <div className={styles.resultsContainer}>
         {!searchQuery && !isLoading && (
-          <div className={styles.emptyState}>输入搜索内容...</div>
+          <div className={styles.emptyState}>{t('searchPanel.enterSearchTerm')}</div>
         )}
 
         {searchResults.map((fileResult) => {

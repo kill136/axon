@@ -4,6 +4,7 @@ import { WorkerCard, WorkerAgent } from './WorkerCard';
 import { MarkdownContent } from '../../MarkdownContent';
 import { ToolCall as ToolCallComponent } from '../../ToolCall';
 import type { ToolUse } from '../../../types';
+import { useLanguage } from '../../../i18n';
 import styles from './WorkerPanel.module.css';
 
 /**
@@ -95,36 +96,61 @@ interface WorkerPanelProps {
 /**
  * 任务类型的显示配置
  */
-const TASK_TYPE_CONFIG = {
-  code: { icon: '💻', label: '代码编写' },
-  config: { icon: '⚙️', label: '配置文件' },
-  test: { icon: '🧪', label: '测试用例' },
-  refactor: { icon: '🔧', label: '代码重构' },
-  docs: { icon: '📄', label: '文档编写' },
-  integrate: { icon: '🔗', label: '功能集成' },
+const TASK_TYPE_ICONS = {
+  code: '💻',
+  config: '⚙️',
+  test: '🧪',
+  refactor: '🔧',
+  docs: '📄',
+  integrate: '🔗',
 } as const;
+
+const TASK_TYPE_KEYS: Record<string, string> = {
+  code: 'workerPanel.taskTypeCode',
+  config: 'workerPanel.taskTypeConfig',
+  test: 'workerPanel.taskTypeTest',
+  refactor: 'workerPanel.taskTypeRefactor',
+  docs: 'workerPanel.taskTypeDocs',
+  integrate: 'workerPanel.taskTypeIntegrate',
+};
 
 /**
  * 复杂度的显示配置
  */
-const COMPLEXITY_CONFIG = {
-  trivial: { label: '极简', color: '#4ade80' },
-  simple: { label: '简单', color: '#60a5fa' },
-  moderate: { label: '中等', color: '#f59e0b' },
-  complex: { label: '复杂', color: '#f87171' },
+const COMPLEXITY_COLORS = {
+  trivial: '#4ade80',
+  simple: '#60a5fa',
+  moderate: '#f59e0b',
+  complex: '#f87171',
 } as const;
+
+const COMPLEXITY_KEYS: Record<string, string> = {
+  trivial: 'workerPanel.complexityTrivial',
+  simple: 'workerPanel.complexitySimple',
+  moderate: 'workerPanel.complexityModerate',
+  complex: 'workerPanel.complexityComplex',
+};
 
 /**
  * 任务状态的显示配置
  */
-const STATUS_CONFIG = {
-  pending: { icon: '⏳', label: '等待中', color: '#9ca3af' },
-  running: { icon: '🔄', label: '执行中', color: '#60a5fa' },
-  reviewing: { icon: '🔍', label: '审核中', color: '#c084fc' },
-  completed: { icon: '✅', label: '已完成', color: '#4ade80' },
-  failed: { icon: '❌', label: '失败', color: '#f87171' },
-  skipped: { icon: '⏭️', label: '已跳过', color: '#9ca3af' },
+const STATUS_CONFIG_BASE = {
+  pending: { icon: '⏳', color: '#9ca3af' },
+  running: { icon: '🔄', color: '#60a5fa' },
+  reviewing: { icon: '🔍', color: '#c084fc' },
+  completed: { icon: '✅', color: '#4ade80' },
+  failed: { icon: '❌', color: '#f87171' },
+  skipped: { icon: '⏭️', color: '#9ca3af' },
 } as const;
+
+const STATUS_KEYS: Record<string, string> = {
+  pending: 'workerPanel.statusPending',
+  running: 'workerPanel.statusRunning',
+  reviewing: 'workerPanel.statusReviewing',
+  completed: 'workerPanel.statusCompleted',
+  failed: 'workerPanel.statusFailed',
+  skipped: 'workerPanel.statusSkipped',
+};
 
 /**
  * 日志级别样式配置
@@ -157,7 +183,10 @@ const TaskDetailCard: React.FC<{
   workers: WorkerAgent[];
   stream?: TaskStreamContent | null;
 }> = ({ task, workers, stream }) => {
-  const statusConfig = (task.status && STATUS_CONFIG[task.status as keyof typeof STATUS_CONFIG]) ?? STATUS_CONFIG.pending;
+  const { t } = useLanguage();
+  const statusBase = (task.status && STATUS_CONFIG_BASE[task.status as keyof typeof STATUS_CONFIG_BASE]) ?? STATUS_CONFIG_BASE.pending;
+  const statusLabel = t(STATUS_KEYS[task.status || 'pending'] || STATUS_KEYS.pending);
+  const statusConfig = { ...statusBase, label: statusLabel };
 
   // v2.2: 任务信息折叠状态（默认折叠，聚焦于 Worker 执行日志）
   const [showTaskInfo, setShowTaskInfo] = useState(false);
@@ -236,9 +265,9 @@ const TaskDetailCard: React.FC<{
                 </span>
               )}
               <span className={`${styles.workerExecStatus} ${styles[workerDisplay.worker.status]}`}>
-                {workerDisplay.worker.status === 'idle' ? '💤 空闲' :
-                 workerDisplay.worker.status === 'working' ? '💻 工作中' :
-                 workerDisplay.worker.status === 'waiting' ? '⏳ 等待中' : '❌ 错误'}
+                {workerDisplay.worker.status === 'idle' ? `💤 ${t('workerPanel.workerIdle')}` :
+                 workerDisplay.worker.status === 'working' ? `💻 ${t('workerPanel.workerWorking')}` :
+                 workerDisplay.worker.status === 'waiting' ? `⏳ ${t('workerPanel.workerWaiting')}` : `❌ ${t('workerPanel.workerError')}`}
               </span>
             </div>
             {/* Worker 进度条 */}
@@ -259,31 +288,31 @@ const TaskDetailCard: React.FC<{
           <div className={styles.workerExecInfo}>
             <span className={styles.workerExecIcon}>🐝</span>
             <span className={styles.workerExecId}>{workerDisplay.workerId?.slice(0, 12)}</span>
-            <span className={`${styles.workerExecStatus} ${styles.working}`}>💻 工作中</span>
+            <span className={`${styles.workerExecStatus} ${styles.working}`}>💻 {t('workerPanel.working')}</span>
           </div>
         ) : workerDisplay.type === 'executing' ? (
           // 任务执行中但没有 workerId
           <div className={styles.workerExecInfo}>
             <span className={styles.workerExecIcon}>🔄</span>
-            <span className={styles.workerExecId}>Worker 执行中...</span>
+            <span className={styles.workerExecId}>{t('workerPanel.workerExecuting')}</span>
           </div>
         ) : workerDisplay.type === 'completed' ? (
           // 任务已完成
           <div className={styles.workerExecInfo}>
             <span className={styles.workerExecIcon}>✅</span>
-            <span className={styles.workerExecId}>任务已完成</span>
+            <span className={styles.workerExecId}>{t('workerPanel.taskCompleted')}</span>
           </div>
         ) : workerDisplay.type === 'failed' ? (
           // 任务失败
           <div className={styles.workerExecInfo}>
             <span className={styles.workerExecIcon}>❌</span>
-            <span className={styles.workerExecId}>任务执行失败</span>
+            <span className={styles.workerExecId}>{t('workerPanel.taskFailed')}</span>
           </div>
         ) : (
           // 等待分配
           <div className={styles.workerExecInfo}>
             <span className={styles.workerExecIcon}>⏳</span>
-            <span className={styles.workerExecId}>等待分配 Worker...</span>
+            <span className={styles.workerExecId}>{t('workerPanel.waitingForWorker')}</span>
           </div>
         )}
         <div className={styles.workerExecTaskStatus} style={{ color: statusConfig.color }}>
@@ -298,7 +327,7 @@ const TaskDetailCard: React.FC<{
           onClick={() => setShowTaskInfo(!showTaskInfo)}
         >
           <span className={styles.taskBriefName}>{task.name}</span>
-          <span className={styles.taskBriefToggle}>{showTaskInfo ? '收起' : '展开详情'}</span>
+          <span className={styles.taskBriefToggle}>{showTaskInfo ? t('workerPanel.collapse') : t('workerPanel.expandDetails')}</span>
         </div>
         {showTaskInfo && (
           <div className={styles.taskBriefContent}>
@@ -306,17 +335,17 @@ const TaskDetailCard: React.FC<{
               <div className={styles.taskBriefDesc}>{task.description}</div>
             )}
             <div className={styles.taskBriefMeta}>
-              <span>类型: {task.type}</span>
-              <span>复杂度: {task.complexity}</span>
-              <span>预估: ~{task.estimatedMinutes || 0}分钟</span>
-              {task.startedAt && <span>开始: {formatTime(task.startedAt)}</span>}
-              {task.completedAt && <span>完成: {formatTime(task.completedAt)}</span>}
-              {task.startedAt && <span>耗时: {getDuration()}</span>}
+              <span>{t('workerPanel.type')}: {task.type}</span>
+              <span>{t('workerPanel.complexity')}: {task.complexity}</span>
+              <span>{t('workerPanel.estimate')}: ~{task.estimatedMinutes || 0}{t('workerPanel.minutes')}</span>
+              {task.startedAt && <span>{t('workerPanel.started')}: {formatTime(task.startedAt)}</span>}
+              {task.completedAt && <span>{t('workerPanel.completed')}: {formatTime(task.completedAt)}</span>}
+              {task.startedAt && <span>{t('workerPanel.elapsed')}: {getDuration()}</span>}
             </div>
             {task.files && task.files.length > 0 && (
               <div className={styles.taskBriefFiles}>
-                📁 涉及文件: {task.files.slice(0, 3).join(', ')}
-                {task.files.length > 3 && ` 等 ${task.files.length} 个`}
+                📁 {t('workerPanel.involvedFiles')}: {task.files.slice(0, 3).join(', ')}
+                {task.files.length > 3 && ` ${t('workerPanel.andMore', { count: task.files.length })}`}
               </div>
             )}
           </div>
@@ -366,6 +395,7 @@ const WorkerChatLog: React.FC<{
   worker?: WorkerAgent | null;
   stream?: TaskStreamContent | null;
 }> = ({ taskStatus, worker, stream }) => {
+  const { t } = useLanguage();
   const logsContainerRef = useRef<HTMLDivElement>(null);
   // v4.6: 控制 System Prompt 展开/折叠
   const [showSystemPrompt, setShowSystemPrompt] = useState(false);
@@ -420,7 +450,7 @@ const WorkerChatLog: React.FC<{
       case 'thinking':
         return (
           <div key={`thinking-${index}`} className="thinking-block">
-            <div className="thinking-header">💭 思考中</div>
+            <div className="thinking-header">💭 {t('workerPanel.thinking')}</div>
             <div>{block.text}</div>
           </div>
         );
@@ -442,19 +472,19 @@ const WorkerChatLog: React.FC<{
   return (
     <div className={styles.workerChatContainer}>
       <div className={styles.workerChatHeader}>
-        <span>📜 执行日志</span>
-        <span className={styles.chatLogCount}>{totalMessageCount} 条</span>
+        <span>📜 {t('workerPanel.executionLog')}</span>
+        <span className={styles.chatLogCount}>{totalMessageCount} {t('workerPanel.entries')}</span>
         {taskStatus === 'running' && (
-          <span className={styles.chatLiveIndicator}>🔴 实时</span>
+          <span className={styles.chatLiveIndicator}>🔴 {t('workerPanel.live')}</span>
         )}
         {/* v4.6: System Prompt 查看按钮 */}
         {stream?.systemPrompt && (
           <button
             className={styles.systemPromptToggle}
             onClick={() => setShowSystemPrompt(!showSystemPrompt)}
-            title="查看 Agent 指令（System Prompt）"
+            title={t('workerPanel.viewSystemPrompt')}
           >
-            🧠 {showSystemPrompt ? '隐藏指令' : '查看指令'}
+            🧠 {showSystemPrompt ? t('workerPanel.hidePrompt') : t('workerPanel.viewPrompt')}
           </button>
         )}
       </div>
@@ -497,17 +527,17 @@ const WorkerChatLog: React.FC<{
             {taskStatus === 'pending' ? (
               <>
                 <span className={styles.chatEmptyIcon}>⏳</span>
-                <span>等待任务开始执行...</span>
+                <span>{t('workerPanel.waitingForStart')}</span>
               </>
             ) : taskStatus === 'running' ? (
               <>
                 <span className={styles.chatEmptyIcon}>🔄</span>
-                <span>Worker 正在启动...</span>
+                <span>{t('workerPanel.workerStarting')}</span>
               </>
             ) : (
               <>
                 <span className={styles.chatEmptyIcon}>📝</span>
-                <span>暂无执行日志</span>
+                <span>{t('workerPanel.noLogs')}</span>
               </>
             )}
           </div>
@@ -517,15 +547,15 @@ const WorkerChatLog: React.FC<{
       {/* Worker 自主决策记录（如果有） */}
       {worker?.decisions && worker.decisions.length > 0 && (
         <div className={styles.workerDecisionsFooter}>
-          <div className={styles.decisionsTitle}>🤖 自主决策 ({worker.decisions.length})</div>
+          <div className={styles.decisionsTitle}>🤖 {t('workerPanel.autonomousDecisions')} ({worker.decisions.length})</div>
           <div className={styles.decisionsList}>
             {worker.decisions.slice(-3).map((decision, index) => (
               <div key={index} className={styles.decisionBadge}>
-                {decision.type === 'skip_test' ? '跳过测试' :
-                 decision.type === 'add_test' ? '添加测试' :
-                 decision.type === 'install_dep' ? '安装依赖' :
-                 decision.type === 'retry' ? '重试' :
-                 decision.type === 'strategy' ? '策略' : decision.type}
+                {decision.type === 'skip_test' ? t('workerPanel.decisionSkipTest') :
+                 decision.type === 'add_test' ? t('workerPanel.decisionAddTest') :
+                 decision.type === 'install_dep' ? t('workerPanel.decisionInstallDep') :
+                 decision.type === 'retry' ? t('workerPanel.decisionRetry') :
+                 decision.type === 'strategy' ? t('workerPanel.decisionStrategy') : decision.type}
               </div>
             ))}
           </div>
@@ -543,6 +573,7 @@ const WorkerDetailPanel: React.FC<{
   worker: WorkerAgent;
   logs: WorkerLogEntry[];
 }> = ({ worker, logs }) => {
+  const { t } = useLanguage();
   // 日志分类
   const toolLogs = logs.filter(log => log.type === 'tool');
   const decisionLogs = logs.filter(log => log.type === 'decision');
@@ -575,20 +606,20 @@ const WorkerDetailPanel: React.FC<{
 
   // 状态文本映射
   const statusTexts: Record<string, { icon: string; label: string; color: string }> = {
-    idle: { icon: '💤', label: '空闲中', color: '#9ca3af' },
-    working: { icon: '💻', label: '工作中', color: '#60a5fa' },
-    waiting: { icon: '⏳', label: '等待中', color: '#f59e0b' },
-    error: { icon: '❌', label: '出错', color: '#ef4444' },
+    idle: { icon: '💤', label: t('workerPanel.detailIdle'), color: '#9ca3af' },
+    working: { icon: '💻', label: t('workerPanel.detailWorking'), color: '#60a5fa' },
+    waiting: { icon: '⏳', label: t('workerPanel.detailWaiting'), color: '#f59e0b' },
+    error: { icon: '❌', label: t('workerPanel.detailError'), color: '#ef4444' },
   };
 
   // 决策类型文本映射
   const decisionTypeTexts: Record<string, string> = {
-    strategy: '策略',
-    skip_test: '跳过测试',
-    add_test: '添加测试',
-    install_dep: '安装依赖',
-    retry: '重试',
-    other: '其他',
+    strategy: t('workerPanel.decisionStrategy'),
+    skip_test: t('workerPanel.decisionSkipTest'),
+    add_test: t('workerPanel.decisionAddTest'),
+    install_dep: t('workerPanel.decisionInstallDep'),
+    retry: t('workerPanel.decisionRetry'),
+    other: t('workerPanel.decisionOther'),
   };
 
   // 根据活动标签页筛选日志
@@ -618,7 +649,7 @@ const WorkerDetailPanel: React.FC<{
       <div className={styles.workerDetailHeader}>
         <div className={styles.workerDetailTitle}>
           <span className={styles.workerDetailIcon}>🐝</span>
-          <span>Worker 详情</span>
+          <span>{t('workerPanel.workerDetail')}</span>
         </div>
         <div className={styles.workerDetailBadges}>
           {modelInfo && (
@@ -640,21 +671,21 @@ const WorkerDetailPanel: React.FC<{
         </div>
         {worker.branchName && (
           <div className={styles.workerDetailInfoRow}>
-            <span className={styles.workerDetailInfoLabel}>分支</span>
+            <span className={styles.workerDetailInfoLabel}>{t('workerPanel.branch')}</span>
             <span className={styles.workerDetailInfoValue}>
               🌿 {worker.branchName}
               {worker.branchStatus === 'conflict' && (
-                <span className={styles.branchConflict}>冲突</span>
+                <span className={styles.branchConflict}>{t('workerPanel.conflict')}</span>
               )}
               {worker.branchStatus === 'merged' && (
-                <span className={styles.branchMerged}>已合并</span>
+                <span className={styles.branchMerged}>{t('workerPanel.merged')}</span>
               )}
             </span>
           </div>
         )}
         {worker.progress > 0 && (
           <div className={styles.workerDetailInfoRow}>
-            <span className={styles.workerDetailInfoLabel}>进度</span>
+            <span className={styles.workerDetailInfoLabel}>{t('workerPanel.progress')}</span>
             <span className={styles.workerDetailInfoValue}>
               <div className={styles.workerDetailProgress}>
                 <div className={styles.workerDetailProgressBar}>
@@ -673,7 +704,7 @@ const WorkerDetailPanel: React.FC<{
       {/* 当前操作 */}
       {worker.currentAction && (
         <div className={styles.workerDetailCurrentAction}>
-          <div className={styles.workerDetailSectionTitle}>🔨 当前操作</div>
+          <div className={styles.workerDetailSectionTitle}>🔨 {t('workerPanel.currentAction')}</div>
           <div className={styles.workerDetailActionItem}>
             <span className={styles.workerDetailActionIcon}>
               {worker.currentAction.type === 'read' ? '📖' :
@@ -696,7 +727,7 @@ const WorkerDetailPanel: React.FC<{
       {/* Worker 自主决策记录 */}
       {worker.decisions && worker.decisions.length > 0 && (
         <div className={styles.workerDetailDecisions}>
-          <div className={styles.workerDetailSectionTitle}>🤖 自主决策记录</div>
+          <div className={styles.workerDetailSectionTitle}>🤖 {t('workerPanel.autonomousDecisionLog')}</div>
           <div className={styles.workerDetailDecisionList}>
             {worker.decisions.map((decision, index) => (
               <div key={index} className={styles.workerDetailDecisionItem}>
@@ -721,25 +752,25 @@ const WorkerDetailPanel: React.FC<{
           className={`${styles.workerDetailTab} ${activeTab === 'all' ? styles.active : ''}`}
           onClick={() => setActiveTab('all')}
         >
-          全部 ({logs.length})
+          {t('workerPanel.tabAll')} ({logs.length})
         </button>
         <button
           className={`${styles.workerDetailTab} ${activeTab === 'tools' ? styles.active : ''}`}
           onClick={() => setActiveTab('tools')}
         >
-          🔧 工具调用 ({toolLogs.length})
+          🔧 {t('workerPanel.tabTools')} ({toolLogs.length})
         </button>
         <button
           className={`${styles.workerDetailTab} ${activeTab === 'decisions' ? styles.active : ''}`}
           onClick={() => setActiveTab('decisions')}
         >
-          🤔 思考决策 ({decisionLogs.length})
+          🤔 {t('workerPanel.tabDecisions')} ({decisionLogs.length})
         </button>
         <button
           className={`${styles.workerDetailTab} ${activeTab === 'output' ? styles.active : ''}`}
           onClick={() => setActiveTab('output')}
         >
-          📝 输出 ({outputLogs.length + statusLogs.length})
+          📝 {t('workerPanel.tabOutput')} ({outputLogs.length + statusLogs.length})
         </button>
       </div>
 
@@ -747,7 +778,7 @@ const WorkerDetailPanel: React.FC<{
       <div className={styles.workerDetailLogList}>
         {filteredLogs.length === 0 ? (
           <div className={styles.workerDetailLogEmpty}>
-            暂无 {activeTab === 'all' ? '日志' : activeTab === 'tools' ? '工具调用' : activeTab === 'decisions' ? '决策' : '输出'} 记录
+            {t('workerPanel.noRecords')}
           </div>
         ) : (
           filteredLogs.map((log) => (
@@ -768,7 +799,7 @@ const WorkerDetailPanel: React.FC<{
               {log.details && (
                 <div className={styles.workerDetailLogDetails}>
                   <details>
-                    <summary>查看详情</summary>
+                    <summary>{t('workerPanel.viewDetails')}</summary>
                     <pre>{JSON.stringify(log.details, null, 2)}</pre>
                   </details>
                 </div>
@@ -781,7 +812,7 @@ const WorkerDetailPanel: React.FC<{
       {/* 错误日志（如果有） */}
       {errorLogs.length > 0 && activeTab === 'all' && (
         <div className={styles.workerDetailErrors}>
-          <div className={styles.workerDetailSectionTitle}>❌ 错误记录 ({errorLogs.length})</div>
+          <div className={styles.workerDetailSectionTitle}>❌ {t('workerPanel.errorRecords')} ({errorLogs.length})</div>
           <div className={styles.workerDetailErrorList}>
             {errorLogs.map((log) => (
               <div key={log.id} className={styles.workerDetailErrorItem}>
@@ -803,6 +834,7 @@ const WorkerLogSection: React.FC<{
   logs: WorkerLogEntry[];
   taskStatus?: string;
 }> = ({ logs, taskStatus }) => {
+  const { t } = useLanguage();
   const logsContainerRef = useRef<HTMLDivElement>(null);
 
   // 自动滚动到底部
@@ -829,9 +861,9 @@ const WorkerLogSection: React.FC<{
     <div className={styles.taskDetailLogs}>
       <div className={styles.taskDetailSectionTitle}>
         <span>📋</span>
-        <span>执行日志 ({logs.length})</span>
+        <span>{t('workerPanel.executionLog')} ({logs.length})</span>
         {taskStatus === 'running' && (
-          <span className={styles.logsLiveIndicator}>🔴 实时</span>
+          <span className={styles.logsLiveIndicator}>🔴 {t('workerPanel.live')}</span>
         )}
       </div>
       <div className={styles.logsContainer} ref={logsContainerRef}>
@@ -840,17 +872,17 @@ const WorkerLogSection: React.FC<{
             {taskStatus === 'pending' ? (
               <>
                 <span className={styles.logsEmptyIcon}>⏳</span>
-                <span>等待任务开始执行...</span>
+                <span>{t('workerPanel.waitingForStart')}</span>
               </>
             ) : taskStatus === 'running' ? (
               <>
                 <span className={styles.logsEmptyIcon}>🔄</span>
-                <span>等待日志输出...</span>
+                <span>{t('workerPanel.waitingForLogs')}</span>
               </>
             ) : (
               <>
                 <span className={styles.logsEmptyIcon}>📝</span>
-                <span>暂无执行日志</span>
+                <span>{t('workerPanel.noLogs')}</span>
               </>
             )}
           </div>
@@ -888,6 +920,7 @@ const WorkerLogSection: React.FC<{
  * v4.4: 支持用户插嘴（发送消息给正在执行的任务）
  */
 export const WorkerPanel: React.FC<WorkerPanelProps> = ({ queen, workers, selectedTask, taskStream, onInterject, interjectStatus }) => {
+  const { t } = useLanguage();
   // v4.4: 用户插嘴输入状态
   const [interjectInput, setInterjectInput] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -926,7 +959,7 @@ export const WorkerPanel: React.FC<WorkerPanelProps> = ({ queen, workers, select
         <div className={styles.interjectContainer}>
           <div className={styles.interjectHeader}>
             <span className={styles.interjectIcon}>💬</span>
-            <span className={styles.interjectTitle}>插嘴 (向 Worker 发送指令)</span>
+            <span className={styles.interjectTitle}>{t('workerPanel.interjectTitle')}</span>
           </div>
           <div className={styles.interjectInputWrapper}>
             <textarea
@@ -934,7 +967,7 @@ export const WorkerPanel: React.FC<WorkerPanelProps> = ({ queen, workers, select
               value={interjectInput}
               onChange={(e) => setInterjectInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="输入指令或反馈... (Enter 发送, Shift+Enter 换行)"
+              placeholder={t('workerPanel.interjectPlaceholder')}
               disabled={isSending}
               rows={2}
             />
@@ -943,7 +976,7 @@ export const WorkerPanel: React.FC<WorkerPanelProps> = ({ queen, workers, select
               onClick={handleInterjectSubmit}
               disabled={!interjectInput.trim() || isSending}
             >
-              {isSending ? '发送中...' : '发送'}
+              {isSending ? t('workerPanel.sending') : t('workerPanel.send')}
             </button>
           </div>
           {/* v4.5: 插嘴状态反馈 */}
@@ -953,7 +986,7 @@ export const WorkerPanel: React.FC<WorkerPanelProps> = ({ queen, workers, select
             </div>
           ) : (
             <div className={styles.interjectHint}>
-              提示：Worker 会在下一轮对话中收到您的消息
+              {t('workerPanel.interjectHint')}
             </div>
           )}
         </div>
@@ -980,9 +1013,9 @@ export const WorkerPanel: React.FC<WorkerPanelProps> = ({ queen, workers, select
           <div className={styles.emptyState}>
             <div className={styles.emptyStateIcon}>👷</div>
             <div className={styles.emptyStateText}>
-              暂无 Worker 数据
+              {t('workerPanel.noWorkerData')}
               <br />
-              等待任务分配...
+              {t('workerPanel.waitingForAssignment')}
             </div>
           </div>
         );

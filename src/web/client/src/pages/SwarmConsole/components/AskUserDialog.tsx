@@ -9,6 +9,7 @@
 import React, { useState, useCallback } from 'react';
 import type { AskUserDialogState } from '../types';
 import styles from '../SwarmConsole.module.css';
+import { useLanguage } from '../../../i18n';
 
 interface AskUserDialogProps {
   dialog: AskUserDialogState;
@@ -19,6 +20,7 @@ interface AskUserDialogProps {
  * 用户交互对话框
  */
 export const AskUserDialog: React.FC<AskUserDialogProps> = ({ dialog, onSubmit }) => {
+  const { t } = useLanguage();
   // 存储每个问题的答案（以 header 为 key）
   // 单选模式：存储单个选项 label
   // 多选模式：存储逗号分隔的选项 labels
@@ -109,7 +111,7 @@ export const AskUserDialog: React.FC<AskUserDialogProps> = ({ dialog, onSubmit }
     // 检查是否所有问题都有答案
     const allAnswered = dialog.questions.every(q => answers[q.header]);
     if (!allAnswered) {
-      alert('请回答所有问题');
+      alert(t('askUser.answerAllQuestions'));
       return;
     }
 
@@ -139,8 +141,8 @@ export const AskUserDialog: React.FC<AskUserDialogProps> = ({ dialog, onSubmit }
           <span className={styles.askUserDialogIcon}>🤔</span>
           <h3>
             {dialog.workerId
-              ? `Worker ${dialog.workerId.substring(0, 8)} 需要你的帮助`
-              : 'E2E Agent 需要你的帮助'
+              ? t('askUser.workerNeedsHelp', { id: dialog.workerId.substring(0, 8) })
+              : t('askUser.agentNeedsHelp')
             }
           </h3>
         </div>
@@ -156,7 +158,7 @@ export const AskUserDialog: React.FC<AskUserDialogProps> = ({ dialog, onSubmit }
 
               {/* 多选提示 */}
               {question.multiSelect && (
-                <p className={styles.askUserMultiSelectHint}>可选择多个选项</p>
+                <p className={styles.askUserMultiSelectHint}>{t('askUser.multiSelectHint')}</p>
               )}
 
               {/* 选项 */}
@@ -184,7 +186,7 @@ export const AskUserDialog: React.FC<AskUserDialogProps> = ({ dialog, onSubmit }
                 <div className={styles.askUserOtherOption}>
                   <input
                     type="text"
-                    placeholder="其他（输入自定义回答）"
+                    placeholder={t('askUser.otherPlaceholder')}
                     value={otherInputs[question.header] || ''}
                     onChange={(e) => handleOtherInput(question.header, e.target.value)}
                     className={`${styles.askUserOtherInput} ${otherInputs[question.header] ? styles.active : ''}`}
@@ -202,14 +204,14 @@ export const AskUserDialog: React.FC<AskUserDialogProps> = ({ dialog, onSubmit }
             onClick={handleCancel}
             disabled={isSubmitting}
           >
-            取消
+            {t('askUser.cancel')}
           </button>
           <button
             className={styles.askUserSubmitBtn}
             onClick={handleSubmit}
             disabled={isSubmitting || dialog.questions.some(q => !answers[q.header])}
           >
-            {isSubmitting ? '提交中...' : '确认提交'}
+            {isSubmitting ? t('askUser.submitting') : t('askUser.submit')}
           </button>
         </div>
       </div>
