@@ -12,6 +12,9 @@
 import * as http from 'node:http';
 import * as https from 'node:https';
 import * as crypto from 'node:crypto';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as os from 'node:os';
 import { URL } from 'node:url';
 import Anthropic from '@anthropic-ai/sdk';
 import { VERSION_BASE } from '../version.js';
@@ -188,6 +191,50 @@ const HOP_BY_HOP_HEADERS = new Set([
 ]);
 
 /**
+ * 将刷新后的 OAuth token 写回凭据文件
+ * 同时更新 settings.json 和 .credentials.json（如果存在）
+ */
+function persistOAuthToken(state: OAuthState): void {
+  const axonDir = path.join(os.homedir(), '.axon');
+
+  // 写回 settings.json 的 oauthAccount
+  try {
+    const settingsFile = path.join(axonDir, 'settings.json');
+    if (fs.existsSync(settingsFile)) {
+      const settings = JSON.parse(fs.readFileSync(settingsFile, 'utf-8'));
+      if (settings.oauthAccount) {
+        settings.oauthAccount.accessToken = state.accessToken;
+        settings.oauthAccount.refreshToken = state.refreshToken;
+        settings.oauthAccount.expiresAt = state.expiresAt;
+        fs.writeFileSync(settingsFile, JSON.stringify(settings, null, 2), 'utf-8');
+        console.log('[AUTH] Token persisted to settings.json');
+      }
+    }
+  } catch (err: any) {
+    console.warn(`[AUTH] Failed to persist token to settings.json: ${err.message}`);
+  }
+
+  // 写回 .credentials.json 的 claudeAiOauth
+  for (const credDir of [path.join(os.homedir(), '.claude'), axonDir]) {
+    try {
+      const credFile = path.join(credDir, '.credentials.json');
+      if (fs.existsSync(credFile)) {
+        const creds = JSON.parse(fs.readFileSync(credFile, 'utf-8'));
+        if (creds.claudeAiOauth) {
+          creds.claudeAiOauth.accessToken = state.accessToken;
+          creds.claudeAiOauth.refreshToken = state.refreshToken;
+          creds.claudeAiOauth.expiresAt = state.expiresAt;
+          fs.writeFileSync(credFile, JSON.stringify(creds, null, 2), 'utf-8');
+          console.log(`[AUTH] Token persisted to ${credFile}`);
+        }
+      }
+    } catch {
+      // 忽略
+    }
+  }
+}
+
+/**
  * 刷新 OAuth token
  */
 async function refreshOAuthToken(state: OAuthState): Promise<boolean> {
@@ -205,7 +252,10 @@ async function refreshOAuthToken(state: OAuthState): Promise<boolean> {
     });
 
     if (!response.ok) {
+      const errorBody = await response.text().catch(() => '<unreadable>');
       console.error(`[AUTH] Token refresh failed: ${response.status} ${response.statusText}`);
+      console.error(`[AUTH] Response body: ${errorBody}`);
+      console.error(`[AUTH] Refresh token (first 10): ${state.refreshToken.slice(0, 10)}...`);
       return false;
     }
 
@@ -224,6 +274,10 @@ async function refreshOAuthToken(state: OAuthState): Promise<boolean> {
 
     const remainMin = Math.round((state.expiresAt - Date.now()) / 60000);
     console.log(`[AUTH] Token refresh succeeded, valid for ${remainMin} min`);
+
+    // 将新 token 写回文件，防止容器重启后用旧 token
+    persistOAuthToken(state);
+
     return true;
   } catch (err: any) {
     console.error(`[AUTH] Token refresh exception: ${err.message}`);
