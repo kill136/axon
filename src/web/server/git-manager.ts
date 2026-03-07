@@ -3,7 +3,10 @@
  * 封装所有 git 命令操作
  */
 
-import { execSync, execFileSync } from 'child_process';
+import { execSync, execFileSync, exec } from 'child_process';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
 import { existsSync, unlinkSync, statSync } from 'fs';
 import { join } from 'path';
 
@@ -86,7 +89,8 @@ export interface GitDiff {
  */
 export class GitManager {
   private cwd: string;
-  private readonly timeout = 10000; // 10秒超时
+  private readonly timeout = 10000; // 10秒超时（本地操作）
+  private readonly networkTimeout = 60000; // 60秒超时（网络操作：push/pull/fetch）
 
   constructor(cwd: string) {
     this.cwd = cwd;
@@ -163,6 +167,23 @@ export class GitManager {
       }).trim();
     } catch (error: any) {
       // 捕获 stderr 并抛出
+      const stderr = error.stderr?.toString() || error.message || String(error);
+      throw new Error(stderr);
+    }
+  }
+
+  /**
+   * 异步执行 git 命令（用于网络操作，避免阻塞事件循环）
+   */
+  private async execGitNetwork(command: string): Promise<string> {
+    try {
+      const { stdout, stderr } = await execAsync(`git ${command}`, {
+        cwd: this.cwd,
+        encoding: 'utf-8',
+        timeout: this.networkTimeout,
+      });
+      return (stdout || '').trim();
+    } catch (error: any) {
       const stderr = error.stderr?.toString() || error.message || String(error);
       throw new Error(stderr);
     }
@@ -519,39 +540,26 @@ export class GitManager {
   }
 
   /**
-   * 推送
+   * 推送（异步，60秒超时）
    */
-  push(): GitResult {
+  async push(): Promise<GitResult> {
     try {
-      // 使用 origin HEAD 避免本地分支名和远程跟踪分支名不匹配的问题
-      this.execGit('push origin HEAD');
-
-      return {
-        success: true,
-      };
+      await this.execGitNetwork('push origin HEAD');
+      return { success: true };
     } catch (error: any) {
-      return {
-        success: false,
-        error: error.message || String(error),
-      };
+      return { success: false, error: error.message || String(error) };
     }
   }
 
   /**
-   * 拉取
+   * 拉取（异步，60秒超时）
    */
-  pull(): GitResult {
+  async pull(): Promise<GitResult> {
     try {
-      this.execGit('pull');
-
-      return {
-        success: true,
-      };
+      await this.execGitNetwork('pull');
+      return { success: true };
     } catch (error: any) {
-      return {
-        success: false,
-        error: error.message || String(error),
-      };
+      return { success: false, error: error.message || String(error) };
     }
   }
 
@@ -1604,9 +1612,9 @@ export class GitManager {
   /**
    * 推送所有 Tags
    */
-  pushTags(): GitResult {
+  async pushTags(): Promise<GitResult> {
     try {
-      this.execGit('push --tags');
+      await this.execGitNetwork('push --tags');
       return { success: true };
     } catch (error: any) {
       return { success: false, error: error.message || String(error) };
@@ -1714,10 +1722,10 @@ export class GitManager {
   /**
    * Fetch 远程更新
    */
-  fetch(remote?: string): GitResult {
+  async fetch(remote?: string): Promise<GitResult> {
     try {
       const cmd = remote ? `fetch "${remote}"` : 'fetch --all';
-      this.execGit(cmd);
+      await this.execGitNetwork(cmd);
       return { success: true };
     } catch (error: any) {
       return { success: false, error: error.message || String(error) };

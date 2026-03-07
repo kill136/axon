@@ -119,6 +119,13 @@ export function GitPanel({ isOpen, onClose, send, addMessageHandler, projectPath
   const [smartCommitNeedsStaging, setSmartCommitNeedsStaging] = useState(false);
   const [reviewResult, setReviewResult] = useState<string | null>(null);
   const [explainResult, setExplainResult] = useState<string | null>(null);
+  // 合并审查+提交弹窗状态
+  const [commitAndReviewResult, setCommitAndReviewResult] = useState<{
+    review: string;
+    message: string;
+    needsStaging: boolean;
+  } | null>(null);
+  const [editableCommitMessage, setEditableCommitMessage] = useState('');
 
   // Checkout 冲突对话框状态
   const [checkoutConflict, setCheckoutConflict] = useState<{
@@ -223,6 +230,22 @@ export function GitPanel({ isOpen, onClose, send, addMessageHandler, projectPath
             setReviewResult(msg.payload.review);
           } else {
             setError(msg.payload?.error || 'Smart review failed');
+          }
+          break;
+
+        case 'git:smart_commit_and_review_response':
+          setIsGeneratingCommit(false);
+          setIsReviewing(false);
+          if (msg.payload?.success) {
+            const result = {
+              review: msg.payload.review || '',
+              message: msg.payload.message || '',
+              needsStaging: !!msg.payload.needsStaging,
+            };
+            setCommitAndReviewResult(result);
+            setEditableCommitMessage(result.message);
+          } else {
+            setError(msg.payload?.error || 'Smart commit & review failed');
           }
           break;
 
@@ -379,6 +402,17 @@ export function GitPanel({ isOpen, onClose, send, addMessageHandler, projectPath
     });
   }, [projectPath, send]);
 
+  // AI 智能审查 + 提交（合并流程）
+  const handleSmartCommitAndReview = useCallback(() => {
+    if (!projectPath) return;
+    setIsGeneratingCommit(true);
+    setIsReviewing(true);
+    send({
+      type: 'git:smart_commit_and_review',
+      payload: { projectPath },
+    });
+  }, [projectPath, send]);
+
   // 分支选择回调
   const handleBranchSelect = useCallback((branch: string | null) => {
     setFilterBranch(branch);
@@ -415,7 +449,7 @@ export function GitPanel({ isOpen, onClose, send, addMessageHandler, projectPath
           {/* AI 合并按钮：同时触发提交 + 审查 v2 */}
           <button
             className="git-ai-button git-ai-button--compact"
-            onClick={() => { handleSmartCommit(); handleSmartReview(); }}
+            onClick={handleSmartCommitAndReview}
             disabled={isGeneratingCommit || isReviewing || !(gitStatus?.staged.length || gitStatus?.unstaged.length || gitStatus?.untracked.length)}
             title={`${t('git.smartCommit')} + ${t('git.smartReview')}`}
           >
@@ -771,6 +805,53 @@ export function GitPanel({ isOpen, onClose, send, addMessageHandler, projectPath
               <button onClick={() => setReviewResult(null)}>✕</button>
             </div>
             <div className="git-ai-result-content git-ai-result-content--markdown"><MarkdownContent content={reviewResult} /></div>
+          </div>
+        </div>
+      )}
+
+      {/* Smart Commit + Review 合并弹窗 */}
+      {commitAndReviewResult && (
+        <div className="git-ai-result-overlay" onClick={() => setCommitAndReviewResult(null)}>
+          <div className="git-ai-result git-ai-result--wide" onClick={e => e.stopPropagation()}>
+            <div className="git-ai-result-header">
+              <span>{t('git.smartReview')}</span>
+              <button onClick={() => setCommitAndReviewResult(null)}>✕</button>
+            </div>
+            {/* 审查结果区域 */}
+            <div className="git-ai-result-content git-ai-result-content--markdown git-ai-review-section">
+              <MarkdownContent content={commitAndReviewResult.review} />
+            </div>
+            {/* 分隔线 + Commit Message 区域 */}
+            <div className="git-ai-commit-section">
+              <div className="git-ai-commit-section-header">{t('git.commitMessage')}</div>
+              <textarea
+                className="git-ai-commit-textarea"
+                value={editableCommitMessage}
+                onChange={e => setEditableCommitMessage(e.target.value)}
+                rows={4}
+              />
+            </div>
+            <div className="git-ai-result-actions">
+              <button
+                className="git-ai-result-action-primary"
+                disabled={!editableCommitMessage.trim()}
+                onClick={() => {
+                  send({
+                    type: 'git:commit',
+                    payload: {
+                      projectPath,
+                      message: editableCommitMessage,
+                      autoStage: commitAndReviewResult.needsStaging,
+                    },
+                  });
+                  setCommitAndReviewResult(null);
+                  setEditableCommitMessage('');
+                }}
+              >
+                {t('git.commit')}
+              </button>
+              <button onClick={() => setCommitAndReviewResult(null)}>{t('git.cancel')}</button>
+            </div>
           </div>
         </div>
       )}

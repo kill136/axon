@@ -58,6 +58,7 @@ import {
   handleGitGetCommitFileDiff,
   handleGitSmartCommit,
   handleGitSmartReview,
+  handleGitSmartCommitAndReview,
   handleGitExplainCommit,
   handleGitMerge,
   handleGitRebase,
@@ -1696,6 +1697,10 @@ async function handleClientMessage(
 
     case 'git:smart_review':
       await handleGitSmartReview(client, conversationManager);
+      break;
+
+    case 'git:smart_commit_and_review':
+      await handleGitSmartCommitAndReview(client, conversationManager);
       break;
 
     case 'git:get_commit_detail':

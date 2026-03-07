@@ -306,6 +306,25 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
     }, 2000);
   }
 
+  // 启动 Eye Daemon（摄像头持续拍照后台服务）
+  // 用户在 settings.json 的 eye 字段配置 { autoStart: true, camera: 0, interval: 0.5 }
+  {
+    const eyeConfig = (configManager.getAll() as any)?.eye as import('../../eye/index.js').EyeConfig | undefined;
+    if (eyeConfig?.autoStart) {
+      try {
+        const { startEye } = await import('../../eye/index.js');
+        const result = await startEye(eyeConfig);
+        if (result.success) {
+          console.log(`[Eye] ${result.message}`);
+        } else {
+          console.warn(`[Eye] ${result.message}`);
+        }
+      } catch (error) {
+        console.warn('[Eye] Failed to start eye daemon:', error);
+      }
+    }
+  }
+
   // 注入 ErrorWatcher 通知回调 — 错误达到阈值时通知当前活跃会话的主 Agent
   {
     const { broadcastMessage } = await import('./websocket.js');
@@ -453,6 +472,12 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
 
     // 停止定时调度器
     webScheduler?.stop();
+
+    // 停止 Eye Daemon
+    try {
+      const { stopEye } = await import('../../eye/index.js');
+      await stopEye();
+    } catch { /* ignore */ }
 
     // 先持久化所有活跃会话，防止热更新丢数据
     try {

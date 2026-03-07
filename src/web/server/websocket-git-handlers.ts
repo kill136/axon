@@ -203,7 +203,7 @@ export async function handleGitPush(
   conversationManager: ConversationManager
 ): Promise<void> {
   const git = getGitManager(client);
-  const result = git.push();
+  const result = await git.push();
   sendMessage(client.ws, {
     type: 'git:operation_result',
     payload: { operation: 'push', ...result },
@@ -219,7 +219,7 @@ export async function handleGitPull(
   conversationManager: ConversationManager
 ): Promise<void> {
   const git = getGitManager(client);
-  const result = git.pull();
+  const result = await git.pull();
   sendMessage(client.ws, {
     type: 'git:operation_result',
     payload: { operation: 'pull', ...result },
@@ -524,7 +524,7 @@ async function getDiffContent(cwd: string, staged: boolean): Promise<string> {
   const { execSync } = await import('child_process');
   try {
     const cmd = staged ? 'git diff --cached' : 'git diff';
-    return execSync(cmd, { cwd, encoding: 'utf-8', timeout: 10000 }).trim();
+    return execSync(cmd, { cwd, encoding: 'utf-8', timeout: 10000, maxBuffer: 50 * 1024 * 1024 }).trim();
   } catch {
     return '';
   }
@@ -624,6 +624,74 @@ ${fullDiff.substring(0, 12000)}
   } catch (error: any) {
     sendMessage(client.ws, {
       type: 'git:smart_review_response',
+      payload: { success: false, error: error.message || String(error) },
+    });
+  }
+}
+
+/**
+ * Smart Commit + Review: 并行执行审查和生成 commit message，一次性返回
+ * 流程：审查结果 + commit message → 用户确认 → 提交
+ */
+export async function handleGitSmartCommitAndReview(
+  client: ClientConnection,
+  conversationManager: ConversationManager
+): Promise<void> {
+  try {
+    const cwd = client.projectPath || process.cwd();
+
+    const stagedDiff = await getDiffContent(cwd, true);
+    const unstagedDiff = await getDiffContent(cwd, false);
+    const needsStaging = !stagedDiff;
+    const diff = stagedDiff || unstagedDiff;
+    const fullDiff = [stagedDiff, unstagedDiff].filter(Boolean).join('\n\n');
+
+    if (!diff) {
+      sendMessage(client.ws, {
+        type: 'git:smart_commit_and_review_response',
+        payload: { success: false, error: 'No changes to commit or review' },
+      });
+      return;
+    }
+
+    // 并行执行 review 和 commit message 生成
+    const [review, rawMessage] = await Promise.all([
+      fullDiff
+        ? aiRequest(conversationManager, `As a senior code reviewer, review the following code changes. Please identify:
+
+1. **Bug Risks** - Potential bugs or logic errors
+2. **Security Issues** - XSS, injection, sensitive data exposure, etc.
+3. **Design Issues** - Architecture, maintainability, complexity
+4. **Improvement Suggestions** - Code quality, best practices
+
+If the code quality is good, also provide positive feedback.
+
+Diff:
+\`\`\`
+${fullDiff.substring(0, 12000)}
+\`\`\``)
+        : Promise.resolve(''),
+      aiRequest(conversationManager, `You are a commit message generator. Output ONLY the commit message, nothing else. No analysis, no explanation, no markdown, no code fences, no "---" separators.
+
+Rules:
+- First line: type(scope): description (max 72 chars, English)
+- type: feat|fix|refactor|docs|style|test|chore|perf
+- If complex, add a blank line then a short body paragraph
+- Output the commit message directly. Do NOT include any preamble like "Here's the commit message:" or analysis
+
+Diff:
+${diff.substring(0, 8000)}`),
+    ]);
+
+    const message = cleanCommitMessage(rawMessage);
+
+    sendMessage(client.ws, {
+      type: 'git:smart_commit_and_review_response',
+      payload: { success: true, review, message, needsStaging },
+    });
+  } catch (error: any) {
+    sendMessage(client.ws, {
+      type: 'git:smart_commit_and_review_response',
       payload: { success: false, error: error.message || String(error) },
     });
   }
@@ -951,7 +1019,7 @@ export async function handleGitPushTags(
   conversationManager: ConversationManager
 ): Promise<void> {
   const git = getGitManager(client);
-  const result = git.pushTags();
+  const result = await git.pushTags();
   sendMessage(client.ws, {
     type: 'git:operation_result',
     payload: { operation: 'push_tags', ...result },
@@ -1008,7 +1076,7 @@ export async function handleGitFetch(
   conversationManager: ConversationManager
 ): Promise<void> {
   const git = getGitManager(client);
-  const result = git.fetch(remote);
+  const result = await git.fetch(remote);
   sendMessage(client.ws, {
     type: 'git:operation_result',
     payload: { operation: 'fetch', ...result },

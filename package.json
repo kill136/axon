@@ -19,7 +19,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc && node -e \"const{cpSync}=require('fs');cpSync('src/browser/extension','dist/browser/extension',{recursive:true});cpSync('src/skills/builtin','dist/skills/builtin',{recursive:true})\"",
+    "build": "tsc && node -e \"const{cpSync,mkdirSync}=require('fs');cpSync('src/browser/extension','dist/browser/extension',{recursive:true});cpSync('src/skills/builtin','dist/skills/builtin',{recursive:true});mkdirSync('dist/eye',{recursive:true});cpSync('src/eye/camera.py','dist/eye/camera.py')\"",
     "start": "node dist/cli.js",
     "dev": "tsx src/cli.ts",
     "dev:watch": "tsx watch src/cli.ts --continue",

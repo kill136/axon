@@ -226,6 +226,7 @@ export type ClientMessage =
   | { type: 'git:get_diff'; payload?: { file?: string } }
   | { type: 'git:smart_commit' }
   | { type: 'git:smart_review' }
+  | { type: 'git:smart_commit_and_review' }
   | { type: 'git:explain_commit'; payload: { hash: string } }
   | { type: 'git:get_commit_detail'; payload: { hash: string } }
   | { type: 'git:get_commit_file_diff'; payload: { projectPath?: string; hash: string; file: string } }
@@ -359,6 +360,7 @@ export type ServerMessage =
   | { type: 'git:diff_response'; payload: GitDiffResponsePayload }
   | { type: 'git:smart_commit_response'; payload: GitSmartCommitResponsePayload }
   | { type: 'git:smart_review_response'; payload: GitSmartReviewResponsePayload }
+  | { type: 'git:smart_commit_and_review_response'; payload: GitSmartCommitAndReviewResponsePayload }
   | { type: 'git:explain_commit_response'; payload: GitExplainCommitResponsePayload }
   | { type: 'git:commit_detail_response'; payload: { success: boolean; data?: { hash: string; shortHash: string; author: string; date: string; message: string; diff: string; files: { status: string; file: string }[] }; error?: string } }
   // Git Enhanced Features Responses
@@ -3381,6 +3383,17 @@ export interface GitSmartReviewResponsePayload {
   data?: {
     review: string;
   };
+  error?: string;
+}
+
+/**
+ * Git Smart Commit + Review 合并响应
+ */
+export interface GitSmartCommitAndReviewResponsePayload {
+  success: boolean;
+  review?: string;
+  message?: string;
+  needsStaging?: boolean;
   error?: string;
 }
 

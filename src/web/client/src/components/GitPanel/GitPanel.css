@@ -1890,6 +1890,55 @@ pre.git-ai-result-content {
   transform: translateY(-1px);
 }
 
+.git-ai-result-action-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* 合并弹窗：审查区域限高可滚动 */
+.git-ai-review-section {
+  max-height: 300px;
+  overflow-y: auto;
+  border-bottom: none !important;
+}
+
+/* 合并弹窗：Commit Message 编辑区域 */
+.git-ai-commit-section {
+  padding: 0 20px;
+  border-top: 1px solid var(--border-color);
+}
+
+.git-ai-commit-section-header {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 12px 0 8px;
+}
+
+.git-ai-commit-textarea {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  resize: vertical;
+  min-height: 60px;
+  box-sizing: border-box;
+}
+
+.git-ai-commit-textarea:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px rgba(var(--accent-primary-rgb, 99, 102, 241), 0.15);
+}
+
 /* ============================================
    Remotes View 样式
    ============================================ */
