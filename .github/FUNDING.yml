@@ -1,3 +1,4 @@
 # These are supported funding model platforms
+# PayPal donate via email: 694623326@qq.com
 
-ko_fi: will883246
+custom: ["https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=694623326%40qq.com&item_name=Support+Axon+Development&currency_code=USD"]

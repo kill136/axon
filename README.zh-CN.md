@@ -1,6 +1,10 @@
+<div align="center">
+
 # Axon
 
-### 免费开源的 Axon，带 Web IDE、多智能体和自我进化
+### 开源 AI 编程助手，支持 Web IDE、多智能体协作、自我进化
+
+**任意模型。插件扩展。让 AI 帮你搭建整个项目。**
 
 [![npm](https://img.shields.io/npm/v/axon?style=flat-square&color=CB3837)](https://www.npmjs.com/package/axon)
 [![GitHub Stars](https://img.shields.io/github/stars/kill136/claude-code-open?style=flat-square)](https://github.com/kill136/claude-code-open)
@@ -10,8 +14,6 @@
 
 [官网](https://www.chatbi.site) | [在线体验](https://voicegpt.site) | [操作手册](https://www.chatbi.site/zh/user-guide.html) | [Discord](https://discord.gg/bNyJKk6PVZ) | [English](README.md)
 
-<div align="center">
-
 <a href="https://voicegpt.site">
 <img src="demo-screenshots/demo.gif" width="720" alt="Axon Demo">
 </a>
@@ -20,34 +22,25 @@
 
 </div>
 
-## 为什么选择 Axon？
+---
 
-| | 官方 Axon | Axon |
-|---|---|---|
-| **价格** | $20/月 (需要 Max 订阅) | 免费（自备 API Key） |
-| **界面** | 仅终端 | 终端 + **Web IDE**（Monaco 编辑器、文件树、AI 增强编辑） |
-| **复杂任务** | 单 Agent | **多智能体蓝图**系统（并行 Worker、任务队列、自动评审） |
-| **可定制** | 闭源 | 完全开源，**自我进化**（AI 可修改自身代码） |
-| **部署** | 仅本地 | 本地、Docker、云端、**代理服务器共享** |
-| **集成** | 仅 GitHub | GitHub、飞书、微信、MCP 协议、37+ 工具 |
+Axon 是一个免费、开源的 AI 编程助手，内置 Web IDE、多智能体任务系统和自我进化能力。你拥有完全的控制权 —— 自由选择 AI 服务商，通过插件和 MCP 服务器扩展功能，甚至可以让 AI 修改它自己的源代码。
 
 ## 快速开始
 
 ```bash
-# 全局安装
+# 安装
 npm install -g axon
 
-# 设置 API Key
-export ANTHROPIC_API_KEY="sk-..."  # Windows: $env:ANTHROPIC_API_KEY="sk-..."
+# 设置 API Key（支持 Anthropic、OpenRouter、DeepSeek 等任意 OpenAI 兼容服务商）
+export ANTHROPIC_API_KEY="sk-..."
 
-# CLI 模式
+# 终端模式
 axon
 
-# Web IDE 模式
+# Web IDE 模式（打开 http://localhost:3456）
 axon-web
 ```
-
-打开 `http://localhost:3456` 即可使用 Web IDE。
 
 ### 其他安装方式
 
@@ -81,7 +74,7 @@ docker run -it \
   -v ~/.axon:/root/.axon \
   wbj66/axon node /app/dist/web-cli.js --host 0.0.0.0
 
-# 仅 CLI
+# 仅终端
 docker run -it \
   -e ANTHROPIC_API_KEY=your-api-key \
   -v $(pwd):/workspace \
@@ -95,9 +88,9 @@ docker run -it \
 
 ```bash
 git clone https://github.com/kill136/claude-code-open.git
-cd axon
+cd claude-code-open
 npm install && npm run build
-node dist/cli.js        # CLI
+node dist/cli.js        # 终端
 node dist/web-cli.js    # Web IDE
 ```
 </details>
@@ -126,18 +119,18 @@ curl -fsSL https://raw.githubusercontent.com/kill136/claude-code-open/private_we
 ```
 </details>
 
-## 核心功能
+## Axon 的独特之处
 
 ### Web IDE
 
-基于 React + Monaco Editor + WebSocket 的完整浏览器 IDE：
+完整的浏览器 IDE —— 不是聊天窗口。
 
 - **Monaco 编辑器**，多标签页、语法高亮、AI 悬浮提示
-- **VS Code 风格文件树**，右键上下文菜单
-- **AI 增强编辑** — 选中代码即问 AI、代码导游、热力图装饰器
-- **WebSocket 实时流式传输** AI 响应
-- **会话管理** — 创建、恢复、分叉、导出
-- **检查点与回退** — 文件快照和会话时间旅行
+- **文件树**，右键上下文菜单，VS Code 体验
+- **AI 增强编辑** —— 选中代码问 AI，获得行内修改
+- **WebSocket 实时流式**响应
+- **会话管理** —— 创建、恢复、分叉、导出
+- **检查点与回退** —— 文件快照和时间旅行
 
 <table>
 <tr>
@@ -146,25 +139,25 @@ curl -fsSL https://raw.githubusercontent.com/kill136/claude-code-open/private_we
 </tr>
 </table>
 
-### 蓝图多智能体系统
+### 多智能体蓝图系统
 
-将复杂任务分解给多个并行工作的 AI Agent：
+给 Axon 一个复杂任务，它会自动拆解成多个 AI Agent 并行执行。
 
-- **智能规划器** — 将任务分解为执行计划
-- **Lead Agent** — 协调 Worker，追踪进度
-- **自主 Worker** — 独立执行，拥有完整工具权限
-- **任务队列** — 基于优先级的调度，支持持久化
-- **质量评审器** — 自动化评审和验证
+- **规划器** 将任务分解为执行图
+- **Lead Agent** 协调 Worker，追踪进度
+- **Worker** 独立执行，拥有完整工具权限
+- **任务队列** 基于优先级调度，支持持久化
+- **自动评审** 验证输出后才标记完成
 
 <img src="demo-screenshots/02-blueprint.png" width="600" alt="蓝图系统">
 
 ### 自我进化
 
-AI 可修改自身源码，运行 TypeScript 编译检查，热重载：
+Axon 可以修改自身源码、编译 TypeScript、热重载 —— 随时增加新工具和新能力。
 
 ```
 你：「增加一个查询天气的工具」
-Claude：*编写工具代码，编译，重启自己，工具立即可用*
+Axon：*编写工具代码，编译，重启，工具立即可用*
 ```
 
 ### 37+ 内置工具
@@ -172,22 +165,61 @@ Claude：*编写工具代码，编译，重启自己，工具立即可用*
 | 类别 | 工具 |
 |---|---|
 | 文件操作 | Read, Write, Edit, MultiEdit, Glob, Grep |
-| 执行 | Bash, 后台任务, 任务输出 |
-| Web | WebFetch, WebSearch |
-| 代码 | NotebookEdit, LSP, Tree-sitter 解析 |
-| 浏览器 | 基于 Playwright 的自动化 |
+| 执行 | Bash, 后台任务, 定时任务 |
+| Web | 抓取网页, 搜索互联网 |
+| 代码 | Jupyter Notebook, LSP, Tree-sitter 解析 |
+| 浏览器 | 基于 Playwright 的全浏览器自动化 |
 | 规划 | 规划模式, 蓝图, 子代理 |
-| 记忆 | 语义搜索, 向量存储, BM25 |
-| 集成 | MCP 协议, 技能系统 |
-| 定时任务 | 类 Cron 守护进程, 文件监控, 通知 |
+| 记忆 | 长期记忆，语义搜索, 向量存储, BM25 |
+| 集成 | MCP 协议, 技能市场, 插件 |
+| 感知 | 摄像头（Eye）, 麦克风（Ear）, 语音（Mouth） |
 
-### 更多功能
+### 可扩展架构
 
-- **代理服务器** — 跨设备共享 API Key
-- **多云服务商** — Anthropic, AWS Bedrock, Google Vertex AI
-- **插件与 Hook 系统** — 自定义扩展
-- **国际化** — 中英文双语
-- **飞书和微信机器人** — 消息集成
+- **MCP 协议** —— 接入任意 [Model Context Protocol](https://modelcontextprotocol.io/) 服务器
+- **Skills** —— 社区贡献的提示词技能（PDF、DOCX、XLSX、PPTX 等）
+- **插件** —— 编写自定义 JavaScript/TypeScript 扩展
+- **Hooks** —— 工具执行前后的回调
+- **运行时自定义工具** —— 创建的工具跨会话持久化
+
+### 支持任意 AI 服务商
+
+| 服务商 | 配置 |
+|---|---|
+| **Anthropic** | `ANTHROPIC_API_KEY=sk-ant-...` |
+| **OpenRouter** | `ANTHROPIC_BASE_URL=https://openrouter.ai/api/v1` |
+| **AWS Bedrock** | `CLAUDE_CODE_USE_BEDROCK=1` |
+| **Google Vertex AI** | `CLAUDE_CODE_USE_VERTEX=1` |
+| **任意 OpenAI 兼容** | 设置 `ANTHROPIC_BASE_URL` 指向你的端点 |
+
+### 代理服务器
+
+将你的 API Key 或 Claude 订阅共享给局域网内的其他设备。
+
+```bash
+# 宿主机（持有 API Key 的机器）
+axon-proxy -k my-secret
+
+# 客户端
+export ANTHROPIC_API_KEY="my-secret"
+export ANTHROPIC_BASE_URL="http://<宿主机IP>:8082"
+axon
+```
+
+<details>
+<summary>代理服务器参数</summary>
+
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `-k, --proxy-key` | 自动生成 | 客户端连接密钥 |
+| `-p, --port` | `8082` | 监听端口 |
+| `-H, --host` | `0.0.0.0` | 绑定地址 |
+| `--anthropic-key` | 自动检测 | 手动指定 Anthropic API Key |
+| `--auth-token` | 自动检测 | 手动指定 OAuth Access Token |
+| `--target` | `https://api.anthropic.com` | 上游 API 地址 |
+
+代理服务器按优先级自动检测凭据：`ANTHROPIC_API_KEY` 环境变量 > `~/.axon/.credentials.json`（OAuth）。
+</details>
 
 ## 配置
 
@@ -196,12 +228,13 @@ Claude：*编写工具代码，编译，重启自己，工具立即可用*
 | `ANTHROPIC_API_KEY` | API 密钥（必填） | - |
 | `ANTHROPIC_BASE_URL` | 自定义 API 端点 | `https://api.anthropic.com` |
 | `AXON_LANG` | 语言（`en`/`zh`） | 自动检测 |
-| `AXON_CONFIG_DIR` | 自定义配置/数据目录（C 盘空间不足时可迁移到其他盘） | `~/.axon` |
+| `AXON_CONFIG_DIR` | 配置/数据目录 | `~/.axon` |
 
-### MCP 协议
+### MCP 服务器
+
+在 `.axon/settings.json` 中添加外部工具服务器：
 
 ```json
-// .axon/settings.json
 {
   "mcpServers": {
     "filesystem": {
@@ -225,72 +258,35 @@ axon-web                      # Web IDE
 axon-web -p 8080 -H 0.0.0.0  # 自定义端口
 axon-web --ngrok              # 公网隧道
 axon-web --evolve             # 自我进化模式
-axon-proxy -k my-secret       # 启动本地代理服务器（共享你的额度）
 ```
-
-### 代理服务器（本地模式）
-
-将你的 Anthropic API Key 或 Claude 订阅额度共享给局域网内的其他设备使用。
-
-**在宿主机上（持有 API Key / 订阅账号的那台机器）：**
-
-```bash
-# 自动检测本地凭据（API Key 或 OAuth 订阅），推荐方式
-axon-proxy -k my-secret
-
-# 手动指定 API Key
-axon-proxy -k my-secret --anthropic-key sk-ant-xxx
-
-# 自定义端口（默认 8082）
-axon-proxy -k my-secret -p 9000
-```
-
-**在客户端机器上（连接到代理）：**
-
-```bash
-# Linux / macOS
-export ANTHROPIC_API_KEY="my-secret"
-export ANTHROPIC_BASE_URL="http://<宿主机IP>:8082"
-axon
-
-# Windows (PowerShell)
-$env:ANTHROPIC_API_KEY="my-secret"
-$env:ANTHROPIC_BASE_URL="http://<宿主机IP>:8082"
-axon
-
-# Windows (CMD)
-set ANTHROPIC_API_KEY=my-secret
-set ANTHROPIC_BASE_URL=http://<宿主机IP>:8082
-axon
-```
-
-**参数说明：**
-
-| 参数 | 默认值 | 说明 |
-|---|---|---|
-| `-k, --proxy-key` | 自动生成 | 客户端连接时使用的密钥 |
-| `-p, --port` | `8082` | 监听端口 |
-| `-H, --host` | `0.0.0.0` | 绑定地址 |
-| `--anthropic-key` | 自动检测 | 手动指定 Anthropic API Key |
-| `--auth-token` | 自动检测 | 手动指定 OAuth Access Token |
-| `--target` | `https://api.anthropic.com` | 上游 API 地址 |
-
-代理服务器按以下优先级自动检测本地凭据：`ANTHROPIC_API_KEY` 环境变量 → `~/.axon/.credentials.json`（OAuth 订阅）。
 
 ## 社区
 
 - **官网：** [chatbi.site](https://www.chatbi.site)
+- **在线体验：** [voicegpt.site](https://voicegpt.site)
 - **Discord：** [加入我们](https://discord.gg/bNyJKk6PVZ)
 - **X (Twitter)：** [@wangbingjie1989](https://x.com/wangbingjie1989)
 - **微信：** h694623326
 
 ## 贡献
 
-欢迎 PR 和 Issue。
+欢迎 PR 和 Issue！查看 [CONTRIBUTING.md](CONTRIBUTING.md) 了解指南。
 
-## 致谢
+### 编写 Skill 或插件
 
-本项目灵感来自 Anthropic 的 @anthropic-ai/claude-code，是基于公开 API 的独立开源重新实现。官方版本请见 [@anthropic-ai/claude-code](https://www.npmjs.com/package/@anthropic-ai/claude-code)。
+扩展 Axon 最快的方式是写一个 **Skill**（结构化提示词文件）或 **Plugin**（JS/TS 模块）。它们分别从 `~/.axon/skills/` 和 `~/.axon/plugins/` 自动加载。
+
+## 赞助
+
+Axon 免费开源，赞助帮助我们持续开发。[查看赞助层级 →](SPONSORS.md)
+
+### 创始赞助者
+
+- **Jack Darcy** — jack@jackdarcy.com.au
+
+*你的名字/Logo 也可以出现在这里 — [成为赞助者](https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=694623326%40qq.com&item_name=Support+Axon+Development&currency_code=USD)*
+
+<a href="https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=694623326%40qq.com&item_name=Support+Axon+Development&currency_code=USD"><img src="https://img.shields.io/badge/PayPal-赞助-00457C?style=for-the-badge&logo=paypal" alt="PayPal"></a>
 
 ## 许可证
 
