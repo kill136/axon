@@ -12,9 +12,15 @@ const backendHttps = fs.existsSync(path.join(certDir, 'cert.pem')) && fs.existsS
 const backendProto = backendHttps ? 'https' : 'http';
 const backendWsProto = backendHttps ? 'wss' : 'ws';
 
+// 从 package.json 读取版本号
+const packageJson = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../../package.json'), 'utf-8'));
+
 export default defineConfig({
   plugins: [react()],
   root: path.resolve(__dirname),
+  define: {
+    __APP_VERSION__: JSON.stringify(packageJson.version),
+  },
   build: {
     outDir: 'dist',
     emptyOutDir: true,

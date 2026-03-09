@@ -797,8 +797,8 @@ export function useSwarmState(options: UseSwarmStateOptions): UseSwarmStateRetur
         break;
 
       default:
-        // 忽略不属于 SwarmConsole 的消息（schedule:*, channel:* 等全局广播）
-        if (!(message as any).type?.startsWith('schedule:') && !(message as any).type?.startsWith('channel:')) {
+        // 忽略不属于 SwarmConsole 的消息（schedule:*, channel:*, skills_list 等全局广播）
+        if (!(message as any).type?.startsWith('schedule:') && !(message as any).type?.startsWith('channel:') && (message as any).type !== 'skills_list') {
           console.warn('[SwarmState] Unknown message type:', (message as any).type);
         }
         break;

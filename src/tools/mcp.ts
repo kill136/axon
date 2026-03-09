@@ -19,6 +19,7 @@ import type { MCPSearchToolResult } from '../types/results.js';
 import { MAX_MCP_OUTPUT_TOKENS, truncateMcpOutput } from '../utils/index.js';
 import { persistLargeOutputSync } from './output-persistence.js';
 import { t } from '../i18n/index.js';
+import { VERSION } from '../version.js';
 
 // MCP 服务器状态管理
 interface McpServerState {
@@ -493,8 +494,8 @@ async function doConnect(name: string, server: McpServerState, retry: boolean): 
           protocolVersion: '2024-11-05',
           capabilities: {},
           clientInfo: {
-            name: 'claude-code-restored',
-            version: '2.1.4',
+            name: 'axon',
+            version: VERSION,
           },
         }, initTimeout);
 
