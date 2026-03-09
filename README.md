@@ -1,6 +1,10 @@
+<div align="center">
+
 # Axon
 
-### Free & Open Source Axon with Web IDE, Multi-Agent, and Self-Evolution
+### The open-source AI coding assistant that runs everywhere
+
+**Use any model. Extend with plugins. Let AI agents build your project.**
 
 [![npm](https://img.shields.io/npm/v/axon?style=flat-square&color=CB3837)](https://www.npmjs.com/package/axon)
 [![GitHub Stars](https://img.shields.io/github/stars/kill136/claude-code-open?style=flat-square)](https://github.com/kill136/claude-code-open)
@@ -10,8 +14,6 @@
 
 [Website](https://www.chatbi.site) | [Live Demo](https://voicegpt.site) | [User Guide](https://www.chatbi.site/zh/user-guide.html) | [Discord](https://discord.gg/bNyJKk6PVZ) | [中文](README.zh-CN.md)
 
-<div align="center">
-
 <a href="https://voicegpt.site">
 <img src="demo-screenshots/demo.gif" width="720" alt="Axon Demo">
 </a>
@@ -20,34 +22,25 @@
 
 </div>
 
-## Why Axon?
+---
 
-| | Official Axon | Axon |
-|---|---|---|
-| **Price** | $20/month (Max plan required) | Free (bring your own API key) |
-| **Interface** | Terminal only | Terminal + **Web IDE** (Monaco editor, file tree, AI-enhanced editing) |
-| **Complex tasks** | Single agent | **Multi-agent Blueprint** system (parallel workers, task queue, auto-review) |
-| **Customization** | Closed source | Fully open source, **Self-Evolution** (AI modifies its own code) |
-| **Deployment** | Local only | Local, Docker, Cloud, **share via Proxy Server** |
-| **Integrations** | GitHub only | GitHub, Feishu, WeChat, MCP protocol, 37+ tools |
+Axon is a free, open-source AI coding assistant with a built-in Web IDE, multi-agent task system, and self-evolution capabilities. It gives you full control — choose your AI provider, extend functionality through plugins and MCP servers, and even let the AI modify its own source code.
 
 ## Quick Start
 
 ```bash
-# Install globally
+# Install
 npm install -g axon
 
-# Set your API key
-export ANTHROPIC_API_KEY="sk-..."  # or on Windows: $env:ANTHROPIC_API_KEY="sk-..."
+# Set your API key (Anthropic, OpenRouter, DeepSeek, or any OpenAI-compatible provider)
+export ANTHROPIC_API_KEY="sk-..."
 
-# CLI mode
+# Terminal mode
 axon
 
-# Web IDE mode
+# Web IDE mode (opens at http://localhost:3456)
 axon-web
 ```
-
-That's it. Open `http://localhost:3456` for the Web IDE.
 
 ### Other install methods
 
@@ -79,7 +72,7 @@ docker run -it \
   -v ~/.axon:/root/.axon \
   wbj66/axon node /app/dist/web-cli.js --host 0.0.0.0
 
-# CLI only
+# Terminal only
 docker run -it \
   -e ANTHROPIC_API_KEY=your-api-key \
   -v $(pwd):/workspace \
@@ -89,13 +82,13 @@ docker run -it \
 </details>
 
 <details>
-<summary>From source</summary>
+<summary>Build from source</summary>
 
 ```bash
 git clone https://github.com/kill136/claude-code-open.git
-cd axon
+cd claude-code-open
 npm install && npm run build
-node dist/cli.js        # CLI
+node dist/cli.js        # Terminal
 node dist/web-cli.js    # Web IDE
 ```
 </details>
@@ -124,18 +117,18 @@ curl -fsSL https://raw.githubusercontent.com/kill136/claude-code-open/private_we
 ```
 </details>
 
-## Key Features
+## What makes Axon different
 
 ### Web IDE
 
-A full browser-based IDE built with React + Monaco Editor + WebSocket:
+A full browser-based IDE — not just a chat window.
 
-- **Monaco Editor** with multi-tab, syntax highlighting, AI hover tips
-- **VS Code-style file tree** with right-click context menus
-- **AI-enhanced editing** — select code and ask AI, code tour, heatmap decorations
-- **Real-time streaming** of AI responses via WebSocket
-- **Session management** — create, resume, fork, export
-- **Checkpoint & Rewind** — file snapshots and session time-travel
+- **Monaco Editor** with multi-tab, syntax highlighting, and AI-powered hover tips
+- **File tree** with right-click context menus, just like VS Code
+- **AI-enhanced editing** — select code, ask AI, get inline changes
+- **Real-time streaming** via WebSocket
+- **Session management** — create, resume, fork, and export conversations
+- **Checkpoint & Rewind** — snapshot files and time-travel through your session
 
 <table>
 <tr>
@@ -144,25 +137,25 @@ A full browser-based IDE built with React + Monaco Editor + WebSocket:
 </tr>
 </table>
 
-### Blueprint Multi-Agent System
+### Multi-Agent Blueprint System
 
-Break complex tasks across multiple AI agents working in parallel:
+Give Axon a complex task and it breaks it down across multiple AI agents working in parallel.
 
-- **Smart Planner** — decomposes tasks into an execution plan
-- **Lead Agent** — coordinates workers, tracks progress
-- **Autonomous Workers** — independent execution with full tool access
-- **Task Queue** — priority-based scheduling with persistence
-- **Quality Reviewer** — automated review and verification
+- **Planner** decomposes the task into an execution graph
+- **Lead Agent** coordinates workers and tracks progress
+- **Workers** execute independently with full tool access
+- **Task Queue** with priority scheduling and persistence
+- **Auto-review** validates output before marking complete
 
 <img src="demo-screenshots/02-blueprint.png" width="600" alt="Blueprint System">
 
 ### Self-Evolution
 
-The AI can modify its own source code, run TypeScript compilation checks, and hot-reload:
+Axon can modify its own source code, compile, and hot-reload — adding new tools and capabilities on the fly.
 
 ```
-You: "Add a new tool that queries weather data"
-Claude: *writes the tool, compiles, restarts itself, tool is now available*
+You: "Add a tool that queries weather data"
+Axon: *writes the tool code, compiles TypeScript, restarts, tool is ready*
 ```
 
 ### 37+ Built-in Tools
@@ -170,22 +163,61 @@ Claude: *writes the tool, compiles, restarts itself, tool is now available*
 | Category | Tools |
 |---|---|
 | File ops | Read, Write, Edit, MultiEdit, Glob, Grep |
-| Execution | Bash, background tasks, task output |
-| Web | WebFetch, WebSearch |
-| Code | NotebookEdit, LSP, Tree-sitter parsing |
-| Browser | Playwright-based automation |
+| Execution | Bash, background tasks, scheduled jobs |
+| Web | Fetch pages, search the web |
+| Code | Jupyter notebooks, LSP, Tree-sitter parsing |
+| Browser | Playwright-based full browser automation |
 | Planning | Plan mode, Blueprint, sub-agents |
-| Memory | Semantic search, vector store, BM25 |
-| Integration | MCP protocol, Skills system |
-| Scheduling | Cron-like daemon, file watching, notifications |
+| Memory | Long-term memory with semantic search, vector store, BM25 |
+| Integration | MCP protocol, Skills marketplace, plugins |
+| Perception | Camera (Eye), Microphone (Ear), Speech (Mouth) |
 
-### More
+### Extensible by Design
 
-- **Proxy Server** — share your API key across devices
-- **Multi-provider** — Anthropic, AWS Bedrock, Google Vertex AI
-- **Plugin & Hook system** — extend with custom logic
-- **i18n** — English and Chinese
-- **Feishu & WeChat bots** — messaging integrations
+- **MCP Protocol** — connect any [Model Context Protocol](https://modelcontextprotocol.io/) server
+- **Skills** — community-contributed prompt-based capabilities (PDF, DOCX, XLSX, PPTX, and more)
+- **Plugins** — write custom JavaScript/TypeScript extensions
+- **Hooks** — pre/post tool execution callbacks
+- **Custom tools** — create tools at runtime that persist across sessions
+
+### Works with Any Provider
+
+| Provider | Setup |
+|---|---|
+| **Anthropic** | `ANTHROPIC_API_KEY=sk-ant-...` |
+| **OpenRouter** | `ANTHROPIC_BASE_URL=https://openrouter.ai/api/v1` |
+| **AWS Bedrock** | `CLAUDE_CODE_USE_BEDROCK=1` |
+| **Google Vertex AI** | `CLAUDE_CODE_USE_VERTEX=1` |
+| **Any OpenAI-compatible** | Set `ANTHROPIC_BASE_URL` to your endpoint |
+
+### Proxy Server
+
+Share your API key or Claude subscription with other devices on your network.
+
+```bash
+# On the host (has the API key)
+axon-proxy -k my-secret
+
+# On client machines
+export ANTHROPIC_API_KEY="my-secret"
+export ANTHROPIC_BASE_URL="http://<host-ip>:8082"
+axon
+```
+
+<details>
+<summary>Proxy options</summary>
+
+| Flag | Default | Description |
+|---|---|---|
+| `-k, --proxy-key` | auto-generated | Key clients use to authenticate |
+| `-p, --port` | `8082` | Port to listen on |
+| `-H, --host` | `0.0.0.0` | Bind address |
+| `--anthropic-key` | auto-detect | Override Anthropic API key |
+| `--auth-token` | auto-detect | Override OAuth access token |
+| `--target` | `https://api.anthropic.com` | Upstream API URL |
+
+The proxy auto-detects credentials: `ANTHROPIC_API_KEY` env var > `~/.axon/.credentials.json` (OAuth).
+</details>
 
 ## Configuration
 
@@ -194,12 +226,13 @@ Claude: *writes the tool, compiles, restarts itself, tool is now available*
 | `ANTHROPIC_API_KEY` | API key (required) | - |
 | `ANTHROPIC_BASE_URL` | Custom API endpoint | `https://api.anthropic.com` |
 | `AXON_LANG` | Language (`en`/`zh`) | auto-detect |
-| `AXON_CONFIG_DIR` | Custom config/data directory | `~/.axon` |
+| `AXON_CONFIG_DIR` | Config/data directory | `~/.axon` |
 
-### MCP Protocol
+### MCP Servers
+
+Add external tool servers in `.axon/settings.json`:
 
 ```json
-// .axon/settings.json
 {
   "mcpServers": {
     "filesystem": {
@@ -223,88 +256,34 @@ axon-web                      # Web IDE
 axon-web -p 8080 -H 0.0.0.0  # Custom port and host
 axon-web --ngrok              # Public tunnel
 axon-web --evolve             # Self-evolution mode
-axon-proxy -k my-secret       # Start local proxy server (share your quota)
 ```
-
-### Proxy Server (Local Mode)
-
-Share your Anthropic API key or Claude subscription quota with other devices on your network.
-
-**On the host machine (has the API key / subscription):**
-
-```bash
-# Auto-detect local credentials (API key or OAuth subscription)
-axon-proxy -k my-secret
-
-# Manually specify API key
-axon-proxy -k my-secret --anthropic-key sk-ant-xxx
-
-# Custom port (default: 8082)
-axon-proxy -k my-secret -p 9000
-```
-
-**On client machines (connect to the proxy):**
-
-```bash
-# Linux / macOS
-export ANTHROPIC_API_KEY="my-secret"
-export ANTHROPIC_BASE_URL="http://<host-ip>:8082"
-axon
-
-# Windows (PowerShell)
-$env:ANTHROPIC_API_KEY="my-secret"
-$env:ANTHROPIC_BASE_URL="http://<host-ip>:8082"
-axon
-
-# Windows (CMD)
-set ANTHROPIC_API_KEY=my-secret
-set ANTHROPIC_BASE_URL=http://<host-ip>:8082
-axon
-```
-
-**Options:**
-
-| Flag | Default | Description |
-|---|---|---|
-| `-k, --proxy-key` | auto-generated | Key clients use to authenticate |
-| `-p, --port` | `8082` | Port to listen on |
-| `-H, --host` | `0.0.0.0` | Bind address |
-| `--anthropic-key` | auto-detect | Override Anthropic API key |
-| `--auth-token` | auto-detect | Override OAuth access token |
-| `--target` | `https://api.anthropic.com` | Upstream API URL |
-
-The proxy auto-detects local credentials in this order: `ANTHROPIC_API_KEY` env var → `~/.axon/.credentials.json` (OAuth subscription).
 
 ## Community
 
 - **Website:** [chatbi.site](https://www.chatbi.site)
+- **Live Demo:** [voicegpt.site](https://voicegpt.site)
 - **Discord:** [Join us](https://discord.gg/bNyJKk6PVZ)
 - **X (Twitter):** [@wangbingjie1989](https://x.com/wangbingjie1989)
 
 ## Contributing
 
-PRs and issues are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+PRs and issues are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+### Building a Skill or Plugin
+
+The fastest way to extend Axon is to write a **Skill** (a prompt file with structured instructions) or a **Plugin** (a JS/TS module with lifecycle hooks). Both are auto-loaded from `~/.axon/skills/` and `~/.axon/plugins/`.
 
 ## Sponsors
 
-Thanks to the following people for supporting Axon:
+Axon is free and open-source. Sponsorships keep development going. [See sponsor tiers →](SPONSORS.md)
+
+### Founding Sponsors
 
 - **Jack Darcy** — jack@jackdarcy.com.au
 
-If you find Axon useful, consider supporting the project:
+*Your name/logo here — [become a sponsor](https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=694623326%40qq.com&item_name=Support+Axon+Development&currency_code=USD)*
 
-<table>
-<tr>
-<td align="center"><img src="alipay.jpg" width="200" alt="Alipay"><br>Alipay</td>
-<td align="center"><img src="wechat.jpg" width="200" alt="WeChat Pay"><br>WeChat Pay</td>
-</tr>
-</table>
-
-[Buy me a coffee](https://buymeacoffee.com/anthropic.test) to support the project and get listed here.
-
-## Acknowledgment
-
-This project is inspired by Anthropic's @anthropic-ai/claude-code. It is an independent open-source reimplementation using public APIs. For the official version, see [@anthropic-ai/claude-code](https://www.npmjs.com/package/@anthropic-ai/claude-code).
+<a href="https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=694623326%40qq.com&item_name=Support+Axon+Development&currency_code=USD"><img src="https://img.shields.io/badge/PayPal-Sponsor-00457C?style=for-the-badge&logo=paypal" alt="PayPal"></a>
 
 ## License
 
