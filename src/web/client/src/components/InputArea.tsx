@@ -10,7 +10,7 @@ import { ApiUsageBar } from './ApiUsageBar';
 import type { Attachment, SlashCommand } from '../types';
 import type { Status, PermissionMode, RateLimitInfo } from '../hooks/useMessageHandler';
 import { useLanguage } from '../i18n';
-import { useProviderConfig } from '../hooks/useProviderConfig';
+
 
 interface InputAreaProps {
   // 输入状态
@@ -139,7 +139,6 @@ export function InputArea({
   modePresets,
 }: InputAreaProps) {
   const { t } = useLanguage();
-  const { currentProvider, switchProvider, providers } = useProviderConfig();
   const [isAutoHidden, setIsAutoHidden] = useState(false);
   const inputAreaRef = useRef<HTMLDivElement>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -307,17 +306,6 @@ export function InputArea({
         </div>
         <div className="input-toolbar">
           <div className="input-toolbar-left">
-            <select
-              className="provider-selector-compact"
-              value={currentProvider}
-              onChange={(e) => switchProvider(e.target.value)}
-              disabled={status !== 'idle'}
-              title={t('input.switchProvider')}
-            >
-              {providers.map((p) => (
-                <option key={p.id} value={p.id}>{p.icon} {p.name}</option>
-              ))}
-            </select>
             <select
               className="model-selector-compact"
               value={model}

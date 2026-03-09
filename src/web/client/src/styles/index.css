@@ -3062,6 +3062,378 @@ body {
 }
 
 /* ========================================
+   Setup Wizard
+   ======================================== */
+
+.setup-wizard-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(6px);
+}
+
+.setup-wizard-modal {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  width: 520px;
+  max-width: 92vw;
+  max-height: 85vh;
+  overflow-y: auto;
+  padding: 36px 32px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.setup-wizard-progress {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+
+.setup-wizard-progress-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--border-color);
+  transition: all 0.3s ease;
+}
+
+.setup-wizard-progress-dot.active {
+  background: var(--accent-primary);
+  box-shadow: 0 0 8px rgba(99, 102, 241, 0.5);
+}
+
+.setup-wizard-progress-dot.completed {
+  background: var(--accent-primary);
+}
+
+.setup-wizard-content {
+  flex: 1;
+}
+
+.setup-wizard-step {
+  text-align: center;
+}
+
+.setup-wizard-step h2 {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0 0 6px;
+  color: var(--text-primary);
+}
+
+.setup-wizard-desc {
+  color: var(--text-secondary);
+  font-size: 14px;
+  margin: 0 0 20px;
+}
+
+.setup-wizard-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 16px 0;
+}
+
+.setup-wizard-option {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  border: 2px solid var(--border-color);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.setup-wizard-option:hover {
+  border-color: var(--accent-primary);
+  background: var(--bg-tertiary);
+}
+
+.setup-wizard-option.selected {
+  border-color: var(--accent-primary);
+  background: rgba(99, 102, 241, 0.1);
+}
+
+.setup-wizard-option .option-icon {
+  font-size: 28px;
+  flex-shrink: 0;
+}
+
+.setup-wizard-option .option-label {
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.setup-wizard-option .option-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+/* Auth step - provider cards grid */
+.setup-wizard-providers {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.setup-wizard-provider-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 18px 12px;
+  background: var(--bg-secondary);
+  border: 2px solid var(--border-color);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: var(--text-primary);
+}
+
+.setup-wizard-provider-card:hover {
+  border-color: var(--accent-primary);
+  background: var(--bg-tertiary);
+}
+
+.setup-wizard-provider-card.selected {
+  border-color: var(--accent-primary);
+  background: rgba(99, 102, 241, 0.1);
+}
+
+.setup-wizard-provider-card .provider-icon {
+  font-size: 28px;
+}
+
+.setup-wizard-provider-card .provider-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.setup-wizard-provider-card .provider-desc {
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+/* Auth config form */
+.setup-wizard-auth-config {
+  text-align: left;
+  max-width: 400px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.setup-wizard-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.setup-wizard-field label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.setup-wizard-input {
+  padding: 10px 14px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.setup-wizard-input:focus {
+  border-color: var(--accent-primary);
+}
+
+.setup-wizard-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.setup-wizard-error {
+  color: var(--error-color, #ef4444);
+  font-size: 13px;
+  padding: 8px 12px;
+  background: rgba(239, 68, 68, 0.1);
+  border-radius: 8px;
+}
+
+.setup-wizard-success {
+  color: var(--success-color, #22c55e);
+  font-size: 13px;
+  padding: 8px 12px;
+  background: rgba(34, 197, 94, 0.1);
+  border-radius: 8px;
+}
+
+.setup-wizard-test-btn {
+  padding: 10px 20px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.setup-wizard-test-btn:hover {
+  background: var(--bg-secondary);
+  border-color: var(--accent-primary);
+}
+
+/* Auth method toggle */
+.setup-wizard-auth-toggle {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  justify-content: center;
+}
+
+.setup-wizard-auth-toggle button {
+  padding: 8px 18px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+
+.setup-wizard-auth-toggle button.active {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: white;
+}
+
+.setup-wizard-format-toggle {
+  display: flex;
+  gap: 8px;
+}
+
+.setup-wizard-format-btn {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+
+.setup-wizard-format-btn.selected {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: white;
+}
+
+/* Done step */
+.setup-wizard-done .done-icon {
+  font-size: 48px;
+  margin-bottom: 8px;
+}
+
+.setup-wizard-done-tips {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  text-align: left;
+  margin-top: 16px;
+}
+
+.done-tip {
+  font-size: 14px;
+  color: var(--text-secondary);
+  padding: 8px 0;
+}
+
+/* Footer */
+.setup-wizard-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color);
+}
+
+.setup-wizard-skip-btn {
+  padding: 8px 16px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.setup-wizard-skip-btn:hover {
+  color: var(--text-secondary);
+}
+
+.setup-wizard-nav-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+.setup-wizard-back-btn {
+  padding: 10px 20px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.setup-wizard-next-btn {
+  padding: 10px 24px;
+  background: var(--accent-primary);
+  border: none;
+  border-radius: 8px;
+  color: white;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.setup-wizard-next-btn:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.setup-wizard-next-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.setup-wizard-next-btn.primary {
+  min-width: 140px;
+}
+
+/* ========================================
    Axon Cloud - Setup Wizard Extension
    ======================================== */
 

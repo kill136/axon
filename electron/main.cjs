@@ -109,7 +109,7 @@ function startServer() {
  * 同时尝试 HTTPS 和 HTTP（服务器可能用自签名证书）
  * 返回可用的 URL
  */
-async function waitForServer(maxRetries = 30, interval = 1000) {
+async function waitForServer(maxRetries = 60, interval = 1000) {
   const http = require('http');
   const https = require('https');
 
@@ -243,7 +243,7 @@ app.whenReady().then(async () => {
   if (serverUrl && mainWindow) {
     mainWindow.loadURL(serverUrl);
   } else {
-    showError('The server did not respond within 30 seconds.');
+    showError('The server did not respond within 60 seconds.');
   }
 });
 
@@ -268,7 +268,7 @@ app.on('activate', () => {
       startServer();
       waitForServer().then(url => {
         if (url && mainWindow) mainWindow.loadURL(url);
-        else showError('The server did not respond within 30 seconds.');
+        else showError('The server did not respond within 60 seconds.');
       });
     }
   }

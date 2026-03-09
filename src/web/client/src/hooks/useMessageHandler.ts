@@ -338,10 +338,21 @@ export function useMessageHandler({
           refreshSessionsRef.current();
           break;
 
-        case 'error':
+        case 'error': {
           console.error('Server error:', payload);
+          const errorText = (payload as any)?.error || (payload as any)?.message || 'Unknown error';
+          // 将错误显示为系统消息，让用户能看到
+          const errorMsg: ChatMessage = {
+            id: `error-${Date.now()}`,
+            role: 'assistant',
+            timestamp: Date.now(),
+            content: [{ type: 'text', text: `**Error:** ${errorText}` }],
+          };
+          setMessages(prev => [...prev, errorMsg]);
+          currentMessageRef.current = null;
           setStatus('idle');
           break;
+        }
 
         case 'context_update':
           setContextUsage(payload as unknown as ContextUsage);

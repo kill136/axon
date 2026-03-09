@@ -204,6 +204,9 @@ export function broadcastMessage(message: any): void {
   });
 }
 
+// 服务器启动时间戳，用于前端检测后端重启并自动 reload
+const serverStartTime = Date.now();
+
 export function setupWebSocket(
   wss: WebSocketServer,
   conversationManager: ConversationManager
@@ -1282,12 +1285,13 @@ export function setupWebSocket(
 
     console.log(`[WebSocket] Client connected: ${clientId}`);
 
-    // 发送连接确认
+    // 发送连接确认（附带 serverStartTime，前端据此检测后端重启并 auto-reload）
     sendMessage(ws, {
       type: 'connected',
       payload: {
         sessionId,
         model: client.model,
+        serverStartTime,
       },
     });
 
@@ -1459,7 +1463,7 @@ async function handleClientMessage(
       if (message.payload.projectPath !== undefined) {
         client.projectPath = message.payload.projectPath;
       }
-      await handleChatMessage(client, message.payload.content, message.payload.attachments || message.payload.images, conversationManager);
+      await handleChatMessage(client, message.payload.content, message.payload.attachments || message.payload.images, conversationManager, message.payload.messageId);
       break;
 
     case 'cancel':
@@ -1602,11 +1606,15 @@ async function handleClientMessage(
           message.payload.messageId,
           message.payload.option
         );
-        const updatedMessages = conversationManager.getHistory(client.sessionId);
-        sendMessage(client.ws, {
-          type: 'rewind_success',
-          payload: { success: result.success, result, messages: updatedMessages },
-        });
+        if (result.success) {
+          const updatedMessages = conversationManager.getHistory(client.sessionId);
+          sendMessage(client.ws, {
+            type: 'rewind_success',
+            payload: { success: true, result, messages: updatedMessages },
+          });
+        } else {
+          sendMessage(client.ws, { type: 'error', payload: { message: result.error || 'Rewind failed', source: 'rewind' } });
+        }
       } catch (err: any) {
         sendMessage(client.ws, { type: 'error', payload: { message: `Rewind execution failed: ${err.message}`, source: 'rewind' } });
       }
@@ -2342,7 +2350,8 @@ async function handleChatMessage(
   client: ClientConnection,
   content: string,
   attachments: Attachment[] | string[] | undefined,
-  conversationManager: ConversationManager
+  conversationManager: ConversationManager,
+  userMessageId?: string
 ): Promise<void> {
   const { ws, model, projectPath } = client;
   let { sessionId } = client;
@@ -2647,7 +2656,7 @@ async function handleChatMessage(
           });
         }
       },
-    }, client.projectPath, getActiveWs(), client.permissionMode);  // 传入动态 ws 和权限模式，确保跨会话持久化
+    }, client.projectPath, getActiveWs(), client.permissionMode, userMessageId);  // 传入动态 ws、权限模式和前端消息 ID，确保跨会话持久化
   } catch (error) {
     console.error('[WebSocket] Chat handling error:', error);
     sendMessage(getActiveWs(), {

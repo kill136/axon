@@ -416,14 +416,15 @@ function AppContent({
 
   // 获取回滚预览信息
   const getRewindPreview = useCallback((messageId: string) => {
-    const messageIndex = messages.findIndex(m => m.id === messageId);
-    if (messageIndex === -1) {
+    // 使用 visibleMessages 来计数，确保描述文本和用户看到的消息数一致
+    // （compact 后 messages 中可能包含用户看不到的 boundary/summary 消息）
+    const visibleIndex = visibleMessages.findIndex(m => m.id === messageId);
+    if (visibleIndex === -1) {
       return { filesWillChange: [], messagesWillRemove: 0, insertions: 0, deletions: 0 };
     }
 
-    // 计算将要删除的消息数（包括当前消息及之后的所有消息）
-    // 这样"Fork conversation from here"就表示"回到这条消息之前的状态"
-    const messagesWillRemove = messages.length - messageIndex;
+    // 计算用户可见的将要删除的消息数（包括当前消息及之后的所有可见消息）
+    const messagesWillRemove = visibleMessages.length - visibleIndex;
 
     // 返回简单的预览信息
     // 文件变化由后端 RewindManager 实时追踪，前端不需要计算
@@ -433,7 +434,7 @@ function AppContent({
       insertions: 0,
       deletions: 0,
     };
-  }, [messages]);
+  }, [visibleMessages]);
 
   // 执行回滚（通过 WebSocket）
   const handleRewind = useCallback(async (messageId: string, option: RewindOption) => {
@@ -537,6 +538,7 @@ function AppContent({
       type: 'chat',
       payload: {
         content: text.trim(),
+        messageId: userMessage.id,
         projectPath: currentProjectPath,
       },
     });

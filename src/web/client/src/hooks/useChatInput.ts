@@ -355,6 +355,7 @@ export function useChatInput({
       type: 'chat',
       payload: {
         content: input,
+        messageId: userMessage.id,
         attachments: attachments.map(att => ({
           name: att.name,
           type: att.type,

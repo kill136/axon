@@ -1,7 +1,11 @@
 /**
  * Axon Cloud 服务
  * 封装与 NewAPI (https://api.chatbi.site/) 的交互
- * 提供注册、登录、token管理等功能
+ *
+ * 认证流程（参考 https://docs.newapi.pro/zh/docs/api/management/auth）：
+ * 1. POST /api/user/login → session cookie + userId
+ * 2. GET /api/user/token  (+ Cookie + New-Api-User) → access token
+ * 3. 后续请求用 Authorization: Bearer {accessToken} + New-Api-User: {userId}
  */
 
 export interface RegisterRequest {
@@ -24,11 +28,17 @@ export interface UserInfo {
 }
 
 export interface TokenInfo {
+  id: number;
   key: string;
   name: string;
   status: number;
   unlimited_quota: boolean;
   remain_quota: number;
+}
+
+export interface AxonCloudSession {
+  accessToken: string;
+  userId: string;
 }
 
 export interface AxonCloudAuthResult {
@@ -37,26 +47,22 @@ export interface AxonCloudAuthResult {
   quota: number;
   apiKey: string;
   apiBaseUrl: string;
+  session?: AxonCloudSession;
   error?: string;
 }
 
 export class AxonCloudService {
   private readonly NEWAPI_BASE = 'https://api.chatbi.site';
-  private readonly API_BASE_URL = 'https://api.chatbi.site/v1'; // OpenAI 兼容端点
+  private readonly API_BASE_URL = 'https://api.chatbi.site/v1';
 
   /**
-   * 用户注册
-   * POST /api/user/register
-   * 注册成功后自动登录并创建 token
+   * 用户注册，注册成功后自动登录
    */
   async register(data: RegisterRequest): Promise<AxonCloudAuthResult> {
     try {
-      // 1. 调用注册接口
-      const registerResponse = await fetch(`${this.NEWAPI_BASE}/api/user/register`, {
+      const res = await fetch(`${this.NEWAPI_BASE}/api/user/register`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           username: data.username,
           password: data.password,
@@ -64,31 +70,18 @@ export class AxonCloudService {
         }),
       });
 
-      if (!registerResponse.ok) {
-        const errorData = await registerResponse.json().catch(() => ({})) as any;
-        throw new Error(errorData.message || `Registration failed: ${registerResponse.statusText}`);
-      }
-
-      const registerResult = await registerResponse.json() as any;
-      if (!registerResult.success) {
-        throw new Error(registerResult.message || 'Registration failed');
+      const result = await res.json() as any;
+      if (!result.success) {
+        throw new Error(result.message || 'Registration failed');
       }
 
       console.log('[AxonCloud] Registration successful, auto-login...');
-
-      // 2. 注册成功后自动登录
-      return await this.login({
-        username: data.username,
-        password: data.password,
-      });
+      return await this.login({ username: data.username, password: data.password });
     } catch (error) {
       console.error('[AxonCloud] Register error:', error);
       return {
-        success: false,
-        username: '',
-        quota: 0,
-        apiKey: '',
-        apiBaseUrl: this.API_BASE_URL,
+        success: false, username: '', quota: 0,
+        apiKey: '', apiBaseUrl: this.API_BASE_URL,
         error: error instanceof Error ? error.message : String(error),
       };
     }
@@ -96,47 +89,50 @@ export class AxonCloudService {
 
   /**
    * 用户登录
-   * POST /api/user/login
-   * 登录成功后获取或创建 token
+   * 1. POST /api/user/login → session cookie + userId
+   * 2. GET /api/user/token → access token
+   * 3. 用 access token 获取用户信息、确保有 API token
    */
   async login(data: LoginRequest): Promise<AxonCloudAuthResult> {
     try {
-      // 1. 调用登录接口（获取 session cookie）
-      const loginResponse = await fetch(`${this.NEWAPI_BASE}/api/user/login`, {
+      // 1. 登录
+      const loginRes = await fetch(`${this.NEWAPI_BASE}/api/user/login`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          username: data.username,
-          password: data.password,
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: data.username, password: data.password }),
       });
 
-      if (!loginResponse.ok) {
-        const errorData = await loginResponse.json().catch(() => ({})) as any;
-        throw new Error(errorData.message || `Login failed: ${loginResponse.statusText}`);
-      }
-
-      const loginResult = await loginResponse.json() as any;
+      const loginResult = await loginRes.json() as any;
       if (!loginResult.success) {
         throw new Error(loginResult.message || 'Login failed');
       }
 
-      // 2. 从 Set-Cookie 头提取 session
-      const setCookieHeader = loginResponse.headers.get('set-cookie');
-      if (!setCookieHeader) {
+      const userId = String(loginResult.data.id);
+      const sessionCookie = loginRes.headers.get('set-cookie')?.split(';')[0];
+      if (!sessionCookie) {
         throw new Error('No session cookie received');
       }
+      console.log('[AxonCloud] Login successful, generating access token...');
 
-      const sessionCookie = this.extractSessionCookie(setCookieHeader);
-      console.log('[AxonCloud] Login successful, session obtained');
+      // 2. 用 session cookie 生成 access token
+      const tokenRes = await fetch(`${this.NEWAPI_BASE}/api/user/token`, {
+        headers: {
+          'Cookie': sessionCookie,
+          'New-Api-User': userId,
+        },
+      });
+      const tokenResult = await tokenRes.json() as any;
+      if (!tokenResult.success) {
+        throw new Error(tokenResult.message || 'Failed to generate access token');
+      }
+      const accessToken = tokenResult.data as string;
+      console.log('[AxonCloud] Access token obtained');
 
-      // 3. 获取用户信息（余额等）
-      const userInfo = await this.getUserInfo(sessionCookie);
+      // 3. 用 access token 获取用户信息
+      const userInfo = await this.getUserInfo(accessToken, userId);
 
-      // 4. 确保有可用的 token（获取已有或创建新的）
-      const apiKey = await this.ensureToken(sessionCookie);
+      // 4. 确保有可用的 API token
+      const apiKey = await this.ensureToken(accessToken, userId);
 
       return {
         success: true,
@@ -144,37 +140,37 @@ export class AxonCloudService {
         quota: userInfo.quota - userInfo.usedQuota,
         apiKey,
         apiBaseUrl: this.API_BASE_URL,
+        session: { accessToken, userId },
       };
     } catch (error) {
       console.error('[AxonCloud] Login error:', error);
       return {
-        success: false,
-        username: '',
-        quota: 0,
-        apiKey: '',
-        apiBaseUrl: this.API_BASE_URL,
+        success: false, username: '', quota: 0,
+        apiKey: '', apiBaseUrl: this.API_BASE_URL,
         error: error instanceof Error ? error.message : String(error),
       };
     }
   }
 
   /**
-   * 获取用户信息
-   * GET /api/user/self
+   * 构造认证 headers
    */
-  async getUserInfo(sessionCookie: string): Promise<UserInfo> {
-    const response = await fetch(`${this.NEWAPI_BASE}/api/user/self`, {
-      method: 'GET',
-      headers: {
-        Cookie: sessionCookie,
-      },
+  private authHeaders(accessToken: string, userId: string): Record<string, string> {
+    return {
+      'Authorization': `Bearer ${accessToken}`,
+      'New-Api-User': userId,
+    };
+  }
+
+  /**
+   * 获取用户信息
+   */
+  async getUserInfo(accessToken: string, userId: string): Promise<UserInfo> {
+    const res = await fetch(`${this.NEWAPI_BASE}/api/user/self`, {
+      headers: this.authHeaders(accessToken, userId),
     });
 
-    if (!response.ok) {
-      throw new Error(`Failed to get user info: ${response.statusText}`);
-    }
-
-    const result = await response.json() as any;
+    const result = await res.json() as any;
     if (!result.success) {
       throw new Error(result.message || 'Failed to get user info');
     }
@@ -190,106 +186,94 @@ export class AxonCloudService {
 
   /**
    * 获取 token 列表
-   * GET /api/token/
    */
-  async getTokenList(sessionCookie: string): Promise<TokenInfo[]> {
-    const response = await fetch(`${this.NEWAPI_BASE}/api/token/`, {
-      method: 'GET',
-      headers: {
-        Cookie: sessionCookie,
-      },
+  async getTokenList(accessToken: string, userId: string): Promise<TokenInfo[]> {
+    const res = await fetch(`${this.NEWAPI_BASE}/api/token/`, {
+      headers: this.authHeaders(accessToken, userId),
     });
 
-    if (!response.ok) {
-      throw new Error(`Failed to get token list: ${response.statusText}`);
-    }
-
-    const result = await response.json() as any;
+    const result = await res.json() as any;
     if (!result.success) {
       throw new Error(result.message || 'Failed to get token list');
     }
 
-    return result.data || [];
+    // NewAPI 返回分页格式: { data: { items: [...], page, total } }
+    const data = result.data;
+    return Array.isArray(data) ? data : (data?.items || []);
   }
 
   /**
-   * 创建新 token
-   * POST /api/token/
+   * 获取 token 的完整 key（列表里的 key 是脱敏的）
+   * POST /api/token/{id}/key
    */
-  async createToken(sessionCookie: string, name: string = 'Axon'): Promise<string> {
-    const response = await fetch(`${this.NEWAPI_BASE}/api/token/`, {
+  async getTokenFullKey(accessToken: string, userId: string, tokenId: number): Promise<string> {
+    const res = await fetch(`${this.NEWAPI_BASE}/api/token/${tokenId}/key`, {
+      method: 'POST',
+      headers: this.authHeaders(accessToken, userId),
+    });
+
+    const result = await res.json() as any;
+    if (!result.success) {
+      throw new Error(result.message || 'Failed to get token key');
+    }
+
+    return result.data?.key || '';
+  }
+
+  /**
+   * 创建新 API token，返回完整 key
+   */
+  async createToken(accessToken: string, userId: string, name: string = 'Axon'): Promise<string> {
+    // 1. 创建 token（NewAPI 不返回 key）
+    const res = await fetch(`${this.NEWAPI_BASE}/api/token/`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: sessionCookie,
+        ...this.authHeaders(accessToken, userId),
       },
-      body: JSON.stringify({
-        name,
-        unlimited_quota: false,
-      }),
+      body: JSON.stringify({ name, unlimited_quota: false }),
     });
 
-    if (!response.ok) {
-      throw new Error(`Failed to create token: ${response.statusText}`);
-    }
-
-    const result = await response.json() as any;
+    const result = await res.json() as any;
     if (!result.success) {
       throw new Error(result.message || 'Failed to create token');
     }
 
-    return result.data.key || result.data.token || '';
-  }
-
-  /**
-   * 确保有可用的 token（获取已有或创建新的）
-   * 优先使用已有的 token，如果没有则创建一个新的
-   */
-  async ensureToken(sessionCookie: string): Promise<string> {
-    // 1. 先获取已有的 token 列表
-    const tokens = await this.getTokenList(sessionCookie);
-
-    // 2. 查找状态正常（status === 1）的 token
-    const activeToken = tokens.find((t) => t.status === 1);
-    if (activeToken && activeToken.key) {
-      console.log('[AxonCloud] Using existing token');
-      return activeToken.key;
+    // 2. 从列表找到刚创建的 token id
+    const tokens = await this.getTokenList(accessToken, userId);
+    const created = tokens.find((t: any) => t.name === name && t.status === 1);
+    if (!created) {
+      throw new Error('Token created but not found in list');
     }
 
-    // 3. 如果没有可用 token，创建一个新的
-    console.log('[AxonCloud] Creating new token...');
-    const newToken = await this.createToken(sessionCookie, `Axon-${Date.now()}`);
-    return newToken;
+    // 3. 用 POST /api/token/{id}/key 获取完整 key
+    return await this.getTokenFullKey(accessToken, userId, created.id);
   }
 
   /**
-   * 从 Set-Cookie 头提取 session cookie
-   * NewAPI 返回格式: "session=xxx; Path=/; HttpOnly; SameSite=Lax"
+   * 确保有可用的 API token（复用已有或创建新的）
    */
-  private extractSessionCookie(setCookieHeader: string): string {
-    // Set-Cookie 可能包含多个 cookie，用逗号分隔
-    const cookies = setCookieHeader.split(',');
-    for (const cookie of cookies) {
-      const parts = cookie.trim().split(';');
-      const sessionPart = parts.find((p) => p.trim().startsWith('session='));
-      if (sessionPart) {
-        return sessionPart.trim();
-      }
+  async ensureToken(accessToken: string, userId: string): Promise<string> {
+    const tokens = await this.getTokenList(accessToken, userId);
+
+    // 复用已有的活跃 token（通过 id 获取完整 key）
+    const activeToken = tokens.find((t: any) => t.status === 1);
+    if (activeToken) {
+      console.log('[AxonCloud] Retrieving existing API token key');
+      return await this.getTokenFullKey(accessToken, userId, activeToken.id);
     }
-    throw new Error('Session cookie not found in Set-Cookie header');
+
+    console.log('[AxonCloud] Creating new API token...');
+    return await this.createToken(accessToken, userId, `Axon-${Date.now()}`);
   }
 
   /**
-   * 获取余额信息（供前端查询用）
+   * 获取余额
    */
-  async getBalance(sessionCookie: string): Promise<{ quota: number; used: number }> {
-    const userInfo = await this.getUserInfo(sessionCookie);
-    return {
-      quota: userInfo.quota,
-      used: userInfo.usedQuota,
-    };
+  async getBalance(accessToken: string, userId: string): Promise<{ quota: number; used: number }> {
+    const userInfo = await this.getUserInfo(accessToken, userId);
+    return { quota: userInfo.quota, used: userInfo.usedQuota };
   }
 }
 
-// 单例导出
 export const axonCloudService = new AxonCloudService();

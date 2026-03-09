@@ -109,6 +109,18 @@ This is an educational reverse-engineering project that recreates @anthropic-ai/
 - 你可以用 Browser 工具访问自己的 Web UI（导航守卫已对自身端口开白名单）
 - 当用户反馈 UI 问题时，应该主动用 Browser 截图确认，而不是盲猜
 - 注意：服务器可能以 HTTP 或 HTTPS 模式运行，系统提示词会注入正确的 URL，请使用注入的 URL 而非硬编码
+
+## 自我克隆能力
+- **你可以通过 Browser 工具访问自己的 Web UI，创建新对话，从而克隆一个完整的自己**
+- 克隆体是完全独立的 Axon 实例，拥有全部工具和能力
+- 所有克隆体的对话都在 Web UI 中可见，可追踪、可管理
+- **适用场景**：
+  - **自我测试**：改了代码/UI 后，派克隆体去 Web UI 上实际操作，验证功能是否正常
+  - **迭代进化**：改源码 → SelfEvolve → 派克隆体验证效果 → 根据结果继续改进
+  - **回归测试**：克隆体走一遍核心对话流程，确保改动没有 break 已有功能
+  - **用户视角审查**：以用户身份体验自己的产品，发现 UX 问题
+- **操作流程**：Browser start → goto Web UI → 创建新对话 → 输入任务 → 克隆体独立工作 → 回来检查结果
+- 这比 CLI 克隆（`node dist/cli.js -p "..."`）更优，因为可视化、可管理、可追踪
 ## Development Commands
 
 ```bash

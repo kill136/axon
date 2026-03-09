@@ -511,8 +511,12 @@ export class ConversationManager {
     this.marketplaceManager = new MarketplaceManager(pluginManager);
     console.log('[ConversationManager] Plugin marketplace manager initialized');
 
-    // 注册默认 marketplace（等待完成，确保 Discover 面板可用）
-    await this.marketplaceManager.ensureDefaultMarketplace();
+    // 注册默认 marketplace（后台执行，不阻塞服务器启动）
+    // 首次安装时 git clone 可能因网络问题耗时很长（每个仓库 30s 超时），
+    // 如果同步 await 会导致 Electron 桌面应用启动超时（30s 窗口内服务器未就绪）
+    this.marketplaceManager.ensureDefaultMarketplace().catch((err) => {
+      console.error('[ConversationManager] Default marketplace setup failed:', err);
+    });
 
     // 注册蓝图工具（仅 Web 模式需要，CLI 模式不加载）
     registerBlueprintTools();
@@ -1344,7 +1348,8 @@ export class ConversationManager {
     callbacks: StreamCallbacks,
     projectPath?: string,
     ws?: WebSocket,
-    permissionMode?: string
+    permissionMode?: string,
+    messageId?: string
   ): Promise<void> {
     const state = await this.getOrCreateSession(sessionId, model, projectPath, permissionMode);
 
@@ -1424,7 +1429,7 @@ export class ConversationManager {
       }
       chatContentItems.push({ type: 'text' as const, text: content });
       const chatEntry: ChatMessage = {
-        id: `user-${Date.now()}`,
+        id: messageId || `user-${Date.now()}`,
         role: 'user' as const,
         timestamp: Date.now(),
         content: chatContentItems,
@@ -1713,18 +1718,16 @@ export class ConversationManager {
         }
       }
 
-      // 对齐官方 Wc 函数：检查 blocking limit（上下文窗口 - 3000 缓冲）
-      // 如果压缩失败（或未触发）但消息已超限，直接报错退出，不再尝试调 API
-      // 使用混合估算（与 autoCompact 判断一致）
-      {
+      // 对齐官方 Wz6 + 主循环：检查 blocking limit（上下文窗口 - 3000 缓冲）
+      // 关键：官方在 autoCompact 成功后（compactionResult 有值）直接跳过 blocking limit 检查，
+      // 因为压缩后的估算可能不准确（chars/4 对摘要文本过高估），应该信任 API 的实际判断。
+      // 只在 autoCompact 未触发或失败时才检查 blocking limit。
+      if (!justAutoCompacted) {
         const contextWindow = getContextWindowSize(resolvedModel);
         const blockingLimit = contextWindow - 3000;
         
-        // 混合估算：如果刚执行过 autoCompact，hybridTokens 是过时的（基于压缩前的数据），
-        // 需要重新计算。通过检查 justAutoCompacted 标志来判断。
         let tokensToCheck: number;
-        if (justAutoCompacted || hybridTokens <= 0) {
-          // autoCompact 后 hybridTokens 过时，使用纯估算
+        if (hybridTokens <= 0) {
           tokensToCheck = this.estimateMessageTokens(cleanedMessages);
         } else {
           tokensToCheck = hybridTokens;

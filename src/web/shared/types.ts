@@ -85,7 +85,7 @@ export interface AuthStatusPayload {
  * 客户端发送的消息类型
  */
 export type ClientMessage =
-  | { type: 'chat'; payload: { content: string; images?: string[]; attachments?: Attachment[]; projectPath?: string | null } }
+  | { type: 'chat'; payload: { content: string; messageId?: string; images?: string[]; attachments?: Attachment[]; projectPath?: string | null } }
   | { type: 'cancel' }
   | { type: 'ping' }
   | { type: 'get_history' }
@@ -292,7 +292,7 @@ export type ClientMessage =
  * 服务端发送的消息类型
  */
 export type ServerMessage =
-  | { type: 'connected'; payload: { sessionId: string; model: string } }
+  | { type: 'connected'; payload: { sessionId: string; model: string; serverStartTime?: number } }
   | { type: 'pong' }
   | { type: 'history'; payload: { messages: ChatMessage[]; sessionId?: string } }
   | { type: 'message_start'; payload: { messageId: string; sessionId?: string } }
