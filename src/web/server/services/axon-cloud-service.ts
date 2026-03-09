@@ -65,11 +65,11 @@ export class AxonCloudService {
       });
 
       if (!registerResponse.ok) {
-        const errorData = await registerResponse.json().catch(() => ({}));
+        const errorData = await registerResponse.json().catch(() => ({})) as any;
         throw new Error(errorData.message || `Registration failed: ${registerResponse.statusText}`);
       }
 
-      const registerResult = await registerResponse.json();
+      const registerResult = await registerResponse.json() as any;
       if (!registerResult.success) {
         throw new Error(registerResult.message || 'Registration failed');
       }
@@ -114,11 +114,11 @@ export class AxonCloudService {
       });
 
       if (!loginResponse.ok) {
-        const errorData = await loginResponse.json().catch(() => ({}));
+        const errorData = await loginResponse.json().catch(() => ({})) as any;
         throw new Error(errorData.message || `Login failed: ${loginResponse.statusText}`);
       }
 
-      const loginResult = await loginResponse.json();
+      const loginResult = await loginResponse.json() as any;
       if (!loginResult.success) {
         throw new Error(loginResult.message || 'Login failed');
       }
@@ -174,7 +174,7 @@ export class AxonCloudService {
       throw new Error(`Failed to get user info: ${response.statusText}`);
     }
 
-    const result = await response.json();
+    const result = await response.json() as any;
     if (!result.success) {
       throw new Error(result.message || 'Failed to get user info');
     }
@@ -204,7 +204,7 @@ export class AxonCloudService {
       throw new Error(`Failed to get token list: ${response.statusText}`);
     }
 
-    const result = await response.json();
+    const result = await response.json() as any;
     if (!result.success) {
       throw new Error(result.message || 'Failed to get token list');
     }
@@ -233,7 +233,7 @@ export class AxonCloudService {
       throw new Error(`Failed to create token: ${response.statusText}`);
     }
 
-    const result = await response.json();
+    const result = await response.json() as any;
     if (!result.success) {
       throw new Error(result.message || 'Failed to create token');
     }

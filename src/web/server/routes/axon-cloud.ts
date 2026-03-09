@@ -79,7 +79,7 @@ router.post('/register', async (req: Request, res: Response) => {
       await webConfigService.updateApiConfig({
         apiKey: result.apiKey,
         apiBaseUrl: result.apiBaseUrl,
-        apiProvider: 'openai-compatible', // NewAPI 兼容 OpenAI 格式
+        // NewAPI 兼容 OpenAI 格式，不设置 apiProvider
         customModelName: 'claude-3-5-sonnet-20241022', // 默认模型
       });
       console.log('[AxonCloud] API config updated after registration');
@@ -148,7 +148,7 @@ router.post('/login', async (req: Request, res: Response) => {
       await webConfigService.updateApiConfig({
         apiKey: result.apiKey,
         apiBaseUrl: result.apiBaseUrl,
-        apiProvider: 'openai-compatible', // NewAPI 兼容 OpenAI 格式
+        // NewAPI 兼容 OpenAI 格式，不设置 apiProvider
         customModelName: 'claude-3-5-sonnet-20241022', // 默认模型
       });
       console.log('[AxonCloud] API config updated after login');
