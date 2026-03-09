@@ -39,6 +39,11 @@ export const SUPPORTED_IMAGE_FORMATS = new Set([
 export const MAX_IMAGE_TOKENS = 25000;
 
 /**
+ * Anthropic API 多图请求中单张图片的最大维度（像素）
+ */
+export const MAX_IMAGE_DIMENSION = 2000;
+
+/**
  * 官方默认 maxBytes = 3932160 (Yh)
  */
 const DEFAULT_MAX_BYTES = 3932160;
@@ -417,27 +422,66 @@ export async function compressBase64Image(
 }
 
 /**
+ * 确保 base64 图片的维度不超过 MAX_IMAGE_DIMENSION (2000px)
+ * Anthropic API 多图请求要求每张图片任意维度不超过此值
+ */
+export async function ensureMaxDimensions(
+  base64Data: string,
+  mediaType: string,
+  maxDim: number = MAX_IMAGE_DIMENSION
+): Promise<{ data: string; mediaType: string }> {
+  const sharp = await getSharp();
+  if (!sharp) return { data: base64Data, mediaType };
+
+  try {
+    const buffer = Buffer.from(base64Data, 'base64');
+    const metadata = await sharp(buffer).metadata();
+    const w = metadata.width || 0;
+    const h = metadata.height || 0;
+
+    if (w <= maxDim && h <= maxDim) {
+      return { data: base64Data, mediaType };
+    }
+
+    // 缩放到 maxDim 以内，保持原格式
+    const format = metadata.format || 'png';
+    let pipeline = sharp(buffer).resize(maxDim, maxDim, { fit: 'inside', withoutEnlargement: true });
+    pipeline = applyFormatCompression(pipeline, format);
+    const resized = await pipeline.toBuffer();
+
+    const outMediaType = format === 'jpg' ? 'image/jpeg' : `image/${format}`;
+    return { data: resized.toString('base64'), mediaType: outMediaType };
+  } catch {
+    return { data: base64Data, mediaType };
+  }
+}
+
+/**
  * 压缩纯 base64 图片数据（不带 data URI 前缀）
+ * 同时确保维度不超过 MAX_IMAGE_DIMENSION
  */
 export async function compressRawBase64(
   base64Data: string,
   mediaType: string,
   maxTokens: number = MAX_IMAGE_TOKENS
 ): Promise<{ data: string; mediaType: string }> {
-  const estimatedTokens = Math.ceil(base64Data.length * 0.125);
+  // 先确保维度不超限
+  const dimChecked = await ensureMaxDimensions(base64Data, mediaType);
+
+  const estimatedTokens = Math.ceil(dimChecked.data.length * 0.125);
 
   if (estimatedTokens <= maxTokens) {
-    return { data: base64Data, mediaType };
+    return dimChecked;
   }
 
   try {
-    const buffer = Buffer.from(base64Data, 'base64');
+    const buffer = Buffer.from(dimChecked.data, 'base64');
     const maxBytes = tokensToMaxBytes(maxTokens);
     const result = await compressBuffer(buffer, maxBytes);
     return { data: result.base64, mediaType: result.mediaType };
   } catch (error) {
     console.error('[ImageCompression] Attachment compression failed, using original data:', error);
-    return { data: base64Data, mediaType };
+    return dimChecked;
   }
 }
 

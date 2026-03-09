@@ -768,7 +768,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`/api/files/tree?root=${encodeURIComponent(projectPath)}&path=.&depth=3`);
+      const response = await fetch(`/api/files/tree?root=${encodeURIComponent(projectPath)}&path=.&depth=1`);
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || t('fileTree.loadFailed'));
@@ -803,7 +803,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
       const node = treeRef.current ? findNodeInTree(treeRef.current, dirPath) : null;
       if (node?.type === 'directory' && node.children === undefined) {
         try {
-          const response = await fetch(`/api/files/tree?root=${encodeURIComponent(projectPath)}&path=${encodeURIComponent(dirPath)}&depth=3`);
+          const response = await fetch(`/api/files/tree?root=${encodeURIComponent(projectPath)}&path=${encodeURIComponent(dirPath)}&depth=2`);
           if (response.ok) {
             const subtree = await response.json();
             setTree(prev => prev ? mergeSubtree(prev, subtree) : prev);

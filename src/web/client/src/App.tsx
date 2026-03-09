@@ -96,6 +96,10 @@ function AppContent({
 
   const { connected, sessionId, model, setModel, send, addMessageHandler } = useWebSocket(getWebSocketUrl());
 
+  // 模式预设列表 + 当前活跃预设 ID
+  const [modePresets, setModePresets] = useState<Array<{ id: string; name: string; icon: string; permissionMode: string }>>([]);
+  const [activePresetId, setActivePresetId] = useState('bypassPermissions');
+
   // 暴露 send/addMessageHandler 给 Root（供 CustomizePage 等兄弟组件使用）
   useEffect(() => {
     registerMessaging?.({ send, addMessageHandler });
@@ -107,6 +111,25 @@ function AppContent({
       send({ type: 'set_project_path', payload: { projectPath: currentProjectPath || null } });
     }
   }, [currentProjectPath, connected, send]);
+
+  // 连接后加载模式预设列表，监听预设应用确认
+  useEffect(() => {
+    if (!connected) return;
+    const unsub = addMessageHandler((msg: any) => {
+      if (msg.type === 'mode_presets_list') {
+        setModePresets(msg.payload.presets.map((p: any) => ({
+          id: p.id, name: p.name, icon: p.icon, permissionMode: p.permissionMode,
+        })));
+        if (msg.payload.activeId) {
+          setActivePresetId(msg.payload.activeId);
+        }
+      } else if (msg.type === 'mode_preset_applied') {
+        setActivePresetId(msg.payload.id);
+      }
+    });
+    send({ type: 'mode_presets_get' });
+    return unsub;
+  }, [connected, send, addMessageHandler]);
 
   // AXON.md 初始化检测：项目切换后检查是否缺少 AXON.md，且 AI 服务可用时才弹框
   useEffect(() => {
@@ -550,7 +573,14 @@ function AppContent({
             <div className="chat-panel" style={{ flex: 1, minHeight: 0 }}>
               <div className={`chat-container ${!isInputVisible ? 'input-hidden' : ''}`} ref={chatContainerRef}>
               {visibleMessages.length === 0 && messages.length === 0 ? (
-                <WelcomeScreen onBlueprintCreated={onNavigateToBlueprint} />
+                <WelcomeScreen
+                  onBlueprintCreated={onNavigateToBlueprint}
+                  onQuickPrompt={(prompt) => {
+                    chatInput.setInput(prompt);
+                    setTimeout(() => chatInput.inputRef.current?.focus(), 50);
+                  }}
+                  onOpenFolder={openFolder}
+                />
               ) : (
                 <>
                 {visibleMessages.map(msg => (
@@ -612,7 +642,8 @@ function AppContent({
               model={model}
               onModelChange={setModel}
               permissionMode={permissionMode}
-              onPermissionModeChange={chatInput.handlePermissionModeChange}
+              activePresetId={activePresetId}
+              onPresetChange={chatInput.handlePresetChange}
               onSend={chatInput.handleSend}
               onCancel={chatInput.handleCancel}
               contextUsage={contextUsage}
@@ -649,6 +680,7 @@ function AppContent({
               voiceTranscript={chatInput.voiceTranscript}
               conversationMode={chatInput.conversationMode}
               onToggleConversationMode={chatInput.toggleConversationMode}
+              modePresets={modePresets}
             />
           </div>
 

@@ -2304,6 +2304,14 @@ async function handleClientMessage(
       await handleProxyMessage(client, message as any);
       break;
 
+    // ======================== 模式预设 ========================
+    case 'mode_presets_get':
+    case 'mode_preset_save':
+    case 'mode_preset_delete':
+    case 'mode_preset_apply':
+      await handleModePresetMessage(client, message as any, conversationManager);
+      break;
+
     default:
       console.warn('[WebSocket] Unknown message type:', (message as any).type);
   }
@@ -7173,3 +7181,108 @@ async function handleProxyMessage(
   }
 }
 
+// ============ 模式预设消息处理 ============
+
+async function handleModePresetMessage(
+  client: ClientConnection,
+  message: any,
+  conversationManager: ConversationManager,
+): Promise<void> {
+  const { ws } = client;
+
+  try {
+    // 延迟导入避免循环依赖
+    const { modePresetsManager } = await import('./services/mode-presets.js');
+
+    switch (message.type) {
+      case 'mode_presets_get': {
+        const presets = modePresetsManager.getAll();
+        sendMessage(ws, {
+          type: 'mode_presets_list',
+          payload: {
+            presets,
+            activeId: client.permissionMode || 'bypassPermissions',
+          },
+        } as any);
+        break;
+      }
+
+      case 'mode_preset_save': {
+        const { preset } = message.payload;
+        modePresetsManager.save(preset);
+        // 回传完整列表
+        const presets = modePresetsManager.getAll();
+        sendMessage(ws, {
+          type: 'mode_presets_list',
+          payload: {
+            presets,
+            activeId: client.permissionMode || 'bypassPermissions',
+          },
+        } as any);
+        break;
+      }
+
+      case 'mode_preset_delete': {
+        const { id } = message.payload;
+        modePresetsManager.delete(id);
+        const presets = modePresetsManager.getAll();
+        sendMessage(ws, {
+          type: 'mode_presets_list',
+          payload: {
+            presets,
+            activeId: client.permissionMode || 'bypassPermissions',
+          },
+        } as any);
+        break;
+      }
+
+      case 'mode_preset_apply': {
+        const { id } = message.payload;
+        const preset = modePresetsManager.get(id);
+        if (!preset) {
+          sendMessage(ws, {
+            type: 'error',
+            payload: { message: `Mode preset not found: ${id}` },
+          });
+          return;
+        }
+
+        // 1. 更新权限模式
+        client.permissionMode = preset.permissionMode;
+        conversationManager.updatePermissionConfig(client.sessionId, {
+          mode: preset.permissionMode,
+        });
+
+        // 2. 更新系统提示词配置
+        conversationManager.updateSystemPrompt(client.sessionId, preset.systemPrompt);
+
+        // 3. 更新工具过滤配置
+        conversationManager.updateToolFilter(client.sessionId, preset.toolFilter);
+
+        // 4. 回传确认 + 权限模式同步
+        sendMessage(ws, {
+          type: 'mode_preset_applied',
+          payload: { id, preset },
+        } as any);
+
+        sendMessage(ws, {
+          type: 'permission_config_update',
+          payload: {
+            mode: preset.permissionMode,
+          },
+        } as any);
+
+        console.log(`[WebSocket] Mode preset applied: ${preset.name} (${id})`);
+        break;
+      }
+    }
+  } catch (error) {
+    console.error('[WebSocket] Mode preset error:', error);
+    sendMessage(ws, {
+      type: 'error',
+      payload: {
+        message: error instanceof Error ? error.message : String(error),
+      },
+    });
+  }
+}

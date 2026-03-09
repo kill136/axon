@@ -154,6 +154,8 @@ export class AttachmentManager {
       );
     }
 
+    // Memory Recall 已移除 — autoRecall 信噪比太低，用户可主动调用 MemorySearch
+
     // Active Goals
     if (context.activeGoals && context.activeGoals.length > 0) {
       attachmentPromises.push(
@@ -348,6 +350,11 @@ export class AttachmentManager {
   }
 
   /**
+   * 生成记忆回忆附件（autoRecall）
+   */
+  // generateMemoryRecallAttachment 已移除 — autoRecall 已废弃
+
+  /**
    * 生成目标附件
    */
   private generateGoalAttachment(goals: any[]): Attachment[] {
@@ -355,35 +362,27 @@ export class AttachmentManager {
       return [];
     }
 
-    // 格式化目标列表为 markdown
-    let content = 'You have the following active goals for this project. Review them and continue working on the highest priority items.\n\n';
-    
-    // 按优先级排序：high > medium > low
-    const priorityOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
-    const sorted = [...goals].sort((a, b) => (priorityOrder[a.priority] || 1) - (priorityOrder[b.priority] || 1));
-    
-    for (const goal of sorted) {
-      content += `## ${goal.id}: ${goal.title} [${goal.priority.toUpperCase()}] (${goal.status})\n`;
+    let content = 'You have the following active persistent goals. The daemon continuously works towards them. Use GoalManage tool to manage.\n\n';
+
+    for (const goal of goals) {
+      const metrics = (goal.metrics || []).map((m: any) => {
+        const progress = m.target > 0 ? ((m.current / m.target) * 100).toFixed(0) : '0';
+        return `${m.name}: ${m.current}/${m.target} ${m.unit} (${progress}%)`;
+      }).join(', ');
+
+      content += `## ${goal.name} [${goal.status}]\n`;
       content += `${goal.description}\n`;
-      if (goal.tasks && goal.tasks.length > 0) {
-        content += 'Tasks:\n';
-        for (const task of goal.tasks) {
-          const check = task.status === 'completed' ? 'x' : ' ';
-          content += `- [${check}] ${task.id}: ${task.name}\n`;
-        }
-      }
-      if (goal.notes) {
-        content += `Notes: ${goal.notes}\n`;
-      }
-      content += '\n';
+      content += `Metrics: ${metrics || 'none'}\n`;
+      content += `Strategies: ${(goal.strategies || []).length}\n`;
+      content += `ID: ${goal.id}\n\n`;
     }
-    
+
     return [
       {
         type: 'goals' as AttachmentType,
         content: `<active-goals>\n${content}</active-goals>`,
         label: 'Active Goals',
-        priority: 26, // 在 notebook(28) 之前
+        priority: 26,
       },
     ];
   }
@@ -539,49 +538,7 @@ Do not directly edit files - delegate work to teammate agents.
         // 可能没有上游分支
       }
 
-      // 获取最近的 5 条 commits
-      const recentCommits: Array<{ hash: string; message: string; author: string; date: string }> = [];
-      try {
-        const logOutput = execSync('git log -5 --pretty=format:%H|%s|%an|%ar', {
-          cwd: workingDir,
-          encoding: 'utf-8',
-          stdio: ['pipe', 'pipe', 'pipe'],
-        }).trim();
-
-        for (const line of logOutput.split('\n').filter(Boolean)) {
-          const [hash, message, author, date] = line.split('|');
-          recentCommits.push({ hash, message, author, date });
-        }
-      } catch {
-        // 可能是空仓库或其他错误
-      }
-
-      // 获取 stash 数量
-      let stashCount = 0;
-      try {
-        const stashList = execSync('git stash list', {
-          cwd: workingDir,
-          encoding: 'utf-8',
-          stdio: ['pipe', 'pipe', 'pipe'],
-        }).trim();
-        stashCount = stashList ? stashList.split('\n').length : 0;
-      } catch {
-        // git stash 失败
-      }
-
-      // 获取最近的 tags（最多3个）
-      const tags: string[] = [];
-      try {
-        const tagsOutput = execSync('git tag --sort=-creatordate', {
-          cwd: workingDir,
-          encoding: 'utf-8',
-          stdio: ['pipe', 'pipe', 'pipe'],
-        }).trim();
-        const tagLines = tagsOutput.split('\n').filter(Boolean);
-        tags.push(...tagLines.slice(0, 3));
-      } catch {
-        // 没有 tags
-      }
+      // recent commits, stash, tags 已移除 — 减少 token 消耗，需要时用 git 命令查询
 
       return {
         branch,
@@ -591,11 +548,11 @@ Do not directly edit files - delegate work to teammate agents.
         untracked,
         ahead,
         behind,
-        recentCommits,
-        stashCount,
+        recentCommits: [],
+        stashCount: 0,
         conflictFiles,
         remoteStatus: { tracking, ahead, behind },
-        tags,
+        tags: [],
       };
     } catch (error) {
       return null;

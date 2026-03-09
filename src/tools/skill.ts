@@ -1147,10 +1147,9 @@ export function findSkill(skillInput: string): SkillDefinition | undefined {
  * 格式化 skill 描述（对齐官网 WKK 函数）
  */
 function formatSkillDescription(skill: SkillDefinition): string {
-  let desc = skill.description;
-  if (skill.whenToUse) {
-    desc = `${desc} - ${skill.whenToUse}`;
-  }
+  // 优先用 whenToUse（触发条件）作为描述，比 description 更简洁且对 AI 更有用
+  // description 往往是功能说明，whenToUse 才是"什么时候该用这个 skill"
+  let desc = skill.whenToUse || skill.description;
   // v2.1.33: add plugin name for better discoverability
   if (skill.pluginName) {
     desc = `${desc} (from ${skill.pluginName})`;
@@ -1182,7 +1181,7 @@ export function formatSkillsList(skills: SkillDefinition[], contextWindowSize?: 
   // 默认上下文窗口: 200000 tokens -> 默认预算 200000 * 0.02 * 4 = 16000 字符
   const DEFAULT_CONTEXT_WINDOW = 200000; // tokens
   const CHARS_PER_TOKEN = 4;
-  const CONTEXT_BUDGET_RATIO = 0.02; // 2% of context window
+  const CONTEXT_BUDGET_RATIO = 0.01; // 1% of context window (降低以减少 token 消耗)
   const contextTokens = contextWindowSize || DEFAULT_CONTEXT_WINDOW;
   const scaledBudget = Math.floor(contextTokens * CONTEXT_BUDGET_RATIO * CHARS_PER_TOKEN);
   const CHAR_BUDGET = Number(process.env.SLASH_COMMAND_TOOL_CHAR_BUDGET) || scaledBudget;

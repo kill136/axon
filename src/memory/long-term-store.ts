@@ -1,6 +1,6 @@
 /**
  * 长期记忆存储层
- * 基于 SQLite + FTS5 实现高效的 BM25 搜索
+ * 基于 SQLite + FTS5 + sqlite-vec 实现混合搜索（BM25 + 向量）
  */
 
 import * as crypto from 'crypto';
@@ -8,6 +8,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { MemorySource, MemorySearchResult } from './types.js';
 import { extractKeywords } from './query-expansion.js';
+import { cosineSimilarity } from './embedding-provider.js';
+import type { VectorSearchResult, KeywordSearchResult } from './hybrid-search.js';
 
 // 时间衰减参数：半衰期 30 天（毫秒）
 const HALF_LIFE = 30 * 24 * 60 * 60 * 1000;
@@ -67,14 +69,17 @@ function ensureDir(dir: string): void {
 export class LongTermStore {
   private db!: import('better-sqlite3').Database;
   private hasFTS5: boolean = false;
+  private hasVecSearch: boolean = false;
+  private vecDimensions: number = 1536;
 
   private constructor(dbPath: string) {
     // 确保目录存在
     ensureDir(path.dirname(dbPath));
   }
 
-  static async create(dbPath: string): Promise<LongTermStore> {
+  static async create(dbPath: string, dimensions?: number): Promise<LongTermStore> {
     const store = new LongTermStore(dbPath);
+    if (dimensions) store.vecDimensions = dimensions;
     await store._init(dbPath);
     return store;
   }
@@ -89,6 +94,16 @@ export class LongTermStore {
       );
     });
     this.db = new mod.default(dbPath);
+
+    // 尝试加载 sqlite-vec 扩展
+    try {
+      const sqliteVec = await import('sqlite-vec');
+      sqliteVec.load(this.db);
+      this.hasVecSearch = true;
+    } catch {
+      // sqlite-vec 不可用，降级到纯 FTS5 或内存向量搜索
+    }
+
     this.initSchema();
   }
 
@@ -154,17 +169,41 @@ export class LongTermStore {
       this.hasFTS5 = false;
     }
 
-    // 版本迁移：v1→v2 引入中文字级分词，需要重建 FTS 索引
-    const CURRENT_VERSION = '2';
+    // 版本迁移
+    const CURRENT_VERSION = '3';
     const versionRow = this.db.prepare('SELECT value FROM meta WHERE key = ?').get('version') as { value: string } | undefined;
     const existingVersion = versionRow?.value;
 
-    if (existingVersion && existingVersion < CURRENT_VERSION) {
-      // 清空所有数据，让下次 sync 重建（带字级分词）
+    if (!existingVersion || existingVersion < '2') {
+      // v1→v2：引入中文字级分词，需要重建 FTS 索引
       this.db.exec('DELETE FROM chunks');
       this.db.exec('DELETE FROM files');
       if (this.hasFTS5) {
         this.db.exec('DELETE FROM chunks_fts');
+      }
+    }
+
+    if (!existingVersion || existingVersion < '3') {
+      // v2→v3：新增 embedding 列（不清空数据，旧 chunk 无 embedding 值为 NULL）
+      try {
+        this.db.exec('ALTER TABLE chunks ADD COLUMN embedding TEXT');
+      } catch {
+        // 列已存在，忽略
+      }
+    }
+
+    // 创建 sqlite-vec 虚拟表（如果扩展可用）
+    if (this.hasVecSearch) {
+      try {
+        this.db.exec(`
+          CREATE VIRTUAL TABLE IF NOT EXISTS chunks_vec USING vec0(
+            chunk_id TEXT PRIMARY KEY,
+            embedding float[${this.vecDimensions}]
+          );
+        `);
+      } catch (e) {
+        // 创建失败，禁用向量搜索
+        this.hasVecSearch = false;
       }
     }
 
@@ -174,8 +213,9 @@ export class LongTermStore {
 
   /**
    * 索引文件
+   * @param embeddings 可选的 embedding 数组，与分块一一对应
    */
-  indexFile(entry: FileEntry, content: string, chunkOpts?: ChunkOptions): void {
+  indexFile(entry: FileEntry, content: string, chunkOpts?: ChunkOptions, embeddings?: number[][]): void {
     const tokens = chunkOpts?.tokens ?? 400;
     const overlap = chunkOpts?.overlap ?? 80;
     const maxChars = tokens * 4; // 粗略估算：1 token ≈ 4 chars
@@ -233,6 +273,17 @@ export class LongTermStore {
       `);
       upsertFileStmt.run(entry.path, entry.source, entry.hash, entry.mtime, entry.size);
 
+      // 删除旧的向量数据（必须在删除 chunks 之前，因为需要旧 chunk ids）
+      if (this.hasVecSearch) {
+        const oldIds = this.db.prepare('SELECT id FROM chunks WHERE path = ?').all(entry.path) as { id: string }[];
+        if (oldIds.length > 0) {
+          const deleteVecStmt = this.db.prepare('DELETE FROM chunks_vec WHERE chunk_id = ?');
+          for (const row of oldIds) {
+            try { deleteVecStmt.run(row.id); } catch { /* ignore */ }
+          }
+        }
+      }
+
       // 删除旧 chunks
       const deleteChunksStmt = this.db.prepare('DELETE FROM chunks WHERE path = ?');
       deleteChunksStmt.run(entry.path);
@@ -244,8 +295,8 @@ export class LongTermStore {
 
       // 插入新 chunks
       const insertChunkStmt = this.db.prepare(`
-        INSERT INTO chunks (id, path, source, start_line, end_line, text, hash, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO chunks (id, path, source, start_line, end_line, text, hash, embedding, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       const insertFtsStmt = this.hasFTS5 ? this.db.prepare(`
@@ -253,11 +304,19 @@ export class LongTermStore {
         VALUES (?, ?, ?, ?, ?, ?)
       `) : null;
 
+      const insertVecStmt = this.hasVecSearch ? this.db.prepare(`
+        INSERT INTO chunks_vec (chunk_id, embedding)
+        VALUES (?, ?)
+      `) : null;
+
       const now = Date.now();
 
-      for (const chunk of chunks) {
+      for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
         const chunkId = crypto.randomUUID();
         const chunkHash = crypto.createHash('sha256').update(chunk.text).digest('hex');
+        const embedding = embeddings?.[i] ?? null;
+        const embeddingJson = embedding ? JSON.stringify(embedding) : null;
 
         insertChunkStmt.run(
           chunkId,
@@ -267,6 +326,7 @@ export class LongTermStore {
           chunk.endLine,
           chunk.text,
           chunkHash,
+          embeddingJson,
           now,
           now
         );
@@ -281,6 +341,14 @@ export class LongTermStore {
             chunk.endLine
           );
         }
+
+        if (insertVecStmt && embedding) {
+          try {
+            insertVecStmt.run(chunkId, new Float32Array(embedding));
+          } catch {
+            // 向量插入失败不阻塞
+          }
+        }
       }
     });
 
@@ -292,6 +360,15 @@ export class LongTermStore {
    */
   removeFile(filePath: string): void {
     const transaction = this.db.transaction(() => {
+      // 删除向量数据（先于 chunks 删除）
+      if (this.hasVecSearch) {
+        const oldIds = this.db.prepare('SELECT id FROM chunks WHERE path = ?').all(filePath) as { id: string }[];
+        const deleteVecStmt = this.db.prepare('DELETE FROM chunks_vec WHERE chunk_id = ?');
+        for (const row of oldIds) {
+          try { deleteVecStmt.run(row.id); } catch { /* ignore */ }
+        }
+      }
+
       this.db.prepare('DELETE FROM chunks WHERE path = ?').run(filePath);
       if (this.hasFTS5) {
         this.db.prepare('DELETE FROM chunks_fts WHERE path = ?').run(filePath);
@@ -557,6 +634,256 @@ export class LongTermStore {
       totalChunks: chunksCount,
       dbSizeBytes: dbSize,
     };
+  }
+
+  /**
+   * 向量搜索（用 sqlite-vec 或降级到内存计算）
+   */
+  searchVector(queryVec: number[], opts?: SearchOptions): VectorSearchResult[] {
+    const maxResults = opts?.maxResults ?? 20;
+    const source = opts?.source;
+
+    if (this.hasVecSearch) {
+      // 使用 sqlite-vec 原生向量搜索
+      let sql = `
+        SELECT
+          cv.chunk_id,
+          cv.distance,
+          c.path,
+          c.source,
+          c.start_line,
+          c.end_line,
+          c.text,
+          c.created_at
+        FROM chunks_vec cv
+        JOIN chunks c ON cv.chunk_id = c.id
+        WHERE cv.embedding MATCH ?
+      `;
+      const params: any[] = [new Float32Array(queryVec)];
+
+      if (source) {
+        sql += ` AND c.source = ?`;
+        params.push(source);
+      }
+
+      sql += ` ORDER BY cv.distance LIMIT ?`;
+      params.push(maxResults);
+
+      const rows = this.db.prepare(sql).all(...params) as Array<{
+        chunk_id: string;
+        distance: number;
+        path: string;
+        source: string;
+        start_line: number;
+        end_line: number;
+        text: string;
+        created_at: number;
+      }>;
+
+      return rows.map(row => ({
+        id: row.chunk_id,
+        path: row.path,
+        source: row.source as MemorySource,
+        startLine: row.start_line,
+        endLine: row.end_line,
+        text: row.text,
+        // cosine distance → similarity: sim = 1 - distance
+        score: Math.max(0, 1 - row.distance),
+        timestamp: row.created_at,
+      }));
+    }
+
+    // 降级：从 chunks 表读取存储的 embedding，在内存中计算余弦相似度
+    let sql = `
+      SELECT id, path, source, start_line, end_line, text, embedding, created_at
+      FROM chunks
+      WHERE embedding IS NOT NULL
+    `;
+    const params: any[] = [];
+    if (source) {
+      sql += ` AND source = ?`;
+      params.push(source);
+    }
+
+    const rows = this.db.prepare(sql).all(...params) as Array<{
+      id: string;
+      path: string;
+      source: string;
+      start_line: number;
+      end_line: number;
+      text: string;
+      embedding: string;
+      created_at: number;
+    }>;
+
+    const scored: VectorSearchResult[] = [];
+    for (const row of rows) {
+      try {
+        const vec = JSON.parse(row.embedding) as number[];
+        const sim = cosineSimilarity(queryVec, vec);
+        scored.push({
+          id: row.id,
+          path: row.path,
+          source: row.source as MemorySource,
+          startLine: row.start_line,
+          endLine: row.end_line,
+          text: row.text,
+          score: sim,
+          timestamp: row.created_at,
+        });
+      } catch {
+        // JSON 解析失败，跳过
+      }
+    }
+
+    scored.sort((a, b) => b.score - a.score);
+    return scored.slice(0, maxResults);
+  }
+
+  /**
+   * 关键词搜索（BM25 + 时间衰减）— 返回标准化格式供混合搜索使用
+   */
+  searchKeyword(query: string, opts?: SearchOptions): KeywordSearchResult[] {
+    const maxResults = opts?.maxResults ?? 20;
+    const source = opts?.source;
+
+    if (!this.hasFTS5) {
+      // 无 FTS5 降级到 LIKE
+      const results = this.search(query, opts);
+      return results.map(r => ({
+        id: r.id,
+        path: r.path,
+        source: r.source,
+        startLine: r.startLine,
+        endLine: r.endLine,
+        text: r.snippet,
+        score: r.score,
+        timestamp: typeof r.timestamp === 'string' ? new Date(r.timestamp).getTime() : r.timestamp as number,
+      }));
+    }
+
+    // FTS5 BM25 搜索（不带时间衰减，由混合搜索层统一处理）
+    const escaped = query.replace(/["\-*(){}:^~\[\]\\+.]/g, ' ');
+    const ftsQuery = tokenizeChinese(escaped);
+
+    let sql = `
+      SELECT
+        c.id,
+        c.path,
+        c.source,
+        c.start_line,
+        c.end_line,
+        c.text,
+        c.created_at,
+        bm25(chunks_fts) as rank
+      FROM chunks_fts
+      JOIN chunks c ON chunks_fts.id = c.id
+      WHERE chunks_fts MATCH ?
+    `;
+    const params: any[] = [ftsQuery];
+    if (source) {
+      sql += ` AND c.source = ?`;
+      params.push(source);
+    }
+    sql += ` ORDER BY rank LIMIT ?`;
+    params.push(maxResults);
+
+    const rows = this.db.prepare(sql).all(...params) as Array<{
+      id: string;
+      path: string;
+      source: string;
+      start_line: number;
+      end_line: number;
+      text: string;
+      created_at: number;
+      rank: number;
+    }>;
+
+    // BM25 rank 归一化到 0-1
+    const bestRank = rows.length > 0 ? Math.abs(rows[0].rank) : 1;
+
+    return rows.map(row => ({
+      id: row.id,
+      path: row.path,
+      source: row.source as MemorySource,
+      startLine: row.start_line,
+      endLine: row.end_line,
+      text: row.text,
+      score: Math.abs(row.rank) / bestRank,
+      timestamp: row.created_at,
+    }));
+  }
+
+  /**
+   * 获取 chunk 文本（用于 snippet 提取）
+   */
+  getChunkTexts(ids: string[]): Map<string, string> {
+    if (ids.length === 0) return new Map();
+    const placeholders = ids.map(() => '?').join(',');
+    const rows = this.db.prepare(
+      `SELECT id, text FROM chunks WHERE id IN (${placeholders})`
+    ).all(...ids) as { id: string; text: string }[];
+    return new Map(rows.map(r => [r.id, r.text]));
+  }
+
+  /**
+   * 是否支持向量搜索
+   */
+  get supportsVectorSearch(): boolean {
+    return this.hasVecSearch;
+  }
+
+  /**
+   * 是否有存储 embedding 的 chunk（判断是否需要重建索引）
+   */
+  hasEmbeddings(): boolean {
+    const row = this.db.prepare(
+      'SELECT 1 FROM chunks WHERE embedding IS NOT NULL LIMIT 1'
+    ).get();
+    return row !== undefined;
+  }
+
+  /**
+   * 获取没有 embedding 的 chunk 数量（用于增量补齐）
+   */
+  countChunksWithoutEmbedding(): number {
+    const row = this.db.prepare(
+      'SELECT COUNT(*) as count FROM chunks WHERE embedding IS NULL'
+    ).get() as { count: number };
+    return row.count;
+  }
+
+  /**
+   * 批量更新 chunk 的 embedding
+   */
+  updateEmbeddings(updates: Array<{ id: string; embedding: number[] }>): void {
+    const updateStmt = this.db.prepare(
+      'UPDATE chunks SET embedding = ? WHERE id = ?'
+    );
+    const insertVecStmt = this.hasVecSearch
+      ? this.db.prepare('INSERT OR REPLACE INTO chunks_vec (chunk_id, embedding) VALUES (?, ?)')
+      : null;
+
+    const transaction = this.db.transaction(() => {
+      for (const { id, embedding } of updates) {
+        updateStmt.run(JSON.stringify(embedding), id);
+        if (insertVecStmt) {
+          try {
+            insertVecStmt.run(id, new Float32Array(embedding));
+          } catch { /* ignore */ }
+        }
+      }
+    });
+    transaction();
+  }
+
+  /**
+   * 获取没有 embedding 的 chunk（用于批量生成）
+   */
+  getChunksWithoutEmbedding(limit: number = 100): Array<{ id: string; text: string }> {
+    return this.db.prepare(
+      'SELECT id, text FROM chunks WHERE embedding IS NULL LIMIT ?'
+    ).all(limit) as Array<{ id: string; text: string }>;
   }
 
   /**

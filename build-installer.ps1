@@ -174,7 +174,7 @@ if ($LASTEXITCODE -ne 0) {
 # ============================================================
 # Done
 # ============================================================
-$setupExe = Get-ChildItem (Join-Path $PWD "release") -Filter "Axon-Setup-*.exe" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+$setupExe = Get-ChildItem (Join-Path $PWD "release") -Filter "Axon-Setup*.exe" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
 
 Write-Host ""
 Write-Host "  =============================" -ForegroundColor Green

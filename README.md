@@ -33,6 +33,7 @@ Axon is a free, open-source AI coding assistant with a built-in Web IDE, multi-a
 npm install -g axon
 
 # Set your API key (Anthropic, OpenRouter, DeepSeek, or any OpenAI-compatible provider)
+# No API key? Get one at https://api.chatbi.site (Claude Sonnet & Opus, OpenAI-compatible)
 export ANTHROPIC_API_KEY="sk-..."
 
 # Terminal mode

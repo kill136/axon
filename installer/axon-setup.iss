@@ -13,7 +13,7 @@
 ;   .\build-installer.ps1
 
 #define MyAppName "Axon"
-#define MyAppVersion "2.1.39"
+#define MyAppVersion "2.1.42"
 #define MyAppPublisher "Axon"
 #define MyAppURL "https://github.com/anthropics/claude-code"
 #define MyAppExeName "Axon.exe"
@@ -31,7 +31,7 @@ DefaultGroupName={#MyAppName}
 ; Allow user to choose if they want a desktop icon
 AllowNoIcons=yes
 ; Output installer file
-OutputDir=.
+OutputDir=..\release
 OutputBaseFilename=Axon-Setup
 ; Installer icon
 SetupIconFile=..\electron\icon.ico

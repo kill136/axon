@@ -1,0 +1,5 @@
+Starting Container
+AH00534: apache2: Configuration error: More than one MPM loaded.
+AH00534: apache2: Configuration error: More than one MPM loaded.
+AH00534: apache2: Configuration error: More than one MPM loaded.
+AH00534: apache2: Configuration error: More than one MPM loaded.

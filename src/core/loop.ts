@@ -2289,7 +2289,8 @@ export class ConversationLoop {
 
     // 初始化长期记忆搜索系统（异步，fire-and-forget）
     const projectHash = crypto.createHash('md5').update(effectiveWorkingDir).digest('hex').slice(0, 12);
-    initMemorySearchManager(effectiveWorkingDir, projectHash).catch(err => {
+    const embeddingConfig = configManager.get('embedding') as any;
+    initMemorySearchManager(effectiveWorkingDir, projectHash, embeddingConfig || undefined).catch(err => {
       console.warn('[MemorySearch] Initialization failed:', err);
     });
 
@@ -2784,6 +2785,10 @@ export class ConversationLoop {
 
     // 解析模型别名（在循环外部，避免重复解析）
     const resolvedModel = modelConfig.resolveAlias(this.options.model || 'sonnet');
+
+    // autoRecall 已移除：信噪比太低，占 200-500 tokens 但回忆的碎片几乎没有参考价值。
+    // 真正有用的记忆已在 Notebook 中，需要搜索时用户可主动调用 MemorySearch 工具。
+    this.promptContext.memoryRecall = undefined;
 
     // 构建系统提示词
     let systemPrompt: string;

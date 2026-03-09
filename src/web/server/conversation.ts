@@ -31,13 +31,14 @@ import { blueprintStore, executionManager } from './routes/blueprint-api.js';
 import type { Blueprint } from '../../blueprint/types.js';
 import { StartLeadAgentTool } from '../../tools/start-lead-agent.js';
 import { geminiImageService } from './services/gemini-image-service.js';
-import { compressRawBase64 } from '../../media/image.js';
+import { compressRawBase64, ensureMaxDimensions } from '../../media/image.js';
 import {
   initSessionMemory,
   readSessionMemory,
   writeSessionMemory,
   getSummaryPath,
   isSessionMemoryEnabled,
+  isEmptyTemplate,
 } from '../../context/session-memory.js';
 import { initNotebookManager, getNotebookManager, activateNotebookManager } from '../../memory/notebook.js';
 import { initMemorySearchManager, getMemorySearchManager } from '../../memory/memory-search.js';
@@ -45,6 +46,8 @@ import { registerMcpServer, connectMcpServer, createMcpTools, getMcpServers, cal
 import { getChromeIntegrationConfig } from '../../chrome-mcp/index.js';
 import { CHROME_MCP_TOOLS } from '../../chrome-mcp/tools.js';
 import { RewindManager, type RewindOption } from '../../rewind/index.js';
+import { isEyeRunning } from '../../eye/index.js';
+import { getEarBuffer } from '../../ear/index.js';
 import { MarketplaceManager } from '../../plugins/marketplace.js';
 import { TaskStore, type ScheduledTask } from '../../daemon/store.js';
 import { isDaemonRunning } from '../../daemon/index.js';
@@ -79,6 +82,8 @@ const RETRYABLE_NETWORK_PATTERNS = [
   'Internal server error',
   'Request timed out',
   'timed out',
+  'Application failed to respond', // OpenRouter 502 网关超时
+  'Stream idle timeout', // 流式空闲超时（client.ts 超时保护触发）
 ];
 
 /** conversation loop 层面的最大网络重试次数 */
@@ -625,7 +630,8 @@ export class ConversationManager {
     try {
       const crypto = await import('crypto');
       const projectHash = crypto.createHash('md5').update(this.cwd).digest('hex').slice(0, 12);
-      await initMemorySearchManager(this.cwd, projectHash);
+      const embeddingConfig = configManager.get('embedding') as any;
+      await initMemorySearchManager(this.cwd, projectHash, embeddingConfig || undefined);
       console.log(`[ConversationManager] Initializing MemorySearchManager: ${this.cwd}`);
     } catch (error) {
       console.warn('[ConversationManager] Failed to initialize MemorySearchManager:', error);
@@ -1515,6 +1521,11 @@ export class ConversationManager {
       // 获取工具定义（使用过滤后的工具列表）
       const tools = this.getFilteredTools(sessionId || '');
 
+      // 预防性校验：确保 tool_use/tool_result 配对一致，避免 API 400 错误
+      // 之前只在错误自愈时调用 validateToolResults，但某些场景（autoCompact、rewind、恢复会话）
+      // 可能在进入循环前就已经破坏了配对关系，导致必须先报一次错才能修复
+      state.messages = validateToolResults(state.messages);
+
       // 在发送请求前清理旧的持久化输出（与 CLI 完全一致）
       let cleanedMessages = cleanOldPersistedOutputs(state.messages, 3);
 
@@ -1635,7 +1646,12 @@ export class ConversationManager {
               : m.content,
           })) as Message[];
 
-          const compactResult = await this.performAutoCompact(cleanedMessages, resolvedModel, state);
+          // 修复：只传入需要压缩的部分（排除 messagesToKeep），对齐强制压缩逻辑（2132行）
+          // 之前错误地传入了完整的 cleanedMessages，导致 NJ1 摘要因 token 超限而直接放弃
+          const messagesForCompact = messagesToKeep.length > 0
+            ? cleanedMessages.slice(0, cleanedMessages.length - messagesToKeep.length)
+            : cleanedMessages;
+          const compactResult = await this.performAutoCompact(messagesForCompact, resolvedModel, state);
           if (compactResult.wasCompacted) {
             // 修复：压缩后保留当前轮次的消息（对齐 CLI TJ1 的 messagesToKeep 逻辑）
             cleanedMessages = [...compactResult.messages, ...messagesToKeep];
@@ -1970,12 +1986,22 @@ export class ConversationManager {
 
             // 如果工具返回了 images，构建混合 content 数组（ImageBlockParam 嵌入 tool_result）
             if (result.images && result.images.length > 0) {
+              // 确保所有图片维度不超过 2000px（Anthropic API 多图请求限制）
+              const checkedImages = await Promise.all(
+                result.images.map(async (img: any) => {
+                  if (img.source?.type === 'base64' && img.source?.data) {
+                    const checked = await ensureMaxDimensions(img.source.data, img.source.media_type || 'image/png');
+                    return { ...img, source: { ...img.source, data: checked.data, media_type: checked.mediaType } };
+                  }
+                  return img;
+                })
+              );
               toolResults.push({
                 type: 'tool_result',
                 tool_use_id: toolUse.id,
                 content: [
                   { type: 'text', text: formattedContent || 'Tool completed.' },
-                  ...result.images,
+                  ...checkedImages,
                 ],
               });
             } else {
@@ -3277,7 +3303,7 @@ export class ConversationManager {
     if (isSessionMemoryEnabled()) {
       try {
         const memoryContent = await readSessionMemory(state.session.cwd, state.session.sessionId || '');
-        if (memoryContent && memoryContent.trim().length > 0) {
+        if (memoryContent && memoryContent.trim().length > 0 && !isEmptyTemplate(memoryContent)) {
           // 对齐官方 Au1 函数：格式化为标准摘要内容
           const formattedContent = formatCompactSummaryContent(memoryContent, true);
 
@@ -3317,21 +3343,41 @@ export class ConversationManager {
 
     // 2. 尝试对话摘要 (NJ1) — 对齐官方 oj1 压缩函数
     try {
-      // 对齐官方：检查消息总 token 是否已超过上下文窗口限制
-      // 如果超限，NJ1 摘要请求也必然失败（摘要请求 = 全量消息 + summaryPrompt），直接跳过
       const contextWindow = getContextWindowSize(model);
       const estimatedMsgTokens = this.estimateMessageTokens(messages);
 
+      // 如果消息超过 context window，截断旧消息后再做摘要
+      // 比直接放弃（导致对话终止）要好得多
+      let messagesForSummary = messages;
       if (estimatedMsgTokens >= contextWindow) {
-        console.warn(`[AutoCompact/NJ1] Message tokens (${estimatedMsgTokens.toLocaleString()}) exceeded context window (${contextWindow.toLocaleString()}), skipping NJ1 summary (will inevitably fail)`);
-        return { wasCompacted: false, messages };
+        console.warn(`[AutoCompact/NJ1] Message tokens (${estimatedMsgTokens.toLocaleString()}) exceeded context window (${contextWindow.toLocaleString()}), truncating oldest messages before summarizing`);
+        // 保留 context window 80% 容量的最新消息（留 20% 给 summaryPrompt + system prompt + 输出）
+        const targetTokens = Math.floor(contextWindow * 0.8);
+        let accumulatedTokens = 0;
+        let startIndex = messages.length;
+        // 从后往前累加，找到能放进去的起始位置
+        for (let i = messages.length - 1; i >= 0; i--) {
+          const msgTokens = this.estimateMessageTokens([messages[i]]);
+          if (accumulatedTokens + msgTokens > targetTokens) break;
+          accumulatedTokens += msgTokens;
+          startIndex = i;
+        }
+        // 确保至少保留一些消息
+        if (startIndex >= messages.length) startIndex = Math.max(0, messages.length - 5);
+        // 确保从 user 消息开始（API 要求第一条是 user 角色）
+        while (startIndex < messages.length && messages[startIndex].role !== 'user') {
+          startIndex++;
+        }
+        if (startIndex >= messages.length) startIndex = Math.max(0, messages.length - 5);
+        messagesForSummary = messages.slice(startIndex);
+        console.log(`[AutoCompact/NJ1] Truncated from ${messages.length} to ${messagesForSummary.length} messages (${accumulatedTokens.toLocaleString()} tokens) for summarization`);
       }
 
       // 对齐官方 dDA 函数：使用完整的摘要 prompt（含 <analysis> + <summary> 结构）
       const summaryPrompt = generateSummaryPrompt();
 
       const summaryMessages: Message[] = [
-        ...messages,
+        ...messagesForSummary,
         { role: 'user', content: summaryPrompt },
       ];
 
@@ -3797,6 +3843,8 @@ Respond ONLY with valid JSON, no other text.`;
         // 笔记本加载失败不影响主流程
       }
 
+      // autoRecall 已移除：信噪比太低，Notebook 已覆盖有用记忆，用户可主动调用 MemorySearch 工具
+
       // 构建 MCP 服务器信息（用于 getMcpInstructions）
       // 官方行为：只包含未禁用的服务器（与 mcp.tools state 一致）
       const disabledServers = this.getDisabledMcpServers();
@@ -4144,17 +4192,34 @@ Guidelines:
     'UpdateTaskPlan',   // LeadAgent 专用 - 更新执行计划中的任务状态
     'DispatchWorker',   // LeadAgent 专用 - 派发任务给 Worker 执行
     'TriggerE2ETest',   // LeadAgent 专用 - 触发 E2E 端到端测试
+    'TaskCreate',       // Agent Teams 专用 - 普通对话用 TodoWrite
+    'TaskGet',          // Agent Teams 专用
+    'TaskUpdate',       // Agent Teams 专用
+    'TaskList',         // Agent Teams 专用
+    'NotebookWrite',    // 已移除 - Notebook 通过附件自动管理
   ]);
 
   private getFilteredTools(sessionId: string): any[] {
     const state = this.sessions.get(sessionId);
     const config = state?.toolFilterConfig || { mode: 'all' };
 
+    // 动态排除：感知工具只在对应感官激活时注入，避免浪费 token
+    const dynamicExcluded = new Set<string>();
+    // Eye — 只在 daemon 运行时注入
+    if (!isEyeRunning()) {
+      dynamicExcluded.add('Eye');
+    }
+    // Ear — 只在前端有语音识别推送时注入（buffer.size > 0 意味着浏览器开了 speech）
+    if (getEarBuffer().size === 0) {
+      dynamicExcluded.add('Ear');
+    }
+
     // 1. 内置工具（来自 toolRegistry，对应官方 C0(ctx)）
     const allTools = toolRegistry.getAll();
     const filteredBuiltinTools = allTools.filter(tool =>
       this.isToolEnabled(tool.name, config) &&
-      !ConversationManager.CHAT_EXCLUDED_TOOLS.has(tool.name)
+      !ConversationManager.CHAT_EXCLUDED_TOOLS.has(tool.name) &&
+      !dynamicExcluded.has(tool.name)
     );
 
     const builtinDefs = filteredBuiltinTools.map(tool => ({

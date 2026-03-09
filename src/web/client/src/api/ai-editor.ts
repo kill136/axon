@@ -58,6 +58,16 @@ export interface AIHoverResult {
   seeAlso?: string[];
   /** 注意事项 */
   notes?: string[];
+  /** 被引用方（谁在使用这个符号） */
+  usedBy?: Array<{
+    file: string;
+    line: number;
+    context: string;
+  }>;
+  /** 下级依赖（这个符号使用了什么） */
+  uses?: string[];
+  /** 在项目中的角色 */
+  role?: string;
   /** 错误信息 */
   error?: string;
   /** 是否来自缓存 */

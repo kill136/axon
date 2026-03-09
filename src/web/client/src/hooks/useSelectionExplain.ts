@@ -104,8 +104,10 @@ export function useSelectionExplain(options: UseSelectionExplainOptions): UseSel
       const domNode = document.createElement('div');
       domNode.className = 'selection-explain-widget';
       domNode.style.cssText = `
-        max-width: 420px;
+        max-width: 500px;
         min-width: 240px;
+        max-height: 400px;
+        overflow-y: auto;
         padding: 10px 14px;
         background: #1e1e2e;
         border: 1px solid rgba(139, 92, 246, 0.3);
@@ -190,6 +192,10 @@ export function useSelectionExplain(options: UseSelectionExplainOptions): UseSel
               <div style="color: rgba(255,255,255,0.85); font-size: 12.5px; line-height: 1.6;">${escapeHtml(aiResult.brief)}</div>
             `;
 
+            if (aiResult.role) {
+              html += `<div style="color: #34d399; font-size: 11px; margin-top: 4px; padding: 3px 8px; background: rgba(52,211,153,0.08); border-radius: 4px; display: inline-block;">${escapeHtml(aiResult.role)}</div>`;
+            }
+
             if (aiResult.detail) {
               html += `<div style="color: rgba(255,255,255,0.55); font-size: 11.5px; margin-top: 6px; line-height: 1.5; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 6px;">${escapeHtml(aiResult.detail)}</div>`;
             }
@@ -205,6 +211,32 @@ export function useSelectionExplain(options: UseSelectionExplainOptions): UseSel
                 </div>`;
               }
               html += `</div>`;
+            }
+
+            // 被引用方
+            if (aiResult.usedBy && aiResult.usedBy.length > 0) {
+              html += `<div style="margin-top: 6px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 6px;">`;
+              html += `<div style="font-size: 10px; color: rgba(255,255,255,0.35); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">Referenced by</div>`;
+              for (const ref of aiResult.usedBy.slice(0, 6)) {
+                const fileName = ref.file.split('/').pop() || ref.file;
+                html += `<div style="font-size: 10.5px; color: rgba(255,255,255,0.5); margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                  <code style="color: #93c5fd; font-size: 10px;">${escapeHtml(fileName)}:${ref.line}</code>
+                  <span style="color: rgba(255,255,255,0.3); margin: 0 3px;">|</span>
+                  <span style="color: rgba(255,255,255,0.4);">${escapeHtml(ref.context.length > 60 ? ref.context.slice(0, 60) + '...' : ref.context)}</span>
+                </div>`;
+              }
+              html += `</div>`;
+            }
+
+            // 下级依赖
+            if (aiResult.uses && aiResult.uses.length > 0) {
+              html += `<div style="margin-top: 6px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 6px;">`;
+              html += `<div style="font-size: 10px; color: rgba(255,255,255,0.35); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">Depends on</div>`;
+              html += `<div style="display: flex; flex-wrap: wrap; gap: 4px;">`;
+              for (const dep of aiResult.uses.slice(0, 8)) {
+                html += `<code style="font-size: 10px; color: #fbbf24; background: rgba(251,191,36,0.08); padding: 1px 5px; border-radius: 3px;">${escapeHtml(dep)}</code>`;
+              }
+              html += `</div></div>`;
             }
 
             domNode.innerHTML = html;

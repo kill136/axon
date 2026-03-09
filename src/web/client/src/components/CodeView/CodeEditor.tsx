@@ -118,6 +118,10 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
     const monacoRef = useRef<typeof Monaco | null>(null);
     // 追踪当前打开的文件路径（供 LSP provider 使用，避免 stale closure）
     const currentTabPathRef = useRef<string | null>(null);
+
+    // 文件内容缓存：关闭 tab 后再次打开无需重新请求后端
+    const fileCacheRef = useRef<Map<string, { content: string; language: string; timestamp: number }>>(new Map());
+    const FILE_CACHE_TTL = 5 * 60 * 1000; // 5 分钟过期
     const [lspNotification, setLspNotification] = useState<{
       serverName: string;
       language: string;
@@ -527,7 +531,22 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
           return;
         }
 
-        // 加载文件内容
+        // 优先从缓存加载
+        const cached = fileCacheRef.current.get(path);
+        if (cached && Date.now() - cached.timestamp < FILE_CACHE_TTL) {
+          const newTab: EditorTab = {
+            path,
+            content: cached.content,
+            language: cached.language,
+            modified: false,
+            originalContent: cached.content,
+          };
+          setTabs(prev => [...prev, newTab]);
+          setActiveTabIndex(tabs.length);
+          return;
+        }
+
+        // 从后端加载文件内容
         try {
           const response = await fetch(`/api/files/read?path=${encodeURIComponent(path)}${projectPath ? `&root=${encodeURIComponent(projectPath)}` : ''}`);
           
@@ -541,6 +560,15 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
           const data = await response.json();
           const content = data.content || '';
           const language = getLanguage(path);
+
+          // 写入缓存
+          fileCacheRef.current.set(path, { content, language, timestamp: Date.now() });
+          // 限制缓存大小（最多 100 个文件）
+          if (fileCacheRef.current.size > 100) {
+            const oldest = [...fileCacheRef.current.entries()]
+              .sort((a, b) => a[1].timestamp - b[1].timestamp)[0];
+            if (oldest) fileCacheRef.current.delete(oldest[0]);
+          }
 
           const newTab: EditorTab = {
             path,

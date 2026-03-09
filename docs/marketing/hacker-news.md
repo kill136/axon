@@ -2,33 +2,31 @@
 
 ## Title
 
-Show HN: Axon – Open-source AI coding platform with Web IDE, multi-agent system, 37+ tools
+Show HN: Axon – Open-source AI coding assistant with Web IDE, multi-agent system, and self-evolution
 
 ## Body
 
 Hey HN,
 
-I've been working on an open-source AI coding platform that started as a reverse-engineering study of Anthropic's Axon CLI, but evolved into something much more capable.
+I've been building an open-source AI coding assistant called Axon. It's a terminal + web IDE tool where an AI agent writes code on your machine with 37+ tools — file editing, shell execution, browser automation, database queries, and more.
 
-**What it does:**
-- Full Web IDE with Monaco editor, file tree, and AI-enhanced editing (hover tips, code review, test generation)
-- Blueprint multi-agent system: break complex tasks into subtasks and dispatch them across multiple AI agents working in parallel
-- 37+ built-in tools: file ops, search, shell execution, browser automation, database client, debugger, scheduled tasks, and more
-- Scheduled task daemon: natural language scheduling ("every day at 9am, review my commits"), file watching, Feishu/desktop notifications
-- Self-evolution: the AI can modify its own source code, run type checks, and hot-reload
-- MCP protocol support for external tool integration
-- One-click installers for Windows/macOS/Linux
-- Docker deployment
+**What sets it apart from Cursor/Cline/etc:**
 
-**Tech stack:** TypeScript, React + Ink, Express + WebSocket, Monaco Editor, better-sqlite3, Tree-sitter WASM
+- **Web IDE** — Full browser-based IDE with Monaco editor, file tree, and AI-enhanced editing. Not just a chat sidebar bolted onto an editor.
+- **Multi-agent system** — Blueprint system breaks complex tasks across multiple AI agents running in parallel. One requirement goes in, coordinated code comes out.
+- **Self-evolution** — The AI can modify its own source code, run TypeScript type checks, and hot-reload. You can ask it to add a new tool and it will.
+- **Works with any provider** — Anthropic, OpenRouter, AWS Bedrock, Google Vertex AI, or any OpenAI-compatible endpoint. Bring your own API key.
+- **MCP protocol** — Connect external tool servers for unlimited extensibility.
+- **Scheduled automation** — Cron-like daemon with natural language scheduling and file watching.
+- **Perception** — Experimental camera/microphone/speech integration for multimodal interaction.
 
-**Why I built this:** I wanted to understand how Axon works internally, and along the way I added capabilities I wished the official tool had — a web UI, multi-agent workflows, scheduled automation, and full extensibility.
+**Tech stack:** TypeScript, React, Express + WebSocket, Monaco Editor, better-sqlite3, Tree-sitter WASM, Playwright
 
-It's MIT licensed and runs entirely locally. Your data never leaves your machine.
+It runs entirely locally, MIT licensed, no telemetry. One-click installers for all platforms plus Docker.
 
+- GitHub: https://github.com/kill136/claude-code-open
+- Live Demo: https://voicegpt.site
 - Website: https://www.chatbi.site
-- GitHub: https://github.com/kill136/axon
-- Live Demo: http://voicegpt.site/
 - Discord: https://discord.gg/bNyJKk6PVZ
 
-Would love feedback on the architecture and any feature suggestions.
+Would love feedback on the architecture and feature ideas.
