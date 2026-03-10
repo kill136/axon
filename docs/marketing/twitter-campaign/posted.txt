@@ -1,3 +1,6 @@
 1
 11
 API-promo-1 (2026-03-08): Need Claude API access? OpenAI-compatible endpoints. api.chatbi.site
+custom-perception (2026-03-10): Most AI coding tools are chat boxes. Axon has eyes/ears/memory/goals. 40+ tools, multi-agent swarm.
+custom-blueprint (2026-03-10): Describe your goal. Axon Blueprint breaks it into parallel tasks. Autonomous agents execute simultaneously.
+custom-vs-cursor (2026-03-10): Cursor $20/month vs Axon free + any model + Web IDE + multi-agent + 40+ tools + self-evolution.
