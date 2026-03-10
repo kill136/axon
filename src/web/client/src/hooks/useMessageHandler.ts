@@ -453,7 +453,6 @@ export function useMessageHandler({
           break;
 
         case 'session_switched':
-          console.log('[useMessageHandler] session_switched received, clearing messages');
           // 立即同步更新 sessionIdRef，防止旧会话的流式消息通过隔离检查泄漏到新会话
           // 不能依赖 useWebSocket 的 setSessionId（异步），必须在此处直接更新 ref
           if (payload.sessionId) {
@@ -464,11 +463,20 @@ export function useMessageHandler({
           // 重置所有状态（包括对话框状态，防止旧会话的弹窗残留到新会话）
           interruptPendingRef.current = false;
           setStatus('idle');
-          setMessages([]);
           setPermissionRequest(null);
           setUserQuestion(null);
           setCompactState({ phase: 'idle' });
           setContextUsage(null);
+          // 原子性恢复：session_switched 内嵌了 history，一次 setMessages 完成切换+恢复
+          // 避免先 setMessages([]) 再等 history 消息的竞态（F5 刷新时可能导致消息丢失）
+          if (payload.history && Array.isArray(payload.history)) {
+            const historyMessages = payload.history as ChatMessage[];
+            console.log(`[useMessageHandler] session_switched with inline history: ${historyMessages.length} messages`);
+            setMessages(historyMessages);
+          } else {
+            // 兼容：旧版后端未内嵌 history 时仍清空，等后续 history 消息
+            setMessages([]);
+          }
           refreshSessionsRef.current();
           break;
 

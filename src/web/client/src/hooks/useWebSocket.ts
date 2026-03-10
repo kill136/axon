@@ -184,10 +184,16 @@ export function useWebSocket(url: string): UseWebSocketReturn {
         // 处理恢复会话失败 - 清除无效的 sessionId
         if (message.type === 'error') {
           const payload = message.payload as { message: string };
-          if (payload.message === '会话不存在或加载失败' || payload.message === '会话不存在或恢复失败') {
+          const errorMsg = (payload.message || '').toLowerCase();
+          // 匹配中英文错误消息：会话不存在或恢复/加载失败
+          if (errorMsg.includes('会话不存在') ||
+              errorMsg.includes('session does not exist') ||
+              errorMsg.includes('failed to resume') ||
+              errorMsg.includes('failed to switch') ||
+              errorMsg.includes('failed to load')) {
             sessionStorage.removeItem(SESSION_ID_STORAGE_KEY);
             hasRestoredSessionRef.current = false;
-            console.log('[WebSocket] Session restore failed, clearing invalid sessionId');
+            console.log('[WebSocket] Session restore failed, clearing invalid sessionId:', payload.message);
           }
         }
       } catch (e) {

@@ -3012,12 +3012,7 @@ async function handleSessionSwitch(
 
       sendMessage(ws, {
         type: 'session_switched',
-        payload: { sessionId, projectPath: client.projectPath },
-      });
-
-      sendMessage(ws, {
-        type: 'history',
-        payload: { messages: history, sessionId },
+        payload: { sessionId, projectPath: client.projectPath, history },
       });
 
       // 同步权限配置到客户端（刷新后客户端 permissionMode 会重置为 'default'，需要从服务端恢复）
@@ -3250,11 +3245,7 @@ async function handleSessionSwitch(
       client.sessionId = sessionId;
       sendMessage(ws, {
         type: 'session_switched',
-        payload: { sessionId, projectPath: client.projectPath },
-      });
-      sendMessage(ws, {
-        type: 'history',
-        payload: { messages: [], sessionId },
+        payload: { sessionId, projectPath: client.projectPath, history: [] },
       });
     } else {
       sendMessage(ws, {
@@ -3449,12 +3440,7 @@ async function handleSessionResume(
 
       sendMessage(ws, {
         type: 'session_switched',
-        payload: { sessionId },
-      });
-
-      sendMessage(ws, {
-        type: 'history',
-        payload: { messages: history, sessionId },
+        payload: { sessionId, history },
       });
     } else {
       sendMessage(ws, {

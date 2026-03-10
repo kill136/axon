@@ -3433,6 +3433,78 @@ body {
   min-width: 140px;
 }
 
+/* Language selector */
+.setup-wizard-language-options {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.setup-wizard-language-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 28px;
+  background: var(--bg-secondary);
+  border: 2px solid var(--border-color);
+  border-radius: 12px;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.setup-wizard-language-btn:hover {
+  border-color: var(--accent-primary);
+  background: var(--bg-tertiary);
+}
+
+.setup-wizard-language-btn.selected {
+  border-color: var(--accent-primary);
+  background: rgba(99, 102, 241, 0.12);
+  box-shadow: 0 0 16px rgba(99, 102, 241, 0.2);
+}
+
+.lang-flag {
+  font-size: 13px;
+  font-weight: 700;
+  background: var(--bg-tertiary);
+  padding: 2px 6px;
+  border-radius: 4px;
+  opacity: 0.7;
+}
+
+.lang-name {
+  font-size: 15px;
+}
+
+/* Provider / mode grid */
+.setup-wizard-provider-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+  margin: 16px 0;
+}
+
+/* OAuth embed */
+.setup-wizard-oauth-embed {
+  max-width: 400px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+/* API Key form */
+.setup-wizard-apikey-form {
+  text-align: left;
+  max-width: 400px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
 /* ========================================
    Axon Cloud - Setup Wizard Extension
    ======================================== */
