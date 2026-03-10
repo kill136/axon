@@ -214,7 +214,7 @@ jobs:
           fail_on_unmatched_files: true
 
   build-electron-windows:
-    name: Build Windows Desktop (Portable)
+    name: Build Windows Desktop (Setup .exe + Portable .zip)
     runs-on: windows-latest
     needs: release
 
@@ -324,12 +324,29 @@ jobs:
 
           $sizeMB = [math]::Round((Get-Item $zipName).Length / 1MB, 1)
           Write-Host "Created $zipName ($sizeMB MB)"
-          "ASSET_NAME=$zipName" | Out-File -Append $env:GITHUB_ENV -Encoding utf8
+
+      - name: Build Setup .exe with Inno Setup
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}"
+          # version without 'v' prefix for Inno Setup
+          $appVersion = $version.TrimStart('v')
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DAppVersion=$appVersion" "installer.iss"
+          $exeName = "Axon-Setup-${appVersion}.exe"
+          if (Test-Path $exeName) {
+            $sizeMB = [math]::Round((Get-Item $exeName).Length / 1MB, 1)
+            Write-Host "Created $exeName ($sizeMB MB)"
+          } else {
+            Write-Error "Inno Setup output not found: $exeName"
+            exit 1
+          }
 
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ env.ASSET_NAME }}
+          files: |
+            Axon-Windows-Portable-${{ github.ref_name }}.zip
+            Axon-Setup-*.exe
           fail_on_unmatched_files: true
 
   build-electron-macos:
