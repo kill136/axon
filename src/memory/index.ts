@@ -10,5 +10,6 @@
 export { NotebookManager, initNotebookManager, getNotebookManager, getNotebookManagerForProject, activateNotebookManager, resetNotebookManager } from './notebook.js';
 export type { NotebookType, NotebookWriteResult, NotebookStats } from './notebook.js';
 export { MemorySearchManager, initMemorySearchManager, getMemorySearchManager, resetMemorySearchManager } from './memory-search.js';
+export type { EmbeddingConfig } from './memory-search.js';
 export { LongTermStore } from './long-term-store.js';
 export type { MemorySource, MemorySearchResult } from './types.js';

@@ -98,9 +98,9 @@ const ConversationViewIcon = () => (
   </svg>
 );
 
-const CodeViewIcon = () => (
+const FilesIcon = () => (
   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M5 4L2 8l3 4M11 4l3 4-3 4" />
+    <path d="M2 3.5A1.5 1.5 0 013.5 2h3.172a1 1 0 01.707.293L8.5 3.414A1 1 0 009.207 3.5H12.5A1.5 1.5 0 0114 5v7.5a1.5 1.5 0 01-1.5 1.5h-9A1.5 1.5 0 012 12.5v-9z" />
   </svg>
 );
 
@@ -354,7 +354,7 @@ export default function TopNavBar({
             onClick={() => onPageChange('code')}
           >
             <span className={styles.icon}>
-              <CodeViewIcon />
+              <FilesIcon />
             </span>
             <span>{t('nav.code')}</span>
           </button>

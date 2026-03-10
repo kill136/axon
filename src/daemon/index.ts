@@ -13,6 +13,7 @@ import { TaskExecutor } from './executor.js';
 import { Scheduler } from './scheduler.js';
 import { FileWatcher } from './watcher.js';
 import { Notifier } from './notifier.js';
+import { GoalDaemon } from '../goals/goal-daemon.js';
 
 // ============================================================================
 // 路径常量
@@ -46,6 +47,8 @@ export class DaemonManager {
   private scheduler!: Scheduler;
   private watcher!: FileWatcher;
   private notifier!: Notifier;
+  private goalDaemon!: GoalDaemon;
+  private goalTimer: NodeJS.Timeout | null = null;
   private reloadTimer: NodeJS.Timeout | null = null;
   private keepaliveTimer: NodeJS.Timeout | null = null;
   private cwd: string;
@@ -161,6 +164,10 @@ export class DaemonManager {
       // 空操作，仅用于保持进程存活
     }, 60000);
 
+    // 启动 GoalDaemon — 持久目标系统
+    this.goalDaemon = new GoalDaemon();
+    this.startGoalLoop();
+
     // 注册退出处理
     const cleanup = () => {
       this.stop();
@@ -169,6 +176,7 @@ export class DaemonManager {
     process.on('SIGINT', cleanup);
     process.on('SIGTERM', cleanup);
 
+    const activeGoals = this.goalDaemon.getStore().listGoals('active');
     console.log(chalk.green('\nDaemon started.'));
     console.log(chalk.gray(`  PID: ${process.pid}`));
     console.log(chalk.gray(`  Working dir: ${workingDir}`));
@@ -176,6 +184,7 @@ export class DaemonManager {
     console.log(chalk.gray(`  Watch rules: ${this.watcher.getActiveCount()}`));
     console.log(chalk.gray(`  Scheduled tasks: ${this.scheduler.getActiveCount()}`));
     console.log(chalk.gray(`  Dynamic tasks: ${this.store.listTasks().length}`));
+    console.log(chalk.gray(`  Active goals: ${activeGoals.length}`));
     console.log(chalk.gray('\nWaiting for events... (Ctrl+C to stop)\n'));
   }
 
@@ -190,6 +199,10 @@ export class DaemonManager {
     if (this.keepaliveTimer) {
       clearInterval(this.keepaliveTimer);
       this.keepaliveTimer = null;
+    }
+    if (this.goalTimer) {
+      clearTimeout(this.goalTimer);
+      this.goalTimer = null;
     }
     this.watcher?.unwatchAll();
     this.scheduler?.cancelAll();
@@ -271,6 +284,60 @@ export class DaemonManager {
         this.watcher.watchTask(task);
         break;
     }
+  }
+
+  // =========================================================================
+  // GoalDaemon 集成 — 持久目标系统
+  // =========================================================================
+
+  /**
+   * 启动目标检查循环
+   * 每 60 秒检查一次是否有到期的目标需要执行
+   * 实际的执行间隔由每个 goal 的 checkIntervalMs 决定
+   */
+  private startGoalLoop(): void {
+    const GOAL_CHECK_INTERVAL = 60_000; // 60 秒检查一次
+
+    const tick = async () => {
+      try {
+        const jobs = await this.goalDaemon.tick();
+        for (const job of jobs) {
+          // 将目标的执行任务转换为 ScheduledTask，复用 executor
+          const pseudoTask: ScheduledTask = {
+            id: `goal-${job.goalId}-${Date.now()}`,
+            type: 'once',
+            name: `Goal: ${job.goalId}`,
+            prompt: job.prompt,
+            model: job.model,
+            notify: ['desktop'],
+            createdAt: Date.now(),
+            createdBy: 'goal-daemon',
+            workingDir: job.workingDir,
+            enabled: true,
+            authSnapshot: job.authSnapshot,
+          };
+
+          console.log(chalk.magenta(`[GoalDaemon] Executing goal check: ${job.goalId}`));
+
+          try {
+            await this.executor.execute({ task: pseudoTask });
+            this.goalDaemon.getStore().appendLog(job.goalId, 'execute', 'Goal check completed successfully');
+          } catch (err) {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            this.goalDaemon.getStore().appendLog(job.goalId, 'execute', `Goal check failed: ${errMsg}`);
+            console.error(chalk.red(`[GoalDaemon] Goal ${job.goalId} execution error: ${errMsg}`));
+          }
+        }
+      } catch (err) {
+        console.error(`[GoalDaemon] Tick error:`, err instanceof Error ? err.message : err);
+      }
+
+      // 调度下一次
+      this.goalTimer = setTimeout(tick, GOAL_CHECK_INTERVAL);
+    };
+
+    // 首次延迟 10 秒启动，让其他组件先初始化完
+    this.goalTimer = setTimeout(tick, 10_000);
   }
 }
 

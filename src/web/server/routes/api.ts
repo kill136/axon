@@ -14,6 +14,7 @@ import fileApiRouter from './file-api.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { VERSION } from '../../../version.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -45,14 +46,14 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
     res.json({
       status: 'ok',
       timestamp: Date.now(),
-      version: '2.1.4',
+      version: VERSION,
     });
   });
 
   // 版本更新检查 - 返回后台更新检查的缓存结果
   app.get('/api/update-check', (req: Request, res: Response) => {
     const info = (globalThis as any).__axon_update_info;
-    res.json(info ?? { hasUpdate: false, current: '2.1.4', latest: '2.1.4' });
+    res.json(info ?? { hasUpdate: false, current: VERSION, latest: VERSION });
   });
 
   // 获取可用工具列表

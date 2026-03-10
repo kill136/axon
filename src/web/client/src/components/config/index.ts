@@ -7,3 +7,4 @@ export { PermissionsConfigPanel } from './PermissionsConfigPanel';
 export { HooksConfigPanel } from './HooksConfigPanel';
 export { SystemConfigPanel } from './SystemConfigPanel';
 export { ConfigImportExport } from './ConfigImportExport';
+export { EmbeddingConfigPanel } from './EmbeddingConfigPanel';

@@ -35,6 +35,8 @@ export function useWebSocket(url: string): UseWebSocketReturn {
   urlRef.current = url;
   // 追踪是否已经发送了 session_switch 恢复请求
   const hasRestoredSessionRef = useRef(false);
+  // 记录首次连接时的 serverStartTime，后续重连发现变化则 reload 页面
+  const serverStartTimeRef = useRef<number | null>(null);
 
   const connect = useCallback(() => {
     // 防止重复连接
@@ -101,7 +103,18 @@ export function useWebSocket(url: string): UseWebSocketReturn {
         messageHandlersRef.current.forEach(handler => handler(message));
 
         if (message.type === 'connected') {
-          const payload = message.payload as { sessionId: string; model: string };
+          const payload = message.payload as { sessionId: string; model: string; serverStartTime?: number };
+          
+          // 检测后端是否重启过：如果 serverStartTime 变化，说明后端重启了，需要 reload 前端
+          if (payload.serverStartTime) {
+            if (serverStartTimeRef.current !== null && serverStartTimeRef.current !== payload.serverStartTime) {
+              console.log('[WebSocket] Server restarted detected, reloading page to get fresh frontend...');
+              window.location.reload();
+              return;
+            }
+            serverStartTimeRef.current = payload.serverStartTime;
+          }
+          
           // 注意：只有在没有恢复会话的情况下才使用服务端分配的临时 sessionId
           // 如果有保存的 sessionId 且已发送恢复请求，会在 session_switched 中更新
           if (!hasRestoredSessionRef.current) {
@@ -171,10 +184,16 @@ export function useWebSocket(url: string): UseWebSocketReturn {
         // 处理恢复会话失败 - 清除无效的 sessionId
         if (message.type === 'error') {
           const payload = message.payload as { message: string };
-          if (payload.message === '会话不存在或加载失败' || payload.message === '会话不存在或恢复失败') {
+          const errorMsg = (payload.message || '').toLowerCase();
+          // 匹配中英文错误消息：会话不存在或恢复/加载失败
+          if (errorMsg.includes('会话不存在') ||
+              errorMsg.includes('session does not exist') ||
+              errorMsg.includes('failed to resume') ||
+              errorMsg.includes('failed to switch') ||
+              errorMsg.includes('failed to load')) {
             sessionStorage.removeItem(SESSION_ID_STORAGE_KEY);
             hasRestoredSessionRef.current = false;
-            console.log('[WebSocket] Session restore failed, clearing invalid sessionId');
+            console.log('[WebSocket] Session restore failed, clearing invalid sessionId:', payload.message);
           }
         }
       } catch (e) {

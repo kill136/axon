@@ -6,6 +6,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { VERSION } from '../version.js';
 
 // ============ 类型定义 ============
 
@@ -373,7 +374,7 @@ printf "Custom: %s in %s" "$model" "$dir"
         current_dir: process.cwd(),
         project_dir: process.cwd(),
       },
-      version: '2.1.4',
+      version: VERSION,
       output_style: {
         name: 'default',
       },

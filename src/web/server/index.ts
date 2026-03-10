@@ -167,6 +167,10 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
   const authRouter = await import('./routes/auth.js');
   app.use('/api/auth/oauth', authRouter.default);
 
+  // Axon Cloud 路由（注册、登录、余额查询）
+  const axonCloudRouter = await import('./routes/axon-cloud.js');
+  app.use('/api/axon-cloud', axonCloudRouter.default);
+
   // 蓝图 API 路由（项目导航、符号浏览、调用图等）
   const blueprintRouter = await import('./routes/blueprint-api.js');
   app.use('/api/blueprint', blueprintRouter.default);

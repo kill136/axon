@@ -105,6 +105,26 @@ export interface SecurityConfig {
 }
 
 /**
+ * Embedding 配置（向量搜索 + 混合检索）
+ */
+export interface EmbeddingConfigData {
+  provider?: 'openai';
+  apiKey?: string;
+  baseUrl?: string;
+  model?: string;
+  dimensions?: number;
+  hybrid?: {
+    enabled?: boolean;
+    vectorWeight?: number;
+    textWeight?: number;
+  };
+  mmr?: {
+    enabled?: boolean;
+    lambda?: number;
+  };
+}
+
+/**
  * 终端配置
  */
 export interface TerminalConfig {
@@ -458,6 +478,83 @@ export class WebConfigService {
       console.error('[WebConfigService] Failed to update proxy config:', error);
       return false;
     }
+  }
+
+  /**
+   * 获取 Embedding 配置
+   */
+  async getEmbeddingConfig(): Promise<EmbeddingConfigData> {
+    try {
+      const config = this.configManager.getAll();
+      const embedding = (config as any).embedding || {};
+      return {
+        provider: embedding.provider || 'openai',
+        apiKey: embedding.apiKey ? this.maskKey(embedding.apiKey) : '',
+        baseUrl: embedding.baseUrl || '',
+        model: embedding.model || 'text-embedding-3-small',
+        dimensions: embedding.dimensions || 1536,
+        hybrid: {
+          enabled: embedding.hybrid?.enabled ?? true,
+          vectorWeight: embedding.hybrid?.vectorWeight ?? 0.6,
+          textWeight: embedding.hybrid?.textWeight ?? 0.4,
+        },
+        mmr: {
+          enabled: embedding.mmr?.enabled ?? false,
+          lambda: embedding.mmr?.lambda ?? 0.7,
+        },
+      };
+    } catch (error) {
+      console.error('[WebConfigService] Failed to get embedding config:', error);
+      throw new Error(`Failed to get embedding config: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
+   * 更新 Embedding 配置
+   */
+  async updateEmbeddingConfig(config: Partial<EmbeddingConfigData>): Promise<boolean> {
+    try {
+      const updates = { ...config };
+
+      // apiKey 特殊处理
+      if ('apiKey' in updates) {
+        const val = updates.apiKey?.trim() || '';
+        if (!val || val.includes('...') || val.includes('***')) {
+          delete updates.apiKey;
+        }
+      }
+
+      // 如果所有字段都为空/默认，删除整个 embedding 配置
+      if (Object.keys(updates).length === 0) {
+        return true;
+      }
+
+      // 合并到现有配置
+      const existing = (this.configManager.getAll() as any).embedding || {};
+      const merged = { ...existing, ...updates };
+
+      // 嵌套对象合并
+      if (updates.hybrid) {
+        merged.hybrid = { ...(existing.hybrid || {}), ...updates.hybrid };
+      }
+      if (updates.mmr) {
+        merged.mmr = { ...(existing.mmr || {}), ...updates.mmr };
+      }
+
+      this.configManager.save({ embedding: merged } as any);
+      return true;
+    } catch (error) {
+      console.error('[WebConfigService] Failed to update embedding config:', error);
+      return false;
+    }
+  }
+
+  /**
+   * 掩码 API key
+   */
+  private maskKey(key: string): string {
+    if (!key || key.length < 8) return key;
+    return key.substring(0, 4) + '...' + key.substring(key.length - 4);
   }
 
   /**

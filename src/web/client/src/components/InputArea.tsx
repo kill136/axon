@@ -11,6 +11,7 @@ import type { Attachment, SlashCommand } from '../types';
 import type { Status, PermissionMode, RateLimitInfo } from '../hooks/useMessageHandler';
 import { useLanguage } from '../i18n';
 
+
 interface InputAreaProps {
   // 输入状态
   input: string;
@@ -36,7 +37,8 @@ interface InputAreaProps {
   model: string;
   onModelChange: (model: string) => void;
   permissionMode: PermissionMode;
-  onPermissionModeChange: (mode: PermissionMode) => void;
+  activePresetId: string;
+  onPresetChange: (presetId: string) => void;
   onSend: () => void;
   onCancel: () => void;
 
@@ -84,6 +86,9 @@ interface InputAreaProps {
   // 语音对话模式
   conversationMode?: boolean;
   onToggleConversationMode?: () => void;
+
+  // 模式预设列表（用于动态渲染选择器）
+  modePresets?: Array<{ id: string; name: string; icon: string; permissionMode: string }>;
 }
 
 export function InputArea({
@@ -104,7 +109,8 @@ export function InputArea({
   model,
   onModelChange,
   permissionMode,
-  onPermissionModeChange,
+  activePresetId,
+  onPresetChange,
   onSend,
   onCancel,
   contextUsage,
@@ -130,6 +136,7 @@ export function InputArea({
   onToggleTts,
   conversationMode = false,
   onToggleConversationMode,
+  modePresets,
 }: InputAreaProps) {
   const { t } = useLanguage();
   const [isAutoHidden, setIsAutoHidden] = useState(false);
@@ -312,14 +319,22 @@ export function InputArea({
             </select>
             <select
               className={`permission-mode-selector mode-${permissionMode}`}
-              value={permissionMode}
-              onChange={(e) => onPermissionModeChange(e.target.value as PermissionMode)}
+              value={activePresetId}
+              onChange={(e) => onPresetChange(e.target.value)}
               title={t('input.permissionMode')}
             >
-              <option value="default">{`🔒 ${t('input.permAsk')}`}</option>
-              <option value="acceptEdits">{`📝 ${t('input.permAutoEdit')}`}</option>
-              <option value="bypassPermissions">{'⚡ YOLO'}</option>
-              <option value="plan">{`📋 ${t('input.permPlan')}`}</option>
+              {modePresets && modePresets.length > 0 ? (
+                modePresets.map(p => (
+                  <option key={p.id} value={p.id}>{`${p.icon} ${p.name}`}</option>
+                ))
+              ) : (
+                <>
+                  <option value="default">{`🔒 ${t('input.permAsk')}`}</option>
+                  <option value="acceptEdits">{`📝 ${t('input.permAutoEdit')}`}</option>
+                  <option value="bypassPermissions">{'⚡ YOLO'}</option>
+                  <option value="plan">{`📋 ${t('input.permPlan')}`}</option>
+                </>
+              )}
             </select>
             <ContextBar usage={contextUsage} compactState={compactState} />
             <ApiUsageBar info={rateLimitInfo} />

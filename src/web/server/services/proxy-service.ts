@@ -16,10 +16,6 @@ export interface ApiProxyConfig {
   proxyKey?: string;
   port?: number;
   host?: string;
-  rateLimit?: number;
-  allowedIps?: string;
-  allowedModels?: string;
-  dailyLimit?: number;
 }
 
 export interface ApiProxyStatus {
@@ -36,7 +32,7 @@ export interface ApiProxyStatus {
 // ============ ProxyService ============
 
 class ProxyService {
-  private proxyInstance: { server: any; start: () => Promise<void>; stop: () => Promise<void>; logs: any[] } | null = null;
+  private proxyInstance: { server: any; start: () => Promise<void>; stop: () => Promise<void>; logs: any[]; totalRequests: number } | null = null;
   private startedAt: number | null = null;
   private currentConfig: ApiProxyConfig | null = null;
 
@@ -158,7 +154,7 @@ class ProxyService {
       host: config.host || '0.0.0.0',
       startedAt: this.startedAt || undefined,
       stats: {
-        totalRequests: this.proxyInstance.logs.length,
+        totalRequests: this.proxyInstance.totalRequests,
       },
     };
   }

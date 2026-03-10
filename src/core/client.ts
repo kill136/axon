@@ -2030,8 +2030,33 @@ export class ClaudeClient {
     let cacheCreationTokens = 0;
     let thinkingTokens = 0;
 
+    // 流式空闲超时保护：如果连续 STREAM_IDLE_TIMEOUT_MS 没有收到任何事件，主动超时
+    // 防止 OpenRouter 等第三方代理静默断连导致 for-await 永远阻塞
+    const STREAM_IDLE_TIMEOUT_MS = 120_000; // 2分钟（thinking 阶段可能较慢，给足时间）
+
     try {
-      for await (const event of stream) {
+      // 包装 async iterator 添加空闲超时
+      const streamWithTimeout = async function* (source: AsyncIterable<any>, timeoutMs: number, signal?: AbortSignal) {
+        const iterator = source[Symbol.asyncIterator]();
+        while (true) {
+          if (signal?.aborted) break;
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          try {
+            const result = await Promise.race([
+              iterator.next(),
+              new Promise<never>((_, reject) => {
+                timer = setTimeout(() => reject(new Error(`Stream idle timeout: no events received for ${timeoutMs / 1000}s`)), timeoutMs);
+              }),
+            ]);
+            if (result.done) break;
+            yield result.value;
+          } finally {
+            if (timer !== undefined) clearTimeout(timer);
+          }
+        }
+      };
+
+      for await (const event of streamWithTimeout(stream, STREAM_IDLE_TIMEOUT_MS, abortSignal)) {
         // 检查是否被中断
         if (abortSignal?.aborted) {
           // 尝试取消流

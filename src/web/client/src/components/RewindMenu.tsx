@@ -66,7 +66,9 @@ export function RewindMenu({
       label: t('rewind.deleteAndRewind'),
       description: preview.messagesWillRemove > 1
         ? t('rewind.deleteAndRewind.descMulti', { count: preview.messagesWillRemove })
-        : t('rewind.deleteAndRewind.descSingle'),
+        : preview.messagesWillRemove === 1
+        ? t('rewind.deleteAndRewind.descSingle')
+        : t('rewind.deleteMessage.descNone'),
       icon: '🔄',
       disabled: false,
     },

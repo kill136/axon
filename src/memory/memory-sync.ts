@@ -10,6 +10,8 @@ import * as crypto from 'crypto';
 import { glob } from 'glob';
 import type { LongTermStore, FileEntry } from './long-term-store.js';
 import type { MemorySource } from './types.js';
+import type { EmbeddingProvider } from './embedding-provider.js';
+import type { EmbeddingCache } from './embedding-cache.js';
 
 /**
  * 同步结果统计
@@ -429,5 +431,74 @@ export class MemorySyncEngine {
       sessions: sessionsResult,
       transcripts: transcriptsResult,
     };
+  }
+
+  /**
+   * 批量补齐缺失的 embedding（在 sync 完成后异步调用）
+   * 每次最多处理 batchSize 个 chunk，避免单次 API 调用量过大
+   */
+  async backfillEmbeddings(
+    provider: EmbeddingProvider,
+    cache?: EmbeddingCache | null,
+    batchSize: number = 100,
+  ): Promise<number> {
+    const chunks = this.store.getChunksWithoutEmbedding(batchSize);
+    if (chunks.length === 0) return 0;
+
+    const model = provider.model;
+    const texts = chunks.map(c => c.text);
+
+    // 先查缓存
+    let embeddings: (number[] | null)[];
+    if (cache) {
+      embeddings = cache.getBatch(model, texts);
+    } else {
+      embeddings = texts.map(() => null);
+    }
+
+    // 收集未命中缓存的 indices
+    const missIndices: number[] = [];
+    for (let i = 0; i < embeddings.length; i++) {
+      if (!embeddings[i]) missIndices.push(i);
+    }
+
+    // 批量调用 API
+    if (missIndices.length > 0) {
+      const missTexts = missIndices.map(i => texts[i]);
+      try {
+        const apiResults = await provider.embedBatch(missTexts);
+        for (let j = 0; j < missIndices.length; j++) {
+          const idx = missIndices[j];
+          embeddings[idx] = apiResults[j];
+        }
+
+        // 写入缓存
+        if (cache) {
+          const cacheEntries = missIndices.map((idx, j) => ({
+            text: texts[idx],
+            embedding: apiResults[j],
+          }));
+          cache.setBatch(model, cacheEntries);
+        }
+      } catch (e) {
+        console.warn('[MemorySync] Embedding API failed:', e);
+        return 0;
+      }
+    }
+
+    // 写入数据库
+    const updates: Array<{ id: string; embedding: number[] }> = [];
+    for (let i = 0; i < chunks.length; i++) {
+      const emb = embeddings[i];
+      if (emb) {
+        updates.push({ id: chunks[i].id, embedding: emb });
+      }
+    }
+
+    if (updates.length > 0) {
+      this.store.updateEmbeddings(updates);
+    }
+
+    return updates.length;
   }
 }

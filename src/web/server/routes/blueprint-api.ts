@@ -898,6 +898,11 @@ class RealTaskExecutor implements TaskExecutor {
 
       this.workerPool.set(workerId, worker);
 
+      // v9.0: Worker 创建后立即注册到 activeWorkers，使插嘴功能可用
+      // 此前只在 ask:request 事件中注册，导致插嘴时找不到 Worker
+      const workerKey = `${this.blueprint.id}:${workerId}`;
+      activeWorkers.set(workerKey, worker);
+
       // v8.4: 注册 Worker 到 Coordinator（用于广播更新）
       if (this.coordinator) {
         this.coordinator.registerWorkerExecutor(workerId, worker);
@@ -1066,6 +1071,12 @@ class RealTaskExecutor implements TaskExecutor {
       // 清理当前任务映射
       this.currentTaskMap.delete(workerId);
 
+      // v9.0: 任务完成后从 activeWorkers 清理
+      {
+        const workerKey = `${this.blueprint.id}:${workerId}`;
+        activeWorkers.delete(workerKey);
+      }
+
       return result;
 
     } catch (error: any) {
@@ -1088,6 +1099,12 @@ class RealTaskExecutor implements TaskExecutor {
 
       // 清理当前任务映射
       this.currentTaskMap.delete(workerId);
+
+      // v9.0: 任务异常时也从 activeWorkers 清理
+      {
+        const workerKey = `${this.blueprint.id}:${workerId}`;
+        activeWorkers.delete(workerKey);
+      }
 
       return {
         success: false,

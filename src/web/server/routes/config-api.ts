@@ -249,6 +249,42 @@ export function setupConfigApiRoutes(app: Express): void {
 
 
   /**
+   * GET /api/config/embedding
+   * 获取 Embedding 配置
+   */
+  app.get('/api/config/embedding', async (req: Request, res: Response) => {
+    try {
+      const embeddingConfig = await webConfigService.getEmbeddingConfig();
+      sendSuccess(res, embeddingConfig);
+    } catch (error) {
+      console.error('[Config API] Failed to get embedding config:', error);
+      sendError(res, error);
+    }
+  });
+
+  /**
+   * PUT /api/config/embedding
+   * 更新 Embedding 配置
+   */
+  app.put('/api/config/embedding', async (req: Request, res: Response) => {
+    try {
+      const updates = req.body;
+      if (!updates || typeof updates !== 'object') {
+        return sendError(res, new Error('Invalid request body'), 400);
+      }
+      const success = await webConfigService.updateEmbeddingConfig(updates);
+      if (success) {
+        sendSuccess(res, { updated: true }, 'Embedding configuration updated successfully');
+      } else {
+        sendError(res, new Error('Failed to update embedding configuration'), 500);
+      }
+    } catch (error) {
+      console.error('[Config API] Failed to update embedding config:', error);
+      sendError(res, error);
+    }
+  });
+
+  /**
    * PUT /api/config/permissions
    * 更新权限配置
    */

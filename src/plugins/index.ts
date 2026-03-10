@@ -8,6 +8,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { EventEmitter } from 'events';
 import type { ToolDefinition, ToolResult } from '../types/index.js';
+import { VERSION } from '../version.js';
 
 // ============ 插件上下文 ============
 
@@ -324,7 +325,7 @@ export class PluginManager extends EventEmitter {
   private configDir: string;
   private pluginConfigFile: string;
   private fileWatchers: Map<string, fs.FSWatcher> = new Map();
-  private claudeCodeVersion: string = '2.1.4'; // 当前 Axon 版本
+  private claudeCodeVersion: string = VERSION;
 
   // 注册的工具、命令、技能和钩子
   private registeredTools: Map<string, ToolDefinition[]> = new Map();

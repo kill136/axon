@@ -18,6 +18,7 @@ import { createRequire } from 'module';
 import http from 'http';
 import https from 'https';
 import { WebSocketConnection } from './websocket-connection.js';
+import { VERSION } from '../version.js';
 
 // Import EventSource for Node.js (CommonJS module)
 const require = createRequire(import.meta.url);
@@ -632,7 +633,7 @@ export class McpConnectionManager extends EventEmitter {
         capabilities: {},
         clientInfo: {
           name: 'axon',
-          version: '2.1.4',
+          version: VERSION,
         },
       },
     };

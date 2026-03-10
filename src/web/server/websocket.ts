@@ -204,6 +204,9 @@ export function broadcastMessage(message: any): void {
   });
 }
 
+// 服务器启动时间戳，用于前端检测后端重启并自动 reload
+const serverStartTime = Date.now();
+
 export function setupWebSocket(
   wss: WebSocketServer,
   conversationManager: ConversationManager
@@ -1282,12 +1285,13 @@ export function setupWebSocket(
 
     console.log(`[WebSocket] Client connected: ${clientId}`);
 
-    // 发送连接确认
+    // 发送连接确认（附带 serverStartTime，前端据此检测后端重启并 auto-reload）
     sendMessage(ws, {
       type: 'connected',
       payload: {
         sessionId,
         model: client.model,
+        serverStartTime,
       },
     });
 
@@ -1459,7 +1463,7 @@ async function handleClientMessage(
       if (message.payload.projectPath !== undefined) {
         client.projectPath = message.payload.projectPath;
       }
-      await handleChatMessage(client, message.payload.content, message.payload.attachments || message.payload.images, conversationManager);
+      await handleChatMessage(client, message.payload.content, message.payload.attachments || message.payload.images, conversationManager, message.payload.messageId);
       break;
 
     case 'cancel':
@@ -1602,11 +1606,15 @@ async function handleClientMessage(
           message.payload.messageId,
           message.payload.option
         );
-        const updatedMessages = conversationManager.getHistory(client.sessionId);
-        sendMessage(client.ws, {
-          type: 'rewind_success',
-          payload: { success: result.success, result, messages: updatedMessages },
-        });
+        if (result.success) {
+          const updatedMessages = conversationManager.getHistory(client.sessionId);
+          sendMessage(client.ws, {
+            type: 'rewind_success',
+            payload: { success: true, result, messages: updatedMessages },
+          });
+        } else {
+          sendMessage(client.ws, { type: 'error', payload: { message: result.error || 'Rewind failed', source: 'rewind' } });
+        }
       } catch (err: any) {
         sendMessage(client.ws, { type: 'error', payload: { message: `Rewind execution failed: ${err.message}`, source: 'rewind' } });
       }
@@ -2304,6 +2312,14 @@ async function handleClientMessage(
       await handleProxyMessage(client, message as any);
       break;
 
+    // ======================== 模式预设 ========================
+    case 'mode_presets_get':
+    case 'mode_preset_save':
+    case 'mode_preset_delete':
+    case 'mode_preset_apply':
+      await handleModePresetMessage(client, message as any, conversationManager);
+      break;
+
     default:
       console.warn('[WebSocket] Unknown message type:', (message as any).type);
   }
@@ -2334,7 +2350,8 @@ async function handleChatMessage(
   client: ClientConnection,
   content: string,
   attachments: Attachment[] | string[] | undefined,
-  conversationManager: ConversationManager
+  conversationManager: ConversationManager,
+  userMessageId?: string
 ): Promise<void> {
   const { ws, model, projectPath } = client;
   let { sessionId } = client;
@@ -2639,7 +2656,7 @@ async function handleChatMessage(
           });
         }
       },
-    }, client.projectPath, getActiveWs(), client.permissionMode);  // 传入动态 ws 和权限模式，确保跨会话持久化
+    }, client.projectPath, getActiveWs(), client.permissionMode, userMessageId);  // 传入动态 ws、权限模式和前端消息 ID，确保跨会话持久化
   } catch (error) {
     console.error('[WebSocket] Chat handling error:', error);
     sendMessage(getActiveWs(), {
@@ -2995,12 +3012,7 @@ async function handleSessionSwitch(
 
       sendMessage(ws, {
         type: 'session_switched',
-        payload: { sessionId, projectPath: client.projectPath },
-      });
-
-      sendMessage(ws, {
-        type: 'history',
-        payload: { messages: history, sessionId },
+        payload: { sessionId, projectPath: client.projectPath, history },
       });
 
       // 同步权限配置到客户端（刷新后客户端 permissionMode 会重置为 'default'，需要从服务端恢复）
@@ -3233,11 +3245,7 @@ async function handleSessionSwitch(
       client.sessionId = sessionId;
       sendMessage(ws, {
         type: 'session_switched',
-        payload: { sessionId, projectPath: client.projectPath },
-      });
-      sendMessage(ws, {
-        type: 'history',
-        payload: { messages: [], sessionId },
+        payload: { sessionId, projectPath: client.projectPath, history: [] },
       });
     } else {
       sendMessage(ws, {
@@ -3432,12 +3440,7 @@ async function handleSessionResume(
 
       sendMessage(ws, {
         type: 'session_switched',
-        payload: { sessionId },
-      });
-
-      sendMessage(ws, {
-        type: 'history',
-        payload: { messages: history, sessionId },
+        payload: { sessionId, history },
       });
     } else {
       sendMessage(ws, {
@@ -7173,3 +7176,108 @@ async function handleProxyMessage(
   }
 }
 
+// ============ 模式预设消息处理 ============
+
+async function handleModePresetMessage(
+  client: ClientConnection,
+  message: any,
+  conversationManager: ConversationManager,
+): Promise<void> {
+  const { ws } = client;
+
+  try {
+    // 延迟导入避免循环依赖
+    const { modePresetsManager } = await import('./services/mode-presets.js');
+
+    switch (message.type) {
+      case 'mode_presets_get': {
+        const presets = modePresetsManager.getAll();
+        sendMessage(ws, {
+          type: 'mode_presets_list',
+          payload: {
+            presets,
+            activeId: client.permissionMode || 'bypassPermissions',
+          },
+        } as any);
+        break;
+      }
+
+      case 'mode_preset_save': {
+        const { preset } = message.payload;
+        modePresetsManager.save(preset);
+        // 回传完整列表
+        const presets = modePresetsManager.getAll();
+        sendMessage(ws, {
+          type: 'mode_presets_list',
+          payload: {
+            presets,
+            activeId: client.permissionMode || 'bypassPermissions',
+          },
+        } as any);
+        break;
+      }
+
+      case 'mode_preset_delete': {
+        const { id } = message.payload;
+        modePresetsManager.delete(id);
+        const presets = modePresetsManager.getAll();
+        sendMessage(ws, {
+          type: 'mode_presets_list',
+          payload: {
+            presets,
+            activeId: client.permissionMode || 'bypassPermissions',
+          },
+        } as any);
+        break;
+      }
+
+      case 'mode_preset_apply': {
+        const { id } = message.payload;
+        const preset = modePresetsManager.get(id);
+        if (!preset) {
+          sendMessage(ws, {
+            type: 'error',
+            payload: { message: `Mode preset not found: ${id}` },
+          });
+          return;
+        }
+
+        // 1. 更新权限模式
+        client.permissionMode = preset.permissionMode;
+        conversationManager.updatePermissionConfig(client.sessionId, {
+          mode: preset.permissionMode,
+        });
+
+        // 2. 更新系统提示词配置
+        conversationManager.updateSystemPrompt(client.sessionId, preset.systemPrompt);
+
+        // 3. 更新工具过滤配置
+        conversationManager.updateToolFilter(client.sessionId, preset.toolFilter);
+
+        // 4. 回传确认 + 权限模式同步
+        sendMessage(ws, {
+          type: 'mode_preset_applied',
+          payload: { id, preset },
+        } as any);
+
+        sendMessage(ws, {
+          type: 'permission_config_update',
+          payload: {
+            mode: preset.permissionMode,
+          },
+        } as any);
+
+        console.log(`[WebSocket] Mode preset applied: ${preset.name} (${id})`);
+        break;
+      }
+    }
+  } catch (error) {
+    console.error('[WebSocket] Mode preset error:', error);
+    sendMessage(ws, {
+      type: 'error',
+      payload: {
+        message: error instanceof Error ? error.message : String(error),
+      },
+    });
+  }
+}

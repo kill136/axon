@@ -484,6 +484,7 @@ export async function createProxyServer(config: ProxyConfig) {
   }
 
   const logs: RequestLog[] = [];
+  let totalRequestCount = 0;
 
   const server = http.createServer(async (req, res) => {
     const startTime = Date.now();
@@ -1121,6 +1122,7 @@ export async function createProxyServer(config: ProxyConfig) {
             }
 
             const duration = Date.now() - startTime;
+            totalRequestCount++;
             logs.push({ time: new Date().toISOString(), method, path, status: statusCode, duration, clientIp, streaming: isStreaming });
             if (logs.length > 1000) logs.splice(0, logs.length - 1000);
             console.log(`[DONE]  ${method} ${path} -> ${statusCode} (${duration}ms)` + (isStreaming ? ' [stream]' : ''));
@@ -1135,6 +1137,7 @@ export async function createProxyServer(config: ProxyConfig) {
           } else {
             res.end();
             const duration = Date.now() - startTime;
+            totalRequestCount++;
             logs.push({ time: new Date().toISOString(), method, path, status: statusCode, duration, clientIp, streaming: isStreaming });
             console.log(`[DONE]  ${method} ${path} -> ${statusCode} (${duration}ms)`);
           }
@@ -1183,6 +1186,7 @@ export async function createProxyServer(config: ProxyConfig) {
                 res.end();
                 const duration = Date.now() - startTime;
                 const errBody = Buffer.concat(errChunks).toString().slice(0, 500);
+                totalRequestCount++;
                 logs.push({ time: new Date().toISOString(), method, path, status: statusCode, duration, clientIp, streaming: isStreaming });
                 if (logs.length > 1000) logs.splice(0, logs.length - 1000);
                 console.log(`[DONE]  ${method} ${path} -> ${statusCode} (${duration}ms)` + (isStreaming ? ' [stream]' : ''));
@@ -1192,6 +1196,7 @@ export async function createProxyServer(config: ProxyConfig) {
               proxyRes.pipe(res);
               proxyRes.on('end', () => {
                 const duration = Date.now() - startTime;
+                totalRequestCount++;
                 logs.push({ time: new Date().toISOString(), method, path, status: statusCode, duration, clientIp, streaming: isStreaming });
                 if (logs.length > 1000) logs.splice(0, logs.length - 1000);
                 console.log(`[DONE]  ${method} ${path} -> ${statusCode} (${duration}ms)` + (isStreaming ? ' [stream]' : ''));
@@ -1241,5 +1246,5 @@ export async function createProxyServer(config: ProxyConfig) {
     });
   }
 
-  return { server, start, stop, logs, oauthState };
+  return { server, start, stop, logs, oauthState, get totalRequests() { return totalRequestCount; } };
 }

@@ -17,10 +17,9 @@
 import { Router, Request, Response } from 'express';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { exec } from 'child_process';
+import { exec, spawn } from 'child_process';
 import { promisify } from 'util';
 import { getRgPath } from '../../../search/ripgrep.js';
-import { spawnSync } from 'child_process';
 
 const execPromise = promisify(exec);
 
@@ -129,6 +128,10 @@ function validatePath(filePath: string, projectRoot: string): { valid: boolean; 
 
 /**
  * 递归获取目录树结构
+ * 
+ * 性能优化：
+ * - 使用 readdir({ withFileTypes: true }) 避免额外的 stat 调用
+ * - 并发处理子目录（Promise.all），而非串行 await
  */
 async function getDirectoryTree(
   dirPath: string,
@@ -137,65 +140,71 @@ async function getDirectoryTree(
   projectRoot: string
 ): Promise<FileTreeNode | null> {
   try {
-    const stats = await fs.stat(dirPath);
     const name = path.basename(dirPath);
     const relativePath = path.relative(projectRoot, dirPath);
     
-    // 如果是文件，直接返回
-    if (stats.isFile()) {
-      return {
-        name,
-        path: relativePath || '.',
-        type: 'file',
-      };
+    // 排除特定目录（在 readdir 阶段就已经过滤了，这里是根节点保护）
+    if (currentDepth > 0 && EXCLUDED_DIRS.has(name)) {
+      return null;
     }
     
-    // 如果是目录
-    if (stats.isDirectory()) {
-      // 排除特定目录
-      if (EXCLUDED_DIRS.has(name)) {
-        return null;
-      }
-      
-      const node: FileTreeNode = {
-        name,
-        path: relativePath || '.',
-        type: 'directory',
-      };
-      
-      // 如果达到最大深度，不再递归
-      if (currentDepth >= maxDepth) {
-        return node;
-      }
-      
-      // 读取子目录
-      const entries = await fs.readdir(dirPath);
-      const children: FileTreeNode[] = [];
-      
-      for (const entry of entries) {
-        const entryPath = path.join(dirPath, entry);
-        const childNode = await getDirectoryTree(entryPath, currentDepth + 1, maxDepth, projectRoot);
-        if (childNode) {
-          children.push(childNode);
-        }
-      }
-      
-      // 排序：目录在前，文件在后，同类按名称排序
-      children.sort((a, b) => {
-        if (a.type !== b.type) {
-          return a.type === 'directory' ? -1 : 1;
-        }
-        return a.name.localeCompare(b.name);
-      });
-      
-      if (children.length > 0) {
-        node.children = children;
-      }
-      
+    // 使用 readdir withFileTypes 一次性获取类型信息，避免每个条目单独 stat
+    const entries = await fs.readdir(dirPath, { withFileTypes: true });
+    
+    const node: FileTreeNode = {
+      name,
+      path: relativePath || '.',
+      type: 'directory',
+    };
+    
+    // 如果达到最大深度，不再递归（但标记为目录，前端可以懒加载）
+    if (currentDepth >= maxDepth) {
       return node;
     }
     
-    return null;
+    // 分离文件和目录，过滤排除项
+    const fileEntries: FileTreeNode[] = [];
+    const dirPromises: Promise<FileTreeNode | null>[] = [];
+    
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        if (EXCLUDED_DIRS.has(entry.name)) continue;
+        // 并发递归子目录
+        dirPromises.push(
+          getDirectoryTree(
+            path.join(dirPath, entry.name),
+            currentDepth + 1,
+            maxDepth,
+            projectRoot
+          )
+        );
+      } else if (entry.isFile()) {
+        fileEntries.push({
+          name: entry.name,
+          path: path.join(relativePath || '.', entry.name),
+          type: 'file',
+        });
+      }
+      // 跳过 symlinks 和其他特殊类型
+    }
+    
+    // 并发等待所有子目录结果
+    const dirResults = await Promise.all(dirPromises);
+    const dirNodes = dirResults.filter((n): n is FileTreeNode => n !== null);
+    
+    // 排序：目录按名称排序
+    dirNodes.sort((a, b) => a.name.localeCompare(b.name));
+    // 文件按名称排序
+    fileEntries.sort((a, b) => a.name.localeCompare(b.name));
+    
+    // 目录在前，文件在后
+    const children = [...dirNodes, ...fileEntries];
+    
+    if (children.length > 0) {
+      node.children = children;
+    }
+    
+    return node;
   } catch (error) {
     console.error(`[File API] Failed to read directory tree: ${dirPath}`, error);
     return null;
@@ -1172,9 +1181,9 @@ interface ReplaceResponse {
 }
 
 /**
- * 使用 ripgrep 执行搜索（同步调用，避免异步开销）
+ * 使用 ripgrep 执行搜索（异步，不阻塞主线程）
  */
-function searchWithRipgrep(
+async function searchWithRipgrep(
   rgPath: string,
   projectRoot: string,
   query: string,
@@ -1186,7 +1195,7 @@ function searchWithRipgrep(
     excludePattern?: string;
     maxResults: number;
   }
-): SearchResponse {
+): Promise<SearchResponse> {
   const args: string[] = [
     '--json',           // JSON 输出，方便解析
     '--max-columns', '500', // 限制单行长度
@@ -1218,86 +1227,118 @@ function searchWithRipgrep(
   // 搜索模式和路径
   args.push('--', query, '.');
 
-  const result = spawnSync(rgPath, args, {
-    cwd: projectRoot,
-    encoding: 'utf-8',
-    maxBuffer: 50 * 1024 * 1024, // 50MB
-    timeout: 30000, // 30 秒超时
-    windowsHide: true,
-  });
+  return new Promise<SearchResponse>((resolve, reject) => {
+    const child = spawn(rgPath, args, {
+      cwd: projectRoot,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
 
-  // ripgrep: 0=有匹配, 1=无匹配, 2+=错误
-  if (result.status !== 0 && result.status !== 1) {
-    throw new Error(`ripgrep exited with code ${result.status}: ${result.stderr}`);
-  }
+    const chunks: Buffer[] = [];
+    let stderrData = '';
+    let killed = false;
 
-  if (!result.stdout || result.status === 1) {
-    return { results: [], totalMatches: 0, truncated: false };
-  }
+    // 30 秒超时
+    const timer = setTimeout(() => {
+      killed = true;
+      child.kill('SIGTERM');
+      reject(new Error('ripgrep search timed out after 30s'));
+    }, 30000);
 
-  // 解析 ripgrep JSON 输出，转换为前端格式
-  const fileMap = new Map<string, SearchMatch[]>();
-  let totalMatches = 0;
-  let truncated = false;
-  const lines = result.stdout.split('\n');
+    child.stdout.on('data', (chunk: Buffer) => {
+      chunks.push(chunk);
+    });
 
-  for (const line of lines) {
-    if (!line) continue;
-    if (totalMatches >= options.maxResults) {
-      truncated = true;
-      break;
-    }
+    child.stderr.on('data', (chunk: Buffer) => {
+      stderrData += chunk.toString();
+    });
 
-    try {
-      const obj = JSON.parse(line);
-      if (obj.type !== 'match') continue;
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      if (killed) return;
 
-      const data = obj.data;
-      const filePath = data.path.text;
-      // ripgrep 用 ./ 前缀，需要去掉
-      const relativePath = filePath.startsWith('./') ? filePath.slice(2) : filePath;
-      // 将 posix 路径分隔符统一为系统路径
-      const normalizedPath = relativePath.replace(/\//g, path.sep);
-      const lineContent = (data.lines.text || '').replace(/\r?\n$/, '');
-      const lineNumber = data.line_number;
+      // ripgrep: 0=有匹配, 1=无匹配, 2+=错误
+      if (code !== 0 && code !== 1) {
+        reject(new Error(`ripgrep exited with code ${code}: ${stderrData}`));
+        return;
+      }
 
-      for (const sub of data.submatches || []) {
+      const stdout = Buffer.concat(chunks).toString('utf-8');
+      if (!stdout || code === 1) {
+        resolve({ results: [], totalMatches: 0, truncated: false });
+        return;
+      }
+
+      // 解析 ripgrep JSON 输出，转换为前端格式
+      const fileMap = new Map<string, SearchMatch[]>();
+      let totalMatches = 0;
+      let truncated = false;
+      const lines = stdout.split('\n');
+
+      for (const line of lines) {
+        if (!line) continue;
         if (totalMatches >= options.maxResults) {
           truncated = true;
           break;
         }
 
-        const matchStart = sub.start;
-        const matchEnd = sub.end;
-        const matchText = lineContent.slice(matchStart, matchEnd);
-        const previewBefore = lineContent.slice(Math.max(0, matchStart - 50), matchStart);
-        const previewAfter = lineContent.slice(matchEnd, matchEnd + 50);
+        try {
+          const obj = JSON.parse(line);
+          if (obj.type !== 'match') continue;
 
-        if (!fileMap.has(normalizedPath)) {
-          fileMap.set(normalizedPath, []);
+          const data = obj.data;
+          const filePath = data.path.text;
+          // ripgrep 用 ./ 前缀，需要去掉
+          const relativePath = filePath.startsWith('./') ? filePath.slice(2) : filePath;
+          // 将 posix 路径分隔符统一为系统路径
+          const normalizedPath = relativePath.replace(/\//g, path.sep);
+          const lineContent = (data.lines.text || '').replace(/\r?\n$/, '');
+          const lineNumber = data.line_number;
+
+          for (const sub of data.submatches || []) {
+            if (totalMatches >= options.maxResults) {
+              truncated = true;
+              break;
+            }
+
+            const matchStart = sub.start;
+            const matchEnd = sub.end;
+            const matchText = lineContent.slice(matchStart, matchEnd);
+            const previewBefore = lineContent.slice(Math.max(0, matchStart - 50), matchStart);
+            const previewAfter = lineContent.slice(matchEnd, matchEnd + 50);
+
+            if (!fileMap.has(normalizedPath)) {
+              fileMap.set(normalizedPath, []);
+            }
+            fileMap.get(normalizedPath)!.push({
+              line: lineNumber,
+              column: matchStart + 1, // 1-based
+              length: matchEnd - matchStart,
+              lineContent,
+              previewBefore,
+              matchText,
+              previewAfter,
+            });
+            totalMatches++;
+          }
+        } catch {
+          // 忽略解析失败的行
         }
-        fileMap.get(normalizedPath)!.push({
-          line: lineNumber,
-          column: matchStart + 1, // 1-based
-          length: matchEnd - matchStart,
-          lineContent,
-          previewBefore,
-          matchText,
-          previewAfter,
-        });
-        totalMatches++;
       }
-    } catch {
-      // 忽略解析失败的行
-    }
-  }
 
-  const results: SearchResult[] = [];
-  for (const [file, matches] of fileMap) {
-    results.push({ file, matches });
-  }
+      const results: SearchResult[] = [];
+      for (const [file, matches] of fileMap) {
+        results.push({ file, matches });
+      }
 
-  return { results, totalMatches, truncated };
+      resolve({ results, totalMatches, truncated });
+    });
+
+    child.on('error', (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+  });
 }
 
 /**
@@ -1510,66 +1551,6 @@ router.post('/replace', async (req: Request, res: Response) => {
       success: false,
       message: error instanceof Error ? error.message : 'Unknown error',
     });
-  }
-});
-
-/**
- * GET /api/files/preview
- * 以原始内容返回 HTML 文件，用于 iframe 预览
- *
- * Query 参数:
- * - path: 文件绝对路径或相对路径
- * - root: 项目根目录（可选）
- */
-router.get('/preview', async (req: Request, res: Response) => {
-  try {
-    const queryPath = req.query.path as string;
-
-    if (!queryPath) {
-      res.status(400).send('Missing path parameter');
-      return;
-    }
-
-    // 只允许 .html / .htm 文件
-    const ext = path.extname(queryPath).toLowerCase();
-    if (ext !== '.html' && ext !== '.htm') {
-      res.status(400).send('Only .html / .htm files are supported for preview');
-      return;
-    }
-
-    // 解析文件路径：支持绝对路径和相对路径
-    let resolvedPath: string;
-    if (path.isAbsolute(queryPath)) {
-      resolvedPath = path.normalize(queryPath);
-    } else {
-      const projectRoot = getProjectRoot(req);
-      const validation = validatePath(queryPath, projectRoot);
-      if (!validation.valid) {
-        res.status(400).send(validation.error || 'Invalid path');
-        return;
-      }
-      resolvedPath = validation.resolvedPath;
-    }
-
-    // 检查文件是否存在
-    try {
-      const stats = await fs.stat(resolvedPath);
-      if (!stats.isFile()) {
-        res.status(400).send('Path is not a file');
-        return;
-      }
-    } catch {
-      res.status(404).send('File does not exist');
-      return;
-    }
-
-    // 读取并返回原始 HTML 内容
-    const content = await fs.readFile(resolvedPath, 'utf-8');
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.send(content);
-  } catch (error) {
-    console.error('[File API] Failed to preview file:', error);
-    res.status(500).send('Failed to preview file');
   }
 });
 

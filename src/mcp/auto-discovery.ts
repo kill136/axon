@@ -17,6 +17,7 @@ import { homedir } from 'os';
 import { spawn, ChildProcess } from 'child_process';
 import axios, { AxiosInstance } from 'axios';
 import { v4 as uuidv4 } from 'uuid';
+import { VERSION } from '../version.js';
 
 // ============ 类型定义 ============
 
@@ -889,7 +890,7 @@ export class McpAutoDiscovery extends EventEmitter {
       },
       clientInfo: {
         name: 'axon',
-        version: '2.1.4',
+        version: VERSION,
       },
     });
 

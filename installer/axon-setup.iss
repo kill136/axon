@@ -13,7 +13,7 @@
 ;   .\build-installer.ps1
 
 #define MyAppName "Axon"
-#define MyAppVersion "2.1.39"
+#define MyAppVersion "2.1.42"
 #define MyAppPublisher "Axon"
 #define MyAppURL "https://github.com/anthropics/claude-code"
 #define MyAppExeName "Axon.exe"
@@ -31,7 +31,7 @@ DefaultGroupName={#MyAppName}
 ; Allow user to choose if they want a desktop icon
 AllowNoIcons=yes
 ; Output installer file
-OutputDir=.
+OutputDir=..\release
 OutputBaseFilename=Axon-Setup
 ; Installer icon
 SetupIconFile=..\electron\icon.ico
@@ -45,7 +45,11 @@ DiskSpanning=no
 ; Modern wizard style
 WizardStyle=modern
 ; 64-bit only
-ArchitecturesAllowed=x64
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
+; Force close running Axon processes before install/upgrade
+CloseApplications=force
+CloseApplicationsFilter=*.exe,*.dll
 ; Require admin for Program Files, but also support per-user install
 PrivilegesRequiredOverridesAllowed=dialog
 PrivilegesRequired=lowest
@@ -83,6 +87,18 @@ Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}
 Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{app}"; Tasks: addtopath; Check: NeedsAddPath(ExpandConstant('{app}'))
 
 [Code]
+// Kill Axon processes before installing to prevent "file in use" errors
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  ResultCode: Integer;
+begin
+  // Kill Axon.exe and its entire process tree (/T) including the node.exe web server
+  Exec('taskkill.exe', '/F /T /IM Axon.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  // Small delay to let OS release file locks after process termination
+  Sleep(1000);
+  Result := '';
+end;
+
 // Check if the path is already in PATH to avoid duplicates
 function NeedsAddPath(Param: string): boolean;
 var
