@@ -185,6 +185,16 @@ const swarm = {
   'swarm.workersTitle': 'Working/Total Workers',
   'swarmConsole.conflictResolveFailed': 'Conflict resolution failed',
   'swarmConsole.unknownError': 'Unknown error',
+  'projectSelector.blueprint': 'Blueprint',
+  'projectSelector.fetchFailed': 'Failed to fetch project list',
+  'projectSelector.loading': 'Loading...',
+  'projectSelector.networkError': 'Network error, please try again',
+  'projectSelector.noProject': 'Select Project',
+  'projectSelector.noRecentProjects': 'No recent projects',
+  'projectSelector.openFolder': 'Open Folder...',
+  'projectSelector.recentProjects': 'Recent Projects',
+  'projectSelector.removeFromList': 'Remove from list',
+  'projectSelector.removeProject': 'Remove {{name}} from list',
 } as const;
 
 export type SwarmKeys = keyof typeof swarm;

@@ -1056,9 +1056,9 @@ export function useMessageHandler({
     return unsubscribe;
   }, [addMessageHandler, model, send, onNavigateToSwarm]);
 
-  // 流式响应超时检测：如果前端处于非 idle 状态超过 150 秒没有收到任何 WebSocket 消息，
+  // 流式响应超时检测：如果前端处于非 idle 状态超过 360 秒没有收到任何 WebSocket 消息，
   // 自动重置为 idle，防止 UI 永久卡死。
-  // 注意：后端 stream idle timeout 是 120 秒，前端 150 秒是兜底。
+  // 注意：后端 stream idle timeout 是 300 秒，前端 360 秒是兜底。
   const lastActivityRef = useRef<number>(Date.now());
   useEffect(() => {
     // 任何 status 变化都视为活动
@@ -1067,7 +1067,7 @@ export function useMessageHandler({
 
   useEffect(() => {
     if (status === 'idle') return;
-    const FRONTEND_IDLE_TIMEOUT_MS = 150_000; // 150 秒
+    const FRONTEND_IDLE_TIMEOUT_MS = 360_000; // 360 秒（比后端 300s 多 60s 裕量）
     const intervalId = setInterval(() => {
       const elapsed = Date.now() - lastActivityRef.current;
       if (elapsed >= FRONTEND_IDLE_TIMEOUT_MS) {

@@ -2036,7 +2036,9 @@ export class ClaudeClient {
 
     // 流式空闲超时保护：如果连续 STREAM_IDLE_TIMEOUT_MS 没有收到任何事件，主动超时
     // 防止 OpenRouter 等第三方代理静默断连导致 for-await 永远阻塞
-    const STREAM_IDLE_TIMEOUT_MS = 120_000; // 2分钟（thinking 阶段可能较慢，给足时间）
+    // 5 分钟：大上下文（90K+ tokens）首次 cache_creation 时 API 响应较慢，
+    // 加上 Opus thinking 阶段可能持续数分钟，需要足够的等待时间
+    const STREAM_IDLE_TIMEOUT_MS = 300_000;
 
     try {
       // 包装 async iterator 添加空闲超时

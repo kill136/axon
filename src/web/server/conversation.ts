@@ -7,7 +7,7 @@ import { ClaudeClient } from '../../core/client.js';
 import { Session } from '../../core/session.js';
 import { runWithCwd } from '../../core/cwd-context.js';
 import { runWithSessionId } from '../../core/session-context.js';
-import { shouldAutoCompact, calculateAutoCompactThreshold, getContextWindowSize, generateSummaryPrompt, formatCompactSummaryContent, validateToolResults, extractImagesFromMessages } from '../../core/loop.js';
+import { shouldAutoCompact, calculateAutoCompactThreshold, getContextWindowSize, getMaxOutputTokens, generateSummaryPrompt, formatCompactSummaryContent, validateToolResults, extractImagesFromMessages } from '../../core/loop.js';
 import { toolRegistry, registerBlueprintTools } from '../../tools/index.js';
 import { systemPromptBuilder, type PromptContext, type PromptBlock } from '../../prompt/index.js';
 import { modelConfig } from '../../models/index.js';
@@ -1884,12 +1884,16 @@ export class ConversationManager {
                 state.messagesLenAtLastApiCall = state.messages.length;
 
                 // 实时发送上下文使用量更新（每次 API 调用都更新，而非仅对话结束时）
+                // 修复：分母用「有效输入空间」(contextWindow - maxOutputTokens) 而非总窗口
+                // 否则前端显示 67% 时，实际 input + max_tokens 可能已接近/超过 context_window
                 if (totalInputTokens > 0) {
                   const contextWindow = getContextWindowSize(resolvedModel);
-                  const percentage = Math.min(100, Math.round((totalInputTokens / contextWindow) * 100));
+                  const maxOutput = Math.min(getMaxOutputTokens(resolvedModel), 20000);
+                  const effectiveInput = contextWindow - maxOutput;
+                  const percentage = Math.min(100, Math.round((totalInputTokens / effectiveInput) * 100));
                   callbacks.onContextUpdate?.({
                     usedTokens: totalInputTokens,
-                    maxTokens: contextWindow,
+                    maxTokens: effectiveInput,
                     percentage,
                     model: resolvedModel,
                   });
