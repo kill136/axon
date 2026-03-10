@@ -947,7 +947,10 @@ export function calculateAvailableInput(model: string): number {
  */
 export function calculateAutoCompactThreshold(model: string): number {
   const availableInput = calculateAvailableInput(model);
-  const vH0 = 13000; // Session Memory 压缩缓冲区
+  // 压缩缓冲区：从 13k 提高到 40k
+  // 原因：Claude API 在大上下文（>130k tokens）时 SSE 流不稳定，容易中断
+  // 200k 模型：availableInput=180k, threshold=140k (有效输入的 78%, 总窗口的 70%)
+  const vH0 = 40000;
   const threshold = availableInput - vH0;
 
   // 环境变量可以覆盖百分比

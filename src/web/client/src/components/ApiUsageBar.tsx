@@ -67,11 +67,6 @@ export function ApiUsageBar({ info }: ApiUsageBarProps) {
       <span className={`api-usage-bar__text api-usage-bar__text--${level}`}>
         {percentage}%
       </span>
-      {info.resetsAt && (
-        <span className="api-usage-bar__reset">
-          {formatTimeRemaining(info.resetsAt)}
-        </span>
-      )}
 
       {/* Tooltip */}
       {showTooltip && (

@@ -1263,7 +1263,6 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 4px 4px 2px;
-  overflow: hidden;
 }
 
 .input-toolbar-left {
@@ -1272,7 +1271,7 @@ body {
   gap: 2px;
   min-width: 0;
   flex: 1;
-  overflow: hidden;
+  flex-wrap: wrap;
 }
 
 /* 工具栏分隔线 */
@@ -2588,6 +2587,14 @@ body {
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 
+/* 中等屏幕 - 隐藏最低优先级按钮 */
+@media (max-width: 1024px) {
+  .pin-toggle-btn,
+  .conversation-mode-btn {
+    display: none;
+  }
+}
+
 /* 小屏幕适配 (平板竖屏 & 大手机) */
 @media (max-width: 768px) {
   /* 聊天容器 - 减小内边距 */
@@ -2679,28 +2686,9 @@ body {
     padding: 2px 6px;
   }
 
-  .attach-btn,
-  .pin-toggle-btn {
-    width: 28px;
-    height: 28px;
-    font-size: 13px;
-  }
-
-  .debug-trigger-btn {
-    padding: 2px 6px;
-    font-size: 13px;
-  }
-
   /* 隐藏「探针」文字标签，只保留图标 */
   .debug-trigger-btn .debug-trigger-label {
     display: none;
-  }
-
-  .terminal-toggle-btn,
-  .transcript-toggle-btn {
-    width: 28px;
-    height: 28px;
-    padding: 2px;
   }
 
   .send-btn {
