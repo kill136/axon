@@ -425,7 +425,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
             isWholeLine: true,
             className: `heatmap-line-${Math.round(item.complexity / 10)}`,
             glyphMarginClassName: 'heatmap-glyph',
-            glyphMarginHoverMessage: { value: `**复杂度: ${item.complexity}%**\n${item.reason}` },
+            glyphMarginHoverMessage: { value: `**${t('bdc.complexity')}: ${item.complexity}%**\n${item.reason}` },
             overviewRuler: {
               color: `hsl(${hue}, 80%, 50%)`,
               position: monaco.editor.OverviewRulerLane.Right,
@@ -718,10 +718,10 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
           return newMap;
         });
       } else {
-        throw new Error(result.error || 'AI 生成架构图失败');
+        throw new Error(result.error || t('bdc.archGenFailed'));
       }
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'AI 生成架构图失败';
+      const errorMsg = err instanceof Error ? err.message : t('bdc.archGenFailed');
       console.error(`[ArchitectureGraph] 错误:`, err);
       // 设置该类型的错误状态
       setArchitectureGraphErrorMap(prev => {
@@ -1531,7 +1531,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
 
       console.log(`[SaveFile] 已清除 ${selectedPath} 的分析缓存`);
     } catch (err: any) {
-      setFileError(`保存失败: ${err.message}`);
+      setFileError(t('bdc.saveFailed', { error: err.message }));
     } finally {
       setSaving(false);
     }
@@ -1547,12 +1547,12 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
         path,
         name,
         type: 'file',
-        summary: `${name} 文件`,
-        description: `这是 ${path} 文件。点击"重新分析"按钮来获取 AI 生成的详细语义分析。`,
-        exports: ['(点击生成分析查看)'],
-        dependencies: ['(点击生成分析查看)'],
+        summary: t('bdc.mockFileSummary', { name }),
+        description: t('bdc.mockFileDescription', { path }),
+        exports: [t('bdc.clickToGenerateAnalysis')],
+        dependencies: [t('bdc.clickToGenerateAnalysis')],
         techStack: ['TypeScript'],
-        keyPoints: ['需要 AI 分析来获取详细信息'],
+        keyPoints: [t('bdc.needAIAnalysis')],
         analyzedAt: new Date().toISOString(),
       };
     }
@@ -1561,9 +1561,9 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
       path,
       name,
       type: 'directory',
-      summary: `${name} 模块目录`,
-      description: `这是 ${path} 目录。点击"重新分析"按钮来获取 AI 生成的详细语义分析。`,
-      responsibilities: ['(点击生成分析查看)'],
+      summary: t('bdc.mockDirSummary', { name }),
+      description: t('bdc.mockDirDescription', { path }),
+      responsibilities: [t('bdc.clickToGenerateAnalysis')],
       techStack: ['TypeScript'],
       children: [],
       analyzedAt: new Date().toISOString(),
@@ -2181,7 +2181,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
     // 添加键盘快捷键
     editor.addAction({
       id: 'custom-save',
-      label: '保存文件',
+      label: t('bdc.saveFileTitle'),
       keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS],
       run: () => {
         saveFile();
@@ -2190,7 +2190,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
 
     editor.addAction({
       id: 'custom-goto-definition',
-      label: '跳转到定义',
+      label: t('bdc.goToDefinitionTitle'),
       keybindings: [monaco.KeyCode.F12],
       run: () => {
         editor.trigger('keyboard', 'editor.action.revealDefinition', null);
@@ -2213,7 +2213,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
     // 添加右键菜单 - "问AI"选项
     editor.addAction({
       id: 'ask-ai-about-selection',
-      label: '🤖 问 AI 关于这段代码',
+      label: t('bdc.askAIAboutCode'),
       contextMenuGroupId: 'navigation',
       contextMenuOrder: 0,
       run: () => {
@@ -2235,7 +2235,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
       const contents: string[] = [];
 
       if (result.brief) {
-        contents.push(`**🤖 AI 文档** ${result.fromCache ? '*(缓存)*' : ''}`);
+        contents.push(`**🤖 ${t('bdc.aiDoc')}** ${result.fromCache ? `*(${t('bdc.aiDocCached')})*` : ''}`);
         contents.push(result.brief);
       }
 
@@ -2245,7 +2245,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
 
       // 参数说明
       if (result.params && result.params.length > 0) {
-        contents.push(`\n**参数：**`);
+        contents.push(`\n**${t('bdc.aiDocParams')}**`);
         result.params.forEach(p => {
           contents.push(`- \`${p.name}\`: ${p.type} - ${p.description}`);
         });
@@ -2253,12 +2253,12 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
 
       // 返回值
       if (result.returns) {
-        contents.push(`\n**返回值：** ${result.returns.type} - ${result.returns.description}`);
+        contents.push(`\n**${t('bdc.aiDocReturns')}** ${result.returns.type} - ${result.returns.description}`);
       }
 
       // 使用示例
       if (result.examples && result.examples.length > 0) {
-        contents.push(`\n**示例：**`);
+        contents.push(`\n**${t('bdc.aiDocExamples')}**`);
         result.examples.forEach(ex => {
           contents.push(`\`\`\`typescript\n${ex}\n\`\`\``);
         });
@@ -2266,7 +2266,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
 
       // 注意事项
       if (result.notes && result.notes.length > 0) {
-        contents.push(`\n**注意：**`);
+        contents.push(`\n**${t('bdc.aiDocNotes')}**`);
         result.notes.forEach(note => {
           contents.push(`- ${note}`);
         });
@@ -2416,7 +2416,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
         if (word.word.length > 1 && !/^\d+$/.test(word.word)) {
           return {
             range,
-            contents: [{ value: `\`${word.word}\` → 详情见右侧面板` }]
+            contents: [{ value: `\`${word.word}\` → ${t('bdc.detailsInPanel')}` }]
           };
         }
 
@@ -2464,72 +2464,72 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
     // 常见命名模式
     const patterns: Array<[RegExp, (m: RegExpMatchArray) => string]> = [
       // 动作类
-      [/^handle(\w+)$/, (m) => `处理 ${splitCamelCase(m[1])} 事件`],
-      [/^on(\w+)$/, (m) => `响应 ${splitCamelCase(m[1])} 事件`],
-      [/^get(\w+)$/, (m) => `获取 ${splitCamelCase(m[1])}`],
-      [/^set(\w+)$/, (m) => `设置 ${splitCamelCase(m[1])}`],
-      [/^fetch(\w+)$/, (m) => `请求 ${splitCamelCase(m[1])} 数据`],
-      [/^load(\w+)$/, (m) => `加载 ${splitCamelCase(m[1])}`],
-      [/^save(\w+)$/, (m) => `保存 ${splitCamelCase(m[1])}`],
-      [/^create(\w+)$/, (m) => `创建 ${splitCamelCase(m[1])}`],
-      [/^update(\w+)$/, (m) => `更新 ${splitCamelCase(m[1])}`],
-      [/^delete(\w+)$/, (m) => `删除 ${splitCamelCase(m[1])}`],
-      [/^remove(\w+)$/, (m) => `移除 ${splitCamelCase(m[1])}`],
-      [/^add(\w+)$/, (m) => `添加 ${splitCamelCase(m[1])}`],
-      [/^init(\w*)$/, (m) => m[1] ? `初始化 ${splitCamelCase(m[1])}` : '执行初始化'],
-      [/^parse(\w+)$/, (m) => `解析 ${splitCamelCase(m[1])}`],
-      [/^format(\w+)$/, (m) => `格式化 ${splitCamelCase(m[1])}`],
-      [/^validate(\w+)$/, (m) => `验证 ${splitCamelCase(m[1])}`],
-      [/^check(\w+)$/, (m) => `检查 ${splitCamelCase(m[1])}`],
-      [/^is(\w+)$/, (m) => `判断是否 ${splitCamelCase(m[1])}`],
-      [/^has(\w+)$/, (m) => `判断是否有 ${splitCamelCase(m[1])}`],
-      [/^can(\w+)$/, (m) => `判断能否 ${splitCamelCase(m[1])}`],
-      [/^should(\w+)$/, (m) => `判断是否应该 ${splitCamelCase(m[1])}`],
-      [/^render(\w*)$/, (m) => m[1] ? `渲染 ${splitCamelCase(m[1])}` : '执行渲染'],
+      [/^handle(\w+)$/, (m) => `${t('bdc.infer.handle', { name: splitCamelCase(m[1]) })}`],
+      [/^on(\w+)$/, (m) => `${t('bdc.infer.respond', { name: splitCamelCase(m[1]) })}`],
+      [/^get(\w+)$/, (m) => `${t('bdc.infer.get', { name: splitCamelCase(m[1]) })}`],
+      [/^set(\w+)$/, (m) => `${t('bdc.infer.set', { name: splitCamelCase(m[1]) })}`],
+      [/^fetch(\w+)$/, (m) => `${t('bdc.infer.fetch', { name: splitCamelCase(m[1]) })}`],
+      [/^load(\w+)$/, (m) => `${t('bdc.infer.load', { name: splitCamelCase(m[1]) })}`],
+      [/^save(\w+)$/, (m) => `${t('bdc.infer.save', { name: splitCamelCase(m[1]) })}`],
+      [/^create(\w+)$/, (m) => `${t('bdc.infer.create', { name: splitCamelCase(m[1]) })}`],
+      [/^update(\w+)$/, (m) => `${t('bdc.infer.update', { name: splitCamelCase(m[1]) })}`],
+      [/^delete(\w+)$/, (m) => `${t('bdc.infer.delete', { name: splitCamelCase(m[1]) })}`],
+      [/^remove(\w+)$/, (m) => `${t('bdc.infer.remove', { name: splitCamelCase(m[1]) })}`],
+      [/^add(\w+)$/, (m) => `${t('bdc.infer.add', { name: splitCamelCase(m[1]) })}`],
+      [/^init(\w*)$/, (m) => m[1] ? `${t('bdc.infer.init', { name: splitCamelCase(m[1]) })}` : t('bdc.infer.initDefault')],
+      [/^parse(\w+)$/, (m) => `${t('bdc.infer.parse', { name: splitCamelCase(m[1]) })}`],
+      [/^format(\w+)$/, (m) => `${t('bdc.infer.format', { name: splitCamelCase(m[1]) })}`],
+      [/^validate(\w+)$/, (m) => `${t('bdc.infer.validate', { name: splitCamelCase(m[1]) })}`],
+      [/^check(\w+)$/, (m) => `${t('bdc.infer.check', { name: splitCamelCase(m[1]) })}`],
+      [/^is(\w+)$/, (m) => `${t('bdc.infer.is', { name: splitCamelCase(m[1]) })}`],
+      [/^has(\w+)$/, (m) => `${t('bdc.infer.has', { name: splitCamelCase(m[1]) })}`],
+      [/^can(\w+)$/, (m) => `${t('bdc.infer.can', { name: splitCamelCase(m[1]) })}`],
+      [/^should(\w+)$/, (m) => `${t('bdc.infer.should', { name: splitCamelCase(m[1]) })}`],
+      [/^render(\w*)$/, (m) => m[1] ? `${t('bdc.infer.render', { name: splitCamelCase(m[1]) })}` : t('bdc.infer.renderDefault')],
       [/^use(\w+)$/, (m) => `${splitCamelCase(m[1])} Hook`],
-      [/^with(\w+)$/, (m) => `附加 ${splitCamelCase(m[1])} 能力的高阶组件`],
+      [/^with(\w+)$/, (m) => `${t('bdc.infer.withHOC', { name: splitCamelCase(m[1]) })}`],
       // 角色类后缀
-      [/(\w+)Manager$/, (m) => `${splitCamelCase(m[1])} 管理器`],
-      [/(\w+)Service$/, (m) => `${splitCamelCase(m[1])} 服务`],
-      [/(\w+)Controller$/, (m) => `${splitCamelCase(m[1])} 控制器`],
-      [/(\w+)Handler$/, (m) => `${splitCamelCase(m[1])} 处理器`],
-      [/(\w+)Provider$/, (m) => `${splitCamelCase(m[1])} 提供者`],
-      [/(\w+)Factory$/, (m) => `${splitCamelCase(m[1])} 工厂`],
-      [/(\w+)Builder$/, (m) => `${splitCamelCase(m[1])} 构建器`],
-      [/(\w+)Helper$/, (m) => `${splitCamelCase(m[1])} 辅助工具`],
-      [/(\w+)Util(?:s)?$/, (m) => `${splitCamelCase(m[1])} 工具函数`],
-      [/(\w+)Coordinator$/, (m) => `${splitCamelCase(m[1])} 协调器，负责多组件间的协作调度`],
-      [/(\w+)Registry$/, (m) => `${splitCamelCase(m[1])} 注册表`],
-      [/(\w+)Pool$/, (m) => `${splitCamelCase(m[1])} 池`],
-      [/(\w+)Queue$/, (m) => `${splitCamelCase(m[1])} 队列`],
-      [/(\w+)Cache$/, (m) => `${splitCamelCase(m[1])} 缓存`],
-      [/(\w+)Store$/, (m) => `${splitCamelCase(m[1])} 状态存储`],
-      [/(\w+)Context$/, (m) => `${splitCamelCase(m[1])} 上下文`],
-      [/(\w+)Reducer$/, (m) => `${splitCamelCase(m[1])} 状态管理 Reducer`],
-      [/(\w+)Middleware$/, (m) => `${splitCamelCase(m[1])} 中间件`],
-      [/(\w+)Plugin$/, (m) => `${splitCamelCase(m[1])} 插件`],
-      [/(\w+)Adapter$/, (m) => `${splitCamelCase(m[1])} 适配器`],
-      [/(\w+)Wrapper$/, (m) => `${splitCamelCase(m[1])} 包装器`],
-      [/(\w+)Listener$/, (m) => `${splitCamelCase(m[1])} 监听器`],
-      [/(\w+)Observer$/, (m) => `${splitCamelCase(m[1])} 观察者`],
-      [/(\w+)Emitter$/, (m) => `${splitCamelCase(m[1])} 事件发射器`],
-      [/(\w+)Client$/, (m) => `${splitCamelCase(m[1])} 客户端`],
-      [/(\w+)Server$/, (m) => `${splitCamelCase(m[1])} 服务端`],
-      [/(\w+)Api$/, (m) => `${splitCamelCase(m[1])} API 接口`],
-      [/(\w+)Route(?:r)?$/, (m) => `${splitCamelCase(m[1])} 路由`],
-      [/(\w+)Component$/, (m) => `${splitCamelCase(m[1])} 组件`],
-      [/(\w+)View$/, (m) => `${splitCamelCase(m[1])} 视图`],
-      [/(\w+)Page$/, (m) => `${splitCamelCase(m[1])} 页面`],
-      [/(\w+)Modal$/, (m) => `${splitCamelCase(m[1])} 弹窗`],
-      [/(\w+)Dialog$/, (m) => `${splitCamelCase(m[1])} 对话框`],
-      [/(\w+)Form$/, (m) => `${splitCamelCase(m[1])} 表单`],
-      [/(\w+)List$/, (m) => `${splitCamelCase(m[1])} 列表`],
-      [/(\w+)Table$/, (m) => `${splitCamelCase(m[1])} 表格`],
-      [/(\w+)Panel$/, (m) => `${splitCamelCase(m[1])} 面板`],
-      [/(\w+)Card$/, (m) => `${splitCamelCase(m[1])} 卡片`],
-      [/(\w+)Button$/, (m) => `${splitCamelCase(m[1])} 按钮`],
-      [/(\w+)Input$/, (m) => `${splitCamelCase(m[1])} 输入框`],
-      [/(\w+)Select$/, (m) => `${splitCamelCase(m[1])} 选择器`],
+      [/(\w+)Manager$/, (m) => `${t('bdc.infer.manager', { name: splitCamelCase(m[1]) })}`],
+      [/(\w+)Service$/, (m) => `${t('bdc.infer.service', { name: splitCamelCase(m[1]) })}`],
+      [/(\w+)Controller$/, (m) => `${t('bdc.infer.controller', { name: splitCamelCase(m[1]) })}`],
+      [/(\w+)Handler$/, (m) => `${t('bdc.infer.handler', { name: splitCamelCase(m[1]) })}`],
+      [/(\w+)Provider$/, (m) => `${t('bdc.infer.provider', { name: splitCamelCase(m[1]) })}`],
+      [/(\w+)Factory$/, (m) => `${t('bdc.infer.factory', { name: splitCamelCase(m[1]) })}`],
+      [/(\w+)Builder$/, (m) => `${t('bdc.infer.builder', { name: splitCamelCase(m[1]) })}`],
+      [/(\w+)Helper$/, (m) => `${t('bdc.infer.helper', { name: splitCamelCase(m[1]) })}`],
+      [/(\w+)Util(?:s)?$/, (m) => `${t('bdc.infer.util', { name: splitCamelCase(m[1]) })}`],
+      [/(\w+)Coordinator$/, (m) => `${t('bdc.infer.coordinator', { name: splitCamelCase(m[1]) })}`],
+      [/(\w+)Registry$/, (m) => `${t('bdc.infer.registry', { name: splitCamelCase(m[1]) })}`],
+      [/(\w+)Pool$/, (m) => `${t('bdc.infer.pool', { name: splitCamelCase(m[1]) })}`],
+      [/(\w+)Queue$/, (m) => `${t('bdc.infer.queue', { name: splitCamelCase(m[1]) })}`],
+      [/(\w+)Cache$/, (m) => `${t('bdc.infer.cache', { name: splitCamelCase(m[1]) })}`],
+      [/(\w+)Store$/, (m) => `${t('bdc.infer.store', { name: splitCamelCase(m[1]) })}`],
+      [/(\w+)Context$/, (m) => `${t('bdc.infer.context', { name: splitCamelCase(m[1]) })}`],
+      [/(\w+)Reducer$/, (m) => `${t('bdc.infer.reducer', { name: splitCamelCase(m[1]) })}`],
+      [/(\w+)Middleware$/, (m) => `${t('bdc.infer.middleware', { name: splitCamelCase(m[1]) })}`],
+      [/(\w+)Plugin$/, (m) => `${t('bdc.infer.plugin', { name: splitCamelCase(m[1]) })}`],
+      [/(\w+)Adapter$/, (m) => `${t('bdc.infer.adapter', { name: splitCamelCase(m[1]) })}`],
+      [/(\w+)Wrapper$/, (m) => `${t('bdc.infer.wrapper', { name: splitCamelCase(m[1]) })}`],
+      [/(\w+)Listener$/, (m) => `${t('bdc.infer.listener', { name: splitCamelCase(m[1]) })}`],
+      [/(\w+)Observer$/, (m) => `${t('bdc.infer.observer', { name: splitCamelCase(m[1]) })}`],
+      [/(\w+)Emitter$/, (m) => `${t('bdc.infer.emitter', { name: splitCamelCase(m[1]) })}`],
+      [/(\w+)Client$/, (m) => `${t('bdc.infer.client', { name: splitCamelCase(m[1]) })}`],
+      [/(\w+)Server$/, (m) => `${t('bdc.infer.server', { name: splitCamelCase(m[1]) })}`],
+      [/(\w+)Api$/, (m) => `${t('bdc.infer.api', { name: splitCamelCase(m[1]) })}`],
+      [/(\w+)Route(?:r)?$/, (m) => `${t('bdc.infer.route', { name: splitCamelCase(m[1]) })}`],
+      [/(\w+)Component$/, (m) => `${t('bdc.infer.component', { name: splitCamelCase(m[1]) })}`],
+      [/(\w+)View$/, (m) => `${t('bdc.infer.view', { name: splitCamelCase(m[1]) })}`],
+      [/(\w+)Page$/, (m) => `${t('bdc.infer.page', { name: splitCamelCase(m[1]) })}`],
+      [/(\w+)Modal$/, (m) => `${t('bdc.infer.modal', { name: splitCamelCase(m[1]) })}`],
+      [/(\w+)Dialog$/, (m) => `${t('bdc.infer.dialog', { name: splitCamelCase(m[1]) })}`],
+      [/(\w+)Form$/, (m) => `${t('bdc.infer.form', { name: splitCamelCase(m[1]) })}`],
+      [/(\w+)List$/, (m) => `${t('bdc.infer.list', { name: splitCamelCase(m[1]) })}`],
+      [/(\w+)Table$/, (m) => `${t('bdc.infer.table', { name: splitCamelCase(m[1]) })}`],
+      [/(\w+)Panel$/, (m) => `${t('bdc.infer.panel', { name: splitCamelCase(m[1]) })}`],
+      [/(\w+)Card$/, (m) => `${t('bdc.infer.card', { name: splitCamelCase(m[1]) })}`],
+      [/(\w+)Button$/, (m) => `${t('bdc.infer.button', { name: splitCamelCase(m[1]) })}`],
+      [/(\w+)Input$/, (m) => `${t('bdc.infer.input', { name: splitCamelCase(m[1]) })}`],
+      [/(\w+)Select$/, (m) => `${t('bdc.infer.select', { name: splitCamelCase(m[1]) })}`],
     ];
 
     for (const [pattern, generator] of patterns) {
@@ -2610,19 +2610,19 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
       }
 
       if (extendsClass) {
-        parts.push(`继承自 ${extendsClass}`);
+        parts.push(`${t('bdc.extendsClass', { name: extendsClass })}`);
       }
       if (implementsInterfaces.length > 0) {
-        parts.push(`实现 ${implementsInterfaces.join(', ')} 接口`);
+        parts.push(t('bdc.implements', { interfaces: implementsInterfaces.join(', ') }));
       }
       if (methodCount > 0) {
-        parts.push(`包含 ${methodCount} 个方法` + (methods.length > 0 ? `（${methods.join(', ')} 等）` : ''));
+        parts.push(`${t('bdc.methodCount', { count: methodCount })}` + (methods.length > 0 ? ` (${methods.join(', ')} ${t('bdc.etc')})` : ''));
       }
       if (propertyCount > 0) {
-        parts.push(`${propertyCount} 个属性`);
+        parts.push(`${t('bdc.propertyCount', { count: propertyCount })}`);
       }
 
-      return parts.length > 0 ? parts.join('，') + '。' : `类 ${name}`;
+      return parts.length > 0 ? parts.join('，') + '。' : `${t('bdc.classPrefix')} ${name}`;
     }
 
     if (type === 'function' || type === 'component') {
@@ -2670,21 +2670,21 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
         }
 
         if (hooks.length > 0) {
-          parts.push(`使用 ${hooks.join(', ')}`);
+          parts.push(t('bdc.usesHooks', { hooks: hooks.join(', ') }));
         }
       }
 
       if (isAsync) {
-        parts.push('异步执行');
+        parts.push(t('bdc.asyncExecution'));
       }
       if (params.length > 0) {
-        parts.push(`接收参数: ${params.slice(0, 3).join(', ')}${params.length > 3 ? ' 等' : ''}`);
+        parts.push(t('bdc.receivesParams', { params: params.slice(0, 3).join(', ') }) + (params.length > 3 ? ' ' + t('bdc.etc') : ''));
       }
       if (returnType && returnType !== 'void') {
-        parts.push(`返回 ${returnType}`);
+        parts.push(`${t('bdc.returns', { type: returnType })}`);
       }
 
-      return parts.length > 0 ? parts.join('，') + '。' : `${type === 'component' ? '组件' : '函数'} ${name}`;
+      return parts.length > 0 ? parts.join('，') + '。' : `${type === 'component' ? t('bdc.component') : t('bdc.functionLabel')} ${name}`;
     }
 
     return `${name}`;
@@ -2714,12 +2714,12 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
       const uniqueSources = [...new Set(importSources)];
       steps.push({
         type: 'block',
-        name: '导入声明',
+        name: t('bdc.importDeclaration'),
         line: 1,
         endLine: importEndLine,
         description: uniqueSources.length > 0
-          ? `引入 ${uniqueSources.join(', ')} 等外部依赖。`
-          : '引入本地模块依赖。',
+          ? t('bdc.importsExternal', { sources: uniqueSources.join(', ') })
+          : t('bdc.localModuleDeps'),
         importance: 'medium',
       });
     }
@@ -2920,7 +2920,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
         } else {
           setAskAI(prev => ({
             ...prev,
-            answer: `❌ AI 服务暂时不可用: ${data.error || '请稍后重试'}`,
+            answer: `❌ ${t('bdc.aiServiceUnavailable')}: ${data.error || t('bdc.retryLater')}`,
             loading: false,
           }));
         }
@@ -2928,14 +2928,14 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
         const errorData = await response.json().catch(() => ({}));
         setAskAI(prev => ({
           ...prev,
-          answer: `❌ AI 服务请求失败: ${errorData.error || '请检查网络连接或 API 配置'}`,
+          answer: `❌ ${t('bdc.aiRequestFailed')}: ${errorData.error || t('bdc.checkConnection')}`,
           loading: false,
         }));
       }
     } catch (err: any) {
       setAskAI(prev => ({
         ...prev,
-        answer: `❌ 网络错误: ${err.message || '无法连接到 AI 服务'}`,
+        answer: `❌ ${t('bdc.networkError')}: ${err.message || t('bdc.cannotConnect')}`,
         loading: false,
       }));
     }
@@ -3144,9 +3144,9 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
   };
 
   const statusTexts: Record<string, string> = {
-    draft: '草稿', review: '审核中', approved: '已批准',
-    executing: '执行中', completed: '已完成', paused: '已暂停', modified: '已修改',
-    rejected: '已拒绝', failed: '失败',
+    draft: t('bdc.status.draft'), review: t('bdc.status.review'), approved: t('bdc.status.approved'),
+    executing: t('bdc.status.executing'), completed: t('bdc.status.completed'), paused: t('bdc.status.paused'), modified: t('bdc.status.modified'),
+    rejected: t('bdc.status.rejected'), failed: t('bdc.status.failed'),
   };
 
   // ============ 蓝图操作处理函数 ============
@@ -3163,7 +3163,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
       setBlueprintInfo(prev => prev ? { ...prev, status: 'approved' } : null);
       onRefresh?.();
     } catch (err: any) {
-      setBlueprintOperationError(err.message || '批准蓝图失败');
+      setBlueprintOperationError(err.message || t('bdc.approveFailed'));
       console.error('批准蓝图失败:', err);
     } finally {
       setBlueprintOperating(false);
@@ -3175,7 +3175,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
    */
   const handleRejectBlueprint = async () => {
     if (!blueprintId || blueprintOperating) return;
-    const reason = window.prompt('请输入拒绝原因:');
+    const reason = window.prompt(t('bdc.rejectReasonPrompt'));
     if (!reason) return;
     setBlueprintOperating(true);
     setBlueprintOperationError(null);
@@ -3184,7 +3184,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
       setBlueprintInfo(prev => prev ? { ...prev, status: 'rejected' } : null);
       onRefresh?.();
     } catch (err: any) {
-      setBlueprintOperationError(err.message || '拒绝蓝图失败');
+      setBlueprintOperationError(err.message || t('bdc.rejectFailed'));
       console.error('拒绝蓝图失败:', err);
     } finally {
       setBlueprintOperating(false);
@@ -3211,7 +3211,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
         }
       }
     } catch (err: any) {
-      setBlueprintOperationError(err.message || '执行蓝图失败');
+      setBlueprintOperationError(err.message || t('bdc.executeFailed'));
       console.error('执行蓝图失败:', err);
     } finally {
       setBlueprintOperating(false);
@@ -3230,7 +3230,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
       setBlueprintInfo(prev => prev ? { ...prev, status: 'paused' } : null);
       onRefresh?.();
     } catch (err: any) {
-      setBlueprintOperationError(err.message || '暂停执行失败');
+      setBlueprintOperationError(err.message || t('bdc.pauseFailed'));
       console.error('暂停执行失败:', err);
     } finally {
       setBlueprintOperating(false);
@@ -3249,7 +3249,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
       setBlueprintInfo(prev => prev ? { ...prev, status: 'executing' } : null);
       onRefresh?.();
     } catch (err: any) {
-      setBlueprintOperationError(err.message || '恢复执行失败');
+      setBlueprintOperationError(err.message || t('bdc.resumeFailed'));
       console.error('恢复执行失败:', err);
     } finally {
       setBlueprintOperating(false);
@@ -3270,7 +3270,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
       setBlueprintInfo(prev => prev ? { ...prev, status: 'completed' } : null);
       onRefresh?.();
     } catch (err: any) {
-      setBlueprintOperationError(err.message || '完成执行失败');
+      setBlueprintOperationError(err.message || t('bdc.completeFailed'));
       console.error('完成执行失败:', err);
     } finally {
       setBlueprintOperating(false);
@@ -3290,7 +3290,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
       await blueprintApi.deleteBlueprint(blueprintId);
       onDeleted?.();
     } catch (err: any) {
-      setBlueprintOperationError(err.message || '删除蓝图失败');
+      setBlueprintOperationError(err.message || t('bdc.deleteFailed'));
       console.error('删除蓝图失败:', err);
     } finally {
       setBlueprintOperating(false);
@@ -3316,7 +3316,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
       case 'modified':
         // 草稿和已修改状态可以提交审核（但这里没有提交审核的 API 调用，先跳过）
         actions.push({
-          label: '删除',
+          label: t('bdc.actionDelete'),
           icon: '🗑️',
           onClick: handleDeleteBlueprint,
           type: 'danger',
@@ -3325,13 +3325,13 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
       case 'review':
         // 审核中可以批准或拒绝
         actions.push({
-          label: '批准',
+          label: t('bdc.actionApprove'),
           icon: '✅',
           onClick: handleApproveBlueprint,
           type: 'success',
         });
         actions.push({
-          label: '拒绝',
+          label: t('bdc.actionReject'),
           icon: '❌',
           onClick: handleRejectBlueprint,
           type: 'danger',
@@ -3340,13 +3340,13 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
       case 'approved':
         // 已批准可以执行
         actions.push({
-          label: '开始执行',
+          label: t('bdc.actionStartExecution'),
           icon: '▶️',
           onClick: handleExecuteBlueprint,
           type: 'primary',
         });
         actions.push({
-          label: '删除',
+          label: t('bdc.actionDelete'),
           icon: '🗑️',
           onClick: handleDeleteBlueprint,
           type: 'danger',
@@ -3355,13 +3355,13 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
       case 'executing':
         // 执行中可以暂停或完成
         actions.push({
-          label: '暂停',
+          label: t('bdc.actionPause'),
           icon: '⏸️',
           onClick: handlePauseBlueprint,
           type: 'warning',
         });
         actions.push({
-          label: '完成',
+          label: t('bdc.actionComplete'),
           icon: '✅',
           onClick: handleCompleteBlueprint,
           type: 'success',
@@ -3370,13 +3370,13 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
       case 'paused':
         // 已暂停可以恢复或完成
         actions.push({
-          label: '恢复',
+          label: t('bdc.actionResume'),
           icon: '▶️',
           onClick: handleResumeBlueprint,
           type: 'primary',
         });
         actions.push({
-          label: '完成',
+          label: t('bdc.actionComplete'),
           icon: '✅',
           onClick: handleCompleteBlueprint,
           type: 'success',
@@ -3387,7 +3387,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
       case 'rejected':
         // 已完成、失败或已拒绝只能删除
         actions.push({
-          label: '删除',
+          label: t('bdc.actionDelete'),
           icon: '🗑️',
           onClick: handleDeleteBlueprint,
           type: 'danger',
@@ -3405,7 +3405,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
       return (
         <div className={styles.loadingContainer}>
           <div className={styles.spinner}></div>
-          <p>正在加载文件内容...</p>
+          <p>{t('bdc.loadingFileContent')}</p>
         </div>
       );
     }
@@ -3415,7 +3415,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
         <div className={styles.errorState}>
           <p className={styles.errorText}>{fileError}</p>
           <button className={styles.retryButton} onClick={() => selectedPath && loadFileContent(selectedPath)}>
-            重试
+            {t('bdc.retry')}
           </button>
         </div>
       );
@@ -3424,8 +3424,8 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
     if (!fileContent) {
       return (
         <div className={styles.welcomePage}>
-          <h2 className={styles.welcomeTitle}>选择文件查看代码</h2>
-          <p className={styles.welcomeDesc}>点击左侧文件树中的文件来查看和编辑代码</p>
+          <h2 className={styles.welcomeTitle}>{t('bdc.selectFileToView')}</h2>
+          <p className={styles.welcomeDesc}>{t('bdc.clickFileToViewEdit')}</p>
         </div>
       );
     }
@@ -3514,7 +3514,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
                 onClick={() => setSyntaxPanelEnabled(!syntaxPanelEnabled)}
                 title={syntaxPanelEnabled ? t('bdc.syntaxPanelToggle.close') : t('bdc.syntaxPanelToggle.open')}
               >
-                {syntaxPanelEnabled ? '📖 关闭详情' : '📖 语法详情'}
+                {syntaxPanelEnabled ? t('bdc.closeSyntaxDetail') : t('bdc.openSyntaxDetail')}
               </button>
               {/* 小地图开关 */}
               <button
@@ -3522,7 +3522,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
                 onClick={() => setMinimapEnabled(!minimapEnabled)}
                 title={minimapEnabled ? t('bdc.minimapToggle.close') : t('bdc.minimapToggle.open')}
               >
-                {minimapEnabled ? '🗺️ 关闭地图' : '🗺️ 小地图'}
+                {minimapEnabled ? t('bdc.closeMap') : t('bdc.openMap')}
               </button>
             </div>
 
@@ -3533,14 +3533,14 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
               onClick={() => setIsEditing(!isEditing)}
               title={isEditing ? t('bdc.editModeToggle.readonly') : t('bdc.editModeToggle.edit')}
             >
-              {isEditing ? '📖 只读' : '✏️ 编辑'}
+              {isEditing ? t('bdc.readonlyMode') : t('bdc.editMode')}
             </button>
             <button
               className={styles.codeBtn}
               onClick={handleGoToDefinition}
               title={t('bdc.goToDefinition')}
             >
-              🔗 跳转
+              {t('bdc.jumpToDefinition')}
             </button>
             {hasUnsavedChanges && (
               <button
@@ -3549,7 +3549,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
                 disabled={saving}
                 title={t('bdc.saveFile')}
               >
-                {saving ? '保存中...' : '💾 保存'}
+                {saving ? t('bdc.saving') : t('bdc.save')}
               </button>
             )}
           </div>
@@ -3648,8 +3648,8 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
           {beginnerMode && lineAnalysis && syntaxPanelEnabled && (
             <div className={styles.lineDetailPanel}>
               <div className={styles.lineDetailHeader}>
-                <span className={styles.lineDetailTitle}>📖 第 {lineAnalysis.lineNumber} 行</span>
-                {lineAnalysis.loading && <span className={styles.lineDetailLoading}>AI 分析中...</span>}
+                <span className={styles.lineDetailTitle}>{t('bdc.lineDetailTitle', { line: lineAnalysis.lineNumber })}</span>
+                {lineAnalysis.loading && <span className={styles.lineDetailLoading}>{t('bdc.aiAnalyzing')}</span>}
               </div>
 
               <div className={styles.lineDetailCode}>
@@ -3659,7 +3659,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
               {/* 关键字解释 */}
               {lineAnalysis.keywords.length > 0 && (
                 <div className={styles.lineDetailSection}>
-                  <div className={styles.lineDetailSectionTitle}>语法关键字</div>
+                  <div className={styles.lineDetailSectionTitle}>{t('bdc.syntaxKeywords')}</div>
                   {lineAnalysis.keywords.map((kw, idx) => (
                     <div key={idx} className={styles.lineDetailKeyword}>
                       <span className={styles.keywordName}>{kw.keyword}</span>
@@ -3676,7 +3676,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
               {/* AI 分析结果 */}
               {lineAnalysis.aiAnalysis && (
                 <div className={styles.lineDetailSection}>
-                  <div className={styles.lineDetailSectionTitle}>🤖 AI 分析</div>
+                  <div className={styles.lineDetailSectionTitle}>{t('bdc.aiAnalysisSection')}</div>
                   {lineAnalysis.aiAnalysis.brief && (
                     <div className={styles.aiAnalysisBrief}>{lineAnalysis.aiAnalysis.brief}</div>
                   )}
@@ -3685,7 +3685,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
                   )}
                   {lineAnalysis.aiAnalysis.params && lineAnalysis.aiAnalysis.params.length > 0 && (
                     <div className={styles.aiAnalysisParams}>
-                      <div className={styles.paramTitle}>参数:</div>
+                      <div className={styles.paramTitle}>{t('bdc.paramsLabel')}</div>
                       {lineAnalysis.aiAnalysis.params.map((p, i) => (
                         <div key={i} className={styles.paramItem}>
                           <code>{p.name}</code>
@@ -3697,14 +3697,14 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
                   )}
                   {lineAnalysis.aiAnalysis.returns && (
                     <div className={styles.aiAnalysisReturns}>
-                      <span className={styles.returnLabel}>返回:</span>
+                      <span className={styles.returnLabel}>{t('bdc.returnLabel')}</span>
                       <code>{lineAnalysis.aiAnalysis.returns.type}</code>
                       <span>{lineAnalysis.aiAnalysis.returns.description}</span>
                     </div>
                   )}
                   {lineAnalysis.aiAnalysis.examples && lineAnalysis.aiAnalysis.examples.length > 0 && (
                     <div className={styles.aiAnalysisExamples}>
-                      <div className={styles.exampleTitle}>示例:</div>
+                      <div className={styles.exampleTitle}>{t('bdc.exampleLabel')}</div>
                       {lineAnalysis.aiAnalysis.examples.map((ex, i) => (
                         <pre key={i} className={styles.exampleCode}>{ex}</pre>
                       ))}
@@ -3717,7 +3717,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
               {lineAnalysis.loading && !lineAnalysis.aiAnalysis && (
                 <div className={styles.lineDetailLoading}>
                   <div className={styles.loadingSpinner}></div>
-                  <span>正在分析代码...</span>
+                  <span>{t('bdc.analyzingCode')}</span>
                 </div>
               )}
             </div>
@@ -3725,13 +3725,13 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
         </div>
         <div className={styles.codeFooter}>
           <span className={styles.codeModified}>
-            最后修改: {new Date(fileContent.modifiedAt).toLocaleString('zh-CN')}
+            {t('bdc.lastModified', { time: new Date(fileContent.modifiedAt).toLocaleString() })}
           </span>
           <span className={styles.codeLines}>
-            {editedContent.split('\n').length} 行
+            {t('bdc.lineCount', { count: editedContent.split('\n').length })}
           </span>
           <span className={styles.codeShortcuts}>
-            F12: 跳转定义 | Ctrl+S: 保存 | 右键: 问AI
+            {t('bdc.shortcuts')}
           </span>
         </div>
 
@@ -3740,9 +3740,9 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
           <div className={styles.askAIOverlay} onClick={closeAskAI}>
             <div className={styles.askAIDialog} onClick={e => e.stopPropagation()}>
               <div className={styles.askAIHeader}>
-                <span className={styles.askAITitle}>🤖 问 AI</span>
+                <span className={styles.askAITitle}>{t('bdc.askAITitle')}</span>
                 <span className={styles.askAIRange}>
-                  行 {askAI.selectedRange?.startLine} - {askAI.selectedRange?.endLine}
+                  {t('bdc.lineRange', { start: askAI.selectedRange?.startLine, end: askAI.selectedRange?.endLine })}
                 </span>
                 <button className={styles.askAIClose} onClick={closeAskAI}>×</button>
               </div>
@@ -3764,24 +3764,24 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
                   onClick={submitAIQuestion}
                   disabled={askAI.loading || !askAI.question.trim()}
                 >
-                  {askAI.loading ? '思考中...' : '提问'}
+                  {askAI.loading ? t('bdc.aiThinking') : t('bdc.askButton')}
                 </button>
               </div>
               {askAI.answer && (
                 <div className={styles.askAIAnswer}>
-                  <div className={styles.askAIAnswerLabel}>AI 回答：</div>
+                  <div className={styles.askAIAnswerLabel}>{t('bdc.aiAnswer')}</div>
                   <div className={styles.askAIAnswerContent}>{askAI.answer}</div>
                 </div>
               )}
               <div className={styles.askAIHints}>
-                <span className={styles.askAIHint} onClick={() => setAskAI(prev => ({ ...prev, question: '这段代码有什么作用？' }))}>
-                  这段代码有什么作用？
+                <span className={styles.askAIHint} onClick={() => setAskAI(prev => ({ ...prev, question: t('bdc.askSample1') }))}>
+                  {t('bdc.askSample1')}
                 </span>
-                <span className={styles.askAIHint} onClick={() => setAskAI(prev => ({ ...prev, question: '怎么优化这段代码？' }))}>
-                  怎么优化这段代码？
+                <span className={styles.askAIHint} onClick={() => setAskAI(prev => ({ ...prev, question: t('bdc.askSample2') }))}>
+                  {t('bdc.askSample2')}
                 </span>
-                <span className={styles.askAIHint} onClick={() => setAskAI(prev => ({ ...prev, question: '这段代码有什么问题？' }))}>
-                  这段代码有什么问题？
+                <span className={styles.askAIHint} onClick={() => setAskAI(prev => ({ ...prev, question: t('bdc.askSample3') }))}>
+                  {t('bdc.askSample3')}
                 </span>
               </div>
             </div>
@@ -3793,7 +3793,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
         {tourState.active && tourState.steps.length > 0 && (
           <div className={styles.tourPanel}>
             <div className={styles.tourHeader}>
-              <span className={styles.tourTitle}>🎯 代码导游</span>
+              <span className={styles.tourTitle}>{t('bdc.codeTourTitle')}</span>
               <span className={styles.tourProgress}>
                 {tourState.currentStep + 1} / {tourState.steps.length}
               </span>
@@ -3803,15 +3803,15 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
             <div className={styles.tourContent}>
               <div className={styles.tourStepInfo}>
                 <span className={styles.tourStepType}>
-                  {tourState.steps[tourState.currentStep].type === 'class' ? '🏛️ 类' :
-                   tourState.steps[tourState.currentStep].type === 'function' ? '🔧 函数' :
-                   tourState.steps[tourState.currentStep].type === 'block' ? '📦 代码块' : '📄 文件'}
+                  {tourState.steps[tourState.currentStep].type === 'class' ? t('bdc.symbolClass') :
+                   tourState.steps[tourState.currentStep].type === 'function' ? t('bdc.symbolFunction') :
+                   tourState.steps[tourState.currentStep].type === 'block' ? t('bdc.symbolBlock') : t('bdc.symbolFile')}
                 </span>
                 <span className={styles.tourStepName}>
                   {tourState.steps[tourState.currentStep].name}
                 </span>
                 <span className={styles.tourStepLine}>
-                  行 {tourState.steps[tourState.currentStep].line}
+                  {t('bdc.lineNum', { line: tourState.steps[tourState.currentStep].line })}
                 </span>
               </div>
               <p className={styles.tourDescription}>
@@ -3821,7 +3821,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
 
             {/* 步骤列表 */}
             <div className={styles.tourStepsList}>
-              <div className={styles.tourStepsTitle}>全部步骤</div>
+              <div className={styles.tourStepsTitle}>{t('bdc.allSteps')}</div>
               {tourState.steps.map((step, i) => (
                 <div
                   key={i}
@@ -3831,9 +3831,9 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
                   <span className={styles.tourStepItemNum}>{i + 1}</span>
                   <span className={styles.tourStepItemName}>{step.name}</span>
                   <span className={styles.tourStepItemType}>
-                    {step.type === 'class' ? '类' :
-                     step.type === 'function' ? '函数' :
-                     step.type === 'block' ? '块' : '文件'}
+                    {step.type === 'class' ? t('bdc.kindClass') :
+                     step.type === 'function' ? t('bdc.kindFunction') :
+                     step.type === 'block' ? t('bdc.kindBlock') : t('bdc.kindFile')}
                   </span>
                 </div>
               ))}
@@ -3845,14 +3845,14 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
                 onClick={() => tourNavigate('prev')}
                 disabled={tourState.currentStep === 0}
               >
-                ← 上一步
+                {t('bdc.prevStep')}
               </button>
               <button
                 className={styles.tourNavBtn}
                 onClick={() => tourNavigate('next')}
                 disabled={tourState.currentStep === tourState.steps.length - 1}
               >
-                下一步 →
+                {t('bdc.nextStep')}
               </button>
             </div>
           </div>
@@ -3887,16 +3887,16 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
 
           {/* 符号类型说明 */}
           <div className={styles.symbolSection}>
-            <h3 className={styles.symbolSectionTitle}>类型说明</h3>
+            <h3 className={styles.symbolSectionTitle}>{t('bdc.typeDescription')}</h3>
             <div className={styles.symbolTypeInfo}>
-              {selectedSymbol.kind === 'class' && '类定义 - 封装数据和行为的蓝图'}
-              {selectedSymbol.kind === 'interface' && '接口 - 定义对象的形状和契约'}
-              {selectedSymbol.kind === 'type' && '类型别名 - 为类型定义一个新名称'}
-              {selectedSymbol.kind === 'function' && '函数 - 可重用的代码块'}
-              {selectedSymbol.kind === 'method' && '方法 - 类中的函数成员'}
-              {selectedSymbol.kind === 'property' && '属性 - 类中的数据成员'}
-              {selectedSymbol.kind === 'const' && '常量 - 不可变的值'}
-              {selectedSymbol.kind === 'variable' && '变量 - 可变的值'}
+              {selectedSymbol.kind === 'class' && t('bdc.outline.class')}
+              {selectedSymbol.kind === 'interface' && t('bdc.outline.interface')}
+              {selectedSymbol.kind === 'type' && t('bdc.outline.typeAlias')}
+              {selectedSymbol.kind === 'function' && t('bdc.outline.function')}
+              {selectedSymbol.kind === 'method' && t('bdc.outline.method')}
+              {selectedSymbol.kind === 'property' && t('bdc.outline.property')}
+              {selectedSymbol.kind === 'const' && t('bdc.outline.constant')}
+              {selectedSymbol.kind === 'variable' && t('bdc.outline.variable')}
             </div>
             {selectedSymbol.detail && (
               <div className={styles.symbolTypeDetail}>
@@ -3908,7 +3908,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
           {/* 子成员（如果是类） */}
           {selectedSymbol.children && selectedSymbol.children.length > 0 && (
             <div className={styles.symbolSection}>
-              <h3 className={styles.symbolSectionTitle}>成员 ({selectedSymbol.children.length})</h3>
+              <h3 className={styles.symbolSectionTitle}>{t('bdc.members', { count: selectedSymbol.children.length })}</h3>
               <div className={styles.symbolMembers}>
                 {selectedSymbol.children.map((child, i) => (
                   <div key={i} className={styles.symbolMember}>
@@ -3924,14 +3924,14 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
 
           {/* 位置信息 */}
           <div className={styles.symbolSection}>
-            <h3 className={styles.symbolSectionTitle}>位置</h3>
+            <h3 className={styles.symbolSectionTitle}>{t('bdc.location')}</h3>
             <div className={styles.symbolLocation}>
               <div className={styles.locationItem}>
-                <span className={styles.locationLabel}>文件:</span>
+                <span className={styles.locationLabel}>{t('bdc.fileLabel')}</span>
                 <code className={styles.locationValue}>{selectedPath}</code>
               </div>
               <div className={styles.locationItem}>
-                <span className={styles.locationLabel}>行号:</span>
+                <span className={styles.locationLabel}>{t('bdc.lineLabel')}</span>
                 <code className={styles.locationValue}>{selectedSymbol.line}</code>
               </div>
             </div>
@@ -3948,8 +3948,8 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
       return (
         <div className={styles.analyzingState}>
           <div className={styles.analyzingSpinner}></div>
-          <h3 className={styles.analyzingTitle}>正在分析 {selectedPath}</h3>
-          <p className={styles.analyzingHint}>AI 正在阅读代码并生成语义分析...</p>
+          <h3 className={styles.analyzingTitle}>{t('bdc.analyzingPath', { path: selectedPath })}</h3>
+          <p className={styles.analyzingHint}>{t('bdc.aiReadingCode')}</p>
         </div>
       );
     }
@@ -3957,9 +3957,9 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
     if (analysisError && !currentAnalysis) {
       return (
         <div className={styles.errorState}>
-          <p className={styles.errorText}>分析失败: {analysisError}</p>
+          <p className={styles.errorText}>{t('bdc.analysisFailed', { error: analysisError })}</p>
           <button className={styles.retryButton} onClick={() => analyzeNode(selectedPath)}>
-            重试
+            {t('bdc.retry')}
           </button>
         </div>
       );
@@ -3975,7 +3975,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
               </span>
               <h2 className={styles.analysisPath}>{currentAnalysis.path}</h2>
               <span className={styles.analysisType}>
-                {currentAnalysis.type === 'directory' ? '目录' : '文件'}
+                {currentAnalysis.type === 'directory' ? t('bdc.directory') : t('bdc.file')}
               </span>
             </div>
             <button
@@ -3983,7 +3983,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
               onClick={regenerateAnalysis}
               title={t('bdc.regenerateAnalysis')}
             >
-              🔄 重新分析
+              {t('bdc.reanalyze')}
             </button>
           </div>
 
@@ -3998,7 +3998,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
           {/* 职责（目录） */}
           {currentAnalysis.responsibilities && currentAnalysis.responsibilities.length > 0 && (
             <div className={styles.analysisSection}>
-              <h3 className={styles.sectionTitle}>职责</h3>
+              <h3 className={styles.sectionTitle}>{t('bdc.responsibilities')}</h3>
               <ul className={styles.sectionList}>
                 {currentAnalysis.responsibilities.map((r, i) => (
                   <li key={i}>{r}</li>
@@ -4010,7 +4010,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
           {/* 导出（文件） */}
           {currentAnalysis.exports && currentAnalysis.exports.length > 0 && (
             <div className={styles.analysisSection}>
-              <h3 className={styles.sectionTitle}>导出</h3>
+              <h3 className={styles.sectionTitle}>{t('bdc.exports')}</h3>
               <div className={styles.exportList}>
                 {currentAnalysis.exports.map((e, i) => (
                   <code key={i} className={styles.exportItem}>{e}</code>
@@ -4022,7 +4022,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
           {/* 依赖 */}
           {currentAnalysis.dependencies && currentAnalysis.dependencies.length > 0 && (
             <div className={styles.analysisSection}>
-              <h3 className={styles.sectionTitle}>依赖</h3>
+              <h3 className={styles.sectionTitle}>{t('bdc.dependencies')}</h3>
               <div className={styles.depList}>
                 {currentAnalysis.dependencies.map((d, i) => {
                   const isInternal = d.startsWith('.') || d.startsWith('/') || d.startsWith('src');
@@ -4044,7 +4044,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
           {/* 被引用（反向依赖） */}
           {currentAnalysis.reverseDependencies && currentAnalysis.reverseDependencies.length > 0 && (
             <div className={styles.analysisSection}>
-              <h3 className={styles.sectionTitle}>被引用 ({currentAnalysis.reverseDependencies.length})</h3>
+              <h3 className={styles.sectionTitle}>{t('bdc.referencedBy', { count: currentAnalysis.reverseDependencies.length })}</h3>
               <div className={styles.reverseDepList}>
                 {currentAnalysis.reverseDependencies.map((rd, i) => (
                   <div
@@ -4054,7 +4054,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
                   >
                     <span className={styles.reverseDepPath}>📄 {rd.path}</span>
                     <span className={styles.reverseDepImports}>
-                      使用: {rd.imports.join(', ')}
+                      {t('bdc.uses', { imports: rd.imports.join(', ') })}
                     </span>
                   </div>
                 ))}
@@ -4065,7 +4065,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
           {/* 关系图谱（文件才显示） */}
           {currentAnalysis.type === 'file' && ((currentAnalysis.dependencies?.length ?? 0) > 0 || (currentAnalysis.reverseDependencies?.length ?? 0) > 0) && (
             <div className={styles.analysisSection}>
-              <h3 className={styles.sectionTitle}>关系图谱</h3>
+              <h3 className={styles.sectionTitle}>{t('bdc.relationshipGraph')}</h3>
               <div className={styles.relationshipGraph}>
                 {/* 被引用者（上方） */}
                 {currentAnalysis.reverseDependencies && currentAnalysis.reverseDependencies.length > 0 && (
@@ -4085,7 +4085,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
                       ))}
                       {currentAnalysis.reverseDependencies.length > 5 && (
                         <div className={styles.graphNodeMore}>
-                          +{currentAnalysis.reverseDependencies.length - 5} 更多
+                          +{currentAnalysis.reverseDependencies.length - 5} {t('bdc.more')}
                         </div>
                       )}
                     </div>
@@ -4097,7 +4097,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
                   <div className={styles.graphCurrent}>
                     <div className={styles.graphCurrentIcon}>📘</div>
                     <div className={styles.graphCurrentName}>{currentAnalysis.name}</div>
-                    <div className={styles.graphCurrentBadge}>当前文件</div>
+                    <div className={styles.graphCurrentBadge}>{t('bdc.currentFile')}</div>
                   </div>
                 </div>
 
@@ -4123,7 +4123,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
                       })}
                       {currentAnalysis.dependencies.length > 5 && (
                         <div className={styles.graphNodeMore}>
-                          +{currentAnalysis.dependencies.length - 5} 更多
+                          +{currentAnalysis.dependencies.length - 5} {t('bdc.more')}
                         </div>
                       )}
                     </div>
@@ -4136,7 +4136,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
           {/* 技术栈 */}
           {currentAnalysis.techStack && currentAnalysis.techStack.length > 0 && (
             <div className={styles.analysisSection}>
-              <h3 className={styles.sectionTitle}>技术栈</h3>
+              <h3 className={styles.sectionTitle}>{t('bdc.techStack')}</h3>
               <div className={styles.techTags}>
                 {currentAnalysis.techStack.map((t, i) => (
                   <span key={i} className={styles.techTag}>{t}</span>
@@ -4148,7 +4148,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
           {/* 关键点 */}
           {currentAnalysis.keyPoints && currentAnalysis.keyPoints.length > 0 && (
             <div className={styles.analysisSection}>
-              <h3 className={styles.sectionTitle}>关键点</h3>
+              <h3 className={styles.sectionTitle}>{t('bdc.keyPoints')}</h3>
               <ul className={styles.keyPointsList}>
                 {currentAnalysis.keyPoints.map((k, i) => (
                   <li key={i}>{k}</li>
@@ -4160,7 +4160,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
           {/* 子项（目录） */}
           {currentAnalysis.children && currentAnalysis.children.length > 0 && (
             <div className={styles.analysisSection}>
-              <h3 className={styles.sectionTitle}>子模块概览</h3>
+              <h3 className={styles.sectionTitle}>{t('bdc.submoduleOverview')}</h3>
               <div className={styles.childrenGrid}>
                 {currentAnalysis.children.map((c, i) => (
                   <div
@@ -4182,16 +4182,16 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
 
           <div className={styles.analysisFooter}>
             <span className={styles.analyzedTime}>
-              分析时间: {new Date(currentAnalysis.analyzedAt).toLocaleString('zh-CN')}
+              {t('bdc.analysisTime', { time: new Date(currentAnalysis.analyzedAt).toLocaleString() })}
             </span>
             {(currentAnalysis as any).fromCache && (
               <span className={styles.cacheBadge} title={t('bdc.cacheHint')}>
-                ⚡ 缓存
+                {t('bdc.cacheLabel')}
               </span>
             )}
             {(currentAnalysis as any).fromCache === false && (
               <span className={styles.freshBadge} title={t('bdc.freshHint')}>
-                ✨ 新分析
+                {t('bdc.freshLabel')}
               </span>
             )}
           </div>
@@ -4233,7 +4233,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
       <div className={styles.container}>
         <div className={styles.loadingContainer}>
           <div className={styles.spinner}></div>
-          <p>正在加载目录结构...</p>
+          <p>{t('bdc.loadingDirectory')}</p>
         </div>
       </div>
     );
@@ -4255,7 +4255,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
             </button>
             {!sidebarCollapsed && (
               <>
-                <span className={styles.sidebarTitle}>资源管理器</span>
+                <span className={styles.sidebarTitle}>{t('bdc.explorer')}</span>
                 <div className={styles.sidebarToolbar}>
                   <button
                     className={`${styles.toolbarBtn} ${outlineEnabled ? styles.active : ''}`}
@@ -4320,7 +4320,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
               onClick={() => setActiveTab('welcome')}
             >
               <span className={styles.tabIcon}>🏠</span>
-              <span className={styles.tabName}>欢迎</span>
+              <span className={styles.tabName}>{t('bdc.welcomeTab')}</span>
             </div>
 
             {selectedPath && (
@@ -4329,7 +4329,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
                 onClick={() => setActiveTab('content')}
               >
                 <span className={styles.tabIcon}>{selectedIsFile ? '📝' : '🔍'}</span>
-                <span className={styles.tabName}>{selectedIsFile ? '代码编辑' : '分析'}</span>
+                <span className={styles.tabName}>{selectedIsFile ? t('bdc.codeEditTab') : t('bdc.analysisTab')}</span>
                 {selectedIsFile && hasUnsavedChanges && <span className={styles.unsavedDot}>●</span>}
                 <span
                   className={styles.tabClose}
@@ -4355,7 +4355,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
             {taskTreeStats && (
               <div className={styles.tabStats}>
                 <span className={styles.tabStat}>
-                  {taskTreeStats.completedTasks}/{taskTreeStats.totalTasks} 完成
+                  {t('bdc.taskProgress', { completed: taskTreeStats.completedTasks, total: taskTreeStats.totalTasks })}
                 </span>
               </div>
             )}
@@ -4378,7 +4378,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
                     onClick={onNavigateToChat}
                     title={t('bdc.backToMainChat')}
                   >
-                    ← 返回主聊天
+                    {t('bdc.backToChat')}
                   </button>
                 )}
               </div>
@@ -4410,14 +4410,14 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
             if (tooltip.symbol) {
               const sym = tooltip.symbol;
               const kindLabels: Record<string, string> = {
-                class: '类',
-                interface: '接口',
-                type: '类型',
-                function: '函数',
-                method: '方法',
-                property: '属性',
-                const: '常量',
-                variable: '变量',
+                class: t('bdc.kindClass'),
+                interface: t('bdc.kindInterface'),
+                type: t('bdc.kindType'),
+                function: t('bdc.kindFunction'),
+                method: t('bdc.kindMethod'),
+                property: t('bdc.kindProperty'),
+                const: t('bdc.kindConstant'),
+                variable: t('bdc.kindVariable'),
               };
 
               // 使用 layeredTooltip 中的分层数据
@@ -4432,7 +4432,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
                     <span className={styles.tooltipType}>{kindLabels[sym.kind] || sym.kind}</span>
                     {semanticAnalysis?.complexity && (
                       <span className={`${styles.tooltipComplexity} ${styles[`complexity${semanticAnalysis.complexity.charAt(0).toUpperCase() + semanticAnalysis.complexity.slice(1)}`]}`}>
-                        {semanticAnalysis.complexity === 'low' ? '简单' : semanticAnalysis.complexity === 'medium' ? '中等' : '复杂'}
+                        {semanticAnalysis.complexity === 'low' ? t('bdc.complexitySimple') : semanticAnalysis.complexity === 'medium' ? t('bdc.complexityMedium') : t('bdc.complexityComplex')}
                       </span>
                     )}
                   </div>
@@ -4440,7 +4440,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
                   {/* ============ 第一层：用户注释（JSDoc） ============ */}
                   {userComment && userComment.description && (
                     <div className={styles.tooltipUserComment}>
-                      <span className={styles.tooltipLayerLabel}>📝 注释</span>
+                      <span className={styles.tooltipLayerLabel}>{t('bdc.tooltipComment')}</span>
                       <div className={styles.tooltipCommentText}>{formatJSDocBrief(userComment)}</div>
                       {userComment.params && userComment.params.length > 0 && (
                         <div className={styles.tooltipCommentParams}>
@@ -4457,7 +4457,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
                   {/* ============ 第二层：语法解释（新手模式） ============ */}
                   {beginnerMode && syntaxExplanations && syntaxExplanations.length > 0 && (
                     <div className={styles.tooltipSyntaxLayer}>
-                      <span className={styles.tooltipLayerLabel}>📖 语法 <span className={styles.beginnerBadge}>新手</span></span>
+                      <span className={styles.tooltipLayerLabel}>{t('bdc.tooltipSyntax')} <span className={styles.beginnerBadge}>{t('bdc.beginner')}</span></span>
                       <div className={styles.tooltipSyntaxList}>
                         {syntaxExplanations.slice(0, 4).map((exp, i) => (
                           <div key={i} className={styles.tooltipSyntaxItem}>
@@ -4473,19 +4473,19 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
                   {loadingAI && !semanticAnalysis && (
                     <div className={styles.tooltipAILoading}>
                       <div className={styles.tooltipSpinner}></div>
-                      <span>AI 正在分析...</span>
+                      <span>{t('bdc.aiAnalyzingTooltip')}</span>
                     </div>
                   )}
 
                   {semanticAnalysis && (
                     <div className={styles.tooltipSemanticLayer}>
-                      <span className={styles.tooltipLayerLabel}>🤖 语义</span>
+                      <span className={styles.tooltipLayerLabel}>{t('bdc.tooltipSemantic')}</span>
                       <div className={styles.tooltipSummary}>{semanticAnalysis.semanticDescription}</div>
 
                       {/* 参数（折叠显示） */}
                       {semanticAnalysis.parameters && semanticAnalysis.parameters.length > 0 && (
                         <div className={styles.tooltipCompactSection}>
-                          <span className={styles.tooltipMiniLabel}>参数:</span>
+                          <span className={styles.tooltipMiniLabel}>{t('bdc.paramsLabel')}</span>
                           {semanticAnalysis.parameters.slice(0, 3).map((p, i) => (
                             <code key={i} className={styles.tooltipMiniCode}>{p.name}</code>
                           ))}
@@ -4498,7 +4498,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
                       {/* 返回值 */}
                       {semanticAnalysis.returnValue && (
                         <div className={styles.tooltipCompactSection}>
-                          <span className={styles.tooltipMiniLabel}>返回:</span>
+                          <span className={styles.tooltipMiniLabel}>{t('bdc.returnLabel')}</span>
                           <code className={styles.tooltipMiniCode}>{semanticAnalysis.returnValue.type}</code>
                         </div>
                       )}
@@ -4516,15 +4516,15 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
                   {/* 如果没有任何内容，显示基础信息 */}
                   {!userComment && !semanticAnalysis && !loadingAI && (
                     <div className={styles.tooltipSummary}>
-                      {`${kindLabels[sym.kind] || sym.kind} 定义`}
+                      {`${kindLabels[sym.kind] || sym.kind} ${t('bdc.definition')}`}
                     </div>
                   )}
 
                   {/* 页脚 */}
                   <div className={styles.tooltipFooter}>
-                    <span>行 {sym.line}</span>
-                    {semanticAnalysis?.fromCache ? ' · ⚡缓存' : loadingAI ? ' · 分析中...' : ''}
-                    <span className={styles.tooltipFooterHint}> · 点击跳转</span>
+                    <span>{t('bdc.lineNum', { line: sym.line })}</span>
+                    {semanticAnalysis?.fromCache ? ' · ⚡' + t('bdc.cached') : loadingAI ? ' · ' + t('bdc.analyzing') : ''}
+                    <span className={styles.tooltipFooterHint}> · {t('bdc.clickToJump')}</span>
                   </div>
                 </div>
               );
@@ -4536,7 +4536,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
               return (
                 <div className={styles.tooltipLoading}>
                   <div className={styles.tooltipSpinner}></div>
-                  <span>正在分析...</span>
+                  <span>{t('bdc.analyzing')}</span>
                 </div>
               );
             }
@@ -4544,7 +4544,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
               return (
                 <div className={styles.tooltipEmpty}>
                   <span className={styles.tooltipPath}>{tooltip.path}</span>
-                  <span className={styles.tooltipHint}>悬停以加载语义分析</span>
+                  <span className={styles.tooltipHint}>{t('bdc.hoverToLoad')}</span>
                 </div>
               );
             }
@@ -4556,7 +4556,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
                   </span>
                   <span className={styles.tooltipName}>{analysis.name}</span>
                   <span className={styles.tooltipType}>
-                    {analysis.type === 'directory' ? '目录' : '文件'}
+                    {analysis.type === 'directory' ? t('bdc.directory') : t('bdc.file')}
                   </span>
                 </div>
                 <div className={styles.tooltipSummary}>{analysis.summary}</div>
@@ -4566,13 +4566,13 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
                 {/* 职责（目录） */}
                 {analysis.responsibilities && analysis.responsibilities.length > 0 && (
                   <div className={styles.tooltipSection}>
-                    <span className={styles.tooltipSectionTitle}>职责</span>
+                    <span className={styles.tooltipSectionTitle}>{t('bdc.responsibilities')}</span>
                     <ul className={styles.tooltipList}>
                       {analysis.responsibilities.slice(0, 3).map((r, i) => (
                         <li key={i}>{r}</li>
                       ))}
                       {analysis.responsibilities.length > 3 && (
-                        <li className={styles.tooltipMore}>+{analysis.responsibilities.length - 3} 更多...</li>
+                        <li className={styles.tooltipMore}>+{analysis.responsibilities.length - 3} {t('bdc.more')}...</li>
                       )}
                     </ul>
                   </div>
@@ -4580,7 +4580,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
                 {/* 导出（文件） */}
                 {analysis.exports && analysis.exports.length > 0 && (
                   <div className={styles.tooltipSection}>
-                    <span className={styles.tooltipSectionTitle}>导出</span>
+                    <span className={styles.tooltipSectionTitle}>{t('bdc.exports')}</span>
                     <div className={styles.tooltipExports}>
                       {analysis.exports.slice(0, 5).map((e, i) => (
                         <code key={i} className={styles.tooltipExportItem}>{e}</code>
@@ -4600,7 +4600,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
                   </div>
                 )}
                 <div className={styles.tooltipFooter}>
-                  点击查看详情
+                  {t('bdc.clickForDetails')}
                 </div>
               </div>
             );
@@ -4612,7 +4612,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
       <div className={styles.statusBar}>
         <div className={styles.statusLeft}>
           <span className={styles.statusItem}>
-            {selectedPath || '未选择'}
+            {selectedPath || t('bdc.notSelected')}
           </span>
         </div>
         <div className={styles.statusRight}>
@@ -4622,7 +4622,7 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
             onClick={() => setBeginnerMode(!beginnerMode)}
             title={beginnerMode ? t('bdc.beginnerModeToggle.close') : t('bdc.beginnerModeToggle.open')}
           >
-            {beginnerMode ? '📖 新手模式' : '💡 专家模式'}
+            {beginnerMode ? t('bdc.beginnerMode') : t('bdc.expertMode')}
           </button>
           {blueprintInfo && (
             <span className={`${styles.statusBadge} ${styles[blueprintInfo.status]}`}>
@@ -4648,17 +4648,17 @@ export const BlueprintDetailContent: React.FC<BlueprintDetailContentProps> = ({
           {/* 操作错误提示 */}
           {blueprintOperationError && (
             <span className={styles.operationError} title={blueprintOperationError}>
-              操作失败
+              {t('bdc.operationFailed')}
             </span>
           )}
           <span className={styles.statusItem}>
-            {analysisCache.size} 已分析
+            {t('bdc.analyzedCount', { count: analysisCache.size })}
           </span>
           {analyzing && (
-            <span className={styles.statusAnalyzing}>分析中...</span>
+            <span className={styles.statusAnalyzing}>{t('bdc.statusAnalyzing')}</span>
           )}
           {saving && (
-            <span className={styles.statusSaving}>保存中...</span>
+            <span className={styles.statusSaving}>{t('bdc.statusSaving')}</span>
           )}
         </div>
       </div>

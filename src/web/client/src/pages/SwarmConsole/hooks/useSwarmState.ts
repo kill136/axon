@@ -984,7 +984,7 @@ export function useSwarmState(options: UseSwarmStateOptions): UseSwarmStateRetur
       };
     } catch (err) {
       console.error('[useSwarmState] Failed to load history logs:', err);
-      return { success: false, error: err instanceof Error ? err.message : '未知错误' };
+      return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
     }
   }, []);
 
@@ -1010,7 +1010,7 @@ export function useSwarmState(options: UseSwarmStateOptions): UseSwarmStateRetur
       return { success: true };
     } catch (err) {
       console.error('[useSwarmState] Failed to clear task logs:', err);
-      return { success: false, error: err instanceof Error ? err.message : '未知错误' };
+      return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
     }
   }, []);
 

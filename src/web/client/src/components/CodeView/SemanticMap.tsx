@@ -22,7 +22,7 @@ export interface SemanticMapProps {
  */
 const getStepIcon = (step: TourStep): string => {
   // 导入声明
-  if (step.name === '导入声明') {
+  if (step.name === 'Import Declarations' || step.name === '导入声明') {
     return '📦';
   }
 

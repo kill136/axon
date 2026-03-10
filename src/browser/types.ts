@@ -11,6 +11,8 @@ export interface BrowserStartOptions {
   noSandbox?: boolean;
   /** Profile name to use (default: 'default') */
   profileName?: string;
+  /** Proxy server URL (e.g., 'http://127.0.0.1:7897' or 'socks5://127.0.0.1:1080') */
+  proxy?: string;
 }
 
 export interface RefEntry {

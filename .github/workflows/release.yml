@@ -241,87 +241,16 @@ jobs:
           npm install
           npm run build
 
-      - name: Reinstall production-only dependencies
-        shell: pwsh
-        run: |
-          # Save Electron dist before removing devDependencies
-          Copy-Item -Recurse -Force "node_modules\electron\dist" "$env:TEMP\electron-dist"
-          Remove-Item -Recurse -Force node_modules
-          npm ci --omit=dev
-          # Restore Electron dist for portable build
-          New-Item -ItemType Directory -Path "node_modules\electron" -Force | Out-Null
-          Copy-Item -Recurse -Force "$env:TEMP\electron-dist" "node_modules\electron\dist"
-
       - name: Build Windows Portable
         shell: pwsh
+        run: .\build-portable.ps1
+
+      - name: Create Portable zip
+        shell: pwsh
         run: |
-          $ErrorActionPreference = "Stop"
-
-          $releaseDir = "release\axon-portable"
-          $appDir = Join-Path $releaseDir "resources\app"
-
-          # Clean
-          if (Test-Path $releaseDir) { Remove-Item -Recurse -Force $releaseDir }
-          New-Item -ItemType Directory -Path $appDir -Force | Out-Null
-
-          # Copy Electron runtime
-          Copy-Item -Recurse -Force "node_modules\electron\dist\*" $releaseDir
-
-          # Embed Node.js
-          $nodeDir = Join-Path $releaseDir "node"
-          New-Item -ItemType Directory -Path $nodeDir -Force | Out-Null
-          $nodeExePath = (Get-Command node).Source
-          Copy-Item -Force $nodeExePath (Join-Path $nodeDir "node.exe")
-
-          # Copy package.json
-          Copy-Item -Force "electron\package.json" (Join-Path $appDir "package.json")
-
-          # Copy electron scripts
-          $electronAppDir = Join-Path $appDir "electron"
-          New-Item -ItemType Directory -Path $electronAppDir -Force | Out-Null
-          Copy-Item -Force "electron\main.cjs" $electronAppDir
-          if (Test-Path "electron\preload.cjs") { Copy-Item -Force "electron\preload.cjs" $electronAppDir }
-          if (Test-Path "electron\icon.png") { Copy-Item -Force "electron\icon.png" $electronAppDir }
-
-          # Copy compiled backend + frontend
-          Copy-Item -Recurse -Force "dist" $appDir
-          $clientDir = Join-Path $appDir "src\web\client"
-          New-Item -ItemType Directory -Path $clientDir -Force | Out-Null
-          Copy-Item -Recurse -Force "src\web\client\dist" $clientDir
-
-          # Copy node_modules
-          Copy-Item -Recurse -Force "node_modules" $appDir
-
-          # Trim node_modules
-          $nmDst = Join-Path $appDir "node_modules"
-
-          # Remove junk directories
-          @("test","tests","__tests__","example","examples","docs","doc",".github","benchmark","benchmarks","coverage",".nyc_output") | ForEach-Object {
-              Get-ChildItem -Path $nmDst -Directory -Recurse -Filter $_ -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-          }
-
-          # Remove junk files (keep .d.ts and LICENSE)
-          @("*.md","*.markdown","*.map","*.coffee","*.litcoffee","*.log","CHANGELOG*","HISTORY*","CHANGES*","AUTHORS*","CONTRIBUTORS*") | ForEach-Object {
-              Get-ChildItem -Path $nmDst -Recurse -Filter $_ -File -ErrorAction SilentlyContinue |
-                  Where-Object { $_.Name -ne 'LICENSE' -and $_.Name -ne 'LICENSE.md' } |
-                  Remove-Item -Force -ErrorAction SilentlyContinue
-          }
-
-          # Remove @types, typescript, electron packages
-          @("@types","typescript","electron") | ForEach-Object {
-              $p = Join-Path $nmDst $_
-              if (Test-Path $p) { Remove-Item -Recurse -Force $p }
-          }
-
-          # Rename electron.exe -> Axon.exe
-          $electronExe = Join-Path $releaseDir "electron.exe"
-          if (Test-Path $electronExe) { Rename-Item $electronExe "Axon.exe" }
-
-          # Create zip
           $version = "${{ github.ref_name }}"
           $zipName = "Axon-Windows-Portable-${version}.zip"
-          Compress-Archive -Path $releaseDir -DestinationPath $zipName -Force
-
+          Compress-Archive -Path "release\axon-portable" -DestinationPath $zipName -Force
           $sizeMB = [math]::Round((Get-Item $zipName).Length / 1MB, 1)
           Write-Host "Created $zipName ($sizeMB MB)"
 

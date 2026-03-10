@@ -491,8 +491,8 @@ export default function ConnectorsPanel() {
   const getCategoryTitle = (category: string): string => {
     if (category === 'web') return t('customize.web');
     if (category === 'google') return t('customize.google');
-    if (category === 'feishu') return '飞书 / Feishu';
-    if (category === 'dingtalk') return '钉钉 / DingTalk';
+    if (category === 'feishu') return t('customize.feishu');
+    if (category === 'dingtalk') return t('customize.dingtalk');
     return category;
   };
 
@@ -634,9 +634,7 @@ export default function ConnectorsPanel() {
                 {connecting && (
                   <p className={styles.oauthHint}>
                     {currentSelected.authType === 'mcp-oauth'
-                      ? (t('nav.chat') === '聊天'
-                        ? '正在启动 MCP 服务，浏览器将自动打开授权页面...'
-                        : 'Starting MCP server, browser will open for authorization...')
+                      ? t('customize.mcpOAuthStarting')
                       : t('customize.oauthPopupHint')}
                   </p>
                 )}
@@ -714,16 +712,16 @@ export default function ConnectorsPanel() {
                     )}
                   >
                     {configSaving
-                      ? (t('nav.chat') === '聊天' ? '连接中...' : 'Connecting...')
+                      ? t('customize.connecting')
                       : currentSelected.authType === 'credentials'
-                        ? (t('nav.chat') === '聊天' ? '连接' : 'Connect')
+                        ? t('customize.connect')
                         : t('customize.saveConfig')}
                   </button>
                   <button
                     className={styles.viewDetailsButton}
                     onClick={() => setShowConfig(false)}
                   >
-                    {t('nav.chat') === '聊天' ? '返回' : 'Back'}
+                    {t('customize.back')}
                   </button>
                 </div>
               </div>

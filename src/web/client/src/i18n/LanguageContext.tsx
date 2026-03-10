@@ -1,63 +1,47 @@
 /**
  * 前端 i18n Language Context
- * 提供语言切换和 t() 翻译函数
+ * 基于 i18next + react-i18next，保持 useLanguage() API 向后兼容
  */
 
-import React, { createContext, useContext, useState, useCallback, useMemo, type ReactNode } from 'react';
-import { locales, type Locale, type Translations } from './locales';
+import React, { type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
+import i18n from './init';
 
-interface LanguageContextValue {
-  /** 当前语言 */
-  locale: Locale;
-  /** 切换语言 */
-  setLocale: (locale: Locale) => void;
-  /** 翻译函数 */
-  t: (key: string, params?: Record<string, string | number>) => string;
-}
-
-const LanguageContext = createContext<LanguageContextValue | null>(null);
+export type Locale = 'en' | 'zh';
 
 export function getInitialLocale(): Locale {
-  const stored = localStorage.getItem('claude-code-language');
-  if (stored === 'zh' || stored === 'en') return stored;
-  return 'zh';
-}
-
-export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [locale, setLocaleState] = useState<Locale>(getInitialLocale);
-
-  const setLocale = useCallback((newLocale: Locale) => {
-    setLocaleState(newLocale);
-    localStorage.setItem('claude-code-language', newLocale);
-  }, []);
-
-  const t = useCallback((key: string, params?: Record<string, string | number>): string => {
-    const translations: Translations = locales[locale] || locales.en;
-    let template = translations[key] ?? locales.en[key] ?? key;
-    if (params) {
-      template = template.replace(/\{\{(\w+)\}\}/g, (_, name) => String(params[name] ?? `{{${name}}}`));
-    }
-    return template;
-  }, [locale]);
-
-  const value = useMemo(() => ({ locale, setLocale, t }), [locale, setLocale, t]);
-
-  return (
-    <LanguageContext.Provider value={value}>
-      {children}
-    </LanguageContext.Provider>
-  );
+  return (i18n.language || 'zh') as Locale;
 }
 
 /**
- * 使用语言 Context 的 Hook
+ * LanguageProvider - 兼容层
+ * react-i18next 的 I18nextProvider 已在 init.ts 中通过 .use(initReactI18next) 注入，
+ * 所以这里只是透传 children
  */
-export function useLanguage(): LanguageContextValue {
-  const context = useContext(LanguageContext);
-  if (!context) {
-    throw new Error('useLanguage must be used within a LanguageProvider');
-  }
-  return context;
+export function LanguageProvider({ children }: { children: ReactNode }) {
+  return <>{children}</>;
+}
+
+/**
+ * useLanguage - 保持与旧 API 完全兼容
+ * 返回 { locale, setLocale, t }
+ */
+export function useLanguage() {
+  const { t: i18nT, i18n: i18nInstance } = useTranslation();
+
+  return {
+    locale: i18nInstance.language as Locale,
+    setLocale: (locale: Locale) => {
+      i18nInstance.changeLanguage(locale);
+      localStorage.setItem('claude-code-language', locale);
+    },
+    t: (key: string, params?: Record<string, string | number>): string => {
+      if (params) {
+        return i18nT(key, params as Record<string, unknown>);
+      }
+      return i18nT(key);
+    },
+  };
 }
 
 /**
@@ -65,11 +49,8 @@ export function useLanguage(): LanguageContextValue {
  * 用于 Class 组件或 Context 外部场景
  */
 export function getTranslation(key: string, params?: Record<string, string | number>): string {
-  const locale = getInitialLocale();
-  const translations: Translations = locales[locale] || locales.en;
-  let template = translations[key] ?? locales.en[key] ?? key;
   if (params) {
-    template = template.replace(/\{\{(\w+)\}\}/g, (_, name) => String(params[name] ?? `{{${name}}}`));
+    return i18n.t(key, params as Record<string, unknown>);
   }
-  return template;
+  return i18n.t(key);
 }

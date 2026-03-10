@@ -334,6 +334,9 @@ async function launchChrome(
   if (process.platform === 'linux') {
     args.push('--disable-dev-shm-usage');
   }
+  if (options?.proxy) {
+    args.push(`--proxy-server=${options.proxy}`);
+  }
 
   args.push('about:blank');
 
