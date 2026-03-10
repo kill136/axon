@@ -21,28 +21,7 @@ import * as path from 'path';
 import * as os from 'os';
 import * as crypto from 'crypto';
 
-// 手动加载 .env 文件
-function loadEnvFile() {
-  const envPath = path.join(process.cwd(), '.env');
-  if (fs.existsSync(envPath)) {
-    const content = fs.readFileSync(envPath, 'utf-8');
-    for (const line of content.split('\n')) {
-      const trimmed = line.trim();
-      if (trimmed && !trimmed.startsWith('#')) {
-        const eqIndex = trimmed.indexOf('=');
-        if (eqIndex > 0) {
-          const key = trimmed.substring(0, eqIndex).trim();
-          const value = trimmed.substring(eqIndex + 1).trim();
-          if (!process.env[key]) {
-            process.env[key] = value;
-          }
-        }
-      }
-    }
-  }
-}
-
-loadEnvFile();
+// .env 文件已废弃，所有配置迁移到 settings.json
 
 import { Command } from 'commander';
 import { createProxyServer, type AuthMode } from './proxy/server.js';

@@ -205,22 +205,22 @@ function ToolUseContent({ toolUse }: { toolUse: ToolUse }) {
     const category = toolUse.toolCategory || 'other';
     switch (category) {
       case 'code':
-        statusText = '执行命令...';
+        statusText = t('compactChat.statusCode');
         break;
       case 'search':
-        statusText = '搜索文件...';
+        statusText = t('compactChat.statusSearch');
         break;
       case 'read':
-        statusText = '读取文件...';
+        statusText = t('compactChat.statusRead');
         break;
       case 'web':
-        statusText = '获取网页...';
+        statusText = t('compactChat.statusWeb');
         break;
       case 'agent':
-        statusText = '子任务执行中...';
+        statusText = t('compactChat.statusAgent');
         break;
       default:
-        statusText = '工具执行中...';
+        statusText = t('compactChat.statusDefault');
     }
   }
 

@@ -267,7 +267,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
   };
 
   return (
-    <div className="setup-wizard-overlay">
+    <div className="setup-wizard-overlay" style={{ position: 'fixed', inset: 0, zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.7)' }}>
       <div className="setup-wizard-modal">
         {/* Progress bar */}
         <div className="setup-wizard-progress">

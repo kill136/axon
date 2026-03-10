@@ -247,19 +247,18 @@ type ProviderType = 'firstParty' | 'anthropic' | 'bedrock' | 'vertex' | 'foundry
 
 /**
  * 获取当前 Provider 类型 (对应官方 F4 函数)
- * 通过环境变量检测使用的云服务商
+ * 从 settings.json 配置读取，不再依赖环境变量
  */
 function getProviderType(): ProviderType {
-  if (process.env.AXON_USE_BEDROCK === 'true' || process.env.AXON_USE_BEDROCK === '1') {
-    return 'bedrock';
-  }
-  if (process.env.AXON_USE_VERTEX === 'true' || process.env.AXON_USE_VERTEX === '1') {
-    return 'vertex';
-  }
+  try {
+    const { configManager } = require('../config/index.js');
+    const config = configManager.getAll();
+    if (config.apiProvider === 'bedrock' || config.useBedrock) return 'bedrock';
+    if (config.apiProvider === 'vertex' || config.useVertex) return 'vertex';
+  } catch {}
   if (process.env.AXON_USE_FOUNDRY === 'true' || process.env.AXON_USE_FOUNDRY === '1') {
     return 'foundry';
   }
-  // v2.1.29: 默认使用 'firstParty' 表示直接使用 Anthropic API
   return 'firstParty';
 }
 
@@ -1217,10 +1216,16 @@ export class ClaudeClient {
     }
     // API key 模式无需日志
 
+    // Anthropic SDK 自动拼 /v1/messages，baseURL 不能带 /v1 后缀，否则会变成 /v1/v1/messages
+    let effectiveBase = config.baseUrl;
+    if (effectiveBase) {
+      effectiveBase = effectiveBase.replace(/\/v1\/?$/, '');
+    }
+
     const anthropicConfig: any = {
       apiKey: apiKey,  // OAuth 模式下为 null
       authToken: authToken || null,  // OAuth token
-      baseURL: config.baseUrl,
+      baseURL: effectiveBase,
       maxRetries: 0, // 我们自己处理重试
       defaultHeaders,
       dangerouslyAllowBrowser: true,
@@ -1270,9 +1275,8 @@ export class ClaudeClient {
     // 使用21000作为安全默认值（留有余量）
     this.maxTokens = config.maxTokens || Math.min(21000, capabilities.maxOutputTokens);
 
-    // 对标官方 V39: 默认 10 次重试，可通过 AXON_MAX_RETRIES 覆盖
-    const envRetries = parseInt(process.env.AXON_MAX_RETRIES || '', 10);
-    this.maxRetries = config.maxRetries ?? (!isNaN(envRetries) ? envRetries : DEFAULT_MAX_RETRIES);
+    // 对标官方 V39: 默认 10 次重试，通过 settings.json maxRetries 配置
+    this.maxRetries = config.maxRetries ?? DEFAULT_MAX_RETRIES;
     this.retryDelay = config.retryDelay ?? DEFAULT_RETRY_BASE_DELAY;
 
     // 配置回退模型

@@ -153,10 +153,9 @@ export class ConnectorManager {
 
   /**
    * 解析 provider 的运行时 authType
-   * 双模式 provider（如 Slack 同时有 oauth 和 credentials）根据环境变量动态判断：
-   *  - 有 OAuth Client ID/Secret → 'oauth'（公网 HTTPS 部署）
-   *  - 否则有凭据环境变量 → 'credentials'（本地 Bot Token 模式，一键直连）
-   *  - 都没有 → 'credentials'（显示表单让用户填）
+   * 双模式 provider（如 Slack 同时有 oauth 和 credentials）根据 settings.json 动态判断：
+   *  - connectorClients 中有 OAuth clientId/clientSecret → 'oauth'
+   *  - 否则 → 'credentials'（显示表单让用户填）
    */
   private resolveAuthType(provider: ConnectorProvider): 'oauth' | 'credentials' | 'mcp-oauth' {
     if (provider.mcpRemoteUrl) {
@@ -164,11 +163,8 @@ export class ConnectorManager {
     }
     // 双模式：同时有 oauth 和 credentials
     if (provider.oauth && provider.credentials) {
-      const hasOAuthEnv = !!(
-        provider.oauth.envClientId && process.env[provider.oauth.envClientId] &&
-        provider.oauth.envClientSecret && process.env[provider.oauth.envClientSecret]
-      );
-      if (hasOAuthEnv) return 'oauth';
+      const clientConfig = this.getClientConfig(provider.id);
+      if (clientConfig?.clientId && clientConfig?.clientSecret) return 'oauth';
       return 'credentials';
     }
     if (provider.credentials) return 'credentials';
@@ -185,48 +181,12 @@ export class ConnectorManager {
 
   /**
    * 获取客户端配置
-   * 优先级：环境变量 > settings.json
-   * 部署时设置环境变量，用户点 Connect 直接跳转授权，无需手动填写
+   * 统一从 settings.json connectorClients 读取
    */
   getClientConfig(id: string): ConnectorClientConfig | null {
     const provider = BUILTIN_PROVIDERS.find((p) => p.id === id);
+    if (!provider) return null;
 
-    // 1. 从 OAuth 环境变量读取
-    if (provider?.oauth?.envClientId && provider?.oauth?.envClientSecret) {
-      const envId = process.env[provider.oauth.envClientId];
-      const envSecret = process.env[provider.oauth.envClientSecret];
-      if (envId && envSecret) {
-        return { clientId: envId, clientSecret: envSecret };
-      }
-    }
-
-    // 2. 从凭据直连的环境变量读取（支持多字段）
-    if (provider?.credentials) {
-      const fields = provider.credentials.fields;
-      const config: ConnectorClientConfig = { clientId: '', clientSecret: '' };
-      let allFound = true;
-      for (const field of fields) {
-        if (field.envVar) {
-          const val = process.env[field.envVar];
-          if (val) {
-            config[field.key] = val;
-            // 兼容：把第一个字段映射到 clientId，第二个映射到 clientSecret
-            if (field.key === 'clientId') config.clientId = val;
-            else if (field.key === 'clientSecret') config.clientSecret = val;
-          } else {
-            allFound = false;
-          }
-        } else {
-          allFound = false;
-        }
-      }
-      // 至少第一个字段有值就算 configured
-      if (allFound || config.clientId) {
-        return config;
-      }
-    }
-
-    // 3. 从 settings.json 读取
     const settings = this.readSettings();
     const clients = settings.connectorClients || {};
     return clients[id] || null;

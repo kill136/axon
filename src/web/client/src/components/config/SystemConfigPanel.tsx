@@ -38,6 +38,15 @@ interface SecurityConfig {
   allowSandboxEscape?: boolean;
 }
 
+interface AdvancedConfig {
+  bashMaxOutputLength: number;
+  requestTimeout: number;
+  maxConcurrentTasks: number;
+  maxTokens: number;
+  maxRetries: number;
+  enableTelemetry: boolean;
+}
+
 interface ConfigPanelProps {
   onSave?: () => void;
   onClose?: () => void;
@@ -68,6 +77,15 @@ export function SystemConfigPanel({ onSave, onClose }: ConfigPanelProps) {
     allowSandboxEscape: false,
   });
 
+  const [advancedConfig, setAdvancedConfig] = useState<AdvancedConfig>({
+    bashMaxOutputLength: 30000,
+    requestTimeout: 300000,
+    maxConcurrentTasks: 10,
+    maxTokens: 32000,
+    maxRetries: 3,
+    enableTelemetry: false,
+  });
+
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -79,11 +97,12 @@ export function SystemConfigPanel({ onSave, onClose }: ConfigPanelProps) {
   const loadConfigs = async () => {
     setLoading(true);
     try {
-      const [loggingRes, proxyRes, cacheRes, securityRes] = await Promise.all([
+      const [loggingRes, proxyRes, cacheRes, securityRes, advancedRes] = await Promise.all([
         fetch('/api/config/logging').then(r => r.json()),
         fetch('/api/config/proxy').then(r => r.json()),
         fetch('/api/config/cache').then(r => r.json()),
         fetch('/api/config/security').then(r => r.json()),
+        fetch('/api/config/advanced').then(r => r.json()),
       ]);
 
       if (loggingRes.success && loggingRes.config) {
@@ -97,6 +116,9 @@ export function SystemConfigPanel({ onSave, onClose }: ConfigPanelProps) {
       }
       if (securityRes.success && securityRes.config) {
         setSecurityConfig(securityRes.config);
+      }
+      if (advancedRes.success && advancedRes.data) {
+        setAdvancedConfig(advancedRes.data);
       }
     } catch (error) {
       console.error('Failed to load configs:', error);
@@ -154,6 +176,18 @@ export function SystemConfigPanel({ onSave, onClose }: ConfigPanelProps) {
     }
   };
 
+  const saveAdvanced = async (config: AdvancedConfig) => {
+    const response = await fetch('/api/config/advanced', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+    });
+    const data = await response.json();
+    if (!data.success) {
+      throw new Error(data.error || t('error.saveAdvancedFailed'));
+    }
+  };
+
   const handleSaveAll = async () => {
     setLoading(true);
     setMessage(null);
@@ -164,6 +198,7 @@ export function SystemConfigPanel({ onSave, onClose }: ConfigPanelProps) {
         saveProxy(proxyConfig),
         saveCache(cacheConfig),
         saveSecurity(securityConfig),
+        saveAdvanced(advancedConfig),
       ]);
 
       setMessage({ type: 'success', text: t('system.saveSuccess') });
@@ -450,6 +485,107 @@ export function SystemConfigPanel({ onSave, onClose }: ConfigPanelProps) {
           />
           <span className="label-text">{t('system.security.allowSandboxEscape')}</span>
           <span className="help-text danger">{t('system.security.allowSandboxEscapeHint')}</span>
+        </label>
+      </section>
+
+      {/* 高级配置 */}
+      <section className="config-section">
+        <h4>{t('system.advanced.title')}</h4>
+
+        <label className="config-label">
+          <span className="label-text">{t('system.advanced.bashMaxOutput')}</span>
+          <input
+            type="number"
+            className="config-input"
+            value={advancedConfig.bashMaxOutputLength}
+            onChange={(e) => setAdvancedConfig({
+              ...advancedConfig,
+              bashMaxOutputLength: parseInt(e.target.value) || 30000
+            })}
+            min="1000"
+            max="150000"
+            step="1000"
+          />
+          <span className="help-text">{t('system.advanced.bashMaxOutputHint')}</span>
+        </label>
+
+        <label className="config-label">
+          <span className="label-text">{t('system.advanced.maxTokens')}</span>
+          <input
+            type="number"
+            className="config-input"
+            value={advancedConfig.maxTokens}
+            onChange={(e) => setAdvancedConfig({
+              ...advancedConfig,
+              maxTokens: parseInt(e.target.value) || 32000
+            })}
+            min="1000"
+            max="200000"
+            step="1000"
+          />
+          <span className="help-text">{t('system.advanced.maxTokensHint')}</span>
+        </label>
+
+        <label className="config-label">
+          <span className="label-text">{t('system.advanced.maxRetries')}</span>
+          <input
+            type="number"
+            className="config-input"
+            value={advancedConfig.maxRetries}
+            onChange={(e) => setAdvancedConfig({
+              ...advancedConfig,
+              maxRetries: parseInt(e.target.value) || 3
+            })}
+            min="0"
+            max="10"
+          />
+          <span className="help-text">{t('system.advanced.maxRetriesHint')}</span>
+        </label>
+
+        <label className="config-label">
+          <span className="label-text">{t('system.advanced.requestTimeout')}</span>
+          <input
+            type="number"
+            className="config-input"
+            value={advancedConfig.requestTimeout}
+            onChange={(e) => setAdvancedConfig({
+              ...advancedConfig,
+              requestTimeout: parseInt(e.target.value) || 300000
+            })}
+            min="1000"
+            max="600000"
+            step="1000"
+          />
+          <span className="help-text">{t('system.advanced.requestTimeoutHint')}</span>
+        </label>
+
+        <label className="config-label">
+          <span className="label-text">{t('system.advanced.maxConcurrentTasks')}</span>
+          <input
+            type="number"
+            className="config-input"
+            value={advancedConfig.maxConcurrentTasks}
+            onChange={(e) => setAdvancedConfig({
+              ...advancedConfig,
+              maxConcurrentTasks: parseInt(e.target.value) || 10
+            })}
+            min="1"
+            max="100"
+          />
+          <span className="help-text">{t('system.advanced.maxConcurrentTasksHint')}</span>
+        </label>
+
+        <label className="config-label config-checkbox">
+          <input
+            type="checkbox"
+            checked={advancedConfig.enableTelemetry || false}
+            onChange={(e) => setAdvancedConfig({
+              ...advancedConfig,
+              enableTelemetry: e.target.checked
+            })}
+          />
+          <span className="label-text">{t('system.advanced.enableTelemetry')}</span>
+          <span className="help-text">{t('system.advanced.enableTelemetryHint')}</span>
         </label>
       </section>
 

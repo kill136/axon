@@ -109,8 +109,18 @@ function getAwsCredentials(): {
  * Detect provider from environment
  */
 export function detectProvider(): ProviderConfig {
+  // 从 settings.json 读取 provider 配置
+  let useBedrock = false;
+  let useVertex = false;
+  try {
+    const { configManager } = require('../config/index.js');
+    const config = configManager.getAll();
+    useBedrock = config.apiProvider === 'bedrock' || config.useBedrock === true;
+    useVertex = config.apiProvider === 'vertex' || config.useVertex === true;
+  } catch {}
+
   // Check for Bedrock
-  if (process.env.AXON_USE_BEDROCK === 'true' || process.env.AWS_BEDROCK_MODEL) {
+  if (useBedrock || process.env.AWS_BEDROCK_MODEL) {
     const credentials = getAwsCredentials();
     const modelInput = process.env.AWS_BEDROCK_MODEL || 'anthropic.claude-3-5-sonnet-20241022-v2:0';
     const arnInfo = parseBedrockModelArn(modelInput);
@@ -132,7 +142,7 @@ export function detectProvider(): ProviderConfig {
   }
 
   // Check for Vertex
-  if (process.env.AXON_USE_VERTEX === 'true' || process.env.ANTHROPIC_VERTEX_PROJECT_ID) {
+  if (useVertex || process.env.ANTHROPIC_VERTEX_PROJECT_ID) {
     return {
       type: 'vertex',
       projectId: process.env.ANTHROPIC_VERTEX_PROJECT_ID,

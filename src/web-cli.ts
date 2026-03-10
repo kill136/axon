@@ -17,40 +17,8 @@ const __filename_resolved = fileURLToPath(import.meta.url);
 const __dirname_resolved = path.dirname(__filename_resolved);
 const PROJECT_ROOT = path.resolve(__dirname_resolved, '..');
 
-// 手动加载 .env 文件（不依赖 dotenv 包）
-// 追踪 .env 设置过的 key，重新加载时清理已移除的变量
-const envFileKeys = new Set<string>();
-
-function loadEnvFile() {
-  const envPath = path.join(PROJECT_ROOT, '.env');
-  if (fs.existsSync(envPath)) {
-    // 清理上一次 .env 设置过但本次不再存在的变量
-    const newKeys = new Set<string>();
-    const content = fs.readFileSync(envPath, 'utf-8');
-    for (const line of content.split('\n')) {
-      const trimmed = line.trim();
-      if (trimmed && !trimmed.startsWith('#')) {
-        const eqIndex = trimmed.indexOf('=');
-        if (eqIndex > 0) {
-          const key = trimmed.substring(0, eqIndex).trim();
-          const value = trimmed.substring(eqIndex + 1).trim();
-          process.env[key] = value;
-          newKeys.add(key);
-        }
-      }
-    }
-    // 删除上次有但本次没有的变量（如注释掉的 SLACK_CLIENT_ID）
-    for (const oldKey of envFileKeys) {
-      if (!newKeys.has(oldKey)) {
-        delete process.env[oldKey];
-      }
-    }
-    envFileKeys.clear();
-    for (const k of newKeys) envFileKeys.add(k);
-  }
-}
-
-loadEnvFile();
+// .env 文件已废弃，所有配置迁移到 settings.json
+// 通过设置面板 → 系统 → 高级配置管理
 
 import { Command } from 'commander';
 import { startWebServer } from './web/index.js';
@@ -133,8 +101,6 @@ async function runEvolveMode(options: any) {
   }
 
   function startChild(): void {
-    // 每次重启子进程前重新加载 .env，确保注释掉/新增的变量生效
-    loadEnvFile();
     printBanner(true, restartCount);
 
     // 构建子进程参数：去掉 --evolve，加上原始参数（使用绝对路径）

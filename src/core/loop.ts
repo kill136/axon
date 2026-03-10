@@ -917,14 +917,13 @@ export function getMaxOutputTokens(model: string): number {
     defaultMax = 32000;
   }
 
-  // 环境变量可以覆盖（但不能超过默认最大值）
-  const envMax = process.env.AXON_MAX_OUTPUT_TOKENS;
-  if (envMax) {
-    const parsed = parseInt(envMax, 10);
-    if (!isNaN(parsed)) {
-      return Math.min(parsed, defaultMax);
+  // settings.json maxTokens 可以覆盖（但不能超过默认最大值）
+  try {
+    const configMax = configManager.get('maxTokens') as number | undefined;
+    if (configMax && configMax > 0) {
+      return Math.min(configMax, defaultMax);
     }
-  }
+  } catch {}
 
   return defaultMax;
 }

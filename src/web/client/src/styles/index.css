@@ -610,16 +610,10 @@ body {
   border: 1px solid var(--border-color);
   color: var(--text-muted);
   cursor: pointer;
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  border-radius: 4px;
-  font-size: 13px;
   transition: all 0.2s;
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
 }
 
 .terminal-toggle-btn:hover {
@@ -767,15 +761,11 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
   border: 1px solid var(--border-color, #333);
-  border-radius: 4px;
   background: transparent;
   color: var(--text-muted, #64748b);
   cursor: pointer;
   transition: all 0.15s ease;
-  flex-shrink: 0;
 }
 
 .transcript-toggle-btn:hover {
@@ -1288,10 +1278,25 @@ body {
 /* 工具栏分隔线 */
 .toolbar-divider {
   width: 1px;
-  height: 16px;
+  height: 14px;
   background: var(--border-color, rgba(255, 255, 255, 0.08));
-  margin: 0 3px;
+  margin: 0 2px;
   flex-shrink: 0;
+}
+
+/* 工具栏按钮统一基础尺寸 */
+.input-toolbar-left button {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.input-toolbar-left button svg {
+  width: 12px;
+  height: 12px;
 }
 
 .input-toolbar-right {
@@ -1302,9 +1307,6 @@ body {
 }
 
 .attach-btn {
-  width: 26px;
-  height: 26px;
-  border-radius: var(--radius-sm);
   background: transparent;
   border: 1px solid transparent;
   color: var(--text-secondary);
@@ -1313,8 +1315,6 @@ body {
   justify-content: center;
   cursor: pointer;
   transition: 0.2s;
-  font-size: 13px;
-  flex-shrink: 0;
 }
 
 .attach-btn:hover {
@@ -1401,9 +1401,6 @@ body {
 
 /* 语音对话模式按钮 */
 .conversation-mode-btn {
-  width: 26px;
-  height: 26px;
-  border-radius: var(--radius-sm);
   background: transparent;
   border: 1px solid transparent;
   color: var(--text-secondary);
@@ -1412,8 +1409,6 @@ body {
   justify-content: center;
   cursor: pointer;
   transition: color 0.2s, background 0.2s, box-shadow 0.2s;
-  font-size: 13px;
-  flex-shrink: 0;
 }
 
 .conversation-mode-btn:hover {
@@ -1480,9 +1475,6 @@ body {
 
 /* Pin Toggle Button */
 .pin-toggle-btn {
-  width: 26px;
-  height: 26px;
-  border-radius: var(--radius-sm);
   background: transparent;
   border: 1px solid transparent;
   color: var(--text-secondary);
@@ -1491,8 +1483,6 @@ body {
   justify-content: center;
   cursor: pointer;
   transition: all 0.2s;
-  font-size: 13px;
-  flex-shrink: 0;
 }
 
 .pin-toggle-btn:hover {
@@ -3041,16 +3031,10 @@ body {
   border: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
   color: var(--text-muted, #64748b);
   cursor: pointer;
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  border-radius: 4px;
-  font-size: 13px;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: all 0.2s;
-  flex-shrink: 0;
 }
 
 .debug-trigger-btn:hover,

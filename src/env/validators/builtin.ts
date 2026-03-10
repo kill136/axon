@@ -338,15 +338,16 @@ export function createEnumValidator<T extends string>(
 
 /**
  * 所有内置验证器
+ * 注意：BASH_MAX_OUTPUT_LENGTH, AXON_MAX_OUTPUT_TOKENS, AXON_MAX_RETRIES, AXON_REQUEST_TIMEOUT,
+ * AXON_MAX_CONCURRENT_TASKS, AXON_ENABLE_TELEMETRY, AXON_USE_BEDROCK, AXON_USE_VERTEX,
+ * AXON_DISABLE_FILE_CHECKPOINTING 已迁移到 settings.json，不再通过环境变量配置
  */
 export const BUILTIN_VALIDATORS: EnvVarValidator[] = [
+  // 保留这些验证器定义以供向后兼容（某些代码可能仍引用它们的默认值），
+  // 但运行时以 settings.json 为准
   BASH_MAX_OUTPUT_LENGTH,
   AXON_MAX_OUTPUT_TOKENS,
   AXON_MAX_RETRIES,
   AXON_REQUEST_TIMEOUT,
   AXON_MAX_CONCURRENT_TASKS,
-  createBooleanValidator('AXON_ENABLE_TELEMETRY', false, 'Enable telemetry'),
-  createBooleanValidator('AXON_USE_BEDROCK', false, 'Use AWS Bedrock'),
-  createBooleanValidator('AXON_USE_VERTEX', false, 'Use Vertex AI'),
-  createBooleanValidator('AXON_DISABLE_FILE_CHECKPOINTING', false, 'Disable file checkpointing'),
 ];
