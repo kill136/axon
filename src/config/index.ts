@@ -63,6 +63,7 @@ const UserConfigSchema = z.object({
 
   // 功能配置
   maxRetries: z.number().int().min(0).max(10).default(3),
+  bashMaxOutputLength: z.number().int().min(1000).max(150000).default(30000),
   debugLogsDir: z.string().optional(),
   agentId: z.string().optional(), // 新增：Agent ID
 
@@ -375,18 +376,8 @@ function getEnvConfig(): Partial<UserConfig> {
     apiKey: process.env.ANTHROPIC_API_KEY || process.env.AXON_API_KEY,
     oauthToken: process.env.AXON_OAUTH_TOKEN,
 
-    // ===== 后端选择 =====
-    useBedrock: parseEnvBoolean(process.env.AXON_USE_BEDROCK),
-    useVertex: parseEnvBoolean(process.env.AXON_USE_VERTEX),
-
     // ===== 性能配置 =====
-    maxTokens: parseEnvNumber(process.env.AXON_MAX_OUTPUT_TOKENS),
-    maxRetries: parseEnvNumber(process.env.AXON_MAX_RETRIES),
     debugLogsDir: process.env.AXON_DEBUG_LOGS_DIR,
-
-    // ===== 功能开关 =====
-    enableTelemetry: parseEnvBoolean(process.env.AXON_ENABLE_TELEMETRY) ?? (parseEnvBoolean(process.env.DISABLE_TELEMETRY) === false ? true : undefined),
-    disableFileCheckpointing: parseEnvBoolean(process.env.AXON_DISABLE_FILE_CHECKPOINTING),
 
     // ===== Agent 系统 =====
     agentId: process.env.AXON_AGENT_ID,
@@ -406,11 +397,7 @@ function getEnvConfig(): Partial<UserConfig> {
   };
 
   // ===== API Provider（从布尔标志推导）=====
-  if (parseEnvBoolean(process.env.AXON_USE_BEDROCK)) {
-    config.apiProvider = 'bedrock';
-  } else if (parseEnvBoolean(process.env.AXON_USE_VERTEX)) {
-    config.apiProvider = 'vertex';
-  } else if (parseEnvBoolean(process.env.AXON_USE_FOUNDRY)) {
+  if (parseEnvBoolean(process.env.AXON_USE_FOUNDRY)) {
     config.apiProvider = 'anthropic'; // Foundry 也使用 anthropic provider
   }
 
@@ -2016,21 +2003,11 @@ export {
 // ============ 环境变量配置（向后兼容） ============
 
 export const ENV_VARS = {
-  // API 配置
+  // API 配置（仍支持通过 env 设置 API Key 作为部署方式）
   ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
   AXON_API_KEY: process.env.AXON_API_KEY,
   AXON_OAUTH_TOKEN: process.env.AXON_OAUTH_TOKEN,
-
-  // 后端选择
-  AXON_USE_BEDROCK: process.env.AXON_USE_BEDROCK,
-  AXON_USE_VERTEX: process.env.AXON_USE_VERTEX,
-
-  // 功能配置
-  AXON_MAX_OUTPUT_TOKENS: process.env.AXON_MAX_OUTPUT_TOKENS,
-  AXON_MAX_RETRIES: process.env.AXON_MAX_RETRIES,
   AXON_DEBUG_LOGS_DIR: process.env.AXON_DEBUG_LOGS_DIR,
-
-  // 开关
-  AXON_ENABLE_TELEMETRY: process.env.AXON_ENABLE_TELEMETRY,
-  AXON_DISABLE_FILE_CHECKPOINTING: process.env.AXON_DISABLE_FILE_CHECKPOINTING,
+  // 以下已迁移到 settings.json：useBedrock, useVertex, maxTokens, maxRetries,
+  // enableTelemetry, disableFileCheckpointing, bashMaxOutputLength
 };

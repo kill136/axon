@@ -516,6 +516,20 @@ const settings = {
   'system.security.sensitiveFilesHint': '每行一个模式，匹配的文件将被保护',
   'system.security.title': '安全配置',
   'system.title': '系统配置',
+  'system.advanced.title': '高级配置',
+  'system.advanced.bashMaxOutput': 'Bash 最大输出长度',
+  'system.advanced.bashMaxOutputHint': 'Bash 命令输出的最大字符数（1,000 - 150,000），默认 30,000',
+  'system.advanced.maxTokens': '最大输出 Tokens',
+  'system.advanced.maxTokensHint': '限制 AI 单次回复的最大 token 数，默认 32,000',
+  'system.advanced.maxRetries': '最大重试次数',
+  'system.advanced.maxRetriesHint': 'API 请求失败时的最大重试次数（0-10），默认 3',
+  'system.advanced.requestTimeout': '请求超时（毫秒）',
+  'system.advanced.requestTimeoutHint': 'API 请求超时时间（1,000 - 600,000 毫秒），默认 300,000（5分钟）',
+  'system.advanced.maxConcurrentTasks': '最大并发任务数',
+  'system.advanced.maxConcurrentTasksHint': '同时运行的最大子任务数（1-100），默认 10',
+  'system.advanced.enableTelemetry': '启用遥测',
+  'system.advanced.enableTelemetryHint': '启用 OpenTelemetry 数据收集。默认关闭。',
+  'error.saveAdvancedFailed': '保存高级配置失败',
 } as const;
 
 export default settings;

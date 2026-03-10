@@ -601,8 +601,12 @@ export function cleanupStaleTasks(): { cleaned: number; errors: number } {
   return { cleaned, errors };
 }
 
-// 配置
-const MAX_OUTPUT_LENGTH = parseInt(process.env.BASH_MAX_OUTPUT_LENGTH || '30000', 10);
+// 配置（从 settings.json 读取，不再依赖环境变量）
+const MAX_OUTPUT_LENGTH = (() => {
+  try {
+    return configManager.get('bashMaxOutputLength') as number || 30000;
+  } catch { return 30000; }
+})();
 const DEFAULT_TIMEOUT = parseInt(process.env.BASH_DEFAULT_TIMEOUT_MS || '120000', 10); // 默认 2 分钟
 const MAX_TIMEOUT = 600000;
 const MAX_BACKGROUND_OUTPUT = 10 * 1024 * 1024; // 10MB per background shell

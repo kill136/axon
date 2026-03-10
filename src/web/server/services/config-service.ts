@@ -105,6 +105,18 @@ export interface SecurityConfig {
 }
 
 /**
+ * 高级配置（从 env 迁移到 settings.json 的配置项）
+ */
+export interface AdvancedConfig {
+  bashMaxOutputLength: number;
+  requestTimeout: number;
+  maxConcurrentTasks: number;
+  maxTokens: number;
+  maxRetries: number;
+  enableTelemetry: boolean;
+}
+
+/**
  * Embedding 配置（向量搜索 + 混合检索）
  */
 export interface EmbeddingConfigData {
@@ -476,6 +488,39 @@ export class WebConfigService {
       return true;
     } catch (error) {
       console.error('[WebConfigService] Failed to update proxy config:', error);
+      return false;
+    }
+  }
+
+  /**
+   * 获取高级配置（bashMaxOutputLength, requestTimeout, maxConcurrentTasks, maxTokens, maxRetries）
+   */
+  async getAdvancedConfig(): Promise<AdvancedConfig> {
+    try {
+      const config = this.configManager.getAll();
+      return {
+        bashMaxOutputLength: config.bashMaxOutputLength,
+        requestTimeout: config.requestTimeout,
+        maxConcurrentTasks: config.maxConcurrentTasks,
+        maxTokens: config.maxTokens,
+        maxRetries: config.maxRetries,
+        enableTelemetry: config.enableTelemetry,
+      };
+    } catch (error) {
+      console.error('[WebConfigService] Failed to get advanced config:', error);
+      throw new Error(`Failed to get advanced config: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
+   * 更新高级配置
+   */
+  async updateAdvancedConfig(config: Partial<AdvancedConfig>): Promise<boolean> {
+    try {
+      this.configManager.save(config);
+      return true;
+    } catch (error) {
+      console.error('[WebConfigService] Failed to update advanced config:', error);
       return false;
     }
   }

@@ -108,15 +108,15 @@ export default function BlueprintPage({ initialBlueprintId, onNavigateToSwarm }:
           }
         }
       } else {
-        throw new Error(result.message || t('blueprint.loadFailed'));
+        throw new Error(result.message || 'Load failed');
       }
     } catch (err) {
       console.error('加载蓝图列表失败:', err);
-      setError(err instanceof Error ? err.message : t('blueprint.unknownError'));
+      setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setIsLoading(false);
     }
-  }, [currentProjectPath, t]);
+  }, [currentProjectPath]);
 
   // 初始加载
   useEffect(() => {

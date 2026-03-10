@@ -516,6 +516,20 @@ const settings = {
   'system.security.sensitiveFilesHint': 'One pattern per line, matching files will be protected',
   'system.security.title': 'Security Configuration',
   'system.title': 'System Configuration',
+  'system.advanced.title': 'Advanced Configuration',
+  'system.advanced.bashMaxOutput': 'Bash Max Output Length',
+  'system.advanced.bashMaxOutputHint': 'Maximum characters for bash command output (1,000 - 150,000). Default: 30,000',
+  'system.advanced.maxTokens': 'Max Output Tokens',
+  'system.advanced.maxTokensHint': 'Maximum tokens per AI response. Default: 32,000',
+  'system.advanced.maxRetries': 'Max Retries',
+  'system.advanced.maxRetriesHint': 'Maximum retry attempts for failed API requests (0-10). Default: 3',
+  'system.advanced.requestTimeout': 'Request Timeout (ms)',
+  'system.advanced.requestTimeoutHint': 'API request timeout in milliseconds (1,000 - 600,000). Default: 300,000 (5 min)',
+  'system.advanced.maxConcurrentTasks': 'Max Concurrent Tasks',
+  'system.advanced.maxConcurrentTasksHint': 'Maximum number of concurrent sub-tasks (1-100). Default: 10',
+  'system.advanced.enableTelemetry': 'Enable Telemetry',
+  'system.advanced.enableTelemetryHint': 'Enable OpenTelemetry data collection. Off by default.',
+  'error.saveAdvancedFailed': 'Failed to save advanced configuration',
 } as const;
 
 export type SettingsKeys = keyof typeof settings;

@@ -53,7 +53,8 @@ export interface AxonCloudAuthResult {
 
 export class AxonCloudService {
   private readonly NEWAPI_BASE = 'https://api.chatbi.site';
-  private readonly API_BASE_URL = 'https://api.chatbi.site/v1';
+  // Anthropic SDK 会自动在 baseURL 后拼 /v1/messages，所以 baseURL 不能带 /v1
+  private readonly API_BASE_URL = 'https://api.chatbi.site';
 
   /**
    * 用户注册，注册成功后自动登录
@@ -231,7 +232,7 @@ export class AxonCloudService {
         'Content-Type': 'application/json',
         ...this.authHeaders(accessToken, userId),
       },
-      body: JSON.stringify({ name, unlimited_quota: false }),
+      body: JSON.stringify({ name, unlimited_quota: true }),
     });
 
     const result = await res.json() as any;

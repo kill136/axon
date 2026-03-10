@@ -12,7 +12,6 @@
   transition: opacity 0.3s ease;
   flex-shrink: 1;
   min-width: 0;
-  overflow: hidden;
 }
 
 /* 标签 */

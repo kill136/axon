@@ -82,12 +82,16 @@ const RETRYABLE_NETWORK_PATTERNS = [
   'Internal server error',
   'Request timed out',
   'timed out',
+  'terminated',             // undici/fetch 底层连接被对端强制关闭（Railway 等反代超时）
   'Application failed to respond', // OpenRouter 502 网关超时
   'Stream idle timeout', // 流式空闲超时（client.ts 超时保护触发）
 ];
 
 /** conversation loop 层面的最大网络重试次数 */
-const MAX_CONVERSATION_RETRIES = 3;
+const MAX_CONVERSATION_RETRIES = 5;
+
+/** 中途断流自愈的最大次数（已有部分内容输出后断开） */
+const MAX_STREAM_RESUME_RETRIES = 2;
 
 /**
  * 判断错误是否为可重试的网络错误
@@ -1491,6 +1495,8 @@ export class ConversationManager {
     let totalCacheReadTokens = 0;
     let totalCacheCreationTokens = 0;
     let networkRetryCount = 0;
+    /** 中途断流自愈计数器（已有部分内容输出后 stream 断开的恢复次数） */
+    let streamResumeCount = 0;
     /** 是否刚执行过因 "prompt too long" 而触发的强制压缩（防止无限循环） */
     let justForceCompacted = false;
     /** 是否刚执行过自动压缩（防止连续压缩：压缩后 API 实际 inputTokens 仍含系统提示词+工具定义，可能仍超阈值） */
@@ -1741,6 +1747,13 @@ export class ConversationManager {
         }
       }
 
+      // 将流式状态变量提升到 try 外，以便 catch 中断流自愈时可以访问
+      const assistantContent: ContentBlock[] = [];
+      let currentTextContent = '';
+      let currentToolUse: { id: string; name: string; inputJson: string } | null = null;
+      let stopReason: string | null = null;
+      let thinkingStarted = false;
+
       try {
         // 调用 Claude API（使用 createMessageStream，默认开启 Extended Thinking）
         // 传递 abort signal，取消时可直接中止 HTTP 流（对齐官方 CLI）
@@ -1755,13 +1768,6 @@ export class ConversationManager {
             promptBlocks: systemPrompt.blocks,
           }
         );
-
-        // 处理流式响应
-        const assistantContent: ContentBlock[] = [];
-        let currentTextContent = '';
-        let currentToolUse: { id: string; name: string; inputJson: string } | null = null;
-        let stopReason: string | null = null;
-        let thinkingStarted = false;
 
         for await (const event of stream) {
           if (state.cancelled) break;
@@ -2227,6 +2233,67 @@ export class ConversationManager {
           await new Promise(resolve => setTimeout(resolve, delay));
           // continueLoop 保持为 true，继续下一次循环迭代（重新发起 API 调用）
           continue;
+        }
+
+        // ============================================================
+        // 中途断流自愈：API 已返回部分内容但 stream 中断（网络波动等）
+        // 策略：保存已有的文本内容作为 assistant 消息，注入续写提示，重新请求
+        // 注意：只恢复纯文本内容；如果中断发生在 tool_use 中途（参数 JSON 不完整），
+        // 不尝试恢复工具调用，因为残缺的 JSON 会导致后续问题
+        // ============================================================
+        if (
+          isRetryableNetworkError(error) &&
+          hasStreamedContent &&
+          streamResumeCount < MAX_STREAM_RESUME_RETRIES
+        ) {
+          streamResumeCount++;
+          console.warn(
+            `[ConversationManager] Stream interrupted with partial content, attempting resume (${streamResumeCount}/${MAX_STREAM_RESUME_RETRIES})...`
+          );
+
+          // 收集已输出的文本内容
+          const partialText = currentTextContent || '';
+          const existingTexts = assistantContent
+            .filter((b): b is TextBlock => b.type === 'text')
+            .map(b => b.text)
+            .join('');
+          const allPartialText = existingTexts + partialText;
+
+          if (allPartialText.length > 0) {
+            // 1. 保存已有的部分内容作为 assistant 消息（只保留 text 块，丢弃未完成的 tool_use）
+            const partialAssistantContent: ContentBlock[] = [];
+            for (const block of assistantContent) {
+              if (block.type === 'text') {
+                partialAssistantContent.push(block);
+              }
+            }
+            if (currentTextContent) {
+              partialAssistantContent.push({ type: 'text', text: currentTextContent } as TextBlock);
+            }
+
+            if (partialAssistantContent.length > 0) {
+              const partialMsg: Message = { role: 'assistant', content: partialAssistantContent };
+              state.messages.push(partialMsg);
+              if (sessionId) walAppend(sessionId, 'msg', partialMsg);
+
+              // 2. 注入续写提示（作为 user 消息），让 AI 从断点继续
+              const resumeMsg: Message = {
+                role: 'user',
+                content: [{ type: 'text', text: '[System: Your response was interrupted due to a network issue. Please continue from where you left off. Do not repeat what you already said.]' }],
+              };
+              state.messages.push(resumeMsg);
+              if (sessionId) walAppend(sessionId, 'msg', resumeMsg);
+
+              // 3. 通知前端断流恢复中
+              callbacks.onTextDelta?.('\n\n---\n*[网络波动，正在自动恢复...]*\n\n');
+
+              const delay = 2000 * streamResumeCount;
+              await new Promise(resolve => setTimeout(resolve, delay));
+              // 继续循环，重新发起 API 请求
+              continue;
+            }
+          }
+          // 如果没有有意义的文本内容，fall through 到错误处理
         }
 
         console.error('[ConversationManager] API error:', error);

@@ -107,6 +107,42 @@ export function setupConfigApiRoutes(app: Express): void {
   });
 
   /**
+   * GET /api/config/advanced
+   * 获取高级配置
+   */
+  app.get('/api/config/advanced', async (req: Request, res: Response) => {
+    try {
+      const advancedConfig = await webConfigService.getAdvancedConfig();
+      sendSuccess(res, advancedConfig);
+    } catch (error) {
+      console.error('[Config API] Failed to get advanced config:', error);
+      sendError(res, error);
+    }
+  });
+
+  /**
+   * PUT /api/config/advanced
+   * 更新高级配置
+   */
+  app.put('/api/config/advanced', async (req: Request, res: Response) => {
+    try {
+      const updates = req.body;
+      if (!updates || typeof updates !== 'object') {
+        return sendError(res, new Error('Invalid request body'), 400);
+      }
+      const success = await webConfigService.updateAdvancedConfig(updates);
+      if (success) {
+        sendSuccess(res, { updated: true }, 'Advanced configuration updated successfully');
+      } else {
+        sendError(res, new Error('Failed to update advanced configuration'), 500);
+      }
+    } catch (error) {
+      console.error('[Config API] Failed to update advanced config:', error);
+      sendError(res, error);
+    }
+  });
+
+  /**
    * GET /api/config/logging
    * 获取日志配置
    */
