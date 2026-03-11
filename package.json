@@ -1,6 +1,6 @@
 {
   "name": "axon",
-  "version": "2.1.47",
+  "version": "2.2.0",
   "description": "Free & open source AI coding assistant with Web IDE, multi-agent system, and self-evolution",
   "type": "module",
   "main": "electron/main.cjs",
