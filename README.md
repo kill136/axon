@@ -282,9 +282,15 @@ Axon is free and open-source. Sponsorships keep development going. [See sponsor 
 
 - **Jack Darcy** — jack@jackdarcy.com.au
 
-*Your name/logo here — [become a sponsor](https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=694623326%40qq.com&item_name=Support+Axon+Development&currency_code=USD)*
+*Your name/logo here — [become a sponsor](SPONSORS.md)*
 
+<a href="https://github.com/sponsors/kill136"><img src="https://img.shields.io/badge/GitHub-Sponsors-EA4AAA?style=for-the-badge&logo=githubsponsors" alt="GitHub Sponsors"></a>
 <a href="https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=694623326%40qq.com&item_name=Support+Axon+Development&currency_code=USD"><img src="https://img.shields.io/badge/PayPal-Sponsor-00457C?style=for-the-badge&logo=paypal" alt="PayPal"></a>
+
+<p>
+<img src="wechat.jpg" width="180" alt="WeChat Pay">&nbsp;&nbsp;&nbsp;
+<img src="alipay.jpg" width="180" alt="Alipay">
+</p>
 
 ## License
 

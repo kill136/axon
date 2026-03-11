@@ -241,33 +241,20 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
   const clientDistPath = path.join(clientPath, 'dist');
 
   if (isDev) {
-    // 开发模式：使用 Vite 中间件
+    // 开发模式：使用 Vite 中间件（始终启用 HMR）
     try {
       const { createServer: createViteServer } = await import('vite');
-
-      // Evolve 模式下禁用 Vite 文件监听
-      // 原因：模型修改多个前端文件时，改完第 1 个 Vite 就 HMR 推送半成品代码到浏览器 → 崩溃
-      // 禁用后文件随便改，等 SelfEvolve 重启后浏览器重连加载完整的新代码
-      const isEvolve = isEvolveEnabled();
-      const viteWatchConfig = isEvolve
-        ? { ignored: ['**/*'] } // 忽略所有文件变化
-        : undefined;
 
       const vite = await createViteServer({
         root: clientPath,
         server: {
           middlewareMode: true,
           allowedHosts: true,
-          watch: viteWatchConfig,
         },
         appType: 'spa',
       });
       app.use(vite.middlewares);
-      if (isEvolve) {
-        console.log('   Mode: Development (Vite, HMR disabled - Evolve mode)');
-      } else {
-        console.log('   Mode: Development (Vite HMR)');
-      }
+      console.log('   Mode: Development (Vite HMR)');
     } catch (e) {
       console.warn('   Warning: Vite not installed, using static file mode');
       setupStaticFiles(app, clientDistPath);

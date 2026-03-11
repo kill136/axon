@@ -7,9 +7,10 @@ import SchedulePage from '../SchedulePage';
 import ChannelsPanel from '../../components/ChannelsPanel';
 import PerceptionPanel from '../../components/PerceptionPanel';
 import ProxyPanel from '../../components/ProxyPanel';
+import DocsPanel from './DocsPanel';
 import styles from './CustomizePage.module.css';
 
-type ActiveSection = 'skills' | 'mcp' | 'connectors' | 'channels' | 'schedule' | 'perception' | 'proxy';
+type ActiveSection = 'skills' | 'mcp' | 'connectors' | 'channels' | 'schedule' | 'perception' | 'proxy' | 'aiprofile';
 
 interface CustomizePageProps {
   onNavigateBack?: () => void;
@@ -79,6 +80,15 @@ const ProxyIcon = () => (
     <path d="M1 8h1M14 8h1" />
     <circle cx="3" cy="8" r="0.5" fill="currentColor" />
     <circle cx="13" cy="8" r="0.5" fill="currentColor" />
+  </svg>
+);
+
+const AiProfileIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="8" cy="5" r="3" />
+    <path d="M3 14c0-2.8 2.2-5 5-5s5 2.2 5 5" />
+    <path d="M11 3l1.5 1.5" />
+    <circle cx="12.5" cy="2" r="1" />
   </svg>
 );
 
@@ -183,6 +193,16 @@ export default function CustomizePage({
             </span>
             <span className={styles.navLabel}>{t('customize.proxy')}</span>
           </button>
+
+          <button
+            className={`${styles.navItem} ${activeSection === 'aiprofile' ? styles.active : ''}`}
+            onClick={() => setActiveSection('aiprofile')}
+          >
+            <span className={styles.navIcon}>
+              <AiProfileIcon />
+            </span>
+            <span className={styles.navLabel}>{t('customize.aiProfile')}</span>
+          </button>
         </nav>
       </div>
 
@@ -224,6 +244,9 @@ export default function CustomizePage({
             onSendMessage={onSendMessage}
             addMessageHandler={addMessageHandler}
           />
+        )}
+        {activeSection === 'aiprofile' && (
+          <DocsPanel />
         )}
       </div>
     </div>

@@ -1346,6 +1346,7 @@ const en: Translations = {
   'customize.configureInSettings': 'Configure OAuth credentials to connect',
   'customize.perception': 'Perception',
   'customize.proxy': 'API Proxy',
+  'customize.aiProfile': 'AI Profile',
 
   // Perception Panel
   'perception.title': 'Perception',
@@ -3234,6 +3235,7 @@ const zh: Translations = {
   'customize.configureInSettings': '配置 OAuth 凭证以连接',
   'customize.perception': '感知',
   'customize.proxy': 'API 代理',
+  'customize.aiProfile': 'AI 档案',
 
   // Perception Panel
   'perception.title': '感知',

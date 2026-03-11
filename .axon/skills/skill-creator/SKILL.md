@@ -63,10 +63,129 @@ Check available MCPs - if useful for research (searching docs, finding similar s
 
 Based on the user interview, fill in these components:
 
-- **name**: Skill identifier
-- **description**: When to trigger, what it does. This is the primary triggering mechanism - include both what the skill does AND specific contexts for when to use it. All "when to use" info goes here, not in the body. Note: currently Claude has a tendency to "undertrigger" skills -- to not use them when they'd be useful. To combat this, please make the skill descriptions a little bit "pushy". So for instance, instead of "How to build a simple fast dashboard to display internal Anthropic data.", you might write "How to build a simple fast dashboard to display internal Anthropic data. Make sure to use this skill whenever the user mentions dashboards, data visualization, internal metrics, or wants to display any kind of company data, even if they don't explicitly ask for a 'dashboard.'"
-- **compatibility**: Required tools, dependencies (optional, rarely needed)
-- **the rest of the skill :)**
+#### Frontmatter Fields
+
+All frontmatter fields are optional except `description` (recommended). Place them between `---` markers at the top of SKILL.md:
+
+```yaml
+---
+name: my-skill
+description: What this skill does and when to use it
+argument-hint: [filename] [format]
+disable-model-invocation: true
+user-invocable: true
+allowed-tools: Read, Grep, Glob
+model: sonnet
+context: fork
+agent: Explore
+hooks:
+  pre: "echo pre-hook"
+---
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | No | Display name. Lowercase letters, numbers, hyphens only (max 64 chars). If omitted, uses the directory name. |
+| `description` | Recommended | What the skill does and when to use it. Claude uses this to decide when to apply the skill. If omitted, uses the first paragraph of markdown content. This is the primary triggering mechanism — include both what the skill does AND specific contexts for when to use it. All "when to use" info goes here, not in the body. Note: currently Claude tends to "undertrigger" skills. To combat this, make descriptions a little "pushy". E.g., instead of "How to build a dashboard", write "How to build a dashboard. Use this skill whenever the user mentions dashboards, data visualization, internal metrics, or wants to display any kind of data, even if they don't explicitly ask for a 'dashboard.'" |
+| `argument-hint` | No | Hint shown during autocomplete to indicate expected arguments. E.g., `[issue-number]` or `[filename] [format]`. |
+| `disable-model-invocation` | No | Set to `true` to prevent Claude from automatically loading this skill. Use for workflows with side effects (deploy, commit, send-message). Default: `false`. |
+| `user-invocable` | No | Set to `false` to hide from the `/` menu. Use for background knowledge users shouldn't invoke directly. Default: `true`. |
+| `allowed-tools` | No | Tools Claude can use without asking permission when this skill is active. E.g., `Read, Grep, Glob` or `Bash(python *)`. |
+| `model` | No | Model to use when this skill is active. |
+| `context` | No | Set to `fork` to run in a forked subagent context. The skill content becomes the prompt that drives the subagent. It won't have access to conversation history. Only makes sense for skills with explicit task instructions. |
+| `agent` | No | Which subagent type to use when `context: fork` is set. Options: `Explore`, `Plan`, `general-purpose`, or any custom subagent from `.claude/agents/`. Default: `general-purpose`. |
+| `hooks` | No | Hooks scoped to this skill's lifecycle. |
+
+**Invocation control summary:**
+
+| Frontmatter | User can invoke | Claude can invoke | When loaded into context |
+|-------------|----------------|-------------------|------------------------|
+| (default) | Yes | Yes | Description always in context, full skill loads when invoked |
+| `disable-model-invocation: true` | Yes | No | Description not in context, full skill loads when user invokes |
+| `user-invocable: false` | No | Yes | Description always in context, full skill loads when invoked |
+
+#### String Substitutions
+
+Skills support dynamic variable substitution in the markdown content:
+
+| Variable | Description |
+|----------|-------------|
+| `$ARGUMENTS` | All arguments passed when invoking the skill. If `$ARGUMENTS` is not present in the content, arguments are appended as `ARGUMENTS: <value>`. |
+| `$ARGUMENTS[N]` | Access a specific argument by 0-based index, e.g., `$ARGUMENTS[0]` for the first argument. |
+| `$N` | Shorthand for `$ARGUMENTS[N]`, e.g., `$0` for the first, `$1` for the second. |
+| `${CLAUDE_SESSION_ID}` | The current session ID. Useful for logging or creating session-specific files. |
+| `${CLAUDE_SKILL_DIR}` | The directory containing the skill's SKILL.md file. Use this to reference bundled scripts/files regardless of the current working directory. |
+
+Example:
+```markdown
+---
+name: migrate-component
+description: Migrate a component from one framework to another
+---
+
+Migrate the $0 component from $1 to $2.
+Preserve all existing behavior and tests.
+```
+
+Running `/migrate-component SearchBar React Vue` replaces `$0` → SearchBar, `$1` → React, `$2` → Vue.
+
+#### Dynamic Context Injection
+
+The `!` + backtick syntax runs shell commands **before** the skill content is sent to Claude. The command output replaces the placeholder:
+
+```markdown
+---
+name: pr-summary
+description: Summarize changes in a pull request
+context: fork
+agent: Explore
+---
+
+## Pull request context
+- PR diff: !`gh pr diff`
+- PR comments: !`gh pr view --comments`
+- Changed files: !`gh pr diff --name-only`
+
+## Your task
+Summarize this pull request...
+```
+
+Each `!` command executes immediately (before Claude sees anything). Claude only sees the final rendered prompt with actual data. This is preprocessing, not something Claude executes.
+
+#### Extended Thinking
+
+To enable extended thinking in a skill, include the word "ultrathink" anywhere in your skill content.
+
+#### Skill Body
+
+After the frontmatter, write the rest of the skill instructions in markdown.
+
+### Important Background
+
+#### Skills and Commands Are Unified
+
+Custom commands (`.claude/commands/`) and skills (`.claude/skills/`) are now unified. A file at `.claude/commands/deploy.md` and a skill at `.claude/skills/deploy/SKILL.md` both create `/deploy` and work the same way. Existing `.claude/commands/` files keep working. Skills are recommended since they support additional features like supporting files, frontmatter control, and subagent execution. If a skill and a command share the same name, the skill takes precedence.
+
+#### Agent Skills Open Standard
+
+Skills follow the **Agent Skills open standard**, which works across multiple AI tools. Claude Code extends the standard with additional features like invocation control, subagent execution, and dynamic context injection.
+
+#### Where Skills Live (Priority Order)
+
+| Location | Path | Applies to |
+|----------|------|-----------|
+| Enterprise | Managed settings | All users in the organization |
+| Personal | `~/.claude/skills/<skill-name>/SKILL.md` | All your projects |
+| Project | `.claude/skills/<skill-name>/SKILL.md` | This project only |
+| Plugin | `<plugin>/skills/<skill-name>/SKILL.md` | Where plugin is enabled |
+
+Priority: enterprise > personal > project. Plugin skills use a `plugin-name:skill-name` namespace, so they cannot conflict with other levels.
+
+Skills from subdirectories are automatically discovered (e.g., when editing files in `packages/frontend/`, skills in `packages/frontend/.claude/skills/` are also loaded). This supports monorepo setups.
+
+#### Skill Description Context Budget
+
+Skill descriptions are loaded into context so Claude knows what's available. The budget scales dynamically at **2% of the context window**, with a fallback of **16,000 characters**. If you have many skills, some may be excluded. Users can override with the `SLASH_COMMAND_TOOL_CHAR_BUDGET` environment variable.
 
 ### Skill Writing Guide
 
@@ -75,7 +194,7 @@ Based on the user interview, fill in these components:
 ```
 skill-name/
 ├── SKILL.md (required)
-│   ├── YAML frontmatter (name, description required)
+│   ├── YAML frontmatter (description recommended, all fields optional)
 │   └── Markdown instructions
 └── Bundled Resources (optional)
     ├── scripts/    - Executable code for deterministic/repetitive tasks

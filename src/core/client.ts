@@ -2243,6 +2243,16 @@ export class ClaudeClient {
   getMaxTokens(): number {
     return this.maxTokens;
   }
+
+  /** 获取底层 Anthropic SDK 客户端（用于 cache keepalive 等低级操作） */
+  getAnthropicClient(): Anthropic {
+    return this.client;
+  }
+
+  /** 是否使用 OAuth 模式 */
+  getIsOAuth(): boolean {
+    return this.isOAuth;
+  }
 }
 
 // 默认客户端实例 (延迟初始化以支持 OAuth)

@@ -284,9 +284,15 @@ Axon 免费开源，赞助帮助我们持续开发。[查看赞助层级 →](SP
 
 - **Jack Darcy** — jack@jackdarcy.com.au
 
-*你的名字/Logo 也可以出现在这里 — [成为赞助者](https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=694623326%40qq.com&item_name=Support+Axon+Development&currency_code=USD)*
+*你的名字/Logo 也可以出现在这里 — [成为赞助者](SPONSORS.md)*
 
+<a href="https://github.com/sponsors/kill136"><img src="https://img.shields.io/badge/GitHub-Sponsors-EA4AAA?style=for-the-badge&logo=githubsponsors" alt="GitHub Sponsors"></a>
 <a href="https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=694623326%40qq.com&item_name=Support+Axon+Development&currency_code=USD"><img src="https://img.shields.io/badge/PayPal-赞助-00457C?style=for-the-badge&logo=paypal" alt="PayPal"></a>
+
+<p>
+<img src="wechat.jpg" width="180" alt="微信赞赏">&nbsp;&nbsp;&nbsp;
+<img src="alipay.jpg" width="180" alt="支付宝赞赏">
+</p>
 
 ## 许可证
 

@@ -194,7 +194,7 @@ export class GitManager {
         encoding: 'utf-8',
         timeout: this.timeout,
         stdio: ['pipe', 'pipe', 'pipe'],
-      }).trim();
+      }).trimEnd();
     } catch (error: any) {
       // 捕获 stderr 并抛出
       const stderr = error.stderr?.toString() || error.message || String(error);

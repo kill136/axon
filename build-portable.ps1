@@ -109,6 +109,23 @@ if ($LASTEXITCODE -ne 0 -or -not (Test-Path $axonMdDst) -or (Get-Item $axonMdDst
 }
 Write-Host "  Generated default AXON.md template" -ForegroundColor Gray
 
+# Memory notebooks — bundle current experience/profile as initial templates
+# These get copied to ~/.axon/memory/ on first run if user doesn't have them
+$memoryDir = Join-Path $appDir "default-memory"
+New-Item -ItemType Directory -Path $memoryDir -Force | Out-Null
+
+$srcMemoryDir = Join-Path $env:USERPROFILE ".axon\memory"
+$memoryFiles = @("experience.md", "profile.md")
+foreach ($mf in $memoryFiles) {
+    $srcFile = Join-Path $srcMemoryDir $mf
+    if (Test-Path $srcFile) {
+        Copy-Item -Force $srcFile (Join-Path $memoryDir $mf)
+        Write-Host "  Bundled $mf from ~/.axon/memory/" -ForegroundColor Gray
+    } else {
+        Write-Host "  Skipped $mf (not found in ~/.axon/memory/)" -ForegroundColor Gray
+    }
+}
+
 # .env file — generate a safe template without secrets
 # NEVER copy the real .env (contains OAuth secrets, bot tokens, etc.)
 $envTemplate = @"

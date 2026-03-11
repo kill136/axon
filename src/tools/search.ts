@@ -14,6 +14,7 @@ import { getCurrentCwd } from '../core/cwd-context.js';
 import { getRgPath } from '../search/ripgrep.js';
 import { t } from '../i18n/index.js';
 import { fromMsysPath } from '../utils/platform.js';
+import { isDocumentFile, getSearchableText, DOCUMENT_EXTENSIONS } from '../media/index.js';
 
 // 检测当前平台
 const isWindows = process.platform === 'win32';
@@ -96,6 +97,7 @@ Usage:
   - Use Task tool for open-ended searches requiring multiple rounds
   - Pattern syntax: Uses ripgrep (not grep) - literal braces need escaping (use \`interface\\{\\}\` to find \`interface{}\` in Go code)
   - Multiline matching: By default patterns match within single lines only. For cross-line patterns like \`struct \\{[\\s\\S]*?field\`, use \`multiline: true\`
+  - Supports searching inside Office documents (.docx, .xlsx, .pptx) and PDF files by extracting text content (results are cached for performance)
 `;
 
   // Directories to exclude from search
@@ -320,6 +322,14 @@ Usage:
 
       let lines = output.split('\n').filter(line => line.length > 0);
 
+      // 搜索 Office 文档和 PDF 文件（ripgrep 无法搜索的二进制格式）
+      const docResults = await this.searchDocumentFiles(
+        searchPath, pattern, output_mode, ignoreCase, showLineNumbers
+      );
+      if (docResults.length > 0) {
+        lines = lines.concat(docResults);
+      }
+
       // 对于 files_with_matches 模式，按修改时间排序
       if (output_mode === 'files_with_matches' && lines.length > 0) {
         const filesWithStats = await Promise.all(
@@ -490,6 +500,121 @@ Usage:
     });
 
     return persistResult.content;
+  }
+
+  /**
+   * 搜索 Office 文档和 PDF 文件
+   * 提取文本内容后用 JS 正则匹配，结果格式与 ripgrep 输出兼容
+   */
+  private async searchDocumentFiles(
+    searchPath: string,
+    pattern: string,
+    outputMode: string,
+    ignoreCase?: boolean,
+    showLineNumbers?: boolean,
+  ): Promise<string[]> {
+    const results: string[] = [];
+
+    try {
+      // 收集搜索路径下的文档文件
+      const docFiles = this.collectDocumentFiles(searchPath);
+      if (docFiles.length === 0) return results;
+
+      // 限制并发数量，避免大目录卡死
+      const MAX_DOC_FILES = 50;
+      const filesToSearch = docFiles.slice(0, MAX_DOC_FILES);
+
+      const regex = new RegExp(pattern, ignoreCase ? 'gi' : 'g');
+
+      for (const filePath of filesToSearch) {
+        try {
+          const text = await getSearchableText(filePath);
+          if (!text) continue;
+
+          const textLines = text.split('\n');
+          let matchCount = 0;
+
+          for (let i = 0; i < textLines.length; i++) {
+            regex.lastIndex = 0;
+            if (regex.test(textLines[i])) {
+              matchCount++;
+
+              if (outputMode === 'content') {
+                const lineNum = showLineNumbers ? `${i + 1}:` : '';
+                results.push(`${filePath}:${lineNum}${textLines[i]}`);
+              }
+            }
+          }
+
+          if (matchCount > 0) {
+            if (outputMode === 'files_with_matches') {
+              results.push(filePath);
+            } else if (outputMode === 'count') {
+              results.push(`${filePath}:${matchCount}`);
+            }
+          }
+        } catch {
+          // 单个文件解析失败不影响其他文件
+        }
+      }
+    } catch {
+      // 目录遍历失败不影响 ripgrep 结果
+    }
+
+    return results;
+  }
+
+  /**
+   * 递归收集目录下的文档文件（docx/xlsx/pptx/pdf）
+   */
+  private collectDocumentFiles(searchPath: string): string[] {
+    const files: string[] = [];
+
+    try {
+      const stat = fs.statSync(searchPath);
+
+      if (stat.isFile()) {
+        // 搜索单个文件
+        if (isDocumentFile(searchPath)) {
+          files.push(searchPath);
+        }
+        return files;
+      }
+
+      if (!stat.isDirectory()) return files;
+
+      // 递归遍历目录
+      const MAX_FILES = 200;
+      const stack = [searchPath];
+
+      while (stack.length > 0 && files.length < MAX_FILES) {
+        const dir = stack.pop()!;
+        let entries: fs.Dirent[];
+        try {
+          entries = fs.readdirSync(dir, { withFileTypes: true });
+        } catch {
+          continue;
+        }
+
+        for (const entry of entries) {
+          if (files.length >= MAX_FILES) break;
+          const fullPath = path.join(dir, entry.name);
+
+          if (entry.isDirectory()) {
+            // 跳过排除的目录
+            if (!this.excludedDirs.includes(entry.name) && !entry.name.startsWith('.')) {
+              stack.push(fullPath);
+            }
+          } else if (entry.isFile() && isDocumentFile(fullPath)) {
+            files.push(fullPath);
+          }
+        }
+      }
+    } catch {
+      // 忽略访问错误
+    }
+
+    return files;
   }
 
   private fallbackGrep(input: GrepInput): ToolResult {
