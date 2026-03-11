@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useProject } from '../contexts/ProjectContext';
 import { useLanguage } from '../i18n';
 
@@ -165,18 +165,35 @@ function CommandWall({ onItemClick, isZh, t }: {
   t: (key: string) => string;
 }) {
   const [activeTab, setActiveTab] = useState<TabId>('office');
+  const [paused, setPaused] = useState(false);
   const rows = COMMAND_DATA[activeTab];
   const speeds = [28, 35, 22];
   const directions: ('left' | 'right')[] = ['left', 'right', 'left'];
 
+  // Tab 自动轮播：每 6 秒切换一次，hover 时暂停
+  useEffect(() => {
+    if (paused) return;
+    const timer = setInterval(() => {
+      setActiveTab(prev => {
+        const idx = TABS.findIndex(t => t.id === prev);
+        return TABS[(idx + 1) % TABS.length].id;
+      });
+    }, 6000);
+    return () => clearInterval(timer);
+  }, [paused]);
+
   return (
-    <div className="command-wall">
+    <div
+      className="command-wall"
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+    >
       <div className="cw-tabs">
         {TABS.map(tab => (
           <button
             key={tab.id}
             className={`cw-tab ${activeTab === tab.id ? 'cw-tab-active' : ''}`}
-            onClick={() => setActiveTab(tab.id)}
+            onClick={() => { setActiveTab(tab.id); setPaused(true); }}
           >
             <span className="cw-tab-icon">{tab.icon}</span>
             <span className="cw-tab-label">{t(tab.labelKey)}</span>

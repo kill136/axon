@@ -2015,11 +2015,15 @@ body {
 }
 
 .cw-marquee-left {
-  animation: cw-scroll-left linear infinite;
+  animation-name: cw-scroll-left;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
 }
 
 .cw-marquee-right {
-  animation: cw-scroll-right linear infinite;
+  animation-name: cw-scroll-right;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
 }
 
 @keyframes cw-scroll-left {
