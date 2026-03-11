@@ -97,10 +97,76 @@ $clientDir = Join-Path $appDir "src\web\client"
 New-Item -ItemType Directory -Path $clientDir -Force | Out-Null
 Copy-Item -Recurse -Force "src\web\client\dist" $clientDir
 
-# .env file if exists
-if (Test-Path ".env") {
-    Copy-Item -Force ".env" $appDir
-    Write-Host "  Copied .env file" -ForegroundColor Gray
+# AXON.md default template (ensures iron rules are active out-of-the-box)
+# Generate from template instead of copying project-specific AXON.md
+$axonMdDst = Join-Path $appDir "AXON.md"
+node -e "import('./dist/rules/index.js').then(m => process.stdout.write(m.createClaudeMdTemplate()))" > $axonMdDst 2>$null
+if ($LASTEXITCODE -ne 0 -or -not (Test-Path $axonMdDst) -or (Get-Item $axonMdDst).Length -eq 0) {
+    # Fallback: copy project AXON.md if template generation fails
+    if (Test-Path "AXON.md") {
+        Copy-Item -Force "AXON.md" $axonMdDst
+    }
+}
+Write-Host "  Generated default AXON.md template" -ForegroundColor Gray
+
+# .env file — generate a safe template without secrets
+# NEVER copy the real .env (contains OAuth secrets, bot tokens, etc.)
+$envTemplate = @"
+# Axon Configuration
+# Fill in your own credentials if needed
+
+# GitHub OAuth App (optional, for GitHub integration)
+# GITHUB_CLIENT_ID=
+# GITHUB_CLIENT_SECRET=
+
+# Google OAuth (optional)
+# GOOGLE_CLIENT_ID=
+# GOOGLE_CLIENT_SECRET=
+
+# Feishu/Lark (optional)
+# FEISHU_APP_ID=
+# FEISHU_APP_SECRET=
+
+# Slack (optional)
+# SLACK_BOT_TOKEN=
+"@
+$envTemplate | Out-File -Encoding utf8 (Join-Path $appDir ".env.example")
+Write-Host "  Created .env.example template (secrets excluded)" -ForegroundColor Gray
+
+# Vendored ripgrep binary (required for Grep tool)
+$rgVersion = "14.1.0"
+$rgArch = "x86_64"
+$rgVendorDir = Join-Path $appDir "vendor\ripgrep\x64-win32"
+$rgExePath = Join-Path $rgVendorDir "rg.exe"
+
+if (-not (Test-Path $rgExePath)) {
+    Write-Host "  Downloading ripgrep $rgVersion..." -ForegroundColor Gray
+    New-Item -ItemType Directory -Path $rgVendorDir -Force | Out-Null
+
+    $rgZipName = "ripgrep-$rgVersion-$rgArch-pc-windows-msvc.zip"
+    $rgDownloadUrl = "https://github.com/BurntSushi/ripgrep/releases/download/$rgVersion/$rgZipName"
+    $rgTmpZip = Join-Path $env:TEMP $rgZipName
+
+    try {
+        Invoke-WebRequest -Uri $rgDownloadUrl -OutFile $rgTmpZip -UseBasicParsing
+        $rgTmpDir = Join-Path $env:TEMP "rg-extract-$rgVersion"
+        Expand-Archive -Path $rgTmpZip -DestinationPath $rgTmpDir -Force
+        # rg.exe is inside a subdirectory named like ripgrep-14.1.0-x86_64-pc-windows-msvc/
+        $rgBin = Get-ChildItem -Path $rgTmpDir -Recurse -Filter "rg.exe" | Select-Object -First 1
+        if ($rgBin) {
+            Copy-Item -Force $rgBin.FullName $rgExePath
+            Write-Host "  ripgrep $rgVersion installed to vendor/" -ForegroundColor Gray
+        } else {
+            Write-Host "  WARNING: rg.exe not found in archive" -ForegroundColor Yellow
+        }
+        Remove-Item -Recurse -Force $rgTmpDir -ErrorAction SilentlyContinue
+        Remove-Item -Force $rgTmpZip -ErrorAction SilentlyContinue
+    } catch {
+        Write-Host "  WARNING: Failed to download ripgrep: $_" -ForegroundColor Yellow
+        Write-Host "  Grep tool will require system ripgrep (rg) in PATH" -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "  ripgrep already vendored" -ForegroundColor Gray
 }
 
 # ============================================================
