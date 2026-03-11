@@ -4,8 +4,9 @@
  * 设计哲学：把 agent 当人看，给它一个自管理的笔记本。
  * agent 自己决定记什么、怎么组织、什么时候更新。
  *
- * 两个笔记本，两个生命周期：
- * - experience.md: 跨项目经验（用户信息、工作模式、教训）~4K tokens
+ * 三个笔记本，三个生命周期：
+ * - profile.md:    用户个人档案（姓名、角色、联系方式、偏好）~2K tokens
+ * - experience.md: 跨项目经验（工作模式、教训、反模式）~4K tokens
  * - project.md:    项目知识（AXON.md 没覆盖的、agent 自己发现的）~8K tokens
  *
  * 当前会话的上下文由对话本身 + TodoWrite + Session Memory 负责，不需要额外笔记本。
@@ -23,6 +24,7 @@ import { estimateTokens } from '../utils/token-estimate.js';
 
 /** 各笔记本的 token 预算 */
 const MAX_TOKENS: Record<NotebookType, number> = {
+  profile: 2000,
   experience: 4000,
   project: 8000,
 };
@@ -31,7 +33,7 @@ const MAX_TOKENS: Record<NotebookType, number> = {
 // 类型
 // ============================================================================
 
-export type NotebookType = 'experience' | 'project';
+export type NotebookType = 'profile' | 'experience' | 'project';
 
 export interface NotebookWriteResult {
   success: boolean;
@@ -41,6 +43,7 @@ export interface NotebookWriteResult {
 }
 
 export interface NotebookStats {
+  profile: { tokens: number; exists: boolean; path: string };
   experience: { tokens: number; exists: boolean; path: string };
   project: { tokens: number; exists: boolean; path: string };
   totalTokens: number;
@@ -92,6 +95,8 @@ export class NotebookManager {
     const projectDir = path.join(claudeDir, 'memory', 'projects', sanitizeProjectPath(this.projectPath));
 
     switch (type) {
+      case 'profile':
+        return path.join(claudeDir, 'memory', 'profile.md');
       case 'experience':
         return path.join(claudeDir, 'memory', 'experience.md');
       case 'project':
@@ -156,6 +161,11 @@ export class NotebookManager {
   getNotebookSummaryForPrompt(): string {
     const parts: string[] = [];
 
+    const profile = this.read('profile');
+    if (profile.trim()) {
+      parts.push(`<notebook type="profile" max-tokens="2000">\n${profile.trim()}\n</notebook>`);
+    }
+
     const experience = this.read('experience');
     if (experience.trim()) {
       parts.push(`<notebook type="experience" max-tokens="4000">\n${experience.trim()}\n</notebook>`);
@@ -179,7 +189,7 @@ export class NotebookManager {
 
   /** 获取统计信息 */
   getStats(): NotebookStats {
-    const types: NotebookType[] = ['experience', 'project'];
+    const types: NotebookType[] = ['profile', 'experience', 'project'];
     const stats: any = {};
     let totalTokens = 0;
 

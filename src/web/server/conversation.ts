@@ -57,6 +57,7 @@ import { BUILTIN_PROVIDERS } from './connectors/providers.js';
 import { appendRunLog } from '../../daemon/run-log.js';
 import { promptSnippetsManager } from './prompt-snippets.js';
 import { isEvolveRestartRequested, triggerGracefulShutdown } from './evolve-state.js';
+import { loadActiveGoals } from '../../goals/index.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -1392,15 +1393,27 @@ export class ConversationManager {
     }
 
     try {
+      // 意图增强：模糊输入自动补充项目上下文（用户无感）
+      let enrichedContent = content;
+      try {
+        const { enrichUserInput } = await import('../../context/intent-enricher.js');
+        enrichedContent = enrichUserInput(content, {
+          cwd: state.session.cwd,
+          isGitRepo: this.checkIsGitRepo(state.session.cwd),
+        });
+      } catch {
+        // 增强失败不影响主流程
+      }
+
       // 构建用户消息
       const userMessage: Message = {
         role: 'user',
-        content: content,
+        content: enrichedContent,
       };
 
       // 如果有图片附件，压缩后转换为多内容块格式传递给 Claude API
       if (mediaAttachments && mediaAttachments.length > 0) {
-        const contentBlocks: any[] = [{ type: 'text', text: content }];
+        const contentBlocks: any[] = [{ type: 'text', text: enrichedContent }];
         for (const attachment of mediaAttachments) {
           const compressed = await compressRawBase64(attachment.data, attachment.mimeType);
           contentBlocks.push({
@@ -3953,6 +3966,11 @@ Respond ONLY with valid JSON, no other text.`;
         notebookSummary,
         // MCP 服务器信息（用于系统提示中的 MCP 指令）
         mcpServers: mcpServerInfos.length > 0 ? mcpServerInfos : undefined,
+        // 活跃目标（常驻到提示词，每次对话都能看到）
+        activeGoals: (() => {
+          const goals = loadActiveGoals(state.session.cwd);
+          return goals.length > 0 ? goals : undefined;
+        })(),
       };
 
       // 使用官方的 SystemPromptBuilder

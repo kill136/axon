@@ -49,6 +49,7 @@ interface CacheEntry {
  */
 export class GeminiImageService {
   private ai: GoogleGenAI | null = null;
+  private lastApiKey: string = '';
   private cache: Map<string, CacheEntry> = new Map();
   private cacheDir: string;
   private readonly CACHE_TTL = 30 * 60 * 1000; // 30 分钟缓存
@@ -61,16 +62,19 @@ export class GeminiImageService {
 
   /**
    * 初始化 Gemini 客户端
+   * 当 API Key 变化时自动重建客户端
    */
   private initClient(): void {
-    if (this.ai) return;
-
-    const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '';
     if (!apiKey) {
-      throw new Error('GEMINI_API_KEY or GOOGLE_API_KEY environment variable is not configured');
+      throw new Error('GEMINI_API_KEY or GOOGLE_API_KEY is not configured. Please set it in Settings → API Advanced.');
     }
 
+    // Key 变化时重建客户端
+    if (this.ai && apiKey === this.lastApiKey) return;
+
     this.ai = new GoogleGenAI({ apiKey });
+    this.lastApiKey = apiKey;
   }
 
   /**

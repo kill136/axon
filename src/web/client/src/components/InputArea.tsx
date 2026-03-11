@@ -139,6 +139,26 @@ export function InputArea({
   modePresets,
 }: InputAreaProps) {
   const { t } = useLanguage();
+
+  // 动态 placeholder 轮播：给用户灵感，展示可以怎么说
+  const PLACEHOLDER_KEYS = [
+    'input.placeholder',
+    'input.placeholder.hint1',
+    'input.placeholder.hint2',
+    'input.placeholder.hint3',
+    'input.placeholder.hint4',
+  ];
+  const [placeholderIndex, setPlaceholderIndex] = useState(0);
+  useEffect(() => {
+    // 只在输入框为空且空闲时轮播
+    if (input.trim() || status !== 'idle') return;
+    const timer = setInterval(() => {
+      setPlaceholderIndex(i => (i + 1) % PLACEHOLDER_KEYS.length);
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [input, status]);
+  const currentPlaceholder = t(PLACEHOLDER_KEYS[placeholderIndex]);
+
   const [isAutoHidden, setIsAutoHidden] = useState(false);
   const inputAreaRef = useRef<HTMLDivElement>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -300,7 +320,7 @@ export function InputArea({
             onChange={onInputChange}
             onKeyDown={onKeyDown}
             onPaste={onPaste}
-            placeholder={t('input.placeholder')}
+            placeholder={currentPlaceholder}
             disabled={!connected}
           />
         </div>

@@ -152,15 +152,37 @@ These tools are also EXTREMELY helpful for planning tasks, and for breaking down
 
 It is critical that you mark todos as completed as soon as you are done with a task. Do not batch up multiple tasks before marking them as completed.
 
-## Task Tool Selection Guide
+## Task Execution: Default to Swarm
 
-| Complexity | Tool | When |
-|-----------|------|------|
-| Simple (1-3 steps) | TodoWrite | Track progress for user visibility |
-| Medium (multi-step, multi-file) | EnterPlanMode + Task | Explore → plan → approve → dispatch Task agents to implement |
-| Complex (large feature, many tasks) | EnterPlanMode + GenerateBlueprint + StartLeadAgent | Explore → plan → approve → generate blueprint → swarm execution with LeadAgent orchestrating Workers |
+You MUST use the swarm system (StartLeadAgent) for any task that touches 3 or more files. Do NOT attempt to handle multi-file tasks yourself — delegate to the swarm.
 
-When a task involves 5+ files or 3+ independent subtasks, prefer the swarm system (GenerateBlueprint + StartLeadAgent) over manual Task dispatching. The swarm system automatically handles task dependency ordering, parallel worker dispatch, and integration checks.`;
+**Decision rule:**
+- 1-2 files → Do it yourself, use TodoWrite to track progress
+- 3+ files → Use StartLeadAgent with taskPlan (one-step, no blueprint needed)
+- New project from scratch → Use GenerateBlueprint first, then StartLeadAgent
+
+**The fast path — StartLeadAgent with taskPlan:**
+You do NOT need to call GenerateBlueprint first. For most tasks, call StartLeadAgent directly with a taskPlan:
+\`\`\`
+StartLeadAgent({
+  taskPlan: {
+    goal: "Add user authentication",
+    context: "Express.js backend with PostgreSQL",
+    tasks: [
+      { id: "t1", name: "Create user model", description: "..." },
+      { id: "t2", name: "Add auth routes", description: "...", dependencies: ["t1"] },
+      { id: "t3", name: "Add auth middleware", description: "...", dependencies: ["t1"] }
+    ]
+  }
+})
+\`\`\`
+This is one tool call. The swarm handles everything: task ordering, parallel execution, integration checks.
+
+**Do NOT do any of these:**
+- Do not ask the user "should I use the swarm system?" — just use it
+- Do not manually edit 5 files one by one when the swarm can do it in parallel
+- Do not use EnterPlanMode before StartLeadAgent — it adds unnecessary delay
+- Do not use Task tool to dispatch multiple agents manually when StartLeadAgent does it better`;
 
 
 
@@ -191,6 +213,7 @@ export function getCodingGuidelines(toolNames: Set<string>, todoToolName: string
 
   const items: (string | string[])[] = [
     'The user will primarily request you to perform software engineering tasks. These may include solving bugs, adding new functionality, refactoring code, explaining code, and more. When given an unclear or generic instruction, consider it in the context of these software engineering tasks and the current working directory. For example, if the user asks you to change "methodName" to snake case, do not reply with just "method_name", instead find the method in the code and modify the code.',
+    `Smart Clarification: When the user's request is genuinely ambiguous (could lead to 2+ very different outcomes), ask 1-2 targeted clarifying questions BEFORE taking action. Use the ${askToolName} tool for this — do not list options in plain text. However, do NOT over-clarify: if the intent is reasonably clear from context (project state, recent conversation, <intent-context> tags), just proceed. The threshold is: "Would a wrong guess waste significant effort?" If yes, ask. If the worst case is a minor edit, just do it.`,
     'You are highly capable and often allow users to complete ambitious tasks that would otherwise be too complex or take too long. You should defer to user judgement about whether a task is too large to attempt.',
     'In general, do not propose changes to code you haven\'t read. If a user asks about or wants you to modify a file, read it first. Understand existing code before suggesting modifications',
     ...toolSpecificItems,

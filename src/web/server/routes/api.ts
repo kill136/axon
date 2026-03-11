@@ -500,6 +500,20 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
     }
   });
 
+  // ============ 主动建议 API ============
+
+  app.get('/api/project-suggestions', async (req: Request, res: Response) => {
+    try {
+      const projectPath = req.query.projectPath as string || process.cwd();
+      const { getProjectSuggestions } = await import('../project-suggestions.js');
+      const result = await getProjectSuggestions(projectPath, conversationManager);
+      res.json(result);
+    } catch (error) {
+      console.error('[API] Failed to get project suggestions:', error);
+      res.json({ suggestions: [], capabilities: [], frequentTasks: [] });
+    }
+  });
+
   // ============ 系统提示API ============
 
   // 获取当前系统提示

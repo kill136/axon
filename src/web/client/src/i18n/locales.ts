@@ -806,7 +806,11 @@ const en: Translations = {
   'nav.close': 'Close',
 
   // InputArea
-  'input.placeholder': 'Type a message... (/ for commands)',
+  'input.placeholder': 'Tell me what you want to do... (/ for commands)',
+  'input.placeholder.hint1': 'e.g. "Add user login with JWT authentication"',
+  'input.placeholder.hint2': 'e.g. "Something is broken, help me find the bug"',
+  'input.placeholder.hint3': 'e.g. "Review my recent changes before I commit"',
+  'input.placeholder.hint4': 'e.g. "Help me understand how this project works"',
   'input.switchProvider': 'Switch API provider',
   'input.switchModel': 'Switch model',
   'input.permissionMode': 'Permission mode',
@@ -2699,7 +2703,11 @@ const zh: Translations = {
   'nav.maximize': '最大化',
   'nav.close': '关闭',
   // InputArea
-  'input.placeholder': '输入消息... (/ 显示命令)',
+  'input.placeholder': '告诉我你想做什么... (/ 显示命令)',
+  'input.placeholder.hint1': '例如: "加一个 JWT 用户登录功能"',
+  'input.placeholder.hint2': '例如: "有东西坏了，帮我找到问题"',
+  'input.placeholder.hint3': '例如: "看看我最近的改动有没有问题"',
+  'input.placeholder.hint4': '例如: "帮我理解这个项目是怎么工作的"',
   'input.switchProvider': '切换 API 服务商',
   'input.switchModel': '切换模型',
   'input.permissionMode': '权限模式',

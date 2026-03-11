@@ -1208,6 +1208,14 @@ export class BashTool extends BaseTool<BashInput, BashResult> {
       };
       recordAudit(auditLog);
 
+      // 意图增强：记录终端输出到缓冲区（供下次模糊提问时注入上下文）
+      if (result.output) {
+        try {
+          const { terminalOutputBuffer } = await import('../context/intent-enricher.js');
+          terminalOutputBuffer.push(result.output, !result.success);
+        } catch { /* 缓冲失败不影响主流程 */ }
+      }
+
       return result;
     } catch (err: any) {
       const exitCode = err.code || 1;
@@ -1239,6 +1247,14 @@ export class BashTool extends BaseTool<BashInput, BashResult> {
         background: false,
       };
       recordAudit(auditLog);
+
+      // 意图增强：记录错误输出到缓冲区
+      if (output) {
+        try {
+          const { terminalOutputBuffer } = await import('../context/intent-enricher.js');
+          terminalOutputBuffer.push(output, true);
+        } catch { /* 缓冲失败不影响主流程 */ }
+      }
 
       return result;
     }
