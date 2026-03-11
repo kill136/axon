@@ -2554,10 +2554,22 @@ export class ConversationLoop {
    * @returns 处理后的用户输入（附加了链接内容）
    */
   private async preprocessUserInput(userInput: string): Promise<string> {
+    // 意图增强：模糊输入自动补充项目上下文
+    let enrichedInput = userInput;
+    try {
+      const { enrichUserInput } = await import('../context/intent-enricher.js');
+      enrichedInput = enrichUserInput(userInput, {
+        cwd: this.promptContext.workingDir,
+        isGitRepo: this.promptContext.isGitRepo,
+      });
+    } catch {
+      // 增强失败不影响主流程
+    }
+
     // 检查是否启用自动链接理解
     const config = configManager.get('autoLinkUnderstanding');
     if (!config) {
-      return userInput;
+      return enrichedInput;
     }
 
     try {
@@ -2566,7 +2578,7 @@ export class ConversationLoop {
       const urls = extractUrls(userInput);
 
       if (urls.length === 0) {
-        return userInput;
+        return enrichedInput;
       }
 
       // 动态导入 WebFetch 工具
@@ -2600,13 +2612,13 @@ export class ConversationLoop {
       );
 
       if (linkContexts.length > 0) {
-        return userInput + linkContexts.join('');
+        return enrichedInput + linkContexts.join('');
       }
 
-      return userInput;
+      return enrichedInput;
     } catch {
       // 任何错误都不影响正常流程
-      return userInput;
+      return enrichedInput;
     }
   }
 

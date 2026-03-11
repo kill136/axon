@@ -29,6 +29,8 @@ interface ApiConfig {
   customModelName?: string;
   /** 认证优先级 */
   authPriority?: 'apiKey' | 'oauth' | 'auto';
+  /** Gemini API Key（图片生成） */
+  geminiApiKey?: string;
 }
 
 /**
@@ -101,10 +103,12 @@ export function ApiConfigPanel({ onSave, onClose }: ApiConfigPanelProps) {
     apiKey: '',
     customModelName: '',
     authPriority: 'auto',
+    geminiApiKey: '',
   });
 
   // 跟踪 apiKey 是否被用户手动修改过（防止掩码值或空值覆盖已有 key）
   const [apiKeyDirty, setApiKeyDirty] = useState(false);
+  const [geminiKeyDirty, setGeminiKeyDirty] = useState(false);
 
   // 加载状态
   const [loading, setLoading] = useState(false);
@@ -142,6 +146,7 @@ export function ApiConfigPanel({ onSave, onClose }: ApiConfigPanelProps) {
           // 服务器返回什么就用什么，不回退到默认值（否则用户无法清空）
           apiBaseUrl: data.data.apiBaseUrl || '',
           apiKey: data.data.apiKey || '',
+          geminiApiKey: data.data.geminiApiKey || '',
         }));
       }
     } catch (err) {
@@ -170,6 +175,9 @@ export function ApiConfigPanel({ onSave, onClose }: ApiConfigPanelProps) {
       if (!apiKeyDirty) {
         delete payload.apiKey;
       }
+      if (!geminiKeyDirty) {
+        delete payload.geminiApiKey;
+      }
 
       const response = await fetch('/api/config/api', {
         method: 'PUT',
@@ -182,6 +190,7 @@ export function ApiConfigPanel({ onSave, onClose }: ApiConfigPanelProps) {
         onSave?.(config);
         setError(null);
         setApiKeyDirty(false);
+        setGeminiKeyDirty(false);
         setSaveSuccess(t('apiConfig.saved'));
         // 重新加载配置以获取更新后的掩码值
         fetchCurrentConfig();
@@ -447,6 +456,38 @@ export function ApiConfigPanel({ onSave, onClose }: ApiConfigPanelProps) {
             </label>
             <span className="help-text">
               {t('apiConfig.authPriority.help')}
+            </span>
+          </div>
+
+          {/* 分隔线 - Gemini */}
+          <div style={{ margin: '24px 0', borderTop: '1px solid var(--border-color)' }} />
+          <h4 style={{ marginBottom: '16px', color: 'var(--text-primary)' }}>{t('apiConfig.gemini.title')}</h4>
+          <p className="help-text" style={{ marginBottom: '16px' }}>
+            {t('apiConfig.gemini.description')}
+          </p>
+
+          {/* Gemini API Key */}
+          <div className="mcp-form-group">
+            <label>
+              {t('apiConfig.geminiApiKey.label')}
+              <input
+                type={geminiKeyDirty ? 'password' : 'text'}
+                className="mcp-form-input"
+                placeholder={t('apiConfig.geminiApiKey.placeholder')}
+                value={config.geminiApiKey ?? ''}
+                onFocus={() => {
+                  if (!geminiKeyDirty && config.geminiApiKey && config.geminiApiKey.includes('...')) {
+                    setConfig(prev => ({ ...prev, geminiApiKey: '' }));
+                  }
+                }}
+                onChange={(e) => {
+                  setGeminiKeyDirty(true);
+                  updateConfig('geminiApiKey', e.target.value);
+                }}
+              />
+            </label>
+            <span className="help-text">
+              {t('apiConfig.geminiApiKey.help')}
             </span>
           </div>
         </div>

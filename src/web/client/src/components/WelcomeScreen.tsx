@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { useProject } from '../contexts/ProjectContext';
 import { useLanguage } from '../i18n';
 
@@ -13,15 +14,35 @@ interface QuickTemplate {
   promptKey: string;
 }
 
-const PROJECT_TEMPLATES: QuickTemplate[] = [
-  { icon: '🔍', labelKey: 'welcome.template.analyze', promptKey: 'welcome.template.analyze.prompt' },
-  { icon: '🐛', labelKey: 'welcome.template.fix', promptKey: 'welcome.template.fix.prompt' },
-  { icon: '📝', labelKey: 'welcome.template.review', promptKey: 'welcome.template.review.prompt' },
-  { icon: '✨', labelKey: 'welcome.template.refactor', promptKey: 'welcome.template.refactor.prompt' },
-  { icon: '🧪', labelKey: 'welcome.template.test', promptKey: 'welcome.template.test.prompt' },
-  { icon: '📖', labelKey: 'welcome.template.explain', promptKey: 'welcome.template.explain.prompt' },
-];
+// 后端返回的建议类型
+interface Suggestion {
+  id: string;
+  icon: string;
+  title: string;
+  titleZh: string;
+  description: string;
+  descriptionZh: string;
+  prompt: string;
+  priority: number;
+  category: string;
+}
 
+interface Capability {
+  icon: string;
+  title: string;
+  titleZh: string;
+  prompt: string;
+}
+
+interface FrequentTask {
+  title: string;
+  count: number;
+  prompt: string;
+}
+
+/**
+ * 空项目：直接说想做什么
+ */
 const EMPTY_TEMPLATES: QuickTemplate[] = [
   { icon: '🚀', labelKey: 'welcome.template.todoApp', promptKey: 'welcome.template.todoApp.prompt' },
   { icon: '🌐', labelKey: 'welcome.template.api', promptKey: 'welcome.template.api.prompt' },
@@ -31,18 +52,49 @@ const EMPTY_TEMPLATES: QuickTemplate[] = [
 
 export function WelcomeScreen({ onBlueprintCreated: _onBlueprintCreated, onQuickPrompt, onOpenFolder }: WelcomeScreenProps) {
   const { state: projectState } = useProject();
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
+  const isZh = locale === 'zh';
 
   const hasProject = !!projectState.currentProject;
   const isEmptyProject = hasProject && projectState.currentProject?.isEmpty === true;
   const hasBlueprint = projectState.currentProject?.hasBlueprint === true;
 
-  const templates = isEmptyProject && !hasBlueprint ? EMPTY_TEMPLATES : PROJECT_TEMPLATES;
+  // 主动建议数据
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [capabilities, setCapabilities] = useState<Capability[]>([]);
+  const [frequentTasks, setFrequentTasks] = useState<FrequentTask[]>([]);
 
-  const handleTemplateClick = (tpl: QuickTemplate) => {
-    if (onQuickPrompt) {
-      onQuickPrompt(t(tpl.promptKey));
+  // 当有项目且不是空项目时，请求建议
+  useEffect(() => {
+    if (!hasProject || isEmptyProject) {
+      setSuggestions([]);
+      setCapabilities([]);
+      setFrequentTasks([]);
+      return;
     }
+
+    const projectPath = projectState.currentProject?.path;
+    if (!projectPath) return;
+
+    const controller = new AbortController();
+    fetch(`/api/project-suggestions?projectPath=${encodeURIComponent(projectPath)}`, {
+      signal: controller.signal,
+    })
+      .then(res => res.json())
+      .then(data => {
+        setSuggestions(data.suggestions || []);
+        setCapabilities(data.capabilities || []);
+        setFrequentTasks(data.frequentTasks || []);
+      })
+      .catch(() => {
+        // 静默失败，不影响体验
+      });
+
+    return () => controller.abort();
+  }, [hasProject, isEmptyProject, projectState.currentProject?.path]);
+
+  const handlePromptClick = (prompt: string) => {
+    onQuickPrompt?.(prompt);
   };
 
   return (
@@ -110,31 +162,99 @@ export function WelcomeScreen({ onBlueprintCreated: _onBlueprintCreated, onQuick
             {t('welcome.project.subtitle')}
           </p>
 
-          <div className="welcome-hints">
-            <div className="welcome-hint-item hint-item-1">
-              <span className="hint-icon">💡</span>
-              <span className="hint-text">{t('welcome.project.hint1')}</span>
+          {/* 主动建议区域 — 基于项目状态 */}
+          {suggestions.length > 0 && (
+            <div className="welcome-suggestions">
+              <div className="welcome-section-label">
+                {isZh ? '当前状态' : 'Right Now'}
+              </div>
+              <div className="welcome-suggestion-list">
+                {suggestions.map(s => (
+                  <button
+                    key={s.id}
+                    className="welcome-suggestion-btn"
+                    onClick={() => handlePromptClick(s.prompt)}
+                    title={isZh ? s.descriptionZh : s.description}
+                  >
+                    <span className="suggestion-icon">{s.icon}</span>
+                    <span className="suggestion-text">{isZh ? s.titleZh : s.title}</span>
+                  </button>
+                ))}
+              </div>
             </div>
-            <div className="welcome-hint-item hint-item-2">
-              <span className="hint-icon">🔍</span>
-              <span className="hint-text">{t('welcome.project.hint2')}</span>
+          )}
+
+          {/* 常用任务区域 */}
+          {frequentTasks.length > 0 && (
+            <div className="welcome-suggestions">
+              <div className="welcome-section-label">
+                {isZh ? '常用操作' : 'Frequent'}
+              </div>
+              <div className="welcome-suggestion-list">
+                {frequentTasks.map(ft => (
+                  <button
+                    key={ft.title}
+                    className="welcome-suggestion-btn"
+                    onClick={() => handlePromptClick(ft.prompt)}
+                  >
+                    <span className="suggestion-icon">🔄</span>
+                    <span className="suggestion-text">{ft.title}</span>
+                    <span className="suggestion-count">x{ft.count}</span>
+                  </button>
+                ))}
+              </div>
             </div>
-            <div className="welcome-hint-item hint-item-3">
-              <span className="hint-icon">📎</span>
-              <span className="hint-text">{t('welcome.project.hint3')}</span>
+          )}
+
+          {/* 能力发现区域 */}
+          {capabilities.length > 0 && (
+            <div className="welcome-suggestions">
+              <div className="welcome-section-label">
+                {isZh ? '我能帮你' : 'I Can Help With'}
+              </div>
+              <div className="welcome-suggestion-list">
+                {capabilities.map((cap, i) => (
+                  <button
+                    key={i}
+                    className="welcome-template-btn"
+                    onClick={() => handlePromptClick(cap.prompt)}
+                  >
+                    <span className="template-icon">{cap.icon}</span>
+                    <span className="template-label">{isZh ? cap.titleZh : cap.title}</span>
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* 无建议时的回退提示 */}
+          {suggestions.length === 0 && capabilities.length === 0 && (
+            <div className="welcome-hints">
+              <div className="welcome-hint-item hint-item-1">
+                <span className="hint-icon">💡</span>
+                <span className="hint-text">{t('welcome.project.hint1')}</span>
+              </div>
+              <div className="welcome-hint-item hint-item-2">
+                <span className="hint-icon">🔍</span>
+                <span className="hint-text">{t('welcome.project.hint2')}</span>
+              </div>
+              <div className="welcome-hint-item hint-item-3">
+                <span className="hint-icon">📎</span>
+                <span className="hint-text">{t('welcome.project.hint3')}</span>
+              </div>
+            </div>
+          )}
         </>
       )}
 
-      {/* Quick templates - 仅在有项目时显示 */}
-      {hasProject && (
+      {/* Quick templates - 仅在空项目时显示 */}
+      {hasProject && isEmptyProject && !hasBlueprint && (
         <div className="welcome-templates">
-          {templates.map((tpl) => (
+          {EMPTY_TEMPLATES.map((tpl) => (
             <button
               key={tpl.labelKey}
               className="welcome-template-btn"
-              onClick={() => handleTemplateClick(tpl)}
+              onClick={() => onQuickPrompt?.(t(tpl.promptKey))}
               title={t(tpl.promptKey)}
             >
               <span className="template-icon">{tpl.icon}</span>

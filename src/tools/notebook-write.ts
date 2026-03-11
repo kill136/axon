@@ -24,14 +24,15 @@ export class NotebookWriteTool extends BaseTool<NotebookWriteInput, ToolResult> 
 
 ## MANDATORY AUTO-TRIGGER RULES
 You MUST call this tool IMMEDIATELY (in the same response, before any text reply) when:
-1. User shares personal info (name, role, preferences, contact) → write to experience
+1. User shares personal info (name, role, preferences, contact) → write to profile
 2. User explicitly asks you to remember something → write to experience or project
 3. You discover a project gotcha not covered in AXON.md → write to project
 
 Saying "I'll remember" without calling this tool is a LIE — conversation memory is ephemeral. Only notebook writes persist.
 
-## Two Notebooks
-- **experience**: Cross-project knowledge — user info, work patterns, lessons learned. (~4K tokens max)
+## Three Notebooks
+- **profile**: Stable personal info — name, role, contact, preferences, background. (~2K tokens max)
+- **experience**: Cross-project knowledge — work patterns, lessons learned, anti-patterns. (~4K tokens max)
 - **project**: Things YOU discovered about this project that are NOT in AXON.md — gotchas, hidden dependencies, operational tips. (~8K tokens max)
 
 ## IMPORTANT: project notebook vs AXON.md
@@ -57,7 +58,7 @@ Pass empty string as content to read the current notebook.`;
       properties: {
         notebook: {
           type: 'string',
-          enum: ['experience', 'project'],
+          enum: ['profile', 'experience', 'project'],
           description: 'Which notebook to read/write',
         },
         content: {
@@ -78,8 +79,8 @@ Pass empty string as content to read the current notebook.`;
     const { notebook, content } = input;
 
     // 验证笔记本类型
-    if (!['experience', 'project'].includes(notebook)) {
-      return this.error(`Invalid notebook type: ${notebook}. Options: experience, project`);
+    if (!['profile', 'experience', 'project'].includes(notebook)) {
+      return this.error(`Invalid notebook type: ${notebook}. Options: profile, experience, project`);
     }
 
     // 读取模式

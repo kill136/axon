@@ -27,6 +27,8 @@ export interface ApiConfig {
   apiBaseUrl?: string;
   customModelName?: string;
   authPriority?: 'apiKey' | 'oauth' | 'auto';
+  // Gemini API Key（用于图片生成）
+  geminiApiKey?: string;
 }
 
 /**
@@ -229,6 +231,27 @@ export class WebConfigService {
     } else {
       this.configManager = globalConfigManager;
     }
+
+    // 从已保存的配置同步 geminiApiKey 到环境变量
+    this.syncGeminiKeyToEnv();
+  }
+
+  /**
+   * 将已保存的 geminiApiKey 同步到 process.env
+   * 这样 gemini-image-service 启动时就能读到
+   */
+  private syncGeminiKeyToEnv(): void {
+    try {
+      if (!process.env.GEMINI_API_KEY && !process.env.GOOGLE_API_KEY) {
+        const config = this.configManager.getAll();
+        const savedKey = (config as any).geminiApiKey;
+        if (savedKey) {
+          process.env.GEMINI_API_KEY = savedKey;
+        }
+      }
+    } catch {
+      // 静默失败，不影响启动
+    }
   }
 
   // ============ 获取配置 ============
@@ -254,6 +277,12 @@ export class WebConfigService {
       const config = this.configManager.getAll();
       const creds = webAuth.getCredentials();
 
+      // Gemini API Key: 从环境变量或 settings 读取，返回掩码
+      const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || (config as any).geminiApiKey || '';
+      const maskedGeminiKey = geminiKey
+        ? geminiKey.substring(0, 6) + '...' + geminiKey.substring(geminiKey.length - 4)
+        : '';
+
       return {
         apiKey: webAuth.getMaskedApiKey() || '',  // 只返回掩码版本，不泄露明文
         model: config.model,
@@ -268,6 +297,7 @@ export class WebConfigService {
         apiBaseUrl: creds.baseUrl,
         customModelName: webAuth.getCustomModelName(),
         authPriority: (config as any).authPriority || 'auto',
+        geminiApiKey: maskedGeminiKey,
       };
     } catch (error) {
       console.error('[WebConfigService] Failed to get API config:', error);
@@ -425,6 +455,18 @@ export class WebConfigService {
           // 用户输入了新的真实 key → 通过 webAuth 写入
           webAuth.setApiKey(val);
           delete (updates as any).apiKey; // 已通过 webAuth 写入，不需要 configManager 再写
+        }
+      }
+
+      // geminiApiKey 特殊处理：写入 settings 并同步到环境变量
+      if ('geminiApiKey' in updates) {
+        const val = (updates as any).geminiApiKey?.trim() || '';
+        if (!val || val.includes('...') || val.includes('***')) {
+          delete (updates as any).geminiApiKey;
+        } else {
+          // 写入环境变量，让 gemini-image-service 立即可用
+          process.env.GEMINI_API_KEY = val;
+          // 保留在 updates 中，由 configManager.save 持久化到 settings.json
         }
       }
 
