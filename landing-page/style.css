@@ -20,22 +20,6 @@
     will-change: left, top;
 }
 
-/* ====== Scroll Reveal Animations ====== */
-.reveal {
-    opacity: 0;
-    transform: translateY(30px);
-    transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1), transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.reveal.visible {
-    opacity: 1;
-    transform: translateY(0);
-}
-
-.reveal.d1 { transition-delay: 0.1s; }
-.reveal.d2 { transition-delay: 0.2s; }
-.reveal.d3 { transition-delay: 0.3s; }
-.reveal.d4 { transition-delay: 0.4s; }
 
 /* ====== Hero Entrance Animations ====== */
 .hero-badge, .hero-title, .hero-description, .hero-buttons, .hero-stats, .hero-visual {
