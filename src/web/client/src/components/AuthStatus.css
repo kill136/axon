@@ -3,7 +3,7 @@
 .auth-status {
   display: flex;
   align-items: center;
-  gap: 8px;
+  position: relative;
 }
 
 .auth-status.loading {
@@ -22,43 +22,40 @@
 }
 
 @keyframes auth-spin {
-  to {
-    transform: rotate(360deg);
-  }
+  to { transform: rotate(360deg); }
 }
 
-/* Authenticated State */
-.auth-status.authenticated {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.auth-user-info {
+/* Authenticated State - Trigger */
+.auth-user-trigger {
   display: flex;
   align-items: center;
   gap: 6px;
-  min-width: 0;
+  padding: 3px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 12px;
+}
+
+.auth-user-trigger:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--border-color);
 }
 
 .user-avatar {
   font-size: 14px;
   flex-shrink: 0;
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: var(--bg-tertiary);
   border-radius: 50%;
   border: 1px solid var(--border-color);
-  color: var(--text-primary);
-}
-
-.user-details {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
 }
 
 .user-name {
@@ -72,50 +69,126 @@
   line-height: 1.2;
 }
 
-.user-type {
-  font-size: 10px;
+.auth-arrow {
+  font-size: 8px;
   color: var(--text-muted);
-  line-height: 1.2;
+  transition: transform 0.2s;
 }
 
-.btn-logout-small {
-  padding: 3px 6px;
-  font-size: 11px;
-  background: transparent;
+.auth-arrow.open {
+  transform: rotate(180deg);
+}
+
+/* Dropdown */
+.auth-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 200px;
+  background: var(--bg-secondary);
   border: 1px solid var(--border-color);
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 0.2s;
-  flex-shrink: 0;
-  color: var(--text-muted);
-  line-height: 1;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+  animation: dropdownIn 0.15s ease-out;
+  overflow: hidden;
 }
 
-.btn-logout-small:hover {
+@keyframes dropdownIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.auth-dropdown-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+}
+
+.auth-dropdown-avatar {
+  font-size: 20px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-tertiary);
+  border-radius: 50%;
+  border: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.auth-dropdown-details {
+  min-width: 0;
+}
+
+.auth-dropdown-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.auth-dropdown-type {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.auth-dropdown-divider {
+  height: 1px;
+  background: var(--border-color);
+  margin: 0;
+}
+
+.auth-dropdown-item {
+  display: block;
+  width: 100%;
+  padding: 9px 14px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.auth-dropdown-item:hover {
   background: var(--bg-tertiary);
   color: var(--text-primary);
-  border-color: var(--text-muted);
+}
+
+.auth-dropdown-item.danger {
+  color: var(--error-color, #ef4444);
+}
+
+.auth-dropdown-item.danger:hover {
+  background: color-mix(in srgb, var(--error-color, #ef4444) 10%, transparent);
 }
 
 /* Not Authenticated State */
 .auth-status.not-authenticated {
   display: flex;
   align-items: center;
-  gap: 8px;
-}
-
-.auth-warning {
-  display: none;
 }
 
 .btn-login-small {
-  padding: 4px 12px;
+  padding: 4px 14px;
   font-size: 12px;
   font-weight: 500;
   background: var(--accent-primary);
   color: #fff;
   border: none;
-  border-radius: 4px;
+  border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s;
   flex-shrink: 0;
@@ -127,16 +200,12 @@
   background: var(--accent-hover);
 }
 
-.btn-login-small:active {
-  transform: translateY(0);
-}
-
-/* 响应式 - 小屏隐藏用户详情只显示头像 */
+/* 响应式 - 小屏隐藏用户名只显示头像 */
 @media (max-width: 768px) {
-  .user-details {
+  .user-name {
     display: none;
   }
-  .user-name, .user-type {
+  .auth-arrow {
     display: none;
   }
 }
