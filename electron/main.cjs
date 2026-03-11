@@ -21,6 +21,13 @@ let mainWindow;
 let serverProcess;
 const SERVER_PORT = 3456;
 
+/** 向渲染进程发送启动日志 */
+function sendLog(msg) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('boot-log', msg);
+  }
+}
+
 /**
  * 查找内嵌的 node 二进制
  * 开发模式下用系统 node
@@ -65,10 +72,15 @@ function startServer() {
   const logFile = path.join(logDir, 'server.log');
   const logStream = fs.createWriteStream(logFile, { flags: 'a' });
 
-  logStream.write(`\n=== Axon Server Start: ${new Date().toISOString()} ===\n`);
+  const startTime = `${new Date().toISOString()}`;
+  logStream.write(`\n=== Axon Server Start: ${startTime} ===\n`);
   logStream.write(`Node: ${nodeExe}\n`);
   logStream.write(`Script: ${serverScript}\n`);
   logStream.write(`CWD: ${appRoot}\n\n`);
+
+  sendLog(`[${startTime}] Axon Server starting...`);
+  sendLog(`Node: ${nodeExe}`);
+  sendLog(`Script: ${serverScript}`);
 
   serverProcess = spawn(
     nodeExe,
@@ -86,20 +98,26 @@ function startServer() {
     }
   );
 
-  // 日志写文件，不写 Electron 的 stdout（GUI 模式没有 stdout）
+  // 日志写文件 + 推送到 loading 页面
   serverProcess.stdout.on('data', (data) => {
     logStream.write(data);
+    const text = data.toString().trim();
+    if (text) sendLog(text);
   });
   serverProcess.stderr.on('data', (data) => {
     logStream.write(data);
+    const text = data.toString().trim();
+    if (text) sendLog(`[stderr] ${text}`);
   });
 
   serverProcess.on('error', (err) => {
     logStream.write(`[ERROR] Failed to start: ${err.message}\n`);
+    sendLog(`[ERROR] ${err.message}`);
   });
 
   serverProcess.on('exit', (code, signal) => {
     logStream.write(`[EXIT] code=${code} signal=${signal}\n`);
+    sendLog(`[EXIT] code=${code} signal=${signal}`);
     serverProcess = null;
   });
 }
@@ -136,11 +154,16 @@ async function waitForServer(maxRetries = 60, interval = 1000) {
         tryConnect('https'),
         tryConnect('http'),
       ]);
+      sendLog(`Server ready at ${url}`);
       return url;
     } catch (e) {
+      if (i > 0 && i % 5 === 0) {
+        sendLog(`Waiting for server... (${i}s)`);
+      }
       await new Promise(r => setTimeout(r, interval));
     }
   }
+  sendLog('[ERROR] Server did not respond within 60 seconds');
   return null; // 超时
 }
 
@@ -160,26 +183,57 @@ function createWindow() {
     show: false, // 先隐藏，等内容加载好再显示
   });
 
-  // 显示 loading 页
+  // 显示 loading 页（含实时进度日志）
   mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
 <style>
-  body { margin: 0; background: #0a0a0a; color: #e0e0e0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #0a0a0a; color: #e0e0e0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; -webkit-app-region: drag; user-select: none; }
   .loader { text-align: center; }
-  .loader h1 { font-size: 36px; margin-bottom: 20px; color: #fff; }
-  .loader p { font-size: 14px; color: #666; }
-  .spinner { width: 40px; height: 40px; border: 3px solid #222; border-top-color: #6c63ff; border-radius: 50%; animation: spin 1s linear infinite; margin: 20px auto; }
+  .loader h1 { font-size: 36px; margin-bottom: 8px; color: #fff; letter-spacing: 2px; }
+  .status { font-size: 13px; color: #888; margin-bottom: 16px; }
+  .spinner { width: 36px; height: 36px; border: 3px solid #222; border-top-color: #6c63ff; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 20px; }
   @keyframes spin { to { transform: rotate(360deg); } }
+  .log-box { width: 520px; max-height: 180px; background: #111; border: 1px solid #222; border-radius: 6px; overflow-y: auto; padding: 10px 14px; font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace; font-size: 11.5px; line-height: 1.6; color: #777; text-align: left; -webkit-app-region: no-drag; }
+  .log-box::-webkit-scrollbar { width: 4px; }
+  .log-box::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+  .log-line { white-space: pre-wrap; word-break: break-all; }
+  .log-line.error { color: #ff6b6b; }
+  .log-line.ready { color: #51cf66; }
+  .dots { display: inline-block; width: 18px; text-align: left; }
 </style>
 </head>
 <body>
   <div class="loader">
     <h1>Axon</h1>
     <div class="spinner"></div>
-    <p>Starting server...</p>
+    <p class="status">Initializing<span class="dots" id="dots"></span></p>
   </div>
+  <div class="log-box" id="logs"></div>
+  <script>
+    const logsEl = document.getElementById('logs');
+    const dotsEl = document.getElementById('dots');
+    const statusEl = document.querySelector('.status');
+    let dotCount = 0;
+    setInterval(() => { dotCount = (dotCount + 1) % 4; dotsEl.textContent = '.'.repeat(dotCount); }, 400);
+
+    if (window.electronAPI && window.electronAPI.onBootLog) {
+      window.electronAPI.onBootLog((msg) => {
+        const line = document.createElement('div');
+        line.className = 'log-line';
+        if (msg.includes('[ERROR]') || msg.includes('[stderr]')) line.classList.add('error');
+        if (msg.includes('ready') || msg.includes('Ready') || msg.includes('listening')) line.classList.add('ready');
+        line.textContent = msg;
+        logsEl.appendChild(line);
+        logsEl.scrollTop = logsEl.scrollHeight;
+        // 更新顶部状态文字
+        if (msg.includes('Server ready')) { statusEl.textContent = 'Connected!'; }
+        else if (msg.includes('Waiting for server')) { statusEl.innerHTML = 'Waiting for server<span class="dots" id="dots"></span>'; }
+      });
+    }
+  </script>
 </body>
 </html>`)}`);
 

@@ -148,9 +148,9 @@
     "web-api",
     "claude-in-chrome",
     "connector-github",
-    "connector-google",
     "connector-notion",
     "connector-slack",
-    "email"
+    "email",
+    "connector-google"
   ]
 }

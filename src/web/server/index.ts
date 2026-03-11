@@ -116,6 +116,23 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
     // 其他路径（如 Vite HMR）由 Vite 处理，不需要在这里处理
   });
 
+  // 确保全局 AXON.md 存在（~/.axon/AXON.md），让铁律等行为规范开箱即用
+  // CLI 入口有自己的初始化逻辑，Web 模式需要在这里兜底
+  const globalAxonDir = path.join(os.homedir(), '.axon');
+  const globalAxonMd = path.join(globalAxonDir, 'AXON.md');
+  if (!fs.existsSync(globalAxonMd)) {
+    try {
+      const { createClaudeMdTemplate } = await import('../../rules/index.js');
+      if (!fs.existsSync(globalAxonDir)) {
+        fs.mkdirSync(globalAxonDir, { recursive: true });
+      }
+      fs.writeFileSync(globalAxonMd, createClaudeMdTemplate(), 'utf-8');
+      console.log(`[Axon] Created default ~/.axon/AXON.md`);
+    } catch (e) {
+      // Non-fatal: skip if template generation fails
+    }
+  }
+
   // 初始化 i18n（WebUI server 需要独立初始化，CLI 入口有自己的初始化）
   await initI18n(configManager.getAll().language);
 

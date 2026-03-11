@@ -75,6 +75,58 @@ function ensureDir(dir: string): void {
 }
 
 // ============================================================================
+// Default Templates
+// ============================================================================
+
+/** Default experience notebook — universal AI behavior guidelines */
+const DEFAULT_EXPERIENCE = `# Experience Notebook
+
+## Working Principles
+- Important information must be written to Notebook immediately. Not writing = guaranteed to forget next time.
+- Three means to correct flaws: AXON.md hard rules, Notebook persistent memory, Hooks automated checks.
+
+## Anti-Patterns
+- Don't say "I'll improve through self-discipline" — empty promise
+- Don't say "You have a good point, but..." — people-pleasing
+- Don't "optimize while I'm at it" — over-engineering
+- Don't guess implementations — the biggest time waste
+- Don't claim "monitoring" when you actually aren't — background tasks don't survive restarts
+- Confirm the environment before acting — env vars, whether daemon is running, whether features are actually enabled
+- MCP must be disabled immediately after use — enable → use → disable is atomic
+- Don't passively report options — proactively use AskUserQuestion
+- Don't treat tools as black boxes — when tools are insufficient, don't give up or ask users to do it manually
+
+## Task Execution Discipline
+- When user says "start" = start everything, not do one step and report back
+- Large tasks must: list complete checklist → Task parallel dispatch → ScheduleTask for continuous tasks
+- Test: Can the task continue after the user leaves? If not = you didn't use tools well
+
+## Tool Priority When Capabilities Are Insufficient
+1. Check installed Skills
+2. Search community Skills/MCP — use \`tool-discovery\` or \`skill-hub\`
+3. Search the internet — \`web_search\` for GitHub open source MCP servers
+4. Modify source code as last resort — SelfEvolve is the most expensive option
+
+## Self-Evolution Principles
+- Flow: Check Skills → Search community → Search internet → Modify source → SelfEvolve
+- Three persistence methods: experience.md (short-term) + AXON.md (system) + source improvement (capability)
+
+## Key Lessons
+- SelfEvolve restart kills all background Bash tasks
+- Basic sensing capabilities should not be guarded by feature flags
+`;
+
+/** Default profile notebook — minimal placeholder */
+const DEFAULT_PROFILE = `# User Profile
+
+## Basic Info
+- Language preference: (auto-detected)
+
+## Communication Preferences
+- (The AI will learn your preferences over time and update this notebook)
+`;
+
+// ============================================================================
 // NotebookManager
 // ============================================================================
 
@@ -108,12 +160,26 @@ export class NotebookManager {
   // 读写操作
   // --------------------------------------------------------------------------
 
-  /** 读取笔记本内容 */
+  /** 读取笔记本内容（experience/profile 不存在时自动初始化默认模板） */
   read(type: NotebookType): string {
     const filePath = this.getPath(type);
     try {
       if (fs.existsSync(filePath)) {
         return fs.readFileSync(filePath, 'utf-8');
+      }
+      // Auto-initialize with default template for experience and profile
+      const defaultContent = type === 'experience' ? DEFAULT_EXPERIENCE
+        : type === 'profile' ? DEFAULT_PROFILE
+        : null;
+      if (defaultContent) {
+        try {
+          ensureDir(path.dirname(filePath));
+          fs.writeFileSync(filePath, defaultContent, 'utf-8');
+          return defaultContent;
+        } catch {
+          // Non-fatal: return the template content even if file write fails
+          return defaultContent;
+        }
       }
     } catch (error) {
       console.warn(`[Notebook] Failed to read ${type}:`, error);
