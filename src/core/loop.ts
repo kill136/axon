@@ -3,7 +3,7 @@
  * 处理用户输入、工具调用和响应
  */
 
-import { ClaudeClient, type ClientConfig } from './client.js';
+import { ClaudeClient, type ClientConfig, formatSystemPrompt } from './client.js';
 import { Session, setCurrentSessionId } from './session.js';
 import { toolRegistry } from '../tools/index.js';
 import { runWithCwd, runGeneratorWithCwd } from './cwd-context.js';
@@ -77,6 +77,7 @@ import { configManager } from '../config/index.js';
 import { accountUsageManager } from '../ratelimit/index.js';
 import { initNotebookManager, getNotebookManager } from '../memory/notebook.js';
 import { initMemorySearchManager, getMemorySearchManager } from '../memory/memory-search.js';
+import { startCacheKeepalive, stopCacheKeepalive } from './cache-keepalive.js';
 import { estimateTokens } from '../utils/token-estimate.js';
 import { loadActiveGoals } from '../goals/index.js';
 import {
@@ -2952,6 +2953,14 @@ export class ConversationLoop {
 
       // 并行执行所有工具（对齐官方 KM5 函数：Promise.all(toolUseBlocks.map(...))）
       if (toolUseBlocks.length > 0) {
+        // Cache Keepalive：工具执行期间保持 prompt cache 活跃
+        const stopKeepalive = startCacheKeepalive({
+          client: this.client.getAnthropicClient(),
+          model: this.client.getModel(),
+          formattedSystem: formatSystemPrompt(systemPrompt, this.client.getIsOAuth(), promptBlocks),
+          debug: this.options.debug || this.options.verbose,
+        });
+
         const execResults = await Promise.all(toolUseBlocks.map(async (block) => {
           const toolBlock = block as any;
           const toolName: string = toolBlock.name || '';
@@ -2985,6 +2994,8 @@ export class ConversationLoop {
             return { toolName, toolInput, toolId, result: null, error: err };
           }
         }));
+
+        stopKeepalive();
 
         // 按顺序处理结果
         for (const exec of execResults) {
@@ -3515,6 +3526,14 @@ Guidelines:
       }
 
       // 第三步：并行执行所有工具（核心修复）
+      // Cache Keepalive：工具执行期间保持 prompt cache 活跃
+      const stopKeepalive = startCacheKeepalive({
+        client: this.client.getAnthropicClient(),
+        model: this.client.getModel(),
+        formattedSystem: formatSystemPrompt(systemPrompt, this.client.getIsOAuth(), promptBlocks),
+        debug: this.options.debug || this.options.verbose,
+      });
+
       type ToolExecResult = {
         id: string;
         toolName: string;
@@ -3587,6 +3606,7 @@ Guidelines:
 
       // 等待所有工具并行执行完成
       const execResults = await Promise.all(execPromises);
+      stopKeepalive();
 
       // 第四步：按顺序处理结果（yield tool_end 事件、构建 toolResults）
       let circuitBroken = false;

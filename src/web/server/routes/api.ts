@@ -11,6 +11,7 @@ import { CheckpointManager } from '../checkpoint-manager.js';
 import blueprintApiRouter from './blueprint-api.js';
 import agentApiRouter from './agent-api.js';
 import fileApiRouter from './file-api.js';
+import notebookApiRouter from './notebook-api.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
@@ -40,6 +41,10 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
   // ============ 文件系统 API ============
   // 注册文件 API 路由（供 CodeView 文件树使用）
   app.use('/api/files', fileApiRouter);
+
+  // ============ Notebook API ============
+  // AI 可定制属性管理（profile/experience/project notebooks + AXON.md）
+  app.use('/api/notebook', notebookApiRouter);
 
   // 健康检查
   app.get('/api/health', (req: Request, res: Response) => {

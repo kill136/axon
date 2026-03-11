@@ -1328,6 +1328,17 @@ Usage notes:
         childAllowedSubagentTypes = parsed.allowedSubagentTypes;
       }
 
+      // 对齐官方 pR8/wT6：子代理禁用的工具列表
+      // 防止递归嵌套、子代理与用户交互、子代理进入 plan 模式
+      const SUBAGENT_DISALLOWED_TOOLS = [
+        'Task',         // Agent/Task — 防止递归嵌套
+        'TaskOutput',   // 子代理不需要查其他代理输出
+        'TaskStop',     // 子代理不需要停其他代理
+        'AskUserQuestion',  // 子代理不应与用户交互
+        'EnterPlanMode',    // 子代理不需要 plan 模式
+        'ExitPlanMode',     // 子代理不需要 plan 模式
+      ];
+
       // 构建 LoopOptions
       const loopOptions: LoopOptions = {
         model: resolvedModel,
@@ -1336,6 +1347,8 @@ Usage notes:
         permissionMode: agentDef.permissionMode || 'default',
         // 根据代理定义限制工具访问
         allowedTools: effectiveTools,
+        // 对齐官方 wT6：子代理禁止使用特定工具
+        disallowedTools: SUBAGENT_DISALLOWED_TOOLS,
         workingDir: agent.workingDirectory,
         // 使用代理定义的系统提示词
         systemPrompt: agentDef.getSystemPrompt?.(),

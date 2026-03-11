@@ -1059,3 +1059,36 @@ section {
     justify-content: center;
     flex-wrap: wrap;
 }
+
+.sponsor-qrcodes {
+    display: flex;
+    gap: 2rem;
+    justify-content: center;
+    margin-top: 2rem;
+    flex-wrap: wrap;
+}
+
+.sponsor-qrcode {
+    text-align: center;
+}
+
+.sponsor-qrcode img {
+    width: 180px;
+    height: 180px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    object-fit: cover;
+    transition: var(--transition);
+}
+
+.sponsor-qrcode img:hover {
+    border-color: var(--primary);
+    box-shadow: 0 4px 20px rgba(99, 102, 241, 0.2);
+    transform: scale(1.05);
+}
+
+.sponsor-qrcode p {
+    margin-top: 0.5rem;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}

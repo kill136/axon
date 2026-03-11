@@ -29,6 +29,8 @@ import {
   formatBytes,
   PDF_MAX_PAGES_PER_REQUEST,
   PDF_LARGE_THRESHOLD,
+  isOfficeFile,
+  documentToHtml,
 } from '../media/index.js';
 // 注意：旧的 blueprintContext 已被移除，新架构使用 SmartPlanner
 // 边界检查由 SmartPlanner 在任务规划阶段处理，工具层不再需要
@@ -445,6 +447,7 @@ Usage:
 - This tool allows Axon to read images (eg PNG, JPG, etc). When reading an image file the contents are presented visually as Axon is a multimodal LLM.
 - This tool can read PDF files (.pdf). For large PDFs (more than 10 pages), you MUST provide the pages parameter to read specific page ranges (e.g., pages: "1-5"). Reading a large PDF without the pages parameter will fail. Maximum 20 pages per request.
 - This tool can read Jupyter notebooks (.ipynb files) and returns all cells with their outputs, combining code, text, and visualizations.
+- This tool can read Office documents (.docx, .xlsx, .pptx) and converts them to HTML for easy reading. Word documents preserve formatting, Excel files show all sheets as tables, PowerPoint files extract slide text.
 - This tool can only read files, not directories. To read a directory, use an ls command via the Bash tool.
 - You can call multiple tools in a single response. It is always better to speculatively read multiple potentially useful files in parallel.
 - You will regularly be asked to read screenshots. If the user provides a path to a screenshot, ALWAYS use this tool to view the file at the path. This tool will work with all temporary file paths.
@@ -521,6 +524,11 @@ Usage:
         };
       }
 
+      // 处理 Office 文档 (docx/xlsx/pptx)
+      if (isOfficeFile(file_path)) {
+        return await this.readOfficeDocument(file_path);
+      }
+
       // 检测媒体文件类型
       const mediaType = detectMediaType(file_path);
 
@@ -586,6 +594,29 @@ Usage:
       };
     } catch (err) {
       return { success: false, error: t('file.readError', { error: err }) };
+    }
+  }
+
+  /**
+   * Office 文档读取（docx/xlsx/pptx → HTML）
+   */
+  private async readOfficeDocument(filePath: string): Promise<FileResult> {
+    try {
+      const stat = fs.statSync(filePath);
+      const ext = path.extname(filePath).toLowerCase().slice(1);
+      const sizeKB = (stat.size / 1024).toFixed(2);
+
+      const html = await documentToHtml(filePath);
+
+      const header = `[${ext.toUpperCase()} Document: ${filePath}] (${sizeKB} KB)\n\n`;
+      const output = header + html;
+
+      return { success: true, output };
+    } catch (err) {
+      return {
+        success: false,
+        error: `Failed to read Office document: ${err}`,
+      };
     }
   }
 

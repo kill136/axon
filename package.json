@@ -1,6 +1,6 @@
 {
   "name": "axon",
-  "version": "2.1.46",
+  "version": "2.1.47",
   "description": "Free & open source AI coding assistant with Web IDE, multi-agent system, and self-evolution",
   "type": "module",
   "main": "electron/main.cjs",
@@ -165,6 +165,7 @@
     "jszip": "^3.10.1",
     "lru-cache": "^11.2.4",
     "mailparser": "^3.9.3",
+    "mammoth": "^1.11.0",
     "marked": "^12.0.0",
     "mime": "^4.1.0",
     "mongodb": "^6.17.0",
@@ -173,6 +174,7 @@
     "node-pty": "^1.1.0",
     "nodemailer": "^8.0.1",
     "open": "^11.0.0",
+    "pdf-parse": "^2.4.5",
     "pg": "^8.16.0",
     "playwright-core": "^1.58.2",
     "proxy-from-env": "^1.1.0",
@@ -189,6 +191,7 @@
     "web-tree-sitter": "0.22.6",
     "wink-bm25-text-search": "^3.1.2",
     "ws": "^8.18.3",
+    "xlsx": "^0.18.5",
     "zod": "^3.22.0"
   },
   "optionalDependencies": {
