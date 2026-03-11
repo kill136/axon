@@ -338,10 +338,21 @@ export function useMessageHandler({
           refreshSessionsRef.current();
           break;
 
-        case 'error':
+        case 'error': {
           console.error('Server error:', payload);
+          const errorText = (payload as any)?.error || (payload as any)?.message || 'Unknown error';
+          // 将错误显示为系统消息，让用户能看到
+          const errorMsg: ChatMessage = {
+            id: `error-${Date.now()}`,
+            role: 'assistant',
+            timestamp: Date.now(),
+            content: [{ type: 'text', text: `**Error:** ${errorText}` }],
+          };
+          setMessages(prev => [...prev, errorMsg]);
+          currentMessageRef.current = null;
           setStatus('idle');
           break;
+        }
 
         case 'context_update':
           setContextUsage(payload as unknown as ContextUsage);
@@ -442,7 +453,6 @@ export function useMessageHandler({
           break;
 
         case 'session_switched':
-          console.log('[useMessageHandler] session_switched received, clearing messages');
           // 立即同步更新 sessionIdRef，防止旧会话的流式消息通过隔离检查泄漏到新会话
           // 不能依赖 useWebSocket 的 setSessionId（异步），必须在此处直接更新 ref
           if (payload.sessionId) {
@@ -453,11 +463,20 @@ export function useMessageHandler({
           // 重置所有状态（包括对话框状态，防止旧会话的弹窗残留到新会话）
           interruptPendingRef.current = false;
           setStatus('idle');
-          setMessages([]);
           setPermissionRequest(null);
           setUserQuestion(null);
           setCompactState({ phase: 'idle' });
           setContextUsage(null);
+          // 原子性恢复：session_switched 内嵌了 history，一次 setMessages 完成切换+恢复
+          // 避免先 setMessages([]) 再等 history 消息的竞态（F5 刷新时可能导致消息丢失）
+          if (payload.history && Array.isArray(payload.history)) {
+            const historyMessages = payload.history as ChatMessage[];
+            console.log(`[useMessageHandler] session_switched with inline history: ${historyMessages.length} messages`);
+            setMessages(historyMessages);
+          } else {
+            // 兼容：旧版后端未内嵌 history 时仍清空，等后续 history 消息
+            setMessages([]);
+          }
           refreshSessionsRef.current();
           break;
 
@@ -1036,6 +1055,29 @@ export function useMessageHandler({
 
     return unsubscribe;
   }, [addMessageHandler, model, send, onNavigateToSwarm]);
+
+  // 流式响应超时检测：如果前端处于非 idle 状态超过 360 秒没有收到任何 WebSocket 消息，
+  // 自动重置为 idle，防止 UI 永久卡死。
+  // 注意：后端 stream idle timeout 是 300 秒，前端 360 秒是兜底。
+  const lastActivityRef = useRef<number>(Date.now());
+  useEffect(() => {
+    // 任何 status 变化都视为活动
+    lastActivityRef.current = Date.now();
+  }, [status, messages]);
+
+  useEffect(() => {
+    if (status === 'idle') return;
+    const FRONTEND_IDLE_TIMEOUT_MS = 360_000; // 360 秒（比后端 300s 多 60s 裕量）
+    const intervalId = setInterval(() => {
+      const elapsed = Date.now() - lastActivityRef.current;
+      if (elapsed >= FRONTEND_IDLE_TIMEOUT_MS) {
+        console.error(`[useMessageHandler] Frontend idle timeout: status="${status}" stuck for ${Math.round(elapsed / 1000)}s, resetting to idle`);
+        setStatus('idle');
+        currentMessageRef.current = null;
+      }
+    }, 10_000); // 每 10 秒检查一次
+    return () => clearInterval(intervalId);
+  }, [status]);
 
   return {
     messages,

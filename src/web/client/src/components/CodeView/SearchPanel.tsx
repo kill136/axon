@@ -226,7 +226,7 @@ const SearchPanel: React.FC<SearchPanelProps> = ({
 
     debounceTimer.current = setTimeout(() => {
       performSearch(searchQuery);
-    }, 300);
+    }, 500);
 
     return () => {
       if (debounceTimer.current) {

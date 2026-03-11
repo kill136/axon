@@ -17,6 +17,7 @@ export type AttachmentType =
   | 'diagnostics'
   | 'memory'
   | 'notebook'
+  | 'memory_recall'
   | 'plan_mode'
   | 'delegate_mode'
   | 'git_status'
@@ -64,6 +65,8 @@ export interface PromptContext {
   memory?: Record<string, string>;
   /** Agent 笔记本内容 */
   notebookSummary?: string;
+  /** 自动记忆回忆内容（autoRecall 从长期记忆中检索的相关片段） */
+  memoryRecall?: string;
   /** 任务列表 */
   todoList?: TodoItem[];
   /** Git 状态 */

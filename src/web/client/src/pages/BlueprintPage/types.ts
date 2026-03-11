@@ -190,17 +190,17 @@ export interface BlueprintDetailResponse {
 /**
  * 状态过滤选项
  */
-export const BLUEPRINT_STATUS_OPTIONS: Array<{ value: BlueprintStatus | 'all'; label: string }> = [
-  { value: 'all', label: '全部状态' },
-  { value: 'draft', label: '草稿' },
-  { value: 'review', label: '待审核' },
-  { value: 'approved', label: '已批准' },
-  { value: 'executing', label: '执行中' },
-  { value: 'completed', label: '已完成' },
-  { value: 'paused', label: '已暂停' },
-  { value: 'modified', label: '已修改' },
-  { value: 'failed', label: '已失败' },
-  { value: 'cancelled', label: '已取消' },
+export const BLUEPRINT_STATUS_OPTIONS: Array<{ value: BlueprintStatus | 'all'; labelKey: string }> = [
+  { value: 'all', labelKey: 'blueprint.statusAll' },
+  { value: 'draft', labelKey: 'blueprint.statusDraft' },
+  { value: 'review', labelKey: 'blueprint.statusReview' },
+  { value: 'approved', labelKey: 'blueprint.statusApproved' },
+  { value: 'executing', labelKey: 'blueprint.statusExecuting' },
+  { value: 'completed', labelKey: 'blueprint.statusCompleted' },
+  { value: 'paused', labelKey: 'blueprint.statusPaused' },
+  { value: 'modified', labelKey: 'blueprint.statusModified' },
+  { value: 'failed', labelKey: 'blueprint.statusFailed' },
+  { value: 'cancelled', labelKey: 'blueprint.statusCancelled' },
 ];
 
 /**

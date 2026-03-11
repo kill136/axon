@@ -7,6 +7,7 @@ import TopNavBar from './components/swarm/TopNavBar';
 import { SessionSearchModal } from './components/SessionSearchModal/SessionSearchModal';
 import { AuthDialog } from './components/AuthDialog';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { SetupWizard, useSetupWizard } from './components/SetupWizard';
 import { ProjectProvider, useProject } from './contexts/ProjectContext';
 import { LanguageProvider } from './i18n';
 import type { Session, SessionActions } from './types';
@@ -25,6 +26,7 @@ function RootContent() {
   const [showAuthDialog, setShowAuthDialog] = useState(false);
   const [authRefreshKey, setAuthRefreshKey] = useState(0);
   const [showSessionSearch, setShowSessionSearch] = useState(false);
+  const { needSetup, completeSetup } = useSetupWizard();
 
   // 来自 App 的会话数据（通过回调上报）
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -229,6 +231,7 @@ function RootContent() {
         onClose={() => setShowAuthDialog(false)}
         onSuccess={() => setAuthRefreshKey(prev => prev + 1)}
       />
+      {needSetup && <SetupWizard onComplete={completeSetup} />}
     </div>
   );
 }

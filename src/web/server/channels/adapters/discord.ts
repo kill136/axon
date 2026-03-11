@@ -5,9 +5,11 @@
  * - 无需公网 URL，直接连接 Discord Gateway
  * - 支持私聊（DM）和服务器频道消息
  * - @mention 检测
+ * - 自动检测代理（HTTPS_PROXY / HTTP_PROXY / ALL_PROXY）
  */
 
 import type { ChannelAdapter, ChannelConfig, ChannelStatus, InboundMessage, SendOptions } from '../types.js';
+import { getProxyFromEnv, createProxyAgent } from '../../../../network/proxy.js';
 
 // discord.js 类型（动态导入）
 type DiscordClient = import('discord.js').Client;
@@ -39,6 +41,14 @@ export class DiscordAdapter implements ChannelAdapter {
     this.status = 'connecting';
 
     try {
+      // 必须在 import('discord.js') 之前 patch ws 模块
+      // 因为 @discordjs/ws 在模块加载时就把 ws.WebSocket 拷贝到局部变量
+      const proxyConfig = getProxyFromEnv();
+      const proxyUrl = proxyConfig.socks || proxyConfig.https || proxyConfig.http;
+      if (proxyUrl) {
+        await this.patchWsBeforeImport(proxyConfig, proxyUrl);
+      }
+
       const { Client, GatewayIntentBits, Partials } = await import('discord.js');
 
       this.client = new Client({
@@ -50,6 +60,11 @@ export class DiscordAdapter implements ChannelAdapter {
         ],
         partials: [Partials.Channel, Partials.Message],
       });
+
+      // 注入 REST 层代理（undici ProxyAgent）
+      if (proxyUrl) {
+        await this.setupRestProxy(proxyUrl);
+      }
 
       // 先注册消息事件处理器（必须在 login 之前，防止竞争条件）
       this.registerHandlers();
@@ -171,6 +186,75 @@ export class DiscordAdapter implements ChannelAdapter {
 
   getStatus(): ChannelStatus {
     return this.status;
+  }
+
+  // ==========================================================================
+  // 代理配置
+  // ==========================================================================
+
+  /**
+   * 在 import('discord.js') 之前 patch ws 模块的 WebSocket 构造函数。
+   * @discordjs/ws 在模块加载时执行 `var WebSocketConstructor = import_ws.WebSocket`，
+   * 是值拷贝。所以必须在 discord.js 被加载前修改 ws 模块缓存中的 WebSocket。
+   */
+  private async patchWsBeforeImport(proxyConfig: ReturnType<typeof getProxyFromEnv>, proxyUrl: string): Promise<void> {
+    const wsAgent = createProxyAgent('https://gateway.discord.gg', proxyConfig);
+    if (!wsAgent) return;
+
+    try {
+      // 通过 require 获取 ws 模块在 CommonJS 缓存中的对象
+      // @discordjs/ws 用 require("ws")，所以共享同一个缓存
+      const { createRequire } = await import('module');
+      const require = createRequire(import.meta.url);
+      const wsModule = require('ws');
+      const OriginalWebSocket = wsModule.WebSocket;
+      if (!OriginalWebSocket) return;
+
+      // 创建包装构造函数，自动注入 agent
+      function PatchedWebSocket(this: any, url: any, protocols: any, options: any) {
+        const opts = { ...options, agent: wsAgent };
+        if (new.target) {
+          return new OriginalWebSocket(url, protocols, opts);
+        }
+        return OriginalWebSocket(url, protocols, opts);
+      }
+      PatchedWebSocket.prototype = OriginalWebSocket.prototype;
+      Object.setPrototypeOf(PatchedWebSocket, OriginalWebSocket);
+      // 复制静态常量（CONNECTING, OPEN, CLOSING, CLOSED）
+      for (const key of Object.getOwnPropertyNames(OriginalWebSocket)) {
+        if (key !== 'prototype' && key !== 'length' && key !== 'name') {
+          try { (PatchedWebSocket as any)[key] = (OriginalWebSocket as any)[key]; } catch {}
+        }
+      }
+
+      wsModule.WebSocket = PatchedWebSocket;
+      console.log(`[Discord] WebSocket proxy patched: ${proxyUrl}`);
+    } catch (err) {
+      console.warn('[Discord] Failed to patch ws module for proxy:', err);
+    }
+  }
+
+  /**
+   * 给 discord.js REST 客户端设置 undici ProxyAgent。
+   * discord.js REST 层使用 undici 发 HTTP 请求，需要 undici.ProxyAgent (Dispatcher)。
+   */
+  private async setupRestProxy(proxyUrl: string): Promise<void> {
+    if (!this.client) return;
+
+    // undici.ProxyAgent 只支持 HTTP/HTTPS 代理，不支持 SOCKS
+    if (proxyUrl.startsWith('socks')) {
+      console.warn(`[Discord] REST proxy skipped: undici does not support SOCKS (${proxyUrl})`);
+      return;
+    }
+
+    console.log(`[Discord] Using proxy for REST: ${proxyUrl}`);
+    try {
+      const undici = await import('undici');
+      const restAgent = new undici.ProxyAgent(proxyUrl);
+      this.client.rest.setAgent(restAgent);
+    } catch (err) {
+      console.warn('[Discord] Failed to set REST proxy agent:', err);
+    }
   }
 
   // ==========================================================================

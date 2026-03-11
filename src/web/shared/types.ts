@@ -85,7 +85,7 @@ export interface AuthStatusPayload {
  * 客户端发送的消息类型
  */
 export type ClientMessage =
-  | { type: 'chat'; payload: { content: string; images?: string[]; attachments?: Attachment[]; projectPath?: string | null } }
+  | { type: 'chat'; payload: { content: string; messageId?: string; images?: string[]; attachments?: Attachment[]; projectPath?: string | null } }
   | { type: 'cancel' }
   | { type: 'ping' }
   | { type: 'get_history' }
@@ -281,13 +281,18 @@ export type ClientMessage =
   // API 代理
   | { type: 'proxy:status' }
   | { type: 'proxy:start'; payload?: any }
-  | { type: 'proxy:stop' };
+  | { type: 'proxy:stop' }
+  // 模式预设
+  | { type: 'mode_presets_get' }
+  | { type: 'mode_preset_save'; payload: { preset: ModePreset } }
+  | { type: 'mode_preset_delete'; payload: { id: string } }
+  | { type: 'mode_preset_apply'; payload: { id: string } };
 
 /**
  * 服务端发送的消息类型
  */
 export type ServerMessage =
-  | { type: 'connected'; payload: { sessionId: string; model: string } }
+  | { type: 'connected'; payload: { sessionId: string; model: string; serverStartTime?: number } }
   | { type: 'pong' }
   | { type: 'history'; payload: { messages: ChatMessage[]; sessionId?: string } }
   | { type: 'message_start'; payload: { messageId: string; sessionId?: string } }
@@ -310,7 +315,7 @@ export type ServerMessage =
   | { type: 'session_list_response'; payload: SessionListResponsePayload }
   | { type: 'session_created'; payload: SessionCreatedPayload }
   | { type: 'session_new_ready'; payload: { sessionId: string; model: string; projectPath?: string | null } }  // 官方规范：临时会话已就绪
-  | { type: 'session_switched'; payload: { sessionId: string; projectPath?: string | null } }
+  | { type: 'session_switched'; payload: { sessionId: string; projectPath?: string | null; history?: ChatMessage[] } }
   | { type: 'session_deleted'; payload: { sessionId: string; success: boolean } }
   | { type: 'session_renamed'; payload: { sessionId: string; name: string; success: boolean } }
   | { type: 'session_exported'; payload: { sessionId: string; content: string; format: 'json' | 'md' } }
@@ -472,7 +477,10 @@ export type ServerMessage =
   | { type: 'perception:error'; payload: { module: string; error: string } }
   // API 代理
   | { type: 'proxy:status'; payload: any }
-  | { type: 'proxy:error'; payload: { error: string } };
+  | { type: 'proxy:error'; payload: { error: string } }
+  // 模式预设
+  | { type: 'mode_presets_list'; payload: { presets: ModePreset[]; activeId: string } }
+  | { type: 'mode_preset_applied'; payload: { id: string; preset: ModePreset } };
 
 // ============ IM 通道状态类型 ============
 
@@ -1288,6 +1296,30 @@ export interface SystemPromptGetPayload {
   current: string;
   /** 当前配置 */
   config: SystemPromptConfig;
+}
+
+// ============ 模式预设系统 ============
+
+/**
+ * 模式预设 — 将权限行为、系统提示词、工具过滤打包为一个可切换的配置
+ */
+export interface ModePreset {
+  /** 唯一标识 */
+  id: string;
+  /** 显示名称 */
+  name: string;
+  /** 图标 (emoji) */
+  icon: string;
+  /** 是否内置（内置不可删除） */
+  builtIn: boolean;
+  /** 权限行为模式 */
+  permissionMode: PermissionMode;
+  /** 系统提示词配置 */
+  systemPrompt: SystemPromptConfig;
+  /** 工具过滤配置 */
+  toolFilter: ToolFilterConfig;
+  /** 模式描述 */
+  description?: string;
 }
 
 /**

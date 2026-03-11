@@ -917,14 +917,13 @@ export function getMaxOutputTokens(model: string): number {
     defaultMax = 32000;
   }
 
-  // 环境变量可以覆盖（但不能超过默认最大值）
-  const envMax = process.env.AXON_MAX_OUTPUT_TOKENS;
-  if (envMax) {
-    const parsed = parseInt(envMax, 10);
-    if (!isNaN(parsed)) {
-      return Math.min(parsed, defaultMax);
+  // settings.json maxTokens 可以覆盖（但不能超过默认最大值）
+  try {
+    const configMax = configManager.get('maxTokens') as number | undefined;
+    if (configMax && configMax > 0) {
+      return Math.min(configMax, defaultMax);
     }
-  }
+  } catch {}
 
   return defaultMax;
 }
@@ -948,7 +947,10 @@ export function calculateAvailableInput(model: string): number {
  */
 export function calculateAutoCompactThreshold(model: string): number {
   const availableInput = calculateAvailableInput(model);
-  const vH0 = 13000; // Session Memory 压缩缓冲区
+  // 压缩缓冲区：从 13k 提高到 40k
+  // 原因：Claude API 在大上下文（>130k tokens）时 SSE 流不稳定，容易中断
+  // 200k 模型：availableInput=180k, threshold=140k (有效输入的 78%, 总窗口的 70%)
+  const vH0 = 40000;
   const threshold = availableInput - vH0;
 
   // 环境变量可以覆盖百分比
@@ -2289,7 +2291,8 @@ export class ConversationLoop {
 
     // 初始化长期记忆搜索系统（异步，fire-and-forget）
     const projectHash = crypto.createHash('md5').update(effectiveWorkingDir).digest('hex').slice(0, 12);
-    initMemorySearchManager(effectiveWorkingDir, projectHash).catch(err => {
+    const embeddingConfig = configManager.get('embedding') as any;
+    initMemorySearchManager(effectiveWorkingDir, projectHash, embeddingConfig || undefined).catch(err => {
       console.warn('[MemorySearch] Initialization failed:', err);
     });
 
@@ -2551,10 +2554,22 @@ export class ConversationLoop {
    * @returns 处理后的用户输入（附加了链接内容）
    */
   private async preprocessUserInput(userInput: string): Promise<string> {
+    // 意图增强：模糊输入自动补充项目上下文
+    let enrichedInput = userInput;
+    try {
+      const { enrichUserInput } = await import('../context/intent-enricher.js');
+      enrichedInput = enrichUserInput(userInput, {
+        cwd: this.promptContext.workingDir,
+        isGitRepo: this.promptContext.isGitRepo,
+      });
+    } catch {
+      // 增强失败不影响主流程
+    }
+
     // 检查是否启用自动链接理解
     const config = configManager.get('autoLinkUnderstanding');
     if (!config) {
-      return userInput;
+      return enrichedInput;
     }
 
     try {
@@ -2563,7 +2578,7 @@ export class ConversationLoop {
       const urls = extractUrls(userInput);
 
       if (urls.length === 0) {
-        return userInput;
+        return enrichedInput;
       }
 
       // 动态导入 WebFetch 工具
@@ -2597,13 +2612,13 @@ export class ConversationLoop {
       );
 
       if (linkContexts.length > 0) {
-        return userInput + linkContexts.join('');
+        return enrichedInput + linkContexts.join('');
       }
 
-      return userInput;
+      return enrichedInput;
     } catch {
       // 任何错误都不影响正常流程
-      return userInput;
+      return enrichedInput;
     }
   }
 
@@ -2784,6 +2799,10 @@ export class ConversationLoop {
 
     // 解析模型别名（在循环外部，避免重复解析）
     const resolvedModel = modelConfig.resolveAlias(this.options.model || 'sonnet');
+
+    // autoRecall 已移除：信噪比太低，占 200-500 tokens 但回忆的碎片几乎没有参考价值。
+    // 真正有用的记忆已在 Notebook 中，需要搜索时用户可主动调用 MemorySearch 工具。
+    this.promptContext.memoryRecall = undefined;
 
     // 构建系统提示词
     let systemPrompt: string;

@@ -156,31 +156,97 @@ foreach ($ext in $junkExtensions) {
     }
 }
 
-# Remove @types packages (only needed for TypeScript compilation, not runtime)
-$typesDir = Join-Path $nmDst "@types"
-if (Test-Path $typesDir) {
-    $s = (Get-ChildItem -Recurse $typesDir -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
-    $trimmedSize += $s
-    Remove-Item -Recurse -Force $typesDir -ErrorAction SilentlyContinue
-    Write-Host "  Removed @types/" -ForegroundColor Gray
+# Remove dev-only packages (not needed at runtime)
+$devOnlyPkgs = @(
+    "@types",
+    "typescript",
+    "electron",
+    "electron-builder",
+    "electron-winstaller",
+    "app-builder-bin",
+    "app-builder-lib",
+    "dmg-builder",
+    "7zip-bin",
+    "@yao-pkg",
+    "vitest",
+    "vite",
+    "vite-node",
+    "@vitejs",
+    "@vitest",
+    "tsx",
+    "esbuild",
+    "@esbuild",
+    "jsdom",
+    "ink-testing-library",
+    "postject",
+    "@rollup",
+    "rollup",
+    "@anthropic-ai\claude-code",
+    "highlight.js",
+    "react-dom",
+    "@babel",
+    "nock",
+    "acorn",
+    "source-map-support",
+    "builder-util",
+    "builder-util-runtime",
+    "config-file-ts",
+    "isbinaryfile"
+)
+foreach ($pkg in $devOnlyPkgs) {
+    $pkgDir = Join-Path $nmDst $pkg
+    if (Test-Path $pkgDir) {
+        $s = (Get-ChildItem -Recurse $pkgDir -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
+        $trimmedSize += $s
+        Remove-Item -Recurse -Force $pkgDir -ErrorAction SilentlyContinue
+        Write-Host "  Removed $pkg/" -ForegroundColor Gray
+    }
 }
 
-# Remove typescript compiler (large, only needed for build)
-$tscDir = Join-Path $nmDst "typescript"
-if (Test-Path $tscDir) {
-    $s = (Get-ChildItem -Recurse $tscDir -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
+# Remove .vite cache directories
+Get-ChildItem -Path $nmDst -Directory -Recurse -Filter ".vite-*" -ErrorAction SilentlyContinue | ForEach-Object {
+    $s = (Get-ChildItem -Recurse $_.FullName -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
     $trimmedSize += $s
-    Remove-Item -Recurse -Force $tscDir -ErrorAction SilentlyContinue
-    Write-Host "  Removed typescript/" -ForegroundColor Gray
+    Remove-Item -Recurse -Force $_.FullName -ErrorAction SilentlyContinue
+    Write-Host "  Removed $($_.Name)" -ForegroundColor Gray
 }
 
-# Remove electron package from node_modules (already copied as runtime)
-$electronPkg = Join-Path $nmDst "electron"
-if (Test-Path $electronPkg) {
-    $s = (Get-ChildItem -Recurse $electronPkg -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
+# Remove native addon build artifacts (obj, Release/obj, build/Release except .node files)
+Get-ChildItem -Path $nmDst -Recurse -Filter "*.obj" -File -ErrorAction SilentlyContinue | ForEach-Object {
+    $trimmedSize += $_.Length
+    Remove-Item -Force $_.FullName -ErrorAction SilentlyContinue
+}
+Get-ChildItem -Path $nmDst -Recurse -Filter "*.pdb" -File -ErrorAction SilentlyContinue | ForEach-Object {
+    $trimmedSize += $_.Length
+    Remove-Item -Force $_.FullName -ErrorAction SilentlyContinue
+}
+
+# Remove prebuilds for non-Windows platforms
+Get-ChildItem -Path $nmDst -Recurse -Directory -Filter "prebuilds" -ErrorAction SilentlyContinue | ForEach-Object {
+    Get-ChildItem -Path $_.FullName -Directory -ErrorAction SilentlyContinue | Where-Object {
+        $_.Name -match "^(linux|darwin|android)" 
+    } | ForEach-Object {
+        $s = (Get-ChildItem -Recurse $_.FullName -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
+        $trimmedSize += $s
+        Remove-Item -Recurse -Force $_.FullName -ErrorAction SilentlyContinue
+    }
+}
+
+# Clean up monaco-editor: only keep min vs full (saves ~35MB)
+$monacoMin = Join-Path $nmDst "monaco-editor\min"
+$monacoFull = Join-Path $nmDst "monaco-editor\dev"
+if (Test-Path $monacoFull) {
+    $s = (Get-ChildItem -Recurse $monacoFull -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
     $trimmedSize += $s
-    Remove-Item -Recurse -Force $electronPkg -ErrorAction SilentlyContinue
-    Write-Host "  Removed electron/" -ForegroundColor Gray
+    Remove-Item -Recurse -Force $monacoFull -ErrorAction SilentlyContinue
+    Write-Host "  Removed monaco-editor/dev" -ForegroundColor Gray
+}
+$monacoEsm = Join-Path $nmDst "monaco-editor\esm"
+if (Test-Path $monacoEsm) {
+    $s = (Get-ChildItem -Recurse $monacoEsm -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
+    $trimmedSize += $s
+    Remove-Item -Recurse -Force $monacoEsm -ErrorAction SilentlyContinue
+    Write-Host "  Removed monaco-editor/esm" -ForegroundColor Gray
 }
 
 $trimmedMB = "{0:N0} MB" -f ($trimmedSize / 1MB)

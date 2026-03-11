@@ -1,6 +1,6 @@
 # Contributing to Axon
 
-Thank you for your interest in contributing! This guide will help you get started.
+Thanks for your interest in contributing! Axon is an open-source AI coding assistant, and we welcome contributions of all kinds — bug fixes, new features, documentation, Skills, plugins, and more.
 
 ## Getting Started
 
@@ -14,8 +14,8 @@ Thank you for your interest in contributing! This guide will help you get starte
 
 ```bash
 # Fork and clone the repository
-git clone https://github.com/<your-username>/axon.git
-cd axon
+git clone https://github.com/<your-username>/claude-code-open.git
+cd claude-code-open
 
 # Install dependencies
 npm install
@@ -30,8 +30,8 @@ cd ../../..
 npm run build
 
 # Start development mode
-npm run dev        # CLI mode
-npm run web        # Web UI mode
+npm run dev        # Terminal mode
+npm run web        # Web IDE mode
 ```
 
 ### Running Tests
@@ -44,25 +44,19 @@ npm run test:e2e            # End-to-end tests
 npx tsc --noEmit            # Type checking
 ```
 
-## How to Contribute
+## Ways to Contribute
 
-### Reporting Bugs
+### Report Bugs
 
 1. Search [existing issues](https://github.com/kill136/claude-code-open/issues) first
-2. Use the **Bug Report** template
-3. Include:
-   - Steps to reproduce
-   - Expected vs actual behavior
-   - OS, Node.js version, browser (for Web UI)
-   - Error logs / screenshots
+2. Include: steps to reproduce, expected vs actual behavior, OS, Node.js version, browser (for Web UI)
+3. Attach error logs or screenshots if possible
 
-### Suggesting Features
+### Suggest Features
 
-1. Open an issue with the **Feature Request** template
-2. Explain the use case and motivation
-3. Be specific about what you want
+Open an issue describing the use case and motivation. Be specific about what problem it solves.
 
-### Submitting Code
+### Write Code
 
 1. Fork the repo and create a branch from `private_web_ui`
 2. Make your changes
@@ -71,13 +65,25 @@ npx tsc --noEmit            # Type checking
 5. Write a clear commit message
 6. Open a Pull Request
 
-### Commit Message Convention
+### Build a Skill
+
+Skills are prompt-based capabilities that extend what Axon can do. They are Markdown files placed in `~/.axon/skills/<skill-name>/SKILL.md`. See existing skills for examples, or use the built-in `skill-creator` skill to scaffold one.
+
+### Build a Plugin
+
+Plugins are JavaScript/TypeScript modules with lifecycle hooks. Place them in `~/.axon/plugins/` and they are auto-loaded on startup.
+
+### Build an MCP Server
+
+Axon supports the [Model Context Protocol](https://modelcontextprotocol.io/). You can build an MCP server to integrate any external API or service. See the `mcp-builder` skill for guidance.
+
+## Commit Message Convention
 
 ```
 type(scope): description
 
 # Examples
-feat(tools): add new database query tool
+feat(tools): add database query tool
 fix(web): resolve WebSocket reconnection issue
 docs: update installation instructions
 refactor(core): simplify conversation loop
@@ -94,19 +100,21 @@ src/
 ├── web/
 │   ├── server/     # Express + WebSocket backend
 │   └── client/     # React frontend (Web IDE)
-├── blueprint/      # Multi-agent system
-├── memory/         # Memory & search system
+├── agents/         # Multi-agent coordination
+├── blueprint/      # Blueprint task system
+├── memory/         # Long-term memory & search
 ├── mcp/            # MCP protocol implementation
-└── ...             # See README for full structure
+├── plugins/        # Plugin system
+├── config/         # Configuration management
+└── ...
 ```
 
 ## Code Style
 
 - TypeScript with ES modules
-- No strict mode (tsconfig `strict: false`)
-- JSX for Ink (CLI UI) and React (Web UI) components
+- JSX for React (Web UI) and Ink (CLI UI) components
 - Zod for schema validation
-- Keep changes focused — don't mix features with refactoring
+- Keep changes focused — one feature or fix per PR
 
 ## Need Help?
 

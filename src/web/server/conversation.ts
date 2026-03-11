@@ -7,7 +7,7 @@ import { ClaudeClient } from '../../core/client.js';
 import { Session } from '../../core/session.js';
 import { runWithCwd } from '../../core/cwd-context.js';
 import { runWithSessionId } from '../../core/session-context.js';
-import { shouldAutoCompact, calculateAutoCompactThreshold, getContextWindowSize, generateSummaryPrompt, formatCompactSummaryContent, validateToolResults, extractImagesFromMessages } from '../../core/loop.js';
+import { shouldAutoCompact, calculateAutoCompactThreshold, getContextWindowSize, getMaxOutputTokens, generateSummaryPrompt, formatCompactSummaryContent, validateToolResults, extractImagesFromMessages } from '../../core/loop.js';
 import { toolRegistry, registerBlueprintTools } from '../../tools/index.js';
 import { systemPromptBuilder, type PromptContext, type PromptBlock } from '../../prompt/index.js';
 import { modelConfig } from '../../models/index.js';
@@ -31,13 +31,14 @@ import { blueprintStore, executionManager } from './routes/blueprint-api.js';
 import type { Blueprint } from '../../blueprint/types.js';
 import { StartLeadAgentTool } from '../../tools/start-lead-agent.js';
 import { geminiImageService } from './services/gemini-image-service.js';
-import { compressRawBase64 } from '../../media/image.js';
+import { compressRawBase64, ensureMaxDimensions } from '../../media/image.js';
 import {
   initSessionMemory,
   readSessionMemory,
   writeSessionMemory,
   getSummaryPath,
   isSessionMemoryEnabled,
+  isEmptyTemplate,
 } from '../../context/session-memory.js';
 import { initNotebookManager, getNotebookManager, activateNotebookManager } from '../../memory/notebook.js';
 import { initMemorySearchManager, getMemorySearchManager } from '../../memory/memory-search.js';
@@ -45,6 +46,8 @@ import { registerMcpServer, connectMcpServer, createMcpTools, getMcpServers, cal
 import { getChromeIntegrationConfig } from '../../chrome-mcp/index.js';
 import { CHROME_MCP_TOOLS } from '../../chrome-mcp/tools.js';
 import { RewindManager, type RewindOption } from '../../rewind/index.js';
+import { isEyeRunning } from '../../eye/index.js';
+import { getEarBuffer } from '../../ear/index.js';
 import { MarketplaceManager } from '../../plugins/marketplace.js';
 import { TaskStore, type ScheduledTask } from '../../daemon/store.js';
 import { isDaemonRunning } from '../../daemon/index.js';
@@ -54,6 +57,7 @@ import { BUILTIN_PROVIDERS } from './connectors/providers.js';
 import { appendRunLog } from '../../daemon/run-log.js';
 import { promptSnippetsManager } from './prompt-snippets.js';
 import { isEvolveRestartRequested, triggerGracefulShutdown } from './evolve-state.js';
+import { loadActiveGoals } from '../../goals/index.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -79,10 +83,16 @@ const RETRYABLE_NETWORK_PATTERNS = [
   'Internal server error',
   'Request timed out',
   'timed out',
+  'terminated',             // undici/fetch 底层连接被对端强制关闭（Railway 等反代超时）
+  'Application failed to respond', // OpenRouter 502 网关超时
+  'Stream idle timeout', // 流式空闲超时（client.ts 超时保护触发）
 ];
 
 /** conversation loop 层面的最大网络重试次数 */
-const MAX_CONVERSATION_RETRIES = 3;
+const MAX_CONVERSATION_RETRIES = 5;
+
+/** 中途断流自愈的最大次数（已有部分内容输出后断开） */
+const MAX_STREAM_RESUME_RETRIES = 2;
 
 /**
  * 判断错误是否为可重试的网络错误
@@ -506,8 +516,12 @@ export class ConversationManager {
     this.marketplaceManager = new MarketplaceManager(pluginManager);
     console.log('[ConversationManager] Plugin marketplace manager initialized');
 
-    // 注册默认 marketplace（等待完成，确保 Discover 面板可用）
-    await this.marketplaceManager.ensureDefaultMarketplace();
+    // 注册默认 marketplace（后台执行，不阻塞服务器启动）
+    // 首次安装时 git clone 可能因网络问题耗时很长（每个仓库 30s 超时），
+    // 如果同步 await 会导致 Electron 桌面应用启动超时（30s 窗口内服务器未就绪）
+    this.marketplaceManager.ensureDefaultMarketplace().catch((err) => {
+      console.error('[ConversationManager] Default marketplace setup failed:', err);
+    });
 
     // 注册蓝图工具（仅 Web 模式需要，CLI 模式不加载）
     registerBlueprintTools();
@@ -625,7 +639,8 @@ export class ConversationManager {
     try {
       const crypto = await import('crypto');
       const projectHash = crypto.createHash('md5').update(this.cwd).digest('hex').slice(0, 12);
-      await initMemorySearchManager(this.cwd, projectHash);
+      const embeddingConfig = configManager.get('embedding') as any;
+      await initMemorySearchManager(this.cwd, projectHash, embeddingConfig || undefined);
       console.log(`[ConversationManager] Initializing MemorySearchManager: ${this.cwd}`);
     } catch (error) {
       console.warn('[ConversationManager] Failed to initialize MemorySearchManager:', error);
@@ -1338,7 +1353,8 @@ export class ConversationManager {
     callbacks: StreamCallbacks,
     projectPath?: string,
     ws?: WebSocket,
-    permissionMode?: string
+    permissionMode?: string,
+    messageId?: string
   ): Promise<void> {
     const state = await this.getOrCreateSession(sessionId, model, projectPath, permissionMode);
 
@@ -1377,15 +1393,27 @@ export class ConversationManager {
     }
 
     try {
+      // 意图增强：模糊输入自动补充项目上下文（用户无感）
+      let enrichedContent = content;
+      try {
+        const { enrichUserInput } = await import('../../context/intent-enricher.js');
+        enrichedContent = enrichUserInput(content, {
+          cwd: state.session.cwd,
+          isGitRepo: this.checkIsGitRepo(state.session.cwd),
+        });
+      } catch {
+        // 增强失败不影响主流程
+      }
+
       // 构建用户消息
       const userMessage: Message = {
         role: 'user',
-        content: content,
+        content: enrichedContent,
       };
 
       // 如果有图片附件，压缩后转换为多内容块格式传递给 Claude API
       if (mediaAttachments && mediaAttachments.length > 0) {
-        const contentBlocks: any[] = [{ type: 'text', text: content }];
+        const contentBlocks: any[] = [{ type: 'text', text: enrichedContent }];
         for (const attachment of mediaAttachments) {
           const compressed = await compressRawBase64(attachment.data, attachment.mimeType);
           contentBlocks.push({
@@ -1418,7 +1446,7 @@ export class ConversationManager {
       }
       chatContentItems.push({ type: 'text' as const, text: content });
       const chatEntry: ChatMessage = {
-        id: `user-${Date.now()}`,
+        id: messageId || `user-${Date.now()}`,
         role: 'user' as const,
         timestamp: Date.now(),
         content: chatContentItems,
@@ -1480,6 +1508,8 @@ export class ConversationManager {
     let totalCacheReadTokens = 0;
     let totalCacheCreationTokens = 0;
     let networkRetryCount = 0;
+    /** 中途断流自愈计数器（已有部分内容输出后 stream 断开的恢复次数） */
+    let streamResumeCount = 0;
     /** 是否刚执行过因 "prompt too long" 而触发的强制压缩（防止无限循环） */
     let justForceCompacted = false;
     /** 是否刚执行过自动压缩（防止连续压缩：压缩后 API 实际 inputTokens 仍含系统提示词+工具定义，可能仍超阈值） */
@@ -1514,6 +1544,11 @@ export class ConversationManager {
 
       // 获取工具定义（使用过滤后的工具列表）
       const tools = this.getFilteredTools(sessionId || '');
+
+      // 预防性校验：确保 tool_use/tool_result 配对一致，避免 API 400 错误
+      // 之前只在错误自愈时调用 validateToolResults，但某些场景（autoCompact、rewind、恢复会话）
+      // 可能在进入循环前就已经破坏了配对关系，导致必须先报一次错才能修复
+      state.messages = validateToolResults(state.messages);
 
       // 在发送请求前清理旧的持久化输出（与 CLI 完全一致）
       let cleanedMessages = cleanOldPersistedOutputs(state.messages, 3);
@@ -1635,7 +1670,12 @@ export class ConversationManager {
               : m.content,
           })) as Message[];
 
-          const compactResult = await this.performAutoCompact(cleanedMessages, resolvedModel, state);
+          // 修复：只传入需要压缩的部分（排除 messagesToKeep），对齐强制压缩逻辑（2132行）
+          // 之前错误地传入了完整的 cleanedMessages，导致 NJ1 摘要因 token 超限而直接放弃
+          const messagesForCompact = messagesToKeep.length > 0
+            ? cleanedMessages.slice(0, cleanedMessages.length - messagesToKeep.length)
+            : cleanedMessages;
+          const compactResult = await this.performAutoCompact(messagesForCompact, resolvedModel, state);
           if (compactResult.wasCompacted) {
             // 修复：压缩后保留当前轮次的消息（对齐 CLI TJ1 的 messagesToKeep 逻辑）
             cleanedMessages = [...compactResult.messages, ...messagesToKeep];
@@ -1697,18 +1737,16 @@ export class ConversationManager {
         }
       }
 
-      // 对齐官方 Wc 函数：检查 blocking limit（上下文窗口 - 3000 缓冲）
-      // 如果压缩失败（或未触发）但消息已超限，直接报错退出，不再尝试调 API
-      // 使用混合估算（与 autoCompact 判断一致）
-      {
+      // 对齐官方 Wz6 + 主循环：检查 blocking limit（上下文窗口 - 3000 缓冲）
+      // 关键：官方在 autoCompact 成功后（compactionResult 有值）直接跳过 blocking limit 检查，
+      // 因为压缩后的估算可能不准确（chars/4 对摘要文本过高估），应该信任 API 的实际判断。
+      // 只在 autoCompact 未触发或失败时才检查 blocking limit。
+      if (!justAutoCompacted) {
         const contextWindow = getContextWindowSize(resolvedModel);
         const blockingLimit = contextWindow - 3000;
         
-        // 混合估算：如果刚执行过 autoCompact，hybridTokens 是过时的（基于压缩前的数据），
-        // 需要重新计算。通过检查 justAutoCompacted 标志来判断。
         let tokensToCheck: number;
-        if (justAutoCompacted || hybridTokens <= 0) {
-          // autoCompact 后 hybridTokens 过时，使用纯估算
+        if (hybridTokens <= 0) {
           tokensToCheck = this.estimateMessageTokens(cleanedMessages);
         } else {
           tokensToCheck = hybridTokens;
@@ -1721,6 +1759,13 @@ export class ConversationManager {
           continue;
         }
       }
+
+      // 将流式状态变量提升到 try 外，以便 catch 中断流自愈时可以访问
+      const assistantContent: ContentBlock[] = [];
+      let currentTextContent = '';
+      let currentToolUse: { id: string; name: string; inputJson: string } | null = null;
+      let stopReason: string | null = null;
+      let thinkingStarted = false;
 
       try {
         // 调用 Claude API（使用 createMessageStream，默认开启 Extended Thinking）
@@ -1736,13 +1781,6 @@ export class ConversationManager {
             promptBlocks: systemPrompt.blocks,
           }
         );
-
-        // 处理流式响应
-        const assistantContent: ContentBlock[] = [];
-        let currentTextContent = '';
-        let currentToolUse: { id: string; name: string; inputJson: string } | null = null;
-        let stopReason: string | null = null;
-        let thinkingStarted = false;
 
         for await (const event of stream) {
           if (state.cancelled) break;
@@ -1859,12 +1897,16 @@ export class ConversationManager {
                 state.messagesLenAtLastApiCall = state.messages.length;
 
                 // 实时发送上下文使用量更新（每次 API 调用都更新，而非仅对话结束时）
+                // 修复：分母用「有效输入空间」(contextWindow - maxOutputTokens) 而非总窗口
+                // 否则前端显示 67% 时，实际 input + max_tokens 可能已接近/超过 context_window
                 if (totalInputTokens > 0) {
                   const contextWindow = getContextWindowSize(resolvedModel);
-                  const percentage = Math.min(100, Math.round((totalInputTokens / contextWindow) * 100));
+                  const maxOutput = Math.min(getMaxOutputTokens(resolvedModel), 20000);
+                  const effectiveInput = contextWindow - maxOutput;
+                  const percentage = Math.min(100, Math.round((totalInputTokens / effectiveInput) * 100));
                   callbacks.onContextUpdate?.({
                     usedTokens: totalInputTokens,
-                    maxTokens: contextWindow,
+                    maxTokens: effectiveInput,
                     percentage,
                     model: resolvedModel,
                   });
@@ -1970,12 +2012,22 @@ export class ConversationManager {
 
             // 如果工具返回了 images，构建混合 content 数组（ImageBlockParam 嵌入 tool_result）
             if (result.images && result.images.length > 0) {
+              // 确保所有图片维度不超过 2000px（Anthropic API 多图请求限制）
+              const checkedImages = await Promise.all(
+                result.images.map(async (img: any) => {
+                  if (img.source?.type === 'base64' && img.source?.data) {
+                    const checked = await ensureMaxDimensions(img.source.data, img.source.media_type || 'image/png');
+                    return { ...img, source: { ...img.source, data: checked.data, media_type: checked.mediaType } };
+                  }
+                  return img;
+                })
+              );
               toolResults.push({
                 type: 'tool_result',
                 tool_use_id: toolUse.id,
                 content: [
                   { type: 'text', text: formattedContent || 'Tool completed.' },
-                  ...result.images,
+                  ...checkedImages,
                 ],
               });
             } else {
@@ -2198,6 +2250,67 @@ export class ConversationManager {
           await new Promise(resolve => setTimeout(resolve, delay));
           // continueLoop 保持为 true，继续下一次循环迭代（重新发起 API 调用）
           continue;
+        }
+
+        // ============================================================
+        // 中途断流自愈：API 已返回部分内容但 stream 中断（网络波动等）
+        // 策略：保存已有的文本内容作为 assistant 消息，注入续写提示，重新请求
+        // 注意：只恢复纯文本内容；如果中断发生在 tool_use 中途（参数 JSON 不完整），
+        // 不尝试恢复工具调用，因为残缺的 JSON 会导致后续问题
+        // ============================================================
+        if (
+          isRetryableNetworkError(error) &&
+          hasStreamedContent &&
+          streamResumeCount < MAX_STREAM_RESUME_RETRIES
+        ) {
+          streamResumeCount++;
+          console.warn(
+            `[ConversationManager] Stream interrupted with partial content, attempting resume (${streamResumeCount}/${MAX_STREAM_RESUME_RETRIES})...`
+          );
+
+          // 收集已输出的文本内容
+          const partialText = currentTextContent || '';
+          const existingTexts = assistantContent
+            .filter((b): b is TextBlock => b.type === 'text')
+            .map(b => b.text)
+            .join('');
+          const allPartialText = existingTexts + partialText;
+
+          if (allPartialText.length > 0) {
+            // 1. 保存已有的部分内容作为 assistant 消息（只保留 text 块，丢弃未完成的 tool_use）
+            const partialAssistantContent: ContentBlock[] = [];
+            for (const block of assistantContent) {
+              if (block.type === 'text') {
+                partialAssistantContent.push(block);
+              }
+            }
+            if (currentTextContent) {
+              partialAssistantContent.push({ type: 'text', text: currentTextContent } as TextBlock);
+            }
+
+            if (partialAssistantContent.length > 0) {
+              const partialMsg: Message = { role: 'assistant', content: partialAssistantContent };
+              state.messages.push(partialMsg);
+              if (sessionId) walAppend(sessionId, 'msg', partialMsg);
+
+              // 2. 注入续写提示（作为 user 消息），让 AI 从断点继续
+              const resumeMsg: Message = {
+                role: 'user',
+                content: [{ type: 'text', text: '[System: Your response was interrupted due to a network issue. Please continue from where you left off. Do not repeat what you already said.]' }],
+              };
+              state.messages.push(resumeMsg);
+              if (sessionId) walAppend(sessionId, 'msg', resumeMsg);
+
+              // 3. 通知前端断流恢复中
+              callbacks.onTextDelta?.('\n\n---\n*[网络波动，正在自动恢复...]*\n\n');
+
+              const delay = 2000 * streamResumeCount;
+              await new Promise(resolve => setTimeout(resolve, delay));
+              // 继续循环，重新发起 API 请求
+              continue;
+            }
+          }
+          // 如果没有有意义的文本内容，fall through 到错误处理
         }
 
         console.error('[ConversationManager] API error:', error);
@@ -3277,7 +3390,7 @@ export class ConversationManager {
     if (isSessionMemoryEnabled()) {
       try {
         const memoryContent = await readSessionMemory(state.session.cwd, state.session.sessionId || '');
-        if (memoryContent && memoryContent.trim().length > 0) {
+        if (memoryContent && memoryContent.trim().length > 0 && !isEmptyTemplate(memoryContent)) {
           // 对齐官方 Au1 函数：格式化为标准摘要内容
           const formattedContent = formatCompactSummaryContent(memoryContent, true);
 
@@ -3317,21 +3430,41 @@ export class ConversationManager {
 
     // 2. 尝试对话摘要 (NJ1) — 对齐官方 oj1 压缩函数
     try {
-      // 对齐官方：检查消息总 token 是否已超过上下文窗口限制
-      // 如果超限，NJ1 摘要请求也必然失败（摘要请求 = 全量消息 + summaryPrompt），直接跳过
       const contextWindow = getContextWindowSize(model);
       const estimatedMsgTokens = this.estimateMessageTokens(messages);
 
+      // 如果消息超过 context window，截断旧消息后再做摘要
+      // 比直接放弃（导致对话终止）要好得多
+      let messagesForSummary = messages;
       if (estimatedMsgTokens >= contextWindow) {
-        console.warn(`[AutoCompact/NJ1] Message tokens (${estimatedMsgTokens.toLocaleString()}) exceeded context window (${contextWindow.toLocaleString()}), skipping NJ1 summary (will inevitably fail)`);
-        return { wasCompacted: false, messages };
+        console.warn(`[AutoCompact/NJ1] Message tokens (${estimatedMsgTokens.toLocaleString()}) exceeded context window (${contextWindow.toLocaleString()}), truncating oldest messages before summarizing`);
+        // 保留 context window 80% 容量的最新消息（留 20% 给 summaryPrompt + system prompt + 输出）
+        const targetTokens = Math.floor(contextWindow * 0.8);
+        let accumulatedTokens = 0;
+        let startIndex = messages.length;
+        // 从后往前累加，找到能放进去的起始位置
+        for (let i = messages.length - 1; i >= 0; i--) {
+          const msgTokens = this.estimateMessageTokens([messages[i]]);
+          if (accumulatedTokens + msgTokens > targetTokens) break;
+          accumulatedTokens += msgTokens;
+          startIndex = i;
+        }
+        // 确保至少保留一些消息
+        if (startIndex >= messages.length) startIndex = Math.max(0, messages.length - 5);
+        // 确保从 user 消息开始（API 要求第一条是 user 角色）
+        while (startIndex < messages.length && messages[startIndex].role !== 'user') {
+          startIndex++;
+        }
+        if (startIndex >= messages.length) startIndex = Math.max(0, messages.length - 5);
+        messagesForSummary = messages.slice(startIndex);
+        console.log(`[AutoCompact/NJ1] Truncated from ${messages.length} to ${messagesForSummary.length} messages (${accumulatedTokens.toLocaleString()} tokens) for summarization`);
       }
 
       // 对齐官方 dDA 函数：使用完整的摘要 prompt（含 <analysis> + <summary> 结构）
       const summaryPrompt = generateSummaryPrompt();
 
       const summaryMessages: Message[] = [
-        ...messages,
+        ...messagesForSummary,
         { role: 'user', content: summaryPrompt },
       ];
 
@@ -3797,6 +3930,8 @@ Respond ONLY with valid JSON, no other text.`;
         // 笔记本加载失败不影响主流程
       }
 
+      // autoRecall 已移除：信噪比太低，Notebook 已覆盖有用记忆，用户可主动调用 MemorySearch 工具
+
       // 构建 MCP 服务器信息（用于 getMcpInstructions）
       // 官方行为：只包含未禁用的服务器（与 mcp.tools state 一致）
       const disabledServers = this.getDisabledMcpServers();
@@ -3831,6 +3966,11 @@ Respond ONLY with valid JSON, no other text.`;
         notebookSummary,
         // MCP 服务器信息（用于系统提示中的 MCP 指令）
         mcpServers: mcpServerInfos.length > 0 ? mcpServerInfos : undefined,
+        // 活跃目标（常驻到提示词，每次对话都能看到）
+        activeGoals: (() => {
+          const goals = loadActiveGoals(state.session.cwd);
+          return goals.length > 0 ? goals : undefined;
+        })(),
       };
 
       // 使用官方的 SystemPromptBuilder
@@ -4144,17 +4284,34 @@ Guidelines:
     'UpdateTaskPlan',   // LeadAgent 专用 - 更新执行计划中的任务状态
     'DispatchWorker',   // LeadAgent 专用 - 派发任务给 Worker 执行
     'TriggerE2ETest',   // LeadAgent 专用 - 触发 E2E 端到端测试
+    'TaskCreate',       // Agent Teams 专用 - 普通对话用 TodoWrite
+    'TaskGet',          // Agent Teams 专用
+    'TaskUpdate',       // Agent Teams 专用
+    'TaskList',         // Agent Teams 专用
+    'NotebookWrite',    // 已移除 - Notebook 通过附件自动管理
   ]);
 
   private getFilteredTools(sessionId: string): any[] {
     const state = this.sessions.get(sessionId);
     const config = state?.toolFilterConfig || { mode: 'all' };
 
+    // 动态排除：感知工具只在对应感官激活时注入，避免浪费 token
+    const dynamicExcluded = new Set<string>();
+    // Eye — 只在 daemon 运行时注入
+    if (!isEyeRunning()) {
+      dynamicExcluded.add('Eye');
+    }
+    // Ear — 只在前端有语音识别推送时注入（buffer.size > 0 意味着浏览器开了 speech）
+    if (getEarBuffer().size === 0) {
+      dynamicExcluded.add('Ear');
+    }
+
     // 1. 内置工具（来自 toolRegistry，对应官方 C0(ctx)）
     const allTools = toolRegistry.getAll();
     const filteredBuiltinTools = allTools.filter(tool =>
       this.isToolEnabled(tool.name, config) &&
-      !ConversationManager.CHAT_EXCLUDED_TOOLS.has(tool.name)
+      !ConversationManager.CHAT_EXCLUDED_TOOLS.has(tool.name) &&
+      !dynamicExcluded.has(tool.name)
     );
 
     const builtinDefs = filteredBuiltinTools.map(tool => ({

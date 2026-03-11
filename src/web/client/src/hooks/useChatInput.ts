@@ -58,7 +58,7 @@ interface UseChatInputReturn {
   handleAnswerQuestion: (answer: string) => void;
   handlePermissionRespond: (approved: boolean, remember: boolean) => void;
   handlePermissionRespondWithDestination: (response: { approved: boolean; remember: boolean; destination: string }) => void;
-  handlePermissionModeChange: (mode: PermissionMode) => void;
+  handlePresetChange: (presetId: string) => void;
   handleDevAction: (action: string, data?: any) => void;
   // 语音识别
   voiceState: VoiceState;
@@ -355,6 +355,7 @@ export function useChatInput({
       type: 'chat',
       payload: {
         content: input,
+        messageId: userMessage.id,
         attachments: attachments.map(att => ({
           name: att.name,
           type: att.type,
@@ -481,11 +482,10 @@ export function useChatInput({
     setStatus('idle');
   }, [send, currentMessageRef, setMessages, setStatus]);
 
-  // 权限模式切换
-  const handlePermissionModeChange = useCallback((mode: PermissionMode) => {
-    setPermissionMode(mode);
-    send({ type: 'permission_config', payload: { mode } });
-  }, [send, setPermissionMode]);
+  // 模式预设切换（通过 preset id 应用完整预设：权限 + 提示词 + 工具过滤）
+  const handlePresetChange = useCallback((presetId: string) => {
+    send({ type: 'mode_preset_apply', payload: { id: presetId } });
+  }, [send]);
 
   // 持续开发动作处理
   const handleDevAction = useCallback((action: string, data?: any) => {
@@ -537,7 +537,7 @@ export function useChatInput({
     handleAnswerQuestion,
     handlePermissionRespond,
     handlePermissionRespondWithDestination,
-    handlePermissionModeChange,
+    handlePresetChange,
     handleDevAction,
     // 语音识别
     voiceState,

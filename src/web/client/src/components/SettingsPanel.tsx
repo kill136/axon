@@ -7,11 +7,12 @@ import { useState } from 'react';
 import { PromptSnippetsPanel } from './PromptSnippetsPanel';
 import {
   ApiConfigPanel,
-  PermissionsConfigPanel,
   HooksConfigPanel,
   SystemConfigPanel,
   ConfigImportExport,
+  EmbeddingConfigPanel,
 } from './config';
+import { ModePresetsPanel } from './config/ModePresetsPanel';
 import { useLanguage } from '../i18n';
 import type { Locale } from '../i18n';
 
@@ -28,6 +29,7 @@ type SettingsTab =
   | 'general'
   | 'model'
   | 'api'
+  | 'embedding'
   | 'permissions'
   | 'hooks'
   | 'system'
@@ -40,6 +42,7 @@ const TAB_KEYS: { id: SettingsTab; i18nKey: string; icon: string }[] = [
   { id: 'general', i18nKey: 'settings.tab.general', icon: '⚙️' },
   { id: 'model', i18nKey: 'settings.tab.model', icon: '🤖' },
   { id: 'api', i18nKey: 'settings.tab.apiAdvanced', icon: '🔧' },
+  { id: 'embedding', i18nKey: 'settings.tab.embedding', icon: '🧠' },
   { id: 'permissions', i18nKey: 'settings.tab.permissions', icon: '🔐' },
   { id: 'hooks', i18nKey: 'settings.tab.hooks', icon: '🪝' },
   { id: 'system', i18nKey: 'settings.tab.system', icon: '💾' },
@@ -106,6 +109,19 @@ export function SettingsPanel({
                 <option value="false">{t('settings.general.disabled')}</option>
               </select>
             </div>
+            <div className="setting-item" style={{ marginTop: '24px', borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
+              <label>{t('setupWizard.rerun')}</label>
+              <button
+                className="setting-select"
+                style={{ cursor: 'pointer', textAlign: 'center', background: 'var(--bg-tertiary)' }}
+                onClick={() => {
+                  localStorage.removeItem('axon_setup_done');
+                  window.location.reload();
+                }}
+              >
+                {t('setupWizard.rerun')}
+              </button>
+            </div>
           </div>
         );
 
@@ -153,11 +169,15 @@ export function SettingsPanel({
           />
         );
 
+      case 'embedding':
+        return <EmbeddingConfigPanel />;
+
       case 'permissions':
         return (
-          <PermissionsConfigPanel
-            onSave={() => { onClose(); }}
+          <ModePresetsPanel
             onClose={onClose}
+            onSendMessage={onSendMessage}
+            addMessageHandler={addMessageHandler}
           />
         );
 
@@ -195,7 +215,7 @@ export function SettingsPanel({
                 <strong>{t('settings.about.version')}:</strong> 2.1.4 (Educational)
               </p>
               <p>
-                <strong>{t('settings.about.repository')}:</strong> github.com/kill136/axon
+                <strong>{t('settings.about.repository')}:</strong> github.com/kill136/claude-code-open
               </p>
               <p>
                 <strong>{t('settings.about.license')}:</strong> {t('settings.about.licenseValue')}

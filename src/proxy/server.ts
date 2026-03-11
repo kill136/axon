@@ -484,6 +484,7 @@ export async function createProxyServer(config: ProxyConfig) {
   }
 
   const logs: RequestLog[] = [];
+  let totalRequestCount = 0;
 
   const server = http.createServer(async (req, res) => {
     const startTime = Date.now();
@@ -1100,6 +1101,7 @@ export async function createProxyServer(config: ProxyConfig) {
           if (isStreaming && statusCode === 200) {
             responseHeaders['cache-control'] = 'no-cache';
             responseHeaders['x-accel-buffering'] = 'no';
+            responseHeaders['connection'] = 'keep-alive';
           }
 
           res.writeHead(statusCode, responseHeaders);
@@ -1107,6 +1109,18 @@ export async function createProxyServer(config: ProxyConfig) {
           if (realResponse.body) {
             const reader = realResponse.body.getReader();
             const errChunks: Uint8Array[] = [];
+
+            // SSE keepalive: 每 15 秒发送注释行，防止 Railway 等反代因空闲超时断开连接
+            // SSE 规范中 `:` 开头的行是注释，客户端会忽略
+            let keepaliveTimer: ReturnType<typeof setInterval> | null = null;
+            if (isStreaming && statusCode === 200) {
+              keepaliveTimer = setInterval(() => {
+                try {
+                  if (!res.destroyed) res.write(': keepalive\n\n');
+                } catch {}
+              }, 15_000);
+            }
+
             try {
               while (true) {
                 const { done, value } = await reader.read();
@@ -1117,10 +1131,12 @@ export async function createProxyServer(config: ProxyConfig) {
             } catch (pipeErr: any) {
               console.error(`[FWD] Pipe error: ${pipeErr.message}`);
             } finally {
+              if (keepaliveTimer) clearInterval(keepaliveTimer);
               res.end();
             }
 
             const duration = Date.now() - startTime;
+            totalRequestCount++;
             logs.push({ time: new Date().toISOString(), method, path, status: statusCode, duration, clientIp, streaming: isStreaming });
             if (logs.length > 1000) logs.splice(0, logs.length - 1000);
             console.log(`[DONE]  ${method} ${path} -> ${statusCode} (${duration}ms)` + (isStreaming ? ' [stream]' : ''));
@@ -1135,6 +1151,7 @@ export async function createProxyServer(config: ProxyConfig) {
           } else {
             res.end();
             const duration = Date.now() - startTime;
+            totalRequestCount++;
             logs.push({ time: new Date().toISOString(), method, path, status: statusCode, duration, clientIp, streaming: isStreaming });
             console.log(`[DONE]  ${method} ${path} -> ${statusCode} (${duration}ms)`);
           }
@@ -1173,16 +1190,30 @@ export async function createProxyServer(config: ProxyConfig) {
             if (isStreaming && statusCode === 200) {
               responseHeaders['Cache-Control'] = 'no-cache';
               responseHeaders['X-Accel-Buffering'] = 'no';
+              responseHeaders['Connection'] = 'keep-alive';
             }
             res.writeHead(statusCode, responseHeaders);
 
+            // SSE keepalive（同 OAuth 路径逻辑）
+            let keepaliveTimer2: ReturnType<typeof setInterval> | null = null;
+            if (isStreaming && statusCode === 200) {
+              keepaliveTimer2 = setInterval(() => {
+                try {
+                  if (!res.destroyed) res.write(': keepalive\n\n');
+                } catch {}
+              }, 15_000);
+            }
+            const clearKeepalive2 = () => { if (keepaliveTimer2) { clearInterval(keepaliveTimer2); keepaliveTimer2 = null; } };
+
             if (statusCode >= 400) {
+              clearKeepalive2();
               const errChunks: Buffer[] = [];
               proxyRes.on('data', (chunk: Buffer) => { errChunks.push(chunk); res.write(chunk); });
               proxyRes.on('end', () => {
                 res.end();
                 const duration = Date.now() - startTime;
                 const errBody = Buffer.concat(errChunks).toString().slice(0, 500);
+                totalRequestCount++;
                 logs.push({ time: new Date().toISOString(), method, path, status: statusCode, duration, clientIp, streaming: isStreaming });
                 if (logs.length > 1000) logs.splice(0, logs.length - 1000);
                 console.log(`[DONE]  ${method} ${path} -> ${statusCode} (${duration}ms)` + (isStreaming ? ' [stream]' : ''));
@@ -1191,7 +1222,9 @@ export async function createProxyServer(config: ProxyConfig) {
             } else {
               proxyRes.pipe(res);
               proxyRes.on('end', () => {
+                clearKeepalive2();
                 const duration = Date.now() - startTime;
+                totalRequestCount++;
                 logs.push({ time: new Date().toISOString(), method, path, status: statusCode, duration, clientIp, streaming: isStreaming });
                 if (logs.length > 1000) logs.splice(0, logs.length - 1000);
                 console.log(`[DONE]  ${method} ${path} -> ${statusCode} (${duration}ms)` + (isStreaming ? ' [stream]' : ''));
@@ -1241,5 +1274,5 @@ export async function createProxyServer(config: ProxyConfig) {
     });
   }
 
-  return { server, start, stop, logs, oauthState };
+  return { server, start, stop, logs, oauthState, get totalRequests() { return totalRequestCount; } };
 }

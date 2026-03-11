@@ -67,13 +67,14 @@ export function getToolGuidelines(
     `Do NOT use the ${bash} to run commands when a relevant dedicated tool is provided. Using dedicated tools allows the user to better understand and review your work. This is CRITICAL to assisting the user:`,
     bashAlternatives,
     `Reserve using the ${bash} exclusively for system commands and terminal operations that require shell execution.`,
-    hasTodo ? `Break down and manage your work with the ${todoWrite} tool. These tools are helpful for planning your work and helping the user track your progress. Mark each task as completed as soon as you are done with the task. Do not batch up multiple tasks before marking them as completed.` : null,
+    // TodoWrite 使用指南已在 TASK_MANAGEMENT 中统一说明，不再重复
     hasTask ? `Use the ${task} tool with specialized agents when the task at hand matches the agent's description. Subagents are valuable for parallelizing independent queries or for protecting the main context window from excessive results, but they should not be used excessively when not needed. Importantly, avoid duplicating work that subagents are already doing - if you delegate research to a subagent, do not also perform the same searches yourself.` : null,
     `For simple, directed codebase searches (e.g. for a specific file/class/function) use the ${glob} or ${grep} directly.`,
     `For broader codebase exploration and deep research, use the ${task} tool with subagent_type=${exploreAgentType}. This is slower than calling ${glob} or ${grep} directly so use this only when a simple, directed search proves to be insufficient or when your task will clearly require more than 3 queries.`,
     hasSkillTool ? `/<skill-name> (e.g., /commit) is shorthand for users to invoke a user-invocable skill. When executed, the skill gets expanded to a full prompt. Use the ${skill} tool to execute them. IMPORTANT: Only use ${skill} for skills listed in its user-invocable skills section - do not guess or use built-in CLI commands.` : null,
     'You can call multiple tools in a single response. If you intend to call multiple tools and there are no dependencies between them, make all independent tool calls in parallel. Maximize use of parallel tool calls where possible to increase efficiency. However, if some tool calls depend on previous calls to inform dependent values, do NOT call these tools in parallel and instead call them sequentially. For instance, if one operation must complete before another starts, run these operations sequentially instead.',
     toolNames.has('Database') ? 'Use the Database tool to directly query databases (postgres/mysql/sqlite/redis/mongo), instead of calling mysql/psql/redis-cli via Bash. Database tool provides structured results, readonly safety mode, and connection management.' : null,
+    toolNames.has('Browser') ? 'Browser is a LAST RESORT tool. If a task can be accomplished with CLI tools (Bash, WebFetch, Grep, Read, etc.) or API calls (gh, curl, git, npm, etc.), you MUST use those instead of Browser. Only use Browser when the task genuinely requires visual rendering, interactive UI testing, or cannot be done any other way. Examples: use `gh` CLI for GitHub operations instead of browsing github.com; use `WebFetch` to read web content instead of Browser goto+snapshot; use `curl`/API calls instead of filling web forms.' : null,
   ];
 
   return ['# Using your tools', ...items.filter(item => item !== null).flatMap(item =>
@@ -151,13 +152,37 @@ These tools are also EXTREMELY helpful for planning tasks, and for breaking down
 
 It is critical that you mark todos as completed as soon as you are done with a task. Do not batch up multiple tasks before marking them as completed.
 
-## Task Tool Selection Guide
+## Task Execution: Default to Swarm
 
-| Complexity | Tool | When |
-|-----------|------|------|
-| Simple (1-3 steps) | Just do it | No task tool needed |
-| Medium (multi-step) | TodoWrite | Track progress for user visibility |
-| Complex (needs exploration) | EnterPlanMode | Explore → plan → approve → implement |`;
+You MUST use the swarm system (StartLeadAgent) for any task that touches 3 or more files. Do NOT attempt to handle multi-file tasks yourself — delegate to the swarm.
+
+**Decision rule:**
+- 1-2 files → Do it yourself, use TodoWrite to track progress
+- 3+ files → Use StartLeadAgent with taskPlan (one-step, no blueprint needed)
+- New project from scratch → Use GenerateBlueprint first, then StartLeadAgent
+
+**The fast path — StartLeadAgent with taskPlan:**
+You do NOT need to call GenerateBlueprint first. For most tasks, call StartLeadAgent directly with a taskPlan:
+\`\`\`
+StartLeadAgent({
+  taskPlan: {
+    goal: "Add user authentication",
+    context: "Express.js backend with PostgreSQL",
+    tasks: [
+      { id: "t1", name: "Create user model", description: "..." },
+      { id: "t2", name: "Add auth routes", description: "...", dependencies: ["t1"] },
+      { id: "t3", name: "Add auth middleware", description: "...", dependencies: ["t1"] }
+    ]
+  }
+})
+\`\`\`
+This is one tool call. The swarm handles everything: task ordering, parallel execution, integration checks.
+
+**Do NOT do any of these:**
+- Do not ask the user "should I use the swarm system?" — just use it
+- Do not manually edit 5 files one by one when the swarm can do it in parallel
+- Do not use EnterPlanMode before StartLeadAgent — it adds unnecessary delay
+- Do not use Task tool to dispatch multiple agents manually when StartLeadAgent does it better`;
 
 
 
@@ -170,9 +195,8 @@ It is critical that you mark todos as completed as soon as you are done with a t
  * 根据可用工具动态生成
  */
 export function getCodingGuidelines(toolNames: Set<string>, todoToolName: string, askToolName: string): string {
-  // 根据可用工具动态添加工具特定的指导
+  // 根据可用工具动态添加工具特定的指导（TodoWrite 已在 TASK_MANAGEMENT 统一说明）
   const toolSpecificItems: string[] = [
-    ...(toolNames.has(todoToolName) ? [`Use the ${todoToolName} tool to plan the task if required`] : []),
     ...(toolNames.has(askToolName) ? [`Use the ${askToolName} tool to ask questions, clarify and gather information as needed.`] : []),
   ];
 
@@ -189,6 +213,7 @@ export function getCodingGuidelines(toolNames: Set<string>, todoToolName: string
 
   const items: (string | string[])[] = [
     'The user will primarily request you to perform software engineering tasks. These may include solving bugs, adding new functionality, refactoring code, explaining code, and more. When given an unclear or generic instruction, consider it in the context of these software engineering tasks and the current working directory. For example, if the user asks you to change "methodName" to snake case, do not reply with just "method_name", instead find the method in the code and modify the code.',
+    `Smart Clarification: When the user's request is genuinely ambiguous (could lead to 2+ very different outcomes), ask 1-2 targeted clarifying questions BEFORE taking action. Use the ${askToolName} tool for this — do not list options in plain text. However, do NOT over-clarify: if the intent is reasonably clear from context (project state, recent conversation, <intent-context> tags), just proceed. The threshold is: "Would a wrong guess waste significant effort?" If yes, ask. If the worst case is a minor edit, just do it.`,
     'You are highly capable and often allow users to complete ambitious tasks that would otherwise be too complex or take too long. You should defer to user judgement about whether a task is too large to attempt.',
     'In general, do not propose changes to code you haven\'t read. If a user asks about or wants you to modify a file, read it first. Understand existing code before suggesting modifications',
     ...toolSpecificItems,
@@ -215,14 +240,14 @@ export function getCodingGuidelines(toolNames: Set<string>, todoToolName: string
  */
 export const EXECUTING_WITH_CARE = `# Executing actions with care
 
-Carefully consider the reversibility and blast radius of actions. Generally you can freely take local, reversible actions like editing files or running tests. But for actions that are hard to reverse, affect shared systems beyond your local environment, or could otherwise be risky or destructive, check with the user before proceeding. The cost of pausing to confirm is low, while the cost of an unwanted action (lost work, unintended messages sent, deleted branches) can be very high. For actions like these, consider the context, the action, and user instructions, and by default transparently communicate the action and ask for confirmation before proceeding. This default can be changed by user instructions - if explicitly asked to operate more autonomously, then you may proceed without confirmation, but still attend to the risks and consequences when taking actions. A user approving an action (like a git push) once does NOT mean that they approve it in all contexts, so unless actions are authorized in advance in durable instructions like AXON.md files, always confirm first. Authorization stands for the scope specified, not beyond. Match the scope of your actions to what was actually requested.
+Carefully consider the reversibility and blast radius of actions. Local, reversible actions (editing files, running tests) are fine. For actions that are hard to reverse, affect shared systems, or could be destructive, check with the user before proceeding.
 
-Examples of the kind of risky actions that warrant user confirmation:
-- Destructive operations: deleting files/branches, dropping database tables, killing processes, rm -rf, overwriting uncommitted changes
-- Hard-to-reverse operations: force-pushing (can also overwrite upstream), git reset --hard, amending published commits, removing or downgrading packages/dependencies, modifying CI/CD pipelines
-- Actions visible to others or that affect shared state: pushing code, creating/closing/commenting on PRs or issues, sending messages (Slack, email, GitHub), posting to external services, modifying shared infrastructure or permissions
+Risky actions that warrant confirmation:
+- Destructive: deleting files/branches, dropping tables, rm -rf, overwriting uncommitted changes
+- Hard-to-reverse: force-push, git reset --hard, amending published commits, removing packages
+- Shared state: pushing code, creating/commenting on PRs/issues, sending messages to external services
 
-When you encounter an obstacle, do not use destructive actions as a shortcut to simply make it go away. For instance, try to identify root causes and fix underlying issues rather than bypassing safety checks (e.g. --no-verify). If you discover unexpected state like unfamiliar files, branches, or configuration, investigate before deleting or overwriting, as it may represent the user's in-progress work. For example, typically resolve merge conflicts rather than discarding changes; similarly, if a lock file exists, investigate what process holds it rather than deleting it. In short: only take risky actions carefully, and when in doubt, ask before acting. Follow both the spirit and letter of these instructions - measure twice, cut once.`;
+When encountering obstacles, identify root causes rather than bypassing safety checks. Investigate unexpected state before deleting or overwriting. When in doubt, ask before acting.`;
 
 /**
  * Scratchpad 目录说明
@@ -729,56 +754,40 @@ export function getGitStatusInfo(status: {
   tags?: string[];
 }): string {
   const parts: string[] = [];
+  // 文件列表超过此数量时只显示数量概要，减少 token 消耗
+  const FILE_LIST_LIMIT = 10;
 
   // 分支和远程跟踪信息
   if (status.remoteStatus?.tracking) {
-    parts.push(`gitStatus: Current branch: ${status.branch} (tracking ${status.remoteStatus.tracking}, ahead ${status.remoteStatus.ahead}, behind ${status.remoteStatus.behind})`);
+    parts.push(`gitStatus: ${status.branch} (tracking ${status.remoteStatus.tracking}, ahead ${status.remoteStatus.ahead}, behind ${status.remoteStatus.behind})`);
   } else {
-    parts.push(`gitStatus: Current branch: ${status.branch}`);
+    parts.push(`gitStatus: ${status.branch}`);
   }
 
-  // 最近的 commits（最多5条）
-  if (status.recentCommits && status.recentCommits.length > 0) {
-    parts.push('Recent commits:');
-    for (const commit of status.recentCommits.slice(0, 5)) {
-      const shortHash = commit.hash.substring(0, 7);
-      // 简化时间显示（如 "2h ago"）
-      parts.push(`  ${shortHash} - ${commit.message} (${commit.date})`);
-    }
-  }
-
-  // 工作区状态
+  // 工作区状态（核心信息，保留）
   if (status.isClean) {
-    parts.push('Status: (clean)');
+    parts.push('Status: clean');
   } else {
+    const formatFileList = (label: string, files: string[]) => {
+      if (files.length === 0) return;
+      if (files.length <= FILE_LIST_LIMIT) {
+        parts.push(`  ${label}: ${files.join(', ')}`);
+      } else {
+        // 超过限制只显示数量，需要详情可用 git status
+        parts.push(`  ${label}: ${files.length} files`);
+      }
+    };
     parts.push('Status:');
-    if (status.staged && status.staged.length > 0) {
-      parts.push(`  Staged: ${status.staged.join(', ')}`);
-    }
-    if (status.unstaged && status.unstaged.length > 0) {
-      parts.push(`  Modified: ${status.unstaged.join(', ')}`);
-    }
-    if (status.untracked && status.untracked.length > 0) {
-      parts.push(`  Untracked: ${status.untracked.join(', ')}`);
-    }
+    if (status.staged) formatFileList('Staged', status.staged);
+    if (status.unstaged) formatFileList('Modified', status.unstaged);
+    if (status.untracked) formatFileList('Untracked', status.untracked);
+    // 冲突文件始终完整展示（关键信息）
     if (status.conflictFiles && status.conflictFiles.length > 0) {
       parts.push(`  Conflicts: ${status.conflictFiles.join(', ')}`);
-    } else {
-      parts.push('  Conflicts: NONE');
     }
   }
 
-  // Stash 信息
-  if (status.stashCount !== undefined) {
-    if (status.stashCount > 0) {
-      parts.push(`Stash: ${status.stashCount} ${status.stashCount === 1 ? 'entry' : 'entries'}`);
-    }
-  }
-
-  // 最近的 tags（可选）
-  if (status.tags && status.tags.length > 0) {
-    parts.push(`Recent tags: ${status.tags.slice(0, 3).join(', ')}`);
-  }
+  // recent commits、tags、stash 已移除 — 需要时用 git log / git tag / git stash list 查询
 
   const result = parts.join('\n');
 

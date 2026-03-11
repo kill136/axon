@@ -1604,21 +1604,16 @@ export const privacySettingsCommand: SlashCommand = {
     const action = args[0]?.toLowerCase() || 'show';
     const config = readConfig();
 
-    // 读取环境变量配置
-    const telemetryEnabled = process.env.AXON_ENABLE_TELEMETRY === '1'
-      || process.env.AXON_ENABLE_TELEMETRY === 'true';
-    const telemetryDisabled = process.env.AXON_DISABLE_TELEMETRY === '1'
-      || process.env.AXON_DISABLE_TELEMETRY === 'true';
-    const otelTimeout = process.env.AXON_OTEL_SHUTDOWN_TIMEOUT_MS || '3000';
+    // 从 settings.json 读取遥测配置
+    const telemetryEnabled = config.enableTelemetry === true;
+    const otelTimeout = config.telemetry?.otelShutdownTimeoutMs?.toString() || '3000';
 
     // 显示隐私设置
     if (action === 'show') {
       // 确定当前遥测状态
       let telemetryStatus = 'Disabled (default for local installations)';
-      if (telemetryEnabled && !telemetryDisabled) {
-        telemetryStatus = 'Enabled (AXON_ENABLE_TELEMETRY=1)';
-      } else if (telemetryDisabled) {
-        telemetryStatus = 'Explicitly Disabled (AXON_DISABLE_TELEMETRY=1)';
+      if (telemetryEnabled) {
+        telemetryStatus = 'Enabled (settings.json)';
       }
 
       const privacyInfo = `╭─ Privacy & Data Settings ──────────────────────────╮

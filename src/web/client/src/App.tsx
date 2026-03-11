@@ -96,6 +96,10 @@ function AppContent({
 
   const { connected, sessionId, model, setModel, send, addMessageHandler } = useWebSocket(getWebSocketUrl());
 
+  // 模式预设列表 + 当前活跃预设 ID
+  const [modePresets, setModePresets] = useState<Array<{ id: string; name: string; icon: string; permissionMode: string }>>([]);
+  const [activePresetId, setActivePresetId] = useState('bypassPermissions');
+
   // 暴露 send/addMessageHandler 给 Root（供 CustomizePage 等兄弟组件使用）
   useEffect(() => {
     registerMessaging?.({ send, addMessageHandler });
@@ -107,6 +111,25 @@ function AppContent({
       send({ type: 'set_project_path', payload: { projectPath: currentProjectPath || null } });
     }
   }, [currentProjectPath, connected, send]);
+
+  // 连接后加载模式预设列表，监听预设应用确认
+  useEffect(() => {
+    if (!connected) return;
+    const unsub = addMessageHandler((msg: any) => {
+      if (msg.type === 'mode_presets_list') {
+        setModePresets(msg.payload.presets.map((p: any) => ({
+          id: p.id, name: p.name, icon: p.icon, permissionMode: p.permissionMode,
+        })));
+        if (msg.payload.activeId) {
+          setActivePresetId(msg.payload.activeId);
+        }
+      } else if (msg.type === 'mode_preset_applied') {
+        setActivePresetId(msg.payload.id);
+      }
+    });
+    send({ type: 'mode_presets_get' });
+    return unsub;
+  }, [connected, send, addMessageHandler]);
 
   // AXON.md 初始化检测：项目切换后检查是否缺少 AXON.md，且 AI 服务可用时才弹框
   useEffect(() => {
@@ -393,14 +416,15 @@ function AppContent({
 
   // 获取回滚预览信息
   const getRewindPreview = useCallback((messageId: string) => {
-    const messageIndex = messages.findIndex(m => m.id === messageId);
-    if (messageIndex === -1) {
+    // 使用 visibleMessages 来计数，确保描述文本和用户看到的消息数一致
+    // （compact 后 messages 中可能包含用户看不到的 boundary/summary 消息）
+    const visibleIndex = visibleMessages.findIndex(m => m.id === messageId);
+    if (visibleIndex === -1) {
       return { filesWillChange: [], messagesWillRemove: 0, insertions: 0, deletions: 0 };
     }
 
-    // 计算将要删除的消息数（包括当前消息及之后的所有消息）
-    // 这样"Fork conversation from here"就表示"回到这条消息之前的状态"
-    const messagesWillRemove = messages.length - messageIndex;
+    // 计算用户可见的将要删除的消息数（包括当前消息及之后的所有可见消息）
+    const messagesWillRemove = visibleMessages.length - visibleIndex;
 
     // 返回简单的预览信息
     // 文件变化由后端 RewindManager 实时追踪，前端不需要计算
@@ -410,7 +434,7 @@ function AppContent({
       insertions: 0,
       deletions: 0,
     };
-  }, [messages]);
+  }, [visibleMessages]);
 
   // 执行回滚（通过 WebSocket）
   const handleRewind = useCallback(async (messageId: string, option: RewindOption) => {
@@ -514,6 +538,7 @@ function AppContent({
       type: 'chat',
       payload: {
         content: text.trim(),
+        messageId: userMessage.id,
         projectPath: currentProjectPath,
       },
     });
@@ -550,7 +575,14 @@ function AppContent({
             <div className="chat-panel" style={{ flex: 1, minHeight: 0 }}>
               <div className={`chat-container ${!isInputVisible ? 'input-hidden' : ''}`} ref={chatContainerRef}>
               {visibleMessages.length === 0 && messages.length === 0 ? (
-                <WelcomeScreen onBlueprintCreated={onNavigateToBlueprint} />
+                <WelcomeScreen
+                  onBlueprintCreated={onNavigateToBlueprint}
+                  onQuickPrompt={(prompt) => {
+                    chatInput.setInput(prompt);
+                    setTimeout(() => chatInput.inputRef.current?.focus(), 50);
+                  }}
+                  onOpenFolder={openFolder}
+                />
               ) : (
                 <>
                 {visibleMessages.map(msg => (
@@ -612,7 +644,8 @@ function AppContent({
               model={model}
               onModelChange={setModel}
               permissionMode={permissionMode}
-              onPermissionModeChange={chatInput.handlePermissionModeChange}
+              activePresetId={activePresetId}
+              onPresetChange={chatInput.handlePresetChange}
               onSend={chatInput.handleSend}
               onCancel={chatInput.handleCancel}
               contextUsage={contextUsage}
@@ -649,6 +682,7 @@ function AppContent({
               voiceTranscript={chatInput.voiceTranscript}
               conversationMode={chatInput.conversationMode}
               onToggleConversationMode={chatInput.toggleConversationMode}
+              modePresets={modePresets}
             />
           </div>
 

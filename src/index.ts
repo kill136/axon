@@ -114,4 +114,4 @@ export * from './rules/index.js';
 // 版本信息
 // 版本号统一导出
 export { VERSION, VERSION_FULL, VERSION_BASE, getVersionInfo } from './version.js';
-export const NAME = 'claude-code-restored';
+export const NAME = 'axon';

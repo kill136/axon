@@ -171,20 +171,10 @@ You have access to the ${askTool} tool to ask the user questions when you need c
 
     // 10. 安全规则 (BV6) — 已包含在 CORE_IDENTITY 中，不再重复 push
 
-    // 11. TodoWrite 强制使用提醒 (bqz)
-    if (toolNames.has(todoWriteTool)) {
-      staticParts.push(`IMPORTANT: Always use the ${todoWriteTool} tool to plan and track tasks throughout the conversation.`);
-    }
+    // 11. TodoWrite 强制使用提醒 (bqz) — 已合并到 TASK_MANAGEMENT，不再重复
 
     // 12. 代码引用格式 (uqz)
-    staticParts.push(`# Code References
-
-When referencing specific functions or pieces of code include the pattern \`file_path:line_number\` to allow the user to easily navigate to the source code location.
-
-<example>
-user: Where are errors from the client handled?
-assistant: Clients are marked as failed in the \`connectToServer\` function in src/services/process.ts:712.
-</example>`);
+    staticParts.push('When referencing code, include `file_path:line_number` to allow easy navigation (e.g., src/services/process.ts:712).');
 
     // ===== [CG1] 缓存边界 =====
     // 以上：跨会话共享缓存（scope: "global"），所有项目/用户相同

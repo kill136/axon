@@ -27,6 +27,8 @@ export interface ApiConfig {
   apiBaseUrl?: string;
   customModelName?: string;
   authPriority?: 'apiKey' | 'oauth' | 'auto';
+  // Gemini API Key（用于图片生成）
+  geminiApiKey?: string;
 }
 
 /**
@@ -102,6 +104,38 @@ export interface SecurityConfig {
   sensitiveFiles?: string[];
   dangerousCommands?: string[];
   allowSandboxEscape?: boolean;
+}
+
+/**
+ * 高级配置（从 env 迁移到 settings.json 的配置项）
+ */
+export interface AdvancedConfig {
+  bashMaxOutputLength: number;
+  requestTimeout: number;
+  maxConcurrentTasks: number;
+  maxTokens: number;
+  maxRetries: number;
+  enableTelemetry: boolean;
+}
+
+/**
+ * Embedding 配置（向量搜索 + 混合检索）
+ */
+export interface EmbeddingConfigData {
+  provider?: 'openai';
+  apiKey?: string;
+  baseUrl?: string;
+  model?: string;
+  dimensions?: number;
+  hybrid?: {
+    enabled?: boolean;
+    vectorWeight?: number;
+    textWeight?: number;
+  };
+  mmr?: {
+    enabled?: boolean;
+    lambda?: number;
+  };
 }
 
 /**
@@ -197,6 +231,27 @@ export class WebConfigService {
     } else {
       this.configManager = globalConfigManager;
     }
+
+    // 从已保存的配置同步 geminiApiKey 到环境变量
+    this.syncGeminiKeyToEnv();
+  }
+
+  /**
+   * 将已保存的 geminiApiKey 同步到 process.env
+   * 这样 gemini-image-service 启动时就能读到
+   */
+  private syncGeminiKeyToEnv(): void {
+    try {
+      if (!process.env.GEMINI_API_KEY && !process.env.GOOGLE_API_KEY) {
+        const config = this.configManager.getAll();
+        const savedKey = (config as any).geminiApiKey;
+        if (savedKey) {
+          process.env.GEMINI_API_KEY = savedKey;
+        }
+      }
+    } catch {
+      // 静默失败，不影响启动
+    }
   }
 
   // ============ 获取配置 ============
@@ -222,6 +277,12 @@ export class WebConfigService {
       const config = this.configManager.getAll();
       const creds = webAuth.getCredentials();
 
+      // Gemini API Key: 从环境变量或 settings 读取，返回掩码
+      const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || (config as any).geminiApiKey || '';
+      const maskedGeminiKey = geminiKey
+        ? geminiKey.substring(0, 6) + '...' + geminiKey.substring(geminiKey.length - 4)
+        : '';
+
       return {
         apiKey: webAuth.getMaskedApiKey() || '',  // 只返回掩码版本，不泄露明文
         model: config.model,
@@ -236,6 +297,7 @@ export class WebConfigService {
         apiBaseUrl: creds.baseUrl,
         customModelName: webAuth.getCustomModelName(),
         authPriority: (config as any).authPriority || 'auto',
+        geminiApiKey: maskedGeminiKey,
       };
     } catch (error) {
       console.error('[WebConfigService] Failed to get API config:', error);
@@ -396,6 +458,18 @@ export class WebConfigService {
         }
       }
 
+      // geminiApiKey 特殊处理：写入 settings 并同步到环境变量
+      if ('geminiApiKey' in updates) {
+        const val = (updates as any).geminiApiKey?.trim() || '';
+        if (!val || val.includes('...') || val.includes('***')) {
+          delete (updates as any).geminiApiKey;
+        } else {
+          // 写入环境变量，让 gemini-image-service 立即可用
+          process.env.GEMINI_API_KEY = val;
+          // 保留在 updates 中，由 configManager.save 持久化到 settings.json
+        }
+      }
+
       // 保存其余配置
       if (Object.keys(updates).length > 0) {
         this.configManager.save(updates);
@@ -458,6 +532,116 @@ export class WebConfigService {
       console.error('[WebConfigService] Failed to update proxy config:', error);
       return false;
     }
+  }
+
+  /**
+   * 获取高级配置（bashMaxOutputLength, requestTimeout, maxConcurrentTasks, maxTokens, maxRetries）
+   */
+  async getAdvancedConfig(): Promise<AdvancedConfig> {
+    try {
+      const config = this.configManager.getAll();
+      return {
+        bashMaxOutputLength: config.bashMaxOutputLength,
+        requestTimeout: config.requestTimeout,
+        maxConcurrentTasks: config.maxConcurrentTasks,
+        maxTokens: config.maxTokens,
+        maxRetries: config.maxRetries,
+        enableTelemetry: config.enableTelemetry,
+      };
+    } catch (error) {
+      console.error('[WebConfigService] Failed to get advanced config:', error);
+      throw new Error(`Failed to get advanced config: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
+   * 更新高级配置
+   */
+  async updateAdvancedConfig(config: Partial<AdvancedConfig>): Promise<boolean> {
+    try {
+      this.configManager.save(config);
+      return true;
+    } catch (error) {
+      console.error('[WebConfigService] Failed to update advanced config:', error);
+      return false;
+    }
+  }
+
+  /**
+   * 获取 Embedding 配置
+   */
+  async getEmbeddingConfig(): Promise<EmbeddingConfigData> {
+    try {
+      const config = this.configManager.getAll();
+      const embedding = (config as any).embedding || {};
+      return {
+        provider: embedding.provider || 'openai',
+        apiKey: embedding.apiKey ? this.maskKey(embedding.apiKey) : '',
+        baseUrl: embedding.baseUrl || '',
+        model: embedding.model || 'text-embedding-3-small',
+        dimensions: embedding.dimensions || 1536,
+        hybrid: {
+          enabled: embedding.hybrid?.enabled ?? true,
+          vectorWeight: embedding.hybrid?.vectorWeight ?? 0.6,
+          textWeight: embedding.hybrid?.textWeight ?? 0.4,
+        },
+        mmr: {
+          enabled: embedding.mmr?.enabled ?? false,
+          lambda: embedding.mmr?.lambda ?? 0.7,
+        },
+      };
+    } catch (error) {
+      console.error('[WebConfigService] Failed to get embedding config:', error);
+      throw new Error(`Failed to get embedding config: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
+   * 更新 Embedding 配置
+   */
+  async updateEmbeddingConfig(config: Partial<EmbeddingConfigData>): Promise<boolean> {
+    try {
+      const updates = { ...config };
+
+      // apiKey 特殊处理
+      if ('apiKey' in updates) {
+        const val = updates.apiKey?.trim() || '';
+        if (!val || val.includes('...') || val.includes('***')) {
+          delete updates.apiKey;
+        }
+      }
+
+      // 如果所有字段都为空/默认，删除整个 embedding 配置
+      if (Object.keys(updates).length === 0) {
+        return true;
+      }
+
+      // 合并到现有配置
+      const existing = (this.configManager.getAll() as any).embedding || {};
+      const merged = { ...existing, ...updates };
+
+      // 嵌套对象合并
+      if (updates.hybrid) {
+        merged.hybrid = { ...(existing.hybrid || {}), ...updates.hybrid };
+      }
+      if (updates.mmr) {
+        merged.mmr = { ...(existing.mmr || {}), ...updates.mmr };
+      }
+
+      this.configManager.save({ embedding: merged } as any);
+      return true;
+    } catch (error) {
+      console.error('[WebConfigService] Failed to update embedding config:', error);
+      return false;
+    }
+  }
+
+  /**
+   * 掩码 API key
+   */
+  private maskKey(key: string): string {
+    if (!key || key.length < 8) return key;
+    return key.substring(0, 4) + '...' + key.substring(key.length - 4);
   }
 
   /**

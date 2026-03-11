@@ -19,10 +19,6 @@ interface ProxyConfig {
   proxyKey?: string;
   port?: number;
   host?: string;
-  rateLimit?: number;
-  allowedIps?: string;
-  allowedModels?: string;
-  dailyLimit?: number;
 }
 
 interface ProxyStatus {
@@ -48,7 +44,6 @@ export default function ProxyPanel({ onSendMessage, addMessageHandler }: ProxyPa
   const [editConfig, setEditConfig] = useState<ProxyConfig>({
     port: 8082,
     host: '0.0.0.0',
-    rateLimit: 60,
   });
   const [showKey, setShowKey] = useState(false);
 
@@ -204,56 +199,6 @@ export default function ProxyPanel({ onSendMessage, addMessageHandler }: ProxyPa
             />
           </div>
 
-          <div style={formRowStyle}>
-            <label style={labelStyle}>{t('proxy.rateLimit')}</label>
-            <input
-              type="number"
-              value={editConfig.rateLimit ?? 60}
-              onChange={e => setEditConfig(prev => ({ ...prev, rateLimit: parseInt(e.target.value) || 60 }))}
-              style={inputStyle}
-              min={1}
-              max={1000}
-              disabled={running}
-            />
-          </div>
-
-          <div style={formRowStyle}>
-            <label style={labelStyle}>{t('proxy.allowedIps')}</label>
-            <input
-              type="text"
-              value={editConfig.allowedIps ?? ''}
-              onChange={e => setEditConfig(prev => ({ ...prev, allowedIps: e.target.value }))}
-              style={{ ...inputStyle, maxWidth: 360 }}
-              placeholder={t('proxy.allowedIps.placeholder')}
-              disabled={running}
-            />
-          </div>
-
-          <div style={formRowStyle}>
-            <label style={labelStyle}>{t('proxy.allowedModels')}</label>
-            <input
-              type="text"
-              value={editConfig.allowedModels ?? ''}
-              onChange={e => setEditConfig(prev => ({ ...prev, allowedModels: e.target.value }))}
-              style={{ ...inputStyle, maxWidth: 360 }}
-              placeholder={t('proxy.allowedModels.placeholder')}
-              disabled={running}
-            />
-          </div>
-
-          <div style={formRowStyle}>
-            <label style={labelStyle}>{t('proxy.dailyLimit')}</label>
-            <input
-              type="number"
-              value={editConfig.dailyLimit ?? ''}
-              onChange={e => setEditConfig(prev => ({ ...prev, dailyLimit: e.target.value ? parseFloat(e.target.value) : undefined }))}
-              style={inputStyle}
-              min={0}
-              step={0.5}
-              placeholder="No limit"
-              disabled={running}
-            />
-          </div>
         </div>
 
         {/* 操作按钮 */}

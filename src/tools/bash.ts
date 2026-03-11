@@ -601,8 +601,12 @@ export function cleanupStaleTasks(): { cleaned: number; errors: number } {
   return { cleaned, errors };
 }
 
-// 配置
-const MAX_OUTPUT_LENGTH = parseInt(process.env.BASH_MAX_OUTPUT_LENGTH || '30000', 10);
+// 配置（从 settings.json 读取，不再依赖环境变量）
+const MAX_OUTPUT_LENGTH = (() => {
+  try {
+    return configManager.get('bashMaxOutputLength') as number || 30000;
+  } catch { return 30000; }
+})();
 const DEFAULT_TIMEOUT = parseInt(process.env.BASH_DEFAULT_TIMEOUT_MS || '120000', 10); // 默认 2 分钟
 const MAX_TIMEOUT = 600000;
 const MAX_BACKGROUND_OUTPUT = 10 * 1024 * 1024; // 10MB per background shell
@@ -756,142 +760,114 @@ function getBackgroundTasksPrompt(): string {
   if (isBackgroundTasksDisabled()) {
     return '';
   }
-  return `
-  - You can use the \`run_in_background\` parameter to run the command in the background, which allows you to continue working while the command runs. You can monitor the output using the BashOutput tool as it becomes available. You do not need to use '&' at the end of the command when using this parameter.`;
+  return 'You can use the `run_in_background` parameter to run the command in the background. You do not need to use \'&\' at the end of the command when using this parameter.';
 }
 
-export class BashTool extends BaseTool<BashInput, BashResult> {
-  name = 'Bash';
-  description = `Executes a given bash command in a persistent shell session with optional timeout, ensuring proper handling and security measures.
-
-IMPORTANT: This tool is for terminal operations like git, npm, docker, etc. DO NOT use it for file operations (reading, writing, editing, searching, finding files) - use the specialized tools for this instead.
-
-Before executing the command, please follow these steps:
-
-1. Directory Verification:
-   - If the command will create new directories or files, first use \`ls\` to verify the parent directory exists and is the correct location
-   - For example, before running "mkdir foo/bar", first use \`ls foo\` to check that "foo" exists and is the intended parent directory
-
-2. Command Execution:
-   - Always quote file paths that contain spaces with double quotes (e.g., cd "path with spaces/file.txt")
-   - Examples of proper quoting:
-     - cd "/Users/name/My Documents" (correct)
-     - cd /Users/name/My Documents (incorrect - will fail)
-     - python "/path/with spaces/script.py" (correct)
-     - python /path/with spaces/script.py (incorrect - will fail)
-   - After ensuring proper quoting, execute the command.
-   - Capture the output of the command.
-
-Usage notes:
-  - The command argument is required.
-  - You can specify an optional timeout in milliseconds (up to ${MAX_TIMEOUT}ms / ${MAX_TIMEOUT / 60000} minutes). If not specified, commands will timeout after ${DEFAULT_TIMEOUT}ms (${DEFAULT_TIMEOUT / 60000} minutes).
-  - It is very helpful if you write a clear, concise description of what this command does in 5-10 words.
-  - If the output exceeds ${MAX_OUTPUT_LENGTH} characters, output will be truncated before being returned to you.${getBackgroundTasksPrompt()}
-  - Avoid using Bash with the \`find\`, \`grep\`, \`cat\`, \`head\`, \`tail\`, \`sed\`, \`awk\`, or \`echo\` commands, unless explicitly instructed or when these commands are truly necessary for the task. Instead, always prefer using the dedicated tools for these commands:
-    - File search: Use Glob (NOT find or ls)
-    - Content search: Use Grep (NOT grep or rg)
-    - Read files: Use Read (NOT cat/head/tail)
-    - Edit files: Use Edit (NOT sed/awk)
-    - Write files: Use Write (NOT echo >/cat <<EOF)
-    - Communication: Output text directly (NOT echo/printf)
-  - When issuing multiple commands:
-    - If the commands are independent and can run in parallel, make multiple Bash tool calls in a single message. For example, if you need to run "git status" and "git diff", send a single message with two Bash tool calls in parallel.
-    - If the commands depend on each other and must run sequentially, use a single Bash call with '&&' to chain them together (e.g., \`git add . && git commit -m "message" && git push\`). For instance, if one operation must complete before another starts (like mkdir before cp, Write before Bash for git operations, or git add before git commit), run these operations sequentially instead.
-    - Use ';' only when you need to run commands sequentially but don't care if earlier commands fail
-    - DO NOT use newlines to separate commands (newlines are ok in quoted strings)
-  - Try to maintain your current working directory throughout the session by using absolute paths and avoiding usage of \`cd\`. You may use \`cd\` if the User explicitly requests it.
-    <good-example>
-    pytest /foo/bar/tests
-    </good-example>
-    <bad-example>
-    cd /foo/bar && pytest tests
-    </bad-example>
-
+/**
+ * Git commit/PR 指令 — 对齐官方 XEq() 函数
+ * 条件注入：只在 git 相关场景生成
+ */
+function getGitInstructions(): string {
+  return `
 # Committing changes with git
 
 Only create commits when requested by the user. If unclear, ask first. When the user asks you to create a new git commit, follow these steps carefully:
 
 Git Safety Protocol:
 - NEVER update the git config
-- NEVER run destructive/irreversible git commands (like push --force, hard reset, etc) unless the user explicitly requests them
+- NEVER run destructive git commands (push --force, reset --hard, checkout ., restore ., clean -f, branch -D) unless the user explicitly requests these actions
 - NEVER skip hooks (--no-verify, --no-gpg-sign, etc) unless the user explicitly requests it
 - NEVER run force push to main/master, warn the user if they request it
-- Avoid git commit --amend. ONLY use --amend when ALL conditions are met:
-  (1) User explicitly requested amend, OR commit SUCCEEDED but pre-commit hook auto-modified files that need including
-  (2) HEAD commit was created by you in this conversation (verify: git log -1 --format='%an %ae')
-  (3) Commit has NOT been pushed to remote (verify: git status shows "Your branch is ahead")
-- CRITICAL: If commit FAILED or was REJECTED by hook, NEVER amend - fix the issue and create a NEW commit
-- CRITICAL: If you already pushed to remote, NEVER amend unless user explicitly requests it (requires force push)
-- NEVER commit changes unless the user explicitly asks you to. It is VERY IMPORTANT to only commit when explicitly asked, otherwise the user will feel that you are being too proactive.
+- CRITICAL: Always create NEW commits rather than amending, unless the user explicitly requests a git amend. When a pre-commit hook fails, the commit did NOT happen — so --amend would modify the PREVIOUS commit. Instead, fix the issue, re-stage, and create a NEW commit
+- NEVER commit changes unless the user explicitly asks you to
 
-1. You can call multiple tools in a single response. When multiple independent pieces of information are requested and all commands are likely to succeed, run multiple tool calls in parallel for optimal performance. run the following bash commands in parallel, each using the Bash tool:
-  - Run a git status command to see all untracked files.
-  - Run a git diff command to see both staged and unstaged changes that will be committed.
-  - Run a git log command to see recent commit messages, so that you can follow this repository's commit message style.
-2. Analyze all staged changes (both previously staged and newly added) and draft a commit message:
-  - Summarize the nature of the changes (eg. new feature, enhancement to an existing feature, bug fix, refactoring, test, docs, etc.). Ensure the message accurately reflects the changes and their purpose (i.e. "add" means a wholly new feature, "update" means an enhancement to an existing feature, "fix" means a bug fix, etc.).
-  - Do not commit files that likely contain secrets (.env, credentials.json, etc). Warn the user if they specifically request to commit those files
-  - Draft a concise (1-2 sentences) commit message that focuses on the "why" rather than the "what"
-  - Ensure it accurately reflects the changes and their purpose
-  - IMPORTANT: Automatically append attribution to the commit message using the format specified in the configuration (defaults to including Co-Authored-By trailer)
-3. You can call multiple tools in a single response. When multiple independent pieces of information are requested and all commands are likely to succeed, run multiple tool calls in parallel for optimal performance. run the following commands:
-   - Add relevant untracked files to the staging area.
-   - Create the commit with a message that includes the attribution trailer.
-   - Run git status after the commit completes to verify success.
-   Note: git status depends on the commit completing, so run it sequentially after the commit.
-4. If the commit fails due to pre-commit hook, fix the issue and create a NEW commit (see amend rules above)
-
-Important notes:
-- NEVER run additional commands to read or explore code, besides git bash commands
-- NEVER use the TodoWrite or Task tools
-- DO NOT push to the remote repository unless the user explicitly asks you to do so
-- IMPORTANT: Never use git commands with the -i flag (like git rebase -i or git add -i) since they require interactive input which is not supported.
-- If there are no changes to commit (i.e., no untracked files and no modifications), do not create an empty commit
-- In order to ensure good formatting, ALWAYS pass the commit message via a HEREDOC, a la this example:
-<example>
-git commit -m "$(cat <<'EOF'
-   Commit message here.
-
-   🤖 Generated with Axon (https://claude.com/claude-code)
-   Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
-   EOF
-   )"
-</example>
-- The attribution (Co-Authored-By trailer) is configurable via the "attribution.commit" setting in ~/.axon/settings.json
-- Users can disable attribution by setting "attribution.commit" to an empty string or "includeCoAuthoredBy" to false
-
-# Creating pull requests
-Use the gh command via the Bash tool for ALL GitHub-related tasks including working with issues, pull requests, checks, and releases. If given a Github URL use the gh command to get the information needed.
-
-IMPORTANT: When the user asks you to create a pull request, follow these steps carefully:
-
-1. You can call multiple tools in a single response. When multiple independent pieces of information are requested and all commands are likely to succeed, run multiple tool calls in parallel for optimal performance. run the following bash commands in parallel using the Bash tool, in order to understand the current state of the branch since it diverged from the main branch:
-   - Run a git status command to see all untracked files
-   - Run a git diff command to see both staged and unstaged changes that will be committed
-   - Check if the current branch tracks a remote branch and is up to date with the remote, so you know if you need to push to the remote
-   - Run a git log command and \`git diff [base-branch]...HEAD\` to understand the full commit history for the current branch (from the time it diverged from the base branch)
-2. Analyze all changes that will be included in the pull request, making sure to look at all relevant commits (NOT just the latest commit, but ALL commits that will be included in the pull request!!!), and draft a pull request summary
-3. You can call multiple tools in a single response. When multiple independent pieces of information are requested and all commands are likely to succeed, run multiple tool calls in parallel for optimal performance. run the following commands in parallel:
-   - Create new branch if needed
-   - Push to remote with -u flag if needed
-   - Create PR using gh pr create with the format below. Use a HEREDOC to pass the body to ensure correct formatting.
-<example>
-gh pr create --title "the pr title" --body "$(cat <<'EOF'
-## Summary
-<1-3 bullet points>
-
-## Test plan
-[Bulleted markdown checklist of TODOs for testing the pull request...]
-EOF
-)"
-</example>
+1. Run in parallel: git status (see untracked files), git diff (staged and unstaged changes), git log (recent commit style).
+2. Analyze all staged changes and draft a concise commit message focusing on the "why". Do not commit files that likely contain secrets (.env, credentials.json, etc).
+3. Add relevant files to staging, create the commit, then run git status to verify success.
+4. If the commit fails due to pre-commit hook, fix the issue and create a NEW commit.
 
 Important:
-- DO NOT use the TodoWrite or Task tools
-- Return the PR URL when you're done, so the user can see it
+- Never use git commands with the -i flag (like git rebase -i or git add -i) since they require interactive input
+- Do NOT push to remote unless the user explicitly asks
+- ALWAYS pass the commit message via a HEREDOC for correct formatting
 
-# Other common operations
-- View comments on a Github PR: gh api repos/foo/bar/pulls/123/comments`;
+# Creating pull requests
+Use the gh command for ALL GitHub-related tasks.
+
+1. Run in parallel: git status, git diff, check remote tracking, git log + git diff [base-branch]...HEAD.
+2. Analyze ALL commits (not just latest) and draft PR title (under 70 chars) and summary.
+3. Create branch if needed, push with -u flag, create PR using gh pr create.
+4. Return the PR URL when done.`;
+}
+
+export class BashTool extends BaseTool<BashInput, BashResult> {
+  name = 'Bash';
+  /**
+   * Bash description — 对齐官方 PEq() + XEq() 结构
+   * 静态部分 + getGitInstructions() 条件注入
+   */
+  get description(): string {
+    const toolAlternatives = [
+      'File search: Use Glob (NOT find or ls)',
+      'Content search: Use Grep (NOT grep or rg)',
+      'Read files: Use Read (NOT cat/head/tail)',
+      'Edit files: Use Edit (NOT sed/awk)',
+      'Write files: Use Write (NOT echo >/cat <<EOF)',
+      'Communication: Output text directly (NOT echo/printf)',
+    ];
+
+    const multipleCommands = [
+      'If the commands are independent and can run in parallel, make multiple Bash tool calls in a single message. Example: if you need to run "git status" and "git diff", send a single message with two Bash tool calls in parallel.',
+      "If the commands depend on each other and must run sequentially, use a single Bash call with '&&' to chain them together.",
+      "Use ';' only when you need to run commands sequentially but don't care if earlier commands fail.",
+      'DO NOT use newlines to separate commands (newlines are ok in quoted strings).',
+    ];
+
+    const gitCommands = [
+      'Prefer to create a new commit rather than amending an existing commit.',
+      'Before running destructive operations (e.g., git reset --hard, git push --force, git checkout --), consider whether there is a safer alternative that achieves the same goal. Only use destructive operations when they are truly the best approach.',
+      'Never skip hooks (--no-verify) or bypass signing (--no-gpg-sign, -c commit.gpgsign=false) unless the user has explicitly asked for it. If a hook fails, investigate and fix the underlying issue.',
+    ];
+
+    const sleepRules = [
+      'Do not sleep between commands that can run immediately — just run them.',
+      'If your command is long running and you would like to be notified when it finishes – simply run your command using `run_in_background`. There is no need to sleep in this case.',
+      'Do not retry failing commands in a sleep loop — diagnose the root cause or consider an alternative approach.',
+    ];
+
+    const instructions = [
+      'If your command will create new directories or files, first use this tool to run `ls` to verify the parent directory exists and is the correct location.',
+      'Always quote file paths that contain spaces with double quotes in your command (e.g., cd "path with spaces/file.txt")',
+      'Try to maintain your current working directory throughout the session by using absolute paths and avoiding usage of `cd`. You may use `cd` if the User explicitly requests it.',
+      `You may specify an optional timeout in milliseconds (up to ${MAX_TIMEOUT}ms / ${MAX_TIMEOUT / 60000} minutes). By default, your command will timeout after ${DEFAULT_TIMEOUT}ms (${DEFAULT_TIMEOUT / 60000} minutes).`,
+      'Write a clear, concise description of what your command does. For simple commands, keep it brief (5-10 words). For complex commands (piped commands, obscure flags, or anything hard to understand at a glance), include enough context so that the user can understand what your command will do.',
+      'When issuing multiple commands:',
+      multipleCommands,
+      'For git commands:',
+      gitCommands,
+      'Avoid unnecessary `sleep` commands:',
+      sleepRules,
+    ];
+
+    const parts = [
+      'Executes a given bash command and returns its output.',
+      '',
+      'The working directory persists between commands, but shell state does not.',
+      '',
+      'IMPORTANT: Avoid using this tool to run `find`, `grep`, `cat`, `head`, `tail`, `sed`, `awk`, or `echo` commands, unless explicitly instructed or after you have verified that a dedicated tool cannot accomplish your task. Instead, use the appropriate dedicated tool as this will provide a much better experience for the user:',
+      '',
+      ...toolAlternatives.map(s => `  - ${s}`),
+      '',
+      '# Instructions',
+      ...instructions.flatMap(item =>
+        Array.isArray(item) ? item.map(sub => `  - ${sub}`) : [`- ${item}`]
+      ),
+      getBackgroundTasksPrompt(),
+      getGitInstructions(),
+    ].filter(Boolean);
+
+    return parts.join('\n');
+  }
 
   getInputSchema(): ToolDefinition['inputSchema'] {
     return {
@@ -1232,6 +1208,14 @@ Important:
       };
       recordAudit(auditLog);
 
+      // 意图增强：记录终端输出到缓冲区（供下次模糊提问时注入上下文）
+      if (result.output) {
+        try {
+          const { terminalOutputBuffer } = await import('../context/intent-enricher.js');
+          terminalOutputBuffer.push(result.output, !result.success);
+        } catch { /* 缓冲失败不影响主流程 */ }
+      }
+
       return result;
     } catch (err: any) {
       const exitCode = err.code || 1;
@@ -1263,6 +1247,14 @@ Important:
         background: false,
       };
       recordAudit(auditLog);
+
+      // 意图增强：记录错误输出到缓冲区
+      if (output) {
+        try {
+          const { terminalOutputBuffer } = await import('../context/intent-enricher.js');
+          terminalOutputBuffer.push(output, true);
+        } catch { /* 缓冲失败不影响主流程 */ }
+      }
 
       return result;
     }

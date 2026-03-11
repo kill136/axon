@@ -77,7 +77,7 @@
   position: absolute;
   top: calc(100% + 4px);
   left: 0;
-  right: 0;
+  min-width: 280px;
   background: var(--bg-secondary, #2d2d2d);
   border: 1px solid var(--border-color, #3d3d3d);
   border-radius: 6px;

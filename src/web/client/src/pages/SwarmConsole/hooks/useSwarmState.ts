@@ -797,8 +797,8 @@ export function useSwarmState(options: UseSwarmStateOptions): UseSwarmStateRetur
         break;
 
       default:
-        // 忽略不属于 SwarmConsole 的消息（schedule:*, channel:* 等全局广播）
-        if (!(message as any).type?.startsWith('schedule:') && !(message as any).type?.startsWith('channel:')) {
+        // 忽略不属于 SwarmConsole 的消息（schedule:*, channel:*, skills_list 等全局广播）
+        if (!(message as any).type?.startsWith('schedule:') && !(message as any).type?.startsWith('channel:') && !(message as any).type?.startsWith('bash:') && (message as any).type !== 'skills_list') {
           console.warn('[SwarmState] Unknown message type:', (message as any).type);
         }
         break;
@@ -984,7 +984,7 @@ export function useSwarmState(options: UseSwarmStateOptions): UseSwarmStateRetur
       };
     } catch (err) {
       console.error('[useSwarmState] Failed to load history logs:', err);
-      return { success: false, error: err instanceof Error ? err.message : '未知错误' };
+      return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
     }
   }, []);
 
@@ -1010,7 +1010,7 @@ export function useSwarmState(options: UseSwarmStateOptions): UseSwarmStateRetur
       return { success: true };
     } catch (err) {
       console.error('[useSwarmState] Failed to clear task logs:', err);
-      return { success: false, error: err instanceof Error ? err.message : '未知错误' };
+      return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
     }
   }, []);
 

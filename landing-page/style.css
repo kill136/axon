@@ -1,3 +1,70 @@
+/* ====== WebGL Starfield Canvas ====== */
+#starfield {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+}
+
+/* ====== Mouse Follow Glow ====== */
+.mouse-glow {
+    position: fixed;
+    width: 600px;
+    height: 600px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(99, 102, 241, 0.06) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 1;
+    transform: translate(-50%, -50%);
+    transition: left 0.3s ease-out, top 0.3s ease-out;
+    will-change: left, top;
+}
+
+/* ====== Scroll Reveal Animations ====== */
+.reveal {
+    opacity: 0;
+    transform: translateY(30px);
+    transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1), transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.reveal.visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.reveal.d1 { transition-delay: 0.1s; }
+.reveal.d2 { transition-delay: 0.2s; }
+.reveal.d3 { transition-delay: 0.3s; }
+.reveal.d4 { transition-delay: 0.4s; }
+
+/* ====== Hero Entrance Animations ====== */
+.hero-badge, .hero-title, .hero-description, .hero-buttons, .hero-stats, .hero-visual {
+    opacity: 0;
+    animation: heroSlideIn 1s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.hero-badge       { animation-delay: 0.1s; }
+.hero-title       { animation-delay: 0.25s; }
+.hero-description { animation-delay: 0.4s; }
+.hero-buttons     { animation-delay: 0.55s; }
+.hero-stats       { animation-delay: 0.7s; }
+.hero-visual      { animation-delay: 0.5s; }
+
+@keyframes heroSlideIn {
+    from { opacity: 0; transform: translateY(30px) scale(0.98); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ====== Gradient Text Animation ====== */
+.gradient-text {
+    background-size: 200% 200% !important;
+    animation: gradientFlow 4s ease infinite;
+}
+
+@keyframes gradientFlow {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+}
+
 /* CSS Reset & Variables */
 :root {
     --primary: #6366f1;
@@ -47,6 +114,12 @@ body {
     max-width: 1200px;
     margin: 0 auto;
     padding: 0 24px;
+}
+
+/* Ensure all content sits above starfield */
+.navbar, header, section, footer {
+    position: relative;
+    z-index: 2;
 }
 
 /* Navigation */
@@ -912,4 +985,93 @@ section {
         flex-direction: column;
         gap: 16px;
     }
+
+    .sponsor-tiers {
+        flex-direction: column !important;
+    }
+}
+
+/* Sponsor Section */
+.sponsor-section {
+    padding: 80px 0;
+    background: linear-gradient(180deg, var(--bg) 0%, #1a1a2e 100%);
+    text-align: center;
+}
+
+.sponsor-content h2 {
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin-bottom: 1rem;
+    background: var(--gradient);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.sponsor-content > p {
+    color: var(--text-muted);
+    font-size: 1.1rem;
+    margin-bottom: 1rem;
+}
+
+.sponsor-tiers {
+    display: flex;
+    gap: 1.5rem;
+    justify-content: center;
+    margin-top: 2rem;
+    flex-wrap: wrap;
+}
+
+.sponsor-tier {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 2rem 1.5rem;
+    min-width: 200px;
+    max-width: 260px;
+    transition: var(--transition);
+}
+
+.sponsor-tier:hover {
+    border-color: var(--primary);
+    transform: translateY(-4px);
+    box-shadow: 0 8px 30px rgba(99, 102, 241, 0.15);
+}
+
+.sponsor-tier.featured-tier {
+    border-color: var(--primary);
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(34, 211, 238, 0.05));
+    position: relative;
+}
+
+.sponsor-tier h4 {
+    font-size: 1.1rem;
+    color: var(--text);
+    margin-bottom: 0.5rem;
+}
+
+.tier-price {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--primary-light);
+    margin-bottom: 0.75rem;
+}
+
+.tier-price span {
+    font-size: 0.9rem;
+    font-weight: 400;
+    color: var(--text-muted);
+}
+
+.sponsor-tier p {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+.sponsor-buttons {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    flex-wrap: wrap;
 }

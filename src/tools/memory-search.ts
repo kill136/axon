@@ -45,7 +45,9 @@ Use this tool when:
 
 Returns search results with source attribution (file path, line numbers, timestamps) to help you judge relevance and freshness.
 
-IMPORTANT: This searches a supplementary long-term memory layer. The primary source of knowledge is still the notebook (experience.md + project.md), which is always fully loaded. Only use this tool when notebook doesn't have what you need.`;
+IMPORTANT: This searches a supplementary long-term memory layer. The primary source of knowledge is still the notebook (experience.md + project.md), which is always fully loaded. Only use this tool when notebook doesn't have what you need.
+
+PROACTIVE USAGE: You should actively search memory when the user's question relates to past work, previous decisions, or historical context that notebooks may not fully cover. Don't wait to be asked — if a topic might have relevant history, search for it.`;
 
   getInputSchema(): ToolDefinition['inputSchema'] {
     return {

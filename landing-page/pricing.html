@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pricing - Axon API Credits</title>
+    <meta name="description" content="Axon API Credit pricing. Top up your account to access 100+ AI models including GPT-4, Claude, Gemini, and more.">
+    <link rel="canonical" href="https://www.chatbi.site/pricing">
+    <link rel="icon" type="image/svg+xml"
+        href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .page-header {
+            padding: 140px 0 60px;
+            text-align: center;
+        }
+        .page-header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 16px;
+        }
+        .page-header p {
+            color: var(--text-muted);
+            font-size: 1.1rem;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        .pricing-section {
+            padding: 40px 0 80px;
+        }
+        .pricing-card {
+            background: var(--bg-card);
+            border: 2px solid var(--primary);
+            border-radius: var(--radius);
+            max-width: 420px;
+            margin: 0 auto;
+            padding: 48px 40px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        .pricing-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: var(--gradient);
+        }
+        .pricing-badge {
+            display: inline-block;
+            background: var(--gradient);
+            color: white;
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 4px 16px;
+            border-radius: 20px;
+            margin-bottom: 24px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .pricing-name {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+        .pricing-price {
+            font-size: 3.5rem;
+            font-weight: 700;
+            background: var(--gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin: 16px 0;
+        }
+        .pricing-price span {
+            font-size: 1.2rem;
+            font-weight: 400;
+        }
+        .pricing-desc {
+            color: var(--text-muted);
+            margin-bottom: 32px;
+            line-height: 1.7;
+        }
+        .pricing-features {
+            text-align: left;
+            margin-bottom: 32px;
+        }
+        .pricing-features li {
+            list-style: none;
+            padding: 8px 0;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .pricing-features li::before {
+            content: '\2713';
+            color: var(--success);
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+        .pricing-cta {
+            display: inline-block;
+            background: var(--gradient);
+            color: white;
+            padding: 14px 48px;
+            border-radius: var(--radius-sm);
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 1rem;
+            transition: var(--transition);
+        }
+        .pricing-cta:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(99, 102, 241, 0.4);
+        }
+        .pricing-note {
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.875rem;
+            margin-top: 40px;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .models-section {
+            padding: 40px 0 80px;
+        }
+        .models-section h2 {
+            text-align: center;
+            font-size: 1.8rem;
+            margin-bottom: 40px;
+        }
+        .models-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .model-tag {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 12px 16px;
+            text-align: center;
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            transition: var(--transition);
+        }
+        .model-tag:hover {
+            border-color: var(--primary);
+            color: var(--text);
+        }
+        .contact-note {
+            text-align: center;
+            padding: 40px 0 80px;
+            color: var(--text-muted);
+        }
+        .contact-note a {
+            color: var(--primary-light);
+            text-decoration: none;
+        }
+        .contact-note a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+
+<body>
+    <nav class="navbar">
+        <div class="container">
+            <a href="/" class="logo">
+                <span class="logo-icon">⚡</span>
+                <span class="logo-text">Axon</span>
+            </a>
+            <div class="nav-links">
+                <a href="/">Home</a>
+                <a href="/pricing">Pricing</a>
+                <a href="https://github.com/kill136/claude-code-open" class="btn btn-outline" target="_blank" rel="noopener">GitHub</a>
+            </div>
+        </div>
+    </nav>
+
+    <section class="page-header">
+        <div class="container">
+            <h1>API Credit Pricing</h1>
+            <p>Top up your Axon API account to access 100+ AI models with a unified API endpoint</p>
+        </div>
+    </section>
+
+    <section class="pricing-section">
+        <div class="container">
+            <div class="pricing-card">
+                <div class="pricing-badge">API Credit</div>
+                <div class="pricing-name">Axon API Credit</div>
+                <div class="pricing-price">$10</div>
+                <p class="pricing-desc">One-time top-up. Credits are used per API call based on the model and token usage. No expiration.</p>
+                <ul class="pricing-features">
+                    <li>Access to 100+ AI models</li>
+                    <li>OpenAI-compatible API format</li>
+                    <li>Pay-per-use, no monthly fees</li>
+                    <li>Credits never expire</li>
+                    <li>Real-time usage dashboard</li>
+                    <li>Secure payment via Creem</li>
+                </ul>
+                <a href="https://api.chatbi.site/console/topup" class="pricing-cta">Top Up Now</a>
+            </div>
+            <p class="pricing-note">Credits are deducted based on actual token usage per request. Different models have different per-token rates. View detailed model pricing after logging in.</p>
+        </div>
+    </section>
+
+    <section class="models-section">
+        <div class="container">
+            <h2>Supported Models</h2>
+            <div class="models-grid">
+                <div class="model-tag">GPT-4o</div>
+                <div class="model-tag">GPT-4 Turbo</div>
+                <div class="model-tag">GPT-3.5 Turbo</div>
+                <div class="model-tag">Claude 3.5 Sonnet</div>
+                <div class="model-tag">Claude 3 Opus</div>
+                <div class="model-tag">Claude 3 Haiku</div>
+                <div class="model-tag">Gemini Pro</div>
+                <div class="model-tag">Gemini Flash</div>
+                <div class="model-tag">DeepSeek V3</div>
+                <div class="model-tag">DeepSeek R1</div>
+                <div class="model-tag">Llama 3.1</div>
+                <div class="model-tag">Mistral Large</div>
+                <div class="model-tag">DALL-E 3</div>
+                <div class="model-tag">Midjourney</div>
+                <div class="model-tag">Stable Diffusion</div>
+                <div class="model-tag">And 80+ more...</div>
+            </div>
+        </div>
+    </section>
+
+    <div class="contact-note">
+        <p>Questions about pricing? Contact us at <a href="mailto:694623326@qq.com">694623326@qq.com</a></p>
+    </div>
+
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-info">
+                    <span class="logo">
+                        <span class="logo-icon">⚡</span>
+                        <span class="logo-text">Axon</span>
+                    </span>
+                    <p>Open source AI coding platform — CLI + Web UI + Multi-Agent Collaboration</p>
+                </div>
+                <div class="footer-links">
+                    <a href="/">Home</a>
+                    <a href="/pricing">Pricing</a>
+                    <a href="/terms">Terms of Service</a>
+                    <a href="/privacy">Privacy Policy</a>
+                    <a href="mailto:694623326@qq.com">Contact</a>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2024 Axon. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+</body>
+
+</html>

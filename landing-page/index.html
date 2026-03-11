@@ -78,6 +78,11 @@
 </head>
 
 <body>
+    <!-- WebGL Starfield Background -->
+    <canvas id="starfield"></canvas>
+    <!-- Mouse Follow Glow -->
+    <div class="mouse-glow" id="mouseGlow"></div>
+
     <!-- Navigation -->
     <nav class="navbar">
         <div class="container">
@@ -89,7 +94,10 @@
                 <a href="#features">Features</a>
                 <a href="#architecture">Architecture</a>
                 <a href="#blog">Blog</a>
+                <a href="/pricing">Pricing</a>
                 <a href="#quickstart">Quick Start</a>
+                <a href="#sponsor">Sponsor</a>
+                <a href="/zh/user-guide.html">User Guide</a>
                 <a href="http://voicegpt.site/" class="btn btn-outline" target="_blank" rel="noopener" style="background: linear-gradient(135deg, #f59e0b, #ef4444); color: white; border: none;">Live Demo</a>
                 <a href="/zh" class="lang-switch">中文</a>
                 <a href="https://github.com/kill136/claude-code-open" class="btn btn-outline" target="_blank" rel="noopener">
@@ -200,11 +208,11 @@
     <!-- Video Demo Section -->
     <section id="demo-video" class="demo-video-section">
         <div class="container">
-            <div class="section-header">
+            <div class="section-header reveal">
                 <h2 class="section-title">See It in Action</h2>
                 <p class="section-subtitle">Watch how Axon transforms your development workflow</p>
             </div>
-            <div class="video-showcase">
+            <div class="video-showcase reveal">
                 <div class="video-container">
                     <video controls preload="metadata" poster="https://raw.githubusercontent.com/kill136/claude-code-open/main/demo-screenshots/01-main.png">
                         <source src="https://raw.githubusercontent.com/kill136/claude-code-open/main/demo-screenshots/promo-video.mp4" type="video/mp4">
@@ -212,28 +220,28 @@
                     </video>
                 </div>
                 <div class="video-features">
-                    <div class="video-feature">
+                    <div class="video-feature reveal">
                         <span class="vf-icon">🖥️</span>
                         <div>
                             <strong>Web IDE Interface</strong>
                             <p>Monaco editor, file tree, real-time streaming</p>
                         </div>
                     </div>
-                    <div class="video-feature">
+                    <div class="video-feature reveal">
                         <span class="vf-icon">📋</span>
                         <div>
                             <strong>Blueprint System</strong>
                             <p>AI-powered project planning and task breakdown</p>
                         </div>
                     </div>
-                    <div class="video-feature">
+                    <div class="video-feature reveal">
                         <span class="vf-icon">🏗️</span>
                         <div>
                             <strong>Architecture</strong>
                             <p>Multi-layer design with 37+ built-in tools</p>
                         </div>
                     </div>
-                    <div class="video-feature">
+                    <div class="video-feature reveal">
                         <span class="vf-icon">🚀</span>
                         <div>
                             <strong>Self-Evolution</strong>
@@ -248,92 +256,92 @@
     <!-- Features Section -->
     <section id="features" class="features">
         <div class="container">
-            <div class="section-header">
+            <div class="section-header reveal">
                 <h2 class="section-title">17 Core Capabilities</h2>
                 <p class="section-subtitle">From CLI to Web UI, from single-agent to multi-agent, from local to multi-cloud — going far beyond the original Axon</p>
             </div>
             <div class="features-grid">
-                <div class="feature-card featured-card">
+                <div class="feature-card featured-card reveal">
                     <div class="feature-icon">🌐</div>
                     <h3>Web UI Full-Stack IDE</h3>
                     <p>Complete web interface built with React + Express + WebSocket. Code browser, terminal emulation, real-time messaging, OAuth auth, settings panel — a full AI coding experience in your browser</p>
                 </div>
-                <div class="feature-card featured-card">
+                <div class="feature-card featured-card reveal">
                     <div class="feature-icon">🤖</div>
                     <h3>Agent Teams Multi-Agent</h3>
                     <p>Create AI teams for collaborative development. Team creation, member management, inter-agent messaging, shared context memory — multiple agents solving complex problems in parallel</p>
                 </div>
-                <div class="feature-card featured-card">
+                <div class="feature-card featured-card reveal">
                     <div class="feature-icon">📋</div>
                     <h3>Blueprint Workflow Engine</h3>
                     <p>Visually design multi-agent workflows. Blueprint generation, Lead Agent scheduling, Worker dispatch, task plan updates, E2E test triggers — automated orchestration for complex tasks</p>
                 </div>
-                <div class="feature-card">
+                <div class="feature-card reveal">
                     <div class="feature-icon">🛠️</div>
                     <h3>36+ Built-in Tools</h3>
                     <p>File operations, search & analysis, Shell execution, web fetching, task management, scheduled tasks, Notebook, Plan mode, Skill system, LSP integration — a comprehensive toolchain</p>
                 </div>
-                <div class="feature-card featured-card">
+                <div class="feature-card featured-card reveal">
                     <div class="feature-icon">⏰</div>
                     <h3>Scheduled Task Daemon</h3>
                     <p>Background daemon for automated AI tasks. Time-based scheduling (natural language support), file watching triggers, multi-channel notifications (Desktop + Feishu), persistent SQLite storage — your 7×24 AI automation assistant</p>
                 </div>
-                <div class="feature-card">
+                <div class="feature-card reveal">
                     <div class="feature-icon">🔌</div>
                     <h3>MCP Protocol Support</h3>
                     <p>Complete Model Context Protocol implementation. MCPSearch discovery, Resource reading, dynamic tool registration — seamless integration with the external tool ecosystem</p>
                 </div>
-                <div class="feature-card">
+                <div class="feature-card reveal">
                     <div class="feature-icon">🧩</div>
                     <h3>Plugin & Hooks System</h3>
                     <p>Pluggable extension architecture. PluginManager lifecycle management, pre/post tool execution hooks, custom commands and Skill system for unlimited extensibility</p>
                 </div>
-                <div class="feature-card">
+                <div class="feature-card reveal">
                     <div class="feature-icon">🌍</div>
                     <h3>i18n Internationalization</h3>
                     <p>Custom lightweight i18n framework supporting English and Chinese. UI text, landing pages, CLI prompts — fully localized for global developers</p>
                 </div>
-                <div class="feature-card">
+                <div class="feature-card reveal">
                     <div class="feature-icon">🧠</div>
                     <h3>Smart Context Management</h3>
                     <p>Token estimation, auto-summarization, Memory Card system, Vectra vector search, Neural Caching — unlimited conversation context is no longer a dream</p>
                 </div>
-                <div class="feature-card">
+                <div class="feature-card reveal">
                     <div class="feature-icon">🔍</div>
                     <h3>Deep Code Analysis</h3>
                     <p>Tree-sitter WASM multi-language parsing, LSP integration, call graph visualization, impact analysis. Understands your code better than grep</p>
                 </div>
-                <div class="feature-card">
+                <div class="feature-card reveal">
                     <div class="feature-icon">🐳</div>
                     <h3>Docker One-Click Deploy</h3>
                     <p>Docker Compose containerized deployment with install scripts (Shell & PowerShell). Full cross-platform support for Windows / macOS / Linux</p>
                 </div>
-                <div class="feature-card">
+                <div class="feature-card reveal">
                     <div class="feature-icon">🔐</div>
                     <h3>OAuth Proxy Sharing</h3>
                     <p>Transparent proxy architecture for sharing Claude subscriptions across devices. Complete OAuth management, permission control, and trust dialog system</p>
                 </div>
-                <div class="feature-card">
+                <div class="feature-card reveal">
                     <div class="feature-icon">⚡</div>
                     <h3>Streaming & Real-time</h3>
                     <p>JSON streaming API, WebSocket real-time messaging, tRPC type-safe communication. End-to-end real-time response from CLI to Web UI</p>
                 </div>
-                <div class="feature-card featured-card">
+                <div class="feature-card featured-card reveal">
                     <div class="feature-icon">💬</div>
                     <h3>WeChat Bot</h3>
                     <p>Complete WeChat integration via Wechaty. QR code login, group/private chat, budget control, rate limiting — AI coding for 1.2 billion users</p>
                 </div>
-                <div class="feature-card">
+                <div class="feature-card reveal">
                     <div class="feature-icon">☁️</div>
                     <h3>Multi-Cloud Providers</h3>
                     <p>Anthropic API / AWS Bedrock / GCP Vertex AI / Foundry. Provider abstraction layer — switch clouds with one environment variable</p>
                 </div>
-                <div class="feature-card">
+                <div class="feature-card reveal">
                     <div class="feature-icon">🛡️</div>
                     <h3>4-Layer Security Sandbox</h3>
                     <p>Filesystem whitelist → Bubblewrap/Seatbelt process isolation → Network domain filtering → Docker containers. Plus command injection detection & Ed25519 code signing</p>
                 </div>
-                <div class="feature-card">
+                <div class="feature-card reveal">
                     <div class="feature-icon">🩺</div>
                     <h3>Diagnostics & Auto-Update</h3>
                     <p><code>/doctor</code> one-command health check (Node/Git/API/Provider validation). Auto-update system supporting npm/yarn/pnpm/Docker installs</p>
@@ -345,12 +353,12 @@
     <!-- Architecture Section -->
     <section id="architecture" class="architecture">
         <div class="container">
-            <div class="section-header">
+            <div class="section-header reveal">
                 <h2 class="section-title">Five-Tier Architecture</h2>
                 <p class="section-subtitle">Every layer carefully designed, from entry to extension</p>
             </div>
             <div class="architecture-diagram">
-                <div class="arch-layer">
+                <div class="arch-layer reveal">
                     <div class="arch-layer-header">
                         <span class="layer-number">1</span>
                         <h3>Entry Layer</h3>
@@ -362,7 +370,7 @@
                     </div>
                 </div>
                 <div class="arch-arrow">↓</div>
-                <div class="arch-layer">
+                <div class="arch-layer reveal">
                     <div class="arch-layer-header">
                         <span class="layer-number">2</span>
                         <h3>Core Engine</h3>
@@ -374,7 +382,7 @@
                     </div>
                 </div>
                 <div class="arch-arrow">↓</div>
-                <div class="arch-layer">
+                <div class="arch-layer reveal">
                     <div class="arch-layer-header">
                         <span class="layer-number">3</span>
                         <h3>Tool System</h3>
@@ -385,7 +393,7 @@
                     </div>
                 </div>
                 <div class="arch-arrow">↓</div>
-                <div class="arch-layer">
+                <div class="arch-layer reveal">
                     <div class="arch-layer-header">
                         <span class="layer-number">4</span>
                         <h3>Agent Layer</h3>
@@ -397,7 +405,7 @@
                     </div>
                 </div>
                 <div class="arch-arrow">↓</div>
-                <div class="arch-layer">
+                <div class="arch-layer reveal">
                     <div class="arch-layer-header">
                         <span class="layer-number">5</span>
                         <h3>Extension Layer</h3>
@@ -415,7 +423,7 @@
     <!-- Blog Section -->
     <section id="blog" class="blog">
         <div class="container">
-            <div class="section-header">
+            <div class="section-header reveal">
                 <h2 class="section-title">Technical Blog</h2>
                 <p class="section-subtitle">Deep dive into Axon's core features and advantages</p>
             </div>
@@ -539,12 +547,12 @@
     <!-- Quick Start Section -->
     <section id="quickstart" class="quickstart">
         <div class="container">
-            <div class="section-header">
+            <div class="section-header reveal">
                 <h2 class="section-title">Quick Start</h2>
                 <p class="section-subtitle">Get your local dev environment running in just a few steps</p>
             </div>
             <div class="steps">
-                <div class="step">
+                <div class="step reveal">
                     <div class="step-number">1</div>
                     <div class="step-content">
                         <h3>Clone Repository</h3>
@@ -554,7 +562,7 @@
                         </div>
                     </div>
                 </div>
-                <div class="step">
+                <div class="step reveal">
                     <div class="step-number">2</div>
                     <div class="step-content">
                         <h3>Install Dependencies</h3>
@@ -564,7 +572,7 @@
                         </div>
                     </div>
                 </div>
-                <div class="step">
+                <div class="step reveal">
                     <div class="step-number">3</div>
                     <div class="step-content">
                         <h3>Configure API Key</h3>
@@ -574,7 +582,7 @@
                         </div>
                     </div>
                 </div>
-                <div class="step">
+                <div class="step reveal">
                     <div class="step-number">4</div>
                     <div class="step-content">
                         <h3>Start Dev Mode</h3>
@@ -591,7 +599,7 @@
     <!-- CTA Section -->
     <section class="cta">
         <div class="container">
-            <div class="cta-content">
+            <div class="cta-content reveal">
                 <h2>Ready to Dive Deeper?</h2>
                 <p>Join the community and explore the core architecture of AI coding platforms together</p>
                 <div class="cta-buttons">
@@ -603,8 +611,50 @@
                         </svg>
                         Star on GitHub
                     </a>
+                    <a href="https://api.chatbi.site" class="btn btn-large" target="_blank" rel="noopener"
+                        style="background: linear-gradient(135deg, #10b981, #059669); color: white; border: none;">
+                        <svg viewBox="0 0 24 24" width="20" height="20" style="margin-right: 8px; vertical-align: middle;">
+                            <path fill="currentColor" d="M12.65 10C11.83 7.67 9.61 6 7 6c-3.31 0-6 2.69-6 6s2.69 6 6 6c2.61 0 4.83-1.67 5.65-4H17v4h4v-4h2v-4H12.65zM7 14c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/>
+                        </svg>
+                        Get API Key
+                    </a>
                 </div>
             </div>
+    </section>
+
+    <!-- Sponsor Section -->
+    <section id="sponsor" class="sponsor-section">
+        <div class="container">
+            <div class="sponsor-content reveal">
+                <h2>Support Axon</h2>
+                <p>Axon is free and open-source. Your support keeps it that way.</p>
+                <p style="opacity: 0.8; font-size: 0.95rem; max-width: 600px; margin: 0 auto 2rem;">Every sponsor helps fund full-time development, bug fixes, new tools, and better performance. No venture capital, no ads — just developers supporting developers.</p>
+                <div class="sponsor-tiers">
+                    <div class="sponsor-tier">
+                        <h4>Supporter</h4>
+                        <div class="tier-price">$5<span>/month</span></div>
+                        <p>Name in README + Discord badge</p>
+                    </div>
+                    <div class="sponsor-tier featured-tier">
+                        <h4>Builder</h4>
+                        <div class="tier-price">$25<span>/month</span></div>
+                        <p>Logo in README + priority support + early access</p>
+                    </div>
+                    <div class="sponsor-tier">
+                        <h4>Company</h4>
+                        <div class="tier-price">$100<span>/month</span></div>
+                        <p>Prominent logo + landing page + 1hr/month consultation</p>
+                    </div>
+                </div>
+                <div class="sponsor-buttons" style="margin-top: 2rem;">
+                    <a href="https://github.com/sponsors/kill136" class="btn btn-primary" target="_blank" rel="noopener">GitHub Sponsors</a>
+                    <a href="https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=694623326%40qq.com&item_name=Support+Axon+Development&currency_code=USD" class="btn btn-outline" target="_blank" rel="noopener" style="margin-left: 1rem;">Donate via PayPal</a>
+                </div>
+                <div class="current-sponsors" style="margin-top: 2rem; opacity: 0.7;">
+                    <p style="font-size: 0.85rem;">Current sponsors: <strong>Jack Darcy</strong> &middot; <em>Your name here?</em></p>
+                </div>
+            </div>
+        </div>
     </section>
 
     <!-- Footer -->
@@ -619,14 +669,15 @@
                     <p>Open source AI coding platform — CLI + Web UI + Multi-Agent Collaboration</p>
                 </div>
                 <div class="footer-links">
+                    <a href="/pricing">Pricing</a>
+                    <a href="/terms">Terms of Service</a>
+                    <a href="/privacy">Privacy Policy</a>
+                    <a href="mailto:694623326@qq.com">Contact: 694623326@qq.com</a>
                     <a href="https://github.com/kill136/claude-code-open" target="_blank" rel="noopener">GitHub</a>
-                    <a href="https://github.com/kill136/claude-code-open/issues" target="_blank" rel="noopener">Feedback</a>
-                    <a href="https://github.com/kill136/claude-code-open/blob/main/LICENSE" target="_blank"
-                        rel="noopener">MIT License</a>
                 </div>
             </div>
             <div class="footer-bottom">
-                <p>© 2024 Axon. This is NOT an official Anthropic project.</p>
+                <p>&copy; 2024 Axon. All rights reserved.</p>
             </div>
         </div>
     </footer>
@@ -660,6 +711,101 @@
             } else {
                 navbar.classList.remove('scrolled');
             }
+        });
+
+        // ====== WebGL Starfield ======
+        (function() {
+            var c = document.getElementById('starfield');
+            var gl = c.getContext('webgl') || c.getContext('experimental-webgl');
+            if (!gl) return;
+            function resize() { c.width = innerWidth; c.height = innerHeight; gl.viewport(0, 0, c.width, c.height); }
+            addEventListener('resize', resize); resize();
+            var N = 200, pos = new Float32Array(N * 3), sz = new Float32Array(N), spd = new Float32Array(N);
+            for (var i = 0; i < N; i++) {
+                pos[i*3] = (Math.random() - 0.5) * 2; pos[i*3+1] = (Math.random() - 0.5) * 2; pos[i*3+2] = Math.random();
+                sz[i] = Math.random() * 2 + 0.5; spd[i] = Math.random() * 0.0002 + 0.00005;
+            }
+            var vs = 'attribute vec3 a_pos;attribute float a_size;uniform float u_time;varying float v_alpha;void main(){float tw=sin(u_time*2.0+a_pos.x*10.0)*0.3+0.7;v_alpha=a_pos.z*tw*0.5;gl_Position=vec4(a_pos.xy,0.0,1.0);gl_PointSize=a_size*(0.6+a_pos.z*0.4);}';
+            var fs = 'precision mediump float;varying float v_alpha;void main(){float d=length(gl_PointCoord-0.5)*2.0;if(d>1.0)discard;gl_FragColor=vec4(0.55,0.55,1.0,(1.0-d*d)*v_alpha);}';
+            function mk(type, src) { var s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; }
+            var prog = gl.createProgram();
+            gl.attachShader(prog, mk(gl.VERTEX_SHADER, vs)); gl.attachShader(prog, mk(gl.FRAGMENT_SHADER, fs));
+            gl.linkProgram(prog); gl.useProgram(prog);
+            var pb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, pb); gl.bufferData(gl.ARRAY_BUFFER, pos, gl.DYNAMIC_DRAW);
+            var aP = gl.getAttribLocation(prog, 'a_pos'); gl.enableVertexAttribArray(aP); gl.vertexAttribPointer(aP, 3, gl.FLOAT, false, 0, 0);
+            var sb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, sb); gl.bufferData(gl.ARRAY_BUFFER, sz, gl.STATIC_DRAW);
+            var aS = gl.getAttribLocation(prog, 'a_size'); gl.enableVertexAttribArray(aS); gl.vertexAttribPointer(aS, 1, gl.FLOAT, false, 0, 0);
+            var uT = gl.getUniformLocation(prog, 'u_time');
+            gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+            var t = 0;
+            (function frame() {
+                t += 0.016; gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); gl.uniform1f(uT, t);
+                for (var i = 0; i < N; i++) { pos[i*3+1] -= spd[i]; if (pos[i*3+1] < -1) { pos[i*3+1] = 1; pos[i*3] = (Math.random()-0.5)*2; } }
+                gl.bindBuffer(gl.ARRAY_BUFFER, pb); gl.bufferSubData(gl.ARRAY_BUFFER, 0, pos);
+                gl.vertexAttribPointer(aP, 3, gl.FLOAT, false, 0, 0);
+                gl.drawArrays(gl.POINTS, 0, N); requestAnimationFrame(frame);
+            })();
+        })();
+
+        // ====== Mouse Follow Glow ======
+        var glow = document.getElementById('mouseGlow');
+        document.addEventListener('mousemove', function(e) {
+            glow.style.left = e.clientX + 'px';
+            glow.style.top = e.clientY + 'px';
+        });
+
+        // ====== Scroll Reveal ======
+        var revealObs = new IntersectionObserver(function(entries) {
+            entries.forEach(function(entry) {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('visible');
+                }
+            });
+        }, { threshold: 0.1 });
+        document.querySelectorAll('.reveal').forEach(function(el) { revealObs.observe(el); });
+
+        // ====== Counter Animation for Stats ======
+        var statsAnimated = false;
+        var statValues = document.querySelectorAll('.stat-value');
+        function animateStats() {
+            if (statsAnimated) return;
+            statsAnimated = true;
+            statValues.forEach(function(el) {
+                var text = el.textContent.trim();
+                var match = text.match(/^(\d+)/);
+                if (!match) return;
+                var target = parseInt(match[1]);
+                var suffix = text.replace(/^\d+/, '');
+                var start = performance.now();
+                var dur = 2000;
+                (function tick(now) {
+                    var p = Math.min((now - start) / dur, 1);
+                    var ease = 1 - Math.pow(1 - p, 4);
+                    el.textContent = Math.floor(target * ease) + suffix;
+                    if (p < 1) requestAnimationFrame(tick);
+                    else el.textContent = target + suffix;
+                })(start);
+            });
+        }
+        var statsObs = new IntersectionObserver(function(entries) {
+            entries.forEach(function(entry) {
+                if (entry.isIntersecting) { animateStats(); statsObs.disconnect(); }
+            });
+        }, { threshold: 0.3 });
+        var heroStats = document.querySelector('.hero-stats');
+        if (heroStats) statsObs.observe(heroStats);
+
+        // ====== Feature Card 3D Tilt ======
+        document.querySelectorAll('.feature-card').forEach(function(card) {
+            card.addEventListener('mousemove', function(e) {
+                var rect = card.getBoundingClientRect();
+                var x = (e.clientX - rect.left) / rect.width - 0.5;
+                var y = (e.clientY - rect.top) / rect.height - 0.5;
+                card.style.transform = 'translateY(-4px) perspective(600px) rotateY(' + (x * 6) + 'deg) rotateX(' + (-y * 6) + 'deg)';
+            });
+            card.addEventListener('mouseleave', function() {
+                card.style.transform = '';
+            });
         });
     </script>
 </body>

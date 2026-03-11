@@ -1,0 +1,74 @@
+
+[35m[Region: us-west1][0m
+[35m=========================
+Using Detected Dockerfile
+=========================
+[0m
+context: 130v-N7A5
+[INFO] [internal] load build definition from Dockerfile
+[INFO] [internal] load build definition from Dockerfile
+[INFO] [internal] load build definition from Dockerfile
+[INFO] [internal] load build definition from Dockerfile
+[INFO] [internal] load build definition from Dockerfile
+[INFO] [internal] load metadata for docker.io/library/php:7.4-apache
+[INFO] [auth] library/php:pull token for registry-1.docker.io
+[INFO] [auth] library/php:pull token for registry-1.docker.io
+[INFO] [internal] load metadata for docker.io/library/php:7.4-apache
+[INFO] [internal] load .dockerignore
+[INFO] [internal] load .dockerignore
+[INFO] [internal] load .dockerignore
+[INFO] [internal] load .dockerignore
+[INFO] [8/8] RUN echo '#!/bin/bash\nPORT=${PORT:-80}\nsed -i "s/Listen 80/Listen ${PORT}/" /etc/apache2/ports.conf\nsed -i "s/:80/:${PORT}/" /etc/apache2/sites-available/000-default.conf\nexec apache2-foreground' > /usr/local/bin/start.sh     && chmod +x /usr/local/bin/start.sh
+[INFO] [7/8] RUN echo '<Directory /var/www/html>\n    AllowOverride All\n    Require all granted\n</Directory>' > /etc/apache2/conf-available/epay.conf     && a2enconf epay
+[INFO] [6/8] RUN chown -R www-data:www-data /var/www/html     && chmod -R 755 /var/www/html
+[INFO] [5/8] RUN git clone --depth 1 https://github.com/maajiko/Epay.git /tmp/epay     && cp -r /tmp/epay/* /tmp/epay/.* /var/www/html/ 2>/dev/null || true     && rm -rf /tmp/epay
+[INFO] [4/8] WORKDIR /var/www/html
+[INFO] [3/8] RUN a2enmod rewrite
+[INFO] [2/8] RUN apt-get update && apt-get install -y     libzip-dev     libpng-dev     libjpeg-dev     libfreetype6-dev     libcurl4-openssl-dev     unzip     git     && docker-php-ext-configure gd --with-freetype --with-jpeg     && docker-php-ext-install -j$(nproc)     pdo_mysql     mysqli     gd     curl     zip     bcmath     && apt-get clean && rm -rf /var/lib/apt/lists/*
+[INFO] [1/8] FROM docker.io/library/php:7.4-apache@sha256:c9d7e608f73832673479770d66aacc8100011ec751d1905ff63fae3fe2e0ca6d
+[INFO] [1/8] FROM docker.io/library/php:7.4-apache@sha256:c9d7e608f73832673479770d66aacc8100011ec751d1905ff63fae3fe2e0ca6d
+[INFO] [1/8] FROM docker.io/library/php:7.4-apache@sha256:c9d7e608f73832673479770d66aacc8100011ec751d1905ff63fae3fe2e0ca6d
+[INFO] [2/8] RUN apt-get update && apt-get install -y     libzip-dev     libpng-dev     libjpeg-dev     libfreetype6-dev     libcurl4-openssl-dev     unzip     git     && docker-php-ext-configure gd --with-freetype --with-jpeg     && docker-php-ext-install -j$(nproc)     pdo_mysql     mysqli     gd     curl     zip     bcmath     && apt-get clean && rm -rf /var/lib/apt/lists/*
+[INFO] [3/8] RUN a2enmod rewrite
+[INFO] [4/8] WORKDIR /var/www/html
+[INFO] [4/8] WORKDIR /var/www/html
+[INFO] [5/8] RUN git clone --depth 1 https://github.com/maajiko/Epay.git /tmp/epay     && cp -r /tmp/epay/* /tmp/epay/.* /var/www/html/ 2>/dev/null || true     && rm -rf /tmp/epay
+[INFO] Cloning into '/tmp/epay'...
+
+[INFO] [5/8] RUN git clone --depth 1 https://github.com/maajiko/Epay.git /tmp/epay     && cp -r /tmp/epay/* /tmp/epay/.* /var/www/html/ 2>/dev/null || true     && rm -rf /tmp/epay
+[INFO] [6/8] RUN chown -R www-data:www-data /var/www/html     && chmod -R 755 /var/www/html
+[INFO] [6/8] RUN chown -R www-data:www-data /var/www/html     && chmod -R 755 /var/www/html
+[INFO] [7/8] RUN echo '<Directory /var/www/html>\n    AllowOverride All\n    Require all granted\n</Directory>' > /etc/apache2/conf-available/epay.conf     && a2enconf epay
+[INFO] Enabling conf epay.
+
+[INFO] To activate the new configuration, you need to run:
+  service apache2 reload
+
+[INFO] [7/8] RUN echo '<Directory /var/www/html>\n    AllowOverride All\n    Require all granted\n</Directory>' > /etc/apache2/conf-available/epay.conf     && a2enconf epay
+[INFO] [8/8] RUN echo '#!/bin/bash\nPORT=${PORT:-80}\nsed -i "s/Listen 80/Listen ${PORT}/" /etc/apache2/ports.conf\nsed -i "s/:80/:${PORT}/" /etc/apache2/sites-available/000-default.conf\nexec apache2-foreground' > /usr/local/bin/start.sh     && chmod +x /usr/local/bin/start.sh
+[INFO] [8/8] RUN echo '#!/bin/bash\nPORT=${PORT:-80}\nsed -i "s/Listen 80/Listen ${PORT}/" /etc/apache2/ports.conf\nsed -i "s/:80/:${PORT}/" /etc/apache2/sites-available/000-default.conf\nexec apache2-foreground' > /usr/local/bin/start.sh     && chmod +x /usr/local/bin/start.sh
+[INFO] [auth] sharing credentials for production-us-west2.railway-registry.com
+[INFO] [auth] sharing credentials for production-us-west2.railway-registry.com
+[92mBuild time: 26.56 seconds[0m
+
+[35m====================
+Starting Healthcheck
+====================
+[0m
+[37mPath: /[0m
+[37mRetry window: 5m0s[0m
+
+[93mAttempt #1 failed with service unavailable. Continuing to retry for 4m49s[0m
+[93mAttempt #2 failed with service unavailable. Continuing to retry for 4m38s[0m
+[93mAttempt #3 failed with service unavailable. Continuing to retry for 4m26s[0m
+[93mAttempt #4 failed with service unavailable. Continuing to retry for 4m12s[0m
+[93mAttempt #5 failed with service unavailable. Continuing to retry for 3m54s[0m
+[93mAttempt #6 failed with service unavailable. Continuing to retry for 3m28s[0m
+[93mAttempt #7 failed with service unavailable. Continuing to retry for 2m48s[0m
+[93mAttempt #8 failed with service unavailable. Continuing to retry for 2m8s[0m
+[93mAttempt #9 failed with service unavailable. Continuing to retry for 1m28s[0m
+[93mAttempt #10 failed with service unavailable. Continuing to retry for 48s[0m
+[93mAttempt #11 failed with service unavailable. Continuing to retry for 8s[0m
+
+[91m1/1 replicas never became healthy![0m
+[91mHealthcheck failed![0m

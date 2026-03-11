@@ -31,6 +31,7 @@ export * from './create-tool.js';
 export * from './mcp-manage.js';
 export * from './eye.js';
 export * from './ear.js';
+export * from './goal.js';
 
 // 蓝图工具不通过此处 re-export
 // 蓝图模块直接 import 各自需要的工具文件 (如 ../tools/dispatch-worker.js)
@@ -61,6 +62,7 @@ import { DatabaseTool } from './database.js';
 import { EyeTool } from './eye.js';
 import { EarTool } from './ear.js';
 import { McpManageTool } from './mcp-manage.js';
+import { GoalManageTool } from './goal.js';
 
 // ============ 蓝图工具 imports (lazy) ============
 import { BlueprintTool } from './blueprint.js';
@@ -116,8 +118,9 @@ export function registerCoreTools(): void {
   toolRegistry.register(new TaskTool());
   toolRegistry.register(new TaskOutputTool());
 
-  // Task v2 系统 (条件注册，需 AXON_ENABLE_TASKS=true)
-  if (isTasksEnabled()) {
+  // Task v2 系统 — 仅在 Agent Teams 场景注册
+  // 普通对话用 TodoWrite 足矣；Task v2 的 owner/blocks/blockedBy 是多 agent 协作专用
+  if (isTasksEnabled() && process.env.AXON_EXPERIMENTAL_AGENT_TEAMS === '1') {
     toolRegistry.register(new TaskCreateTool());
     toolRegistry.register(new TaskGetTool());
     toolRegistry.register(new TaskUpdateTool());
@@ -142,8 +145,7 @@ export function registerCoreTools(): void {
   toolRegistry.register(new McpResourceTool());
   toolRegistry.register(new McpManageTool());
 
-  // 12. 项目扩展工具 (非官方，但 CLI 模式也用)
-  toolRegistry.register(new NotebookWriteTool());
+  // 12. NotebookWrite 已移除 — Notebook 系统通过附件自动注入，AI 无需手动管理
 
   // 13. Daemon 定时任务工具
   toolRegistry.register(new ScheduleTaskTool());
@@ -168,6 +170,9 @@ export function registerCoreTools(): void {
 
   // 22. Ear 听觉工具（浏览器 Web Speech API → 内存缓冲区）
   toolRegistry.register(new EarTool());
+
+  // 23. GoalManage 持久目标管理工具
+  toolRegistry.register(new GoalManageTool());
 }
 
 /**

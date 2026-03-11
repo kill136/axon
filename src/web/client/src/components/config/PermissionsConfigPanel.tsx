@@ -3,7 +3,7 @@
  * 用于配置完整的权限系统，包括默认模式、工具权限、路径权限、命令权限、网络权限和审计日志
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useLanguage } from '../../i18n';
 import '../../styles/config-panels.css';
 
@@ -13,6 +13,8 @@ interface ConfigPanelProps {
   onSave: (config: PermissionsConfig) => void;
   onClose?: () => void;
   initialConfig?: PermissionsConfig;
+  onSendMessage?: (message: any) => void;
+  addMessageHandler?: (handler: (msg: any) => void) => () => void;
 }
 
 interface PermissionsConfig {
@@ -41,7 +43,7 @@ interface PermissionsConfig {
 
 // ============ 主组件 ============
 
-export function PermissionsConfigPanel({ onSave, onClose, initialConfig }: ConfigPanelProps) {
+export function PermissionsConfigPanel({ onSave, onClose, initialConfig, onSendMessage, addMessageHandler }: ConfigPanelProps) {
   const { t } = useLanguage();
   const [config, setConfig] = useState<PermissionsConfig>({
     defaultMode: 'default',
@@ -51,8 +53,13 @@ export function PermissionsConfigPanel({ onSave, onClose, initialConfig }: Confi
     network: { allow: [], deny: [] },
     audit: { enabled: false },
   });
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const loadedRef = useRef(false);
+  const [availableTools, setAvailableTools] = useState<{ name: string; description: string; category: string }[]>([]);
+  const [toolSearchAllow, setToolSearchAllow] = useState('');
+  const [toolSearchDeny, setToolSearchDeny] = useState('');
 
-  // 加载初始配置
+  // 加载初始配置（优先从后端加载）
   useEffect(() => {
     if (initialConfig) {
       setConfig({
@@ -65,6 +72,46 @@ export function PermissionsConfigPanel({ onSave, onClose, initialConfig }: Confi
       });
     }
   }, [initialConfig]);
+
+  // 从后端加载当前权限配置 + 工具列表
+  useEffect(() => {
+    if (!onSendMessage || !addMessageHandler || loadedRef.current) return;
+    loadedRef.current = true;
+
+    const unsubscribe = addMessageHandler((msg: any) => {
+      if (msg.type === 'permission_config_full') {
+        const p = msg.payload;
+        setConfig({
+          defaultMode: p.mode || 'default',
+          tools: { allow: p.alwaysAllow || [], deny: p.alwaysDeny || [] },
+          paths: p.paths || { allow: [], deny: [] },
+          commands: p.commands || { allow: [], deny: [] },
+          network: p.network || { allow: [], deny: [] },
+          audit: p.audit || { enabled: false },
+        });
+      }
+      if (msg.type === 'tool_list_response') {
+        setAvailableTools(msg.payload.tools || []);
+      }
+    });
+
+    onSendMessage({ type: 'permission_config_get' });
+    onSendMessage({ type: 'tool_list_get' });
+
+    return unsubscribe;
+  }, [onSendMessage, addMessageHandler]);
+
+  // 工具复选框切换
+  const togglePermTool = (toolName: string, listType: 'allow' | 'deny') => {
+    const current = config.tools?.[listType] || [];
+    const updated = current.includes(toolName)
+      ? current.filter(t => t !== toolName)
+      : [...current, toolName];
+    setConfig({
+      ...config,
+      tools: { ...config.tools, [listType]: updated },
+    });
+  };
 
   const handleSave = () => {
     // 清理空数组和未启用的配置
@@ -102,6 +149,26 @@ export function PermissionsConfigPanel({ onSave, onClose, initialConfig }: Confi
 
     if (config.audit?.enabled) {
       cleanedConfig.audit = config.audit;
+    }
+
+    // 通过 WebSocket 发送到后端保存并生效
+    if (onSendMessage) {
+      setSaveStatus('saving');
+      onSendMessage({
+        type: 'permission_config',
+        payload: {
+          mode: cleanedConfig.defaultMode,
+          alwaysAllow: cleanedConfig.tools?.allow,
+          alwaysDeny: cleanedConfig.tools?.deny,
+          paths: cleanedConfig.paths,
+          commands: cleanedConfig.commands,
+          network: cleanedConfig.network,
+          audit: cleanedConfig.audit,
+          persist: true,
+        },
+      });
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
     }
 
     onSave(cleanedConfig);
@@ -149,50 +216,146 @@ export function PermissionsConfigPanel({ onSave, onClose, initialConfig }: Confi
         <p className="config-section-description">
           {t('permissions.tools.description')}
         </p>
+
+        {/* 始终允许的工具 */}
         <div className="setting-item">
-          <label className="setting-label">
-            {t('permissions.tools.allow.label')}
-            <span className="setting-label-hint">{t('permissions.tools.allow.hint')}</span>
-          </label>
-          <input
-            type="text"
-            className="setting-input"
-            value={config.tools?.allow?.join(', ') || ''}
-            onChange={(e) =>
-              setConfig({
-                ...config,
-                tools: {
-                  ...config.tools,
-                  allow: e.target.value.split(',').map((s) => s.trim()).filter(Boolean),
-                },
-              })
-            }
-            placeholder={t('placeholder.allowedTools')}
-          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+            <label className="setting-label" style={{ margin: 0 }}>
+              {t('permissions.tools.allow.label')}
+              <span className="setting-label-hint">{t('permissions.tools.allow.hint')}</span>
+            </label>
+            <span style={{ fontSize: '12px', opacity: 0.6 }}>
+              ({config.tools?.allow?.length || 0}/{availableTools.length})
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '6px', alignItems: 'center' }}>
+            <input
+              type="text"
+              className="setting-input"
+              value={toolSearchAllow}
+              onChange={e => setToolSearchAllow(e.target.value)}
+              placeholder={t('modePresets.toolSearchPlaceholder')}
+              style={{ flex: 1, margin: 0 }}
+            />
+          </div>
+          {availableTools.length === 0 ? (
+            <div style={{ padding: '8px', textAlign: 'center', opacity: 0.5, fontSize: '13px' }}>
+              {t('modePresets.loadingTools')}
+            </div>
+          ) : (
+            <div style={{
+              maxHeight: '200px',
+              overflowY: 'auto',
+              border: '1px solid var(--border-color, #333)',
+              borderRadius: '6px',
+              padding: '6px',
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
+              gap: '2px',
+            }}>
+              {availableTools
+                .filter(tool => !toolSearchAllow || tool.name.toLowerCase().includes(toolSearchAllow.toLowerCase()))
+                .map(tool => {
+                  const isChecked = (config.tools?.allow || []).includes(tool.name);
+                  return (
+                    <label
+                      key={tool.name}
+                      title={tool.description}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '3px 6px',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontSize: '13px',
+                        background: isChecked ? 'var(--bg-accent-subtle, rgba(79, 70, 229, 0.1))' : 'transparent',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => togglePermTool(tool.name, 'allow')}
+                        style={{ margin: 0 }}
+                      />
+                      <span style={{ fontFamily: 'monospace', fontSize: '12px' }}>{tool.name}</span>
+                    </label>
+                  );
+                })}
+            </div>
+          )}
           <div className="setting-hint">
             {t('permissions.tools.allow.example')}
           </div>
         </div>
+
+        {/* 始终禁止的工具 */}
         <div className="setting-item">
-          <label className="setting-label">
-            {t('permissions.tools.deny.label')}
-            <span className="setting-label-hint">{t('permissions.tools.deny.hint')}</span>
-          </label>
-          <input
-            type="text"
-            className="setting-input"
-            value={config.tools?.deny?.join(', ') || ''}
-            onChange={(e) =>
-              setConfig({
-                ...config,
-                tools: {
-                  ...config.tools,
-                  deny: e.target.value.split(',').map((s) => s.trim()).filter(Boolean),
-                },
-              })
-            }
-            placeholder={t('placeholder.deniedTools')}
-          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+            <label className="setting-label" style={{ margin: 0 }}>
+              {t('permissions.tools.deny.label')}
+              <span className="setting-label-hint">{t('permissions.tools.deny.hint')}</span>
+            </label>
+            <span style={{ fontSize: '12px', opacity: 0.6 }}>
+              ({config.tools?.deny?.length || 0}/{availableTools.length})
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '6px', alignItems: 'center' }}>
+            <input
+              type="text"
+              className="setting-input"
+              value={toolSearchDeny}
+              onChange={e => setToolSearchDeny(e.target.value)}
+              placeholder={t('modePresets.toolSearchPlaceholder')}
+              style={{ flex: 1, margin: 0 }}
+            />
+          </div>
+          {availableTools.length === 0 ? (
+            <div style={{ padding: '8px', textAlign: 'center', opacity: 0.5, fontSize: '13px' }}>
+              {t('modePresets.loadingTools')}
+            </div>
+          ) : (
+            <div style={{
+              maxHeight: '200px',
+              overflowY: 'auto',
+              border: '1px solid var(--border-color, #333)',
+              borderRadius: '6px',
+              padding: '6px',
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
+              gap: '2px',
+            }}>
+              {availableTools
+                .filter(tool => !toolSearchDeny || tool.name.toLowerCase().includes(toolSearchDeny.toLowerCase()))
+                .map(tool => {
+                  const isChecked = (config.tools?.deny || []).includes(tool.name);
+                  return (
+                    <label
+                      key={tool.name}
+                      title={tool.description}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '3px 6px',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontSize: '13px',
+                        background: isChecked ? 'var(--bg-accent-subtle, rgba(239, 68, 68, 0.1))' : 'transparent',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => togglePermTool(tool.name, 'deny')}
+                        style={{ margin: 0 }}
+                      />
+                      <span style={{ fontFamily: 'monospace', fontSize: '12px' }}>{tool.name}</span>
+                    </label>
+                  );
+                })}
+            </div>
+          )}
           <div className="setting-hint">
             {t('permissions.tools.deny.description')}
           </div>
@@ -416,8 +579,8 @@ export function PermissionsConfigPanel({ onSave, onClose, initialConfig }: Confi
 
       {/* 操作按钮 */}
       <div className="config-actions">
-        <button className="config-btn config-btn-primary" onClick={handleSave}>
-          {t('permissions.save')}
+        <button className="config-btn config-btn-primary" onClick={handleSave} disabled={saveStatus === 'saving'}>
+          {saveStatus === 'saved' ? t('permissions.saved') : t('permissions.save')}
         </button>
         {onClose && (
           <button className="config-btn config-btn-secondary" onClick={onClose}>

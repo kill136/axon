@@ -246,9 +246,22 @@ ADVANCED FEATURES:
             await this.removeController(sessionId);
           }
 
+          // Read proxy from config
+          let proxyServer: string | undefined;
+          try {
+            const { configManager } = await import('../config/index.js');
+            const config = configManager.getAll();
+            if (config.proxy) {
+              proxyServer = config.proxy.https || config.proxy.http;
+            }
+          } catch {
+            // Config read failed, continue without proxy
+          }
+
           await manager.start({ 
             headless: false,
             profileName: input.profileName,
+            proxy: proxyServer,
           });
           const profileName = manager.getProfileName();
           const profileDir = manager.getProfileDir();

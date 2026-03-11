@@ -44,7 +44,7 @@ Full AI coding platform with Web IDE + Multi-Agent + 37+ Tools
 
 MIT licensed. Runs locally.
 
-github.com/kill136/axon
+github.com/kill136/claude-code-open
 
 #OpenSource #AI #Axon`;
   

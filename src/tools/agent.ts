@@ -941,60 +941,15 @@ When NOT to use the Task tool:
 - If you want to read a specific file path, use the Read or Grep tool instead of the Task tool, to find the match more quickly
 - If you are searching for a specific class definition like "class Foo", use the Grep tool instead, to find the match more quickly
 - If you are searching for code within a specific file or set of 2-3 files, use the Read tool instead of the Task tool, to find the match more quickly
-- Other tasks that are not related to the agent descriptions above
-
 
 Usage notes:
 - Always include a short description (3-5 words) summarizing what the agent will do
-- Launch multiple agents concurrently whenever possible, to maximize performance; to do that, use a single message with multiple tool uses
-- When the agent is done, it will return a single message back to you. The result returned by the agent is not visible to the user. To show the user the result, you should send a text message back to the user with a concise summary of the result.${getAgentBackgroundTasksPrompt()}
-- Agents can be resumed using the \`resume\` parameter by passing the agent ID from a previous invocation. When resumed, the agent continues with its full previous context preserved. When NOT resuming, each invocation starts fresh and you should provide a detailed task description with all necessary context.
-- When the agent is done, it will return a single message back to you along with its agent ID. You can use this ID to resume the agent later if needed for follow-up work.
-- Provide clear, detailed prompts so the agent can work autonomously and return exactly the information you need.
-- Agents with "access to current context" can see the full conversation history before the tool call. When using these agents, you can write concise prompts that reference earlier context (e.g., "investigate the error discussed above") instead of repeating information. The agent will receive all prior messages and understand the context.
+- Launch multiple agents concurrently whenever possible; use a single message with multiple tool uses${getAgentBackgroundTasksPrompt()}
+- The result returned by the agent is not visible to the user. To show the user the result, send a text message with a concise summary.
+- Agents can be resumed using the \`resume\` parameter by passing the agent ID from a previous invocation. When NOT resuming, each invocation starts fresh and you should provide a detailed task description with all necessary context.
 - The agent's outputs should generally be trusted
 - Clearly tell the agent whether you expect it to write code or just to do research (search, file reads, web fetches, etc.), since it is not aware of the user's intent
-- If the agent description mentions that it should be used proactively, then you should try your best to use it without the user having to ask for it first. Use your judgement.
-- If the user specifies that they want you to run agents "in parallel", you MUST send a single message with multiple Task tool use content blocks. For example, if you need to launch both a code-reviewer agent and a test-runner agent in parallel, send a single message with both tool calls.
-
-Example usage:
-
-<example_agent_descriptions>
-"code-reviewer": use this agent after you are done writing a signficant piece of code
-"greeting-responder": use this agent when to respond to user greetings with a friendly joke
-</example_agent_description>
-
-<example>
-user: "Please write a function that checks if a number is prime"
-assistant: Sure let me write a function that checks if a number is prime
-assistant: First let me use the Write tool to write a function that checks if a number is prime
-assistant: I'm going to use the Write tool to write the following code:
-<code>
-function isPrime(n) {
-  if (n <= 1) return false
-  for (let i = 2; i * i <= n; i++) {
-    if (n % i === 0) return false
-  }
-  return true
-}
-</code>
-<commentary>
-Since a signficant piece of code was written and the task was completed, now use the code-reviewer agent to review the code
-</commentary>
-assistant: Now let me use the code-reviewer agent to review the code
-assistant: Uses the Task tool to launch the code-reviewer agent
-</example>
-
-<example>
-user: "Hello"
-<commentary>
-Since the user is greeting, use the greeting-responder agent to respond with a friendly joke
-</commentary>
-assistant: "I'm going to use the Task tool to launch the greeting-responder agent"
-</example>
-
-
-Note: The "Agent Teams" feature (TeammateTool, SendMessage, spawnTeam) is not available on this plan. Only mention this if the user explicitly asks for "agent teams" by name, or asks for agents to send messages to each other (peer-to-peer messaging). Do NOT mention this limitation when users ask for parallel subagents, coordinating agents, launching a "team" of agents, or having agents work together — those are all normal Task tool usage and you should proceed normally.`;
+- If the agent description mentions that it should be used proactively, then you should try your best to use it without the user having to ask for it first. Use your judgement.`;
   }
 
   // 父对话上下文（用于 forkContext）
@@ -1414,7 +1369,9 @@ Note: The "Agent Teams" feature (TeammateTool, SendMessage, spawnTeam) is not av
 
       // 执行代理任务（使用 streaming API 以支持长时间运行的操作）
       // 根据 Anthropic SDK 要求，超过10分钟的操作必须使用 streaming
-      let response = '';
+      // 对齐官方：只保留最后一轮 assistant 回复的 text（而非所有轮次的累积）
+      // 官方 bF8 函数：取最后一条 assistant 消息的 content.filter(D => D.type === "text")
+      let lastAssistantText = '';
 
       // 初始化进度追踪（对齐官方实现）
       if (!agent.progress) {
@@ -1426,11 +1383,14 @@ Note: The "Agent Teams" feature (TeammateTool, SendMessage, spawnTeam) is not av
 
       for await (const event of loop.processMessageStream(agent.prompt)) {
         if (event.type === 'text' && event.content) {
-          response += event.content;
+          lastAssistantText += event.content;
           // 更新token计数（粗略估计，1 word ≈ 1.3 tokens）
           agent.progress.tokenCount += Math.ceil(event.content.split(/\s+/).length * 1.3);
           saveAgentState(agent);
         } else if (event.type === 'tool_start') {
+          // 工具调用意味着新一轮开始，清空当前轮的文本
+          // 对齐官方：只取最后一轮 assistant 的 text blocks
+          lastAssistantText = '';
           // 追踪工具使用（对齐官方实现）
           agent.progress.toolUseCount++;
           agent.lastActivity = {
@@ -1448,6 +1408,15 @@ Note: The "Agent Teams" feature (TeammateTool, SendMessage, spawnTeam) is not av
           // 如果被中断，记录状态
           throw new Error(t('agent.executionInterrupted'));
         }
+      }
+
+      // 对齐官方：截断过长的结果，防止撑爆父对话上下文
+      // 官方子 agent prompt 要求 "report under 500 words"，但作为安全网也需要硬截断
+      const MAX_AGENT_RESULT_CHARS = 100000; // ~25K tokens
+      let response = lastAssistantText;
+      if (response.length > MAX_AGENT_RESULT_CHARS) {
+        response = response.substring(0, MAX_AGENT_RESULT_CHARS) +
+          `\n\n[Agent output truncated - exceeded ${MAX_AGENT_RESULT_CHARS} character limit]`;
       }
 
       // 保存结果

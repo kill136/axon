@@ -247,19 +247,18 @@ type ProviderType = 'firstParty' | 'anthropic' | 'bedrock' | 'vertex' | 'foundry
 
 /**
  * 获取当前 Provider 类型 (对应官方 F4 函数)
- * 通过环境变量检测使用的云服务商
+ * 从 settings.json 配置读取，不再依赖环境变量
  */
 function getProviderType(): ProviderType {
-  if (process.env.AXON_USE_BEDROCK === 'true' || process.env.AXON_USE_BEDROCK === '1') {
-    return 'bedrock';
-  }
-  if (process.env.AXON_USE_VERTEX === 'true' || process.env.AXON_USE_VERTEX === '1') {
-    return 'vertex';
-  }
+  try {
+    const { configManager } = require('../config/index.js');
+    const config = configManager.getAll();
+    if (config.apiProvider === 'bedrock' || config.useBedrock) return 'bedrock';
+    if (config.apiProvider === 'vertex' || config.useVertex) return 'vertex';
+  } catch {}
   if (process.env.AXON_USE_FOUNDRY === 'true' || process.env.AXON_USE_FOUNDRY === '1') {
     return 'foundry';
   }
-  // v2.1.29: 默认使用 'firstParty' 表示直接使用 Anthropic API
   return 'firstParty';
 }
 
@@ -1217,10 +1216,16 @@ export class ClaudeClient {
     }
     // API key 模式无需日志
 
+    // Anthropic SDK 自动拼 /v1/messages，baseURL 不能带 /v1 后缀，否则会变成 /v1/v1/messages
+    let effectiveBase = config.baseUrl;
+    if (effectiveBase) {
+      effectiveBase = effectiveBase.replace(/\/v1\/?$/, '');
+    }
+
     const anthropicConfig: any = {
       apiKey: apiKey,  // OAuth 模式下为 null
       authToken: authToken || null,  // OAuth token
-      baseURL: config.baseUrl,
+      baseURL: effectiveBase,
       maxRetries: 0, // 我们自己处理重试
       defaultHeaders,
       dangerouslyAllowBrowser: true,
@@ -1270,9 +1275,8 @@ export class ClaudeClient {
     // 使用21000作为安全默认值（留有余量）
     this.maxTokens = config.maxTokens || Math.min(21000, capabilities.maxOutputTokens);
 
-    // 对标官方 V39: 默认 10 次重试，可通过 AXON_MAX_RETRIES 覆盖
-    const envRetries = parseInt(process.env.AXON_MAX_RETRIES || '', 10);
-    this.maxRetries = config.maxRetries ?? (!isNaN(envRetries) ? envRetries : DEFAULT_MAX_RETRIES);
+    // 对标官方 V39: 默认 10 次重试，通过 settings.json maxRetries 配置
+    this.maxRetries = config.maxRetries ?? DEFAULT_MAX_RETRIES;
     this.retryDelay = config.retryDelay ?? DEFAULT_RETRY_BASE_DELAY;
 
     // 配置回退模型
@@ -2030,8 +2034,35 @@ export class ClaudeClient {
     let cacheCreationTokens = 0;
     let thinkingTokens = 0;
 
+    // 流式空闲超时保护：如果连续 STREAM_IDLE_TIMEOUT_MS 没有收到任何事件，主动超时
+    // 防止 OpenRouter 等第三方代理静默断连导致 for-await 永远阻塞
+    // 5 分钟：大上下文（90K+ tokens）首次 cache_creation 时 API 响应较慢，
+    // 加上 Opus thinking 阶段可能持续数分钟，需要足够的等待时间
+    const STREAM_IDLE_TIMEOUT_MS = 300_000;
+
     try {
-      for await (const event of stream) {
+      // 包装 async iterator 添加空闲超时
+      const streamWithTimeout = async function* (source: AsyncIterable<any>, timeoutMs: number, signal?: AbortSignal) {
+        const iterator = source[Symbol.asyncIterator]();
+        while (true) {
+          if (signal?.aborted) break;
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          try {
+            const result = await Promise.race([
+              iterator.next(),
+              new Promise<never>((_, reject) => {
+                timer = setTimeout(() => reject(new Error(`Stream idle timeout: no events received for ${timeoutMs / 1000}s`)), timeoutMs);
+              }),
+            ]);
+            if (result.done) break;
+            yield result.value;
+          } finally {
+            if (timer !== undefined) clearTimeout(timer);
+          }
+        }
+      };
+
+      for await (const event of streamWithTimeout(stream, STREAM_IDLE_TIMEOUT_MS, abortSignal)) {
         // 检查是否被中断
         if (abortSignal?.aborted) {
           // 尝试取消流
