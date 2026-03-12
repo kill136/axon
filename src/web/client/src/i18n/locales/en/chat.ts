@@ -259,6 +259,10 @@ const chat = {
   'welcome.template.test.prompt': 'Analyze the project and write unit tests for the key modules that need coverage.',
   'welcome.template.todoApp': 'Todo App',
   'welcome.template.todoApp.prompt': 'Build a full-stack Todo App with React frontend, Express backend, and SQLite database. Include CRUD operations and a clean UI.',
+  'welcome.tab.office': 'Office Worker',
+  'welcome.tab.student': 'Student',
+  'welcome.tab.developer': 'Developer',
+  'welcome.commandWall.close': 'Dismiss quick prompts',
 } as const;
 
 export type ChatKeys = keyof typeof chat;

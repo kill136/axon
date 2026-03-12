@@ -71,17 +71,30 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
         rel="stylesheet">
 
     <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
+    <!-- Animated Mesh Gradient Background -->
+    <div class="mesh-bg"></div>
     <!-- WebGL Starfield Background -->
     <canvas id="starfield"></canvas>
     <!-- Mouse Follow Glow -->
     <div class="mouse-glow" id="mouseGlow"></div>
+    <!-- Floating Particles -->
+    <div class="particles">
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+    </div>
 
     <!-- Navigation -->
     <nav class="navbar">
@@ -113,6 +126,8 @@
 
     <!-- Hero Section -->
     <header class="hero">
+        <!-- Animated grid background -->
+        <div class="grid-bg"></div>
         <div class="container">
             <div class="hero-content">
                 <div class="hero-badge">Open Source &middot; Full-Featured &middot; Production-Grade</div>
@@ -178,7 +193,11 @@
                     </div>
                 </div>
             </div>
-            <div class="hero-visual">
+            <div class="hero-visual" style="position: relative;">
+                <!-- Glow rings around terminal -->
+                <div class="glow-ring glow-ring-1"></div>
+                <div class="glow-ring glow-ring-2"></div>
+                <div class="glow-ring glow-ring-3"></div>
                 <div class="terminal">
                     <div class="terminal-header">
                         <div class="terminal-dots">
@@ -253,11 +272,15 @@
         </div>
     </section>
 
+    <!-- Section Divider -->
+    <div class="section-divider"></div>
+
     <!-- Features Section -->
     <section id="features" class="features">
         <div class="container">
             <div class="section-header">
-                <h2 class="section-title">17 Core Capabilities</h2>
+                <span class="section-badge">Features</span>
+                <h2 class="section-title">17 Core <span class="gradient-text">Capabilities</span></h2>
                 <p class="section-subtitle">From CLI to Web UI, from single-agent to multi-agent, from local to multi-cloud — going far beyond the original Axon</p>
             </div>
             <div class="features-grid">
@@ -350,11 +373,15 @@
         </div>
     </section>
 
+    <!-- Section Divider -->
+    <div class="section-divider"></div>
+
     <!-- Architecture Section -->
     <section id="architecture" class="architecture">
         <div class="container">
             <div class="section-header">
-                <h2 class="section-title">Five-Tier Architecture</h2>
+                <span class="section-badge">Architecture</span>
+                <h2 class="section-title">Five-Tier <span class="gradient-text">Architecture</span></h2>
                 <p class="section-subtitle">Every layer carefully designed, from entry to extension</p>
             </div>
             <div class="architecture-diagram">
@@ -424,7 +451,8 @@
     <section id="blog" class="blog">
         <div class="container">
             <div class="section-header">
-                <h2 class="section-title">Technical Blog</h2>
+                <span class="section-badge">Blog</span>
+                <h2 class="section-title">Technical <span class="gradient-text">Blog</span></h2>
                 <p class="section-subtitle">Deep dive into Axon's core features and advantages</p>
             </div>
             <div class="blog-posts">
@@ -548,7 +576,8 @@
     <section id="quickstart" class="quickstart">
         <div class="container">
             <div class="section-header">
-                <h2 class="section-title">Quick Start</h2>
+                <span class="section-badge">Get Started</span>
+                <h2 class="section-title">Quick <span class="gradient-text">Start</span></h2>
                 <p class="section-subtitle">Get your local dev environment running in just a few steps</p>
             </div>
             <div class="steps">
@@ -626,7 +655,7 @@
     <section id="sponsor" class="sponsor-section">
         <div class="container">
             <div class="sponsor-content">
-                <h2>Support Axon</h2>
+                <h2>Support <span class="gradient-text">Axon</span></h2>
                 <p>Axon is free and open-source. Your support keeps it that way.</p>
                 <p style="opacity: 0.8; font-size: 0.95rem; max-width: 600px; margin: 0 auto 2rem;">Every sponsor helps fund full-time development, bug fixes, new tools, and better performance. No venture capital, no ads — just developers supporting developers.</p>
                 <div class="sponsor-tiers">
@@ -648,7 +677,17 @@
                 </div>
                 <div class="sponsor-buttons" style="margin-top: 2rem;">
                     <a href="https://github.com/sponsors/kill136" class="btn btn-primary" target="_blank" rel="noopener">GitHub Sponsors</a>
-                    <a href="https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=694623326%40qq.com&item_name=Support+Axon+Development&currency_code=USD" class="btn btn-outline" target="_blank" rel="noopener" style="margin-left: 1rem;">Donate via PayPal</a>
+                    <a href="https://paypal.me/wangbingjie20" class="btn btn-outline" target="_blank" rel="noopener" style="margin-left: 1rem;">Donate via PayPal</a>
+                </div>
+                <div class="sponsor-qrcodes">
+                    <div class="sponsor-qrcode">
+                        <img src="wechat.jpg" alt="WeChat Pay">
+                        <p>WeChat Pay</p>
+                    </div>
+                    <div class="sponsor-qrcode">
+                        <img src="alipay.jpg" alt="Alipay">
+                        <p>Alipay</p>
+                    </div>
                 </div>
                 <div class="current-sponsors" style="margin-top: 2rem; opacity: 0.7;">
                     <p style="font-size: 0.85rem;">Current sponsors: <strong>Jack Darcy</strong> &middot; <em>Your name here?</em></p>
@@ -720,13 +759,13 @@
             if (!gl) return;
             function resize() { c.width = innerWidth; c.height = innerHeight; gl.viewport(0, 0, c.width, c.height); }
             addEventListener('resize', resize); resize();
-            var N = 200, pos = new Float32Array(N * 3), sz = new Float32Array(N), spd = new Float32Array(N);
+            var N = 350, pos = new Float32Array(N * 3), sz = new Float32Array(N), spd = new Float32Array(N);
             for (var i = 0; i < N; i++) {
                 pos[i*3] = (Math.random() - 0.5) * 2; pos[i*3+1] = (Math.random() - 0.5) * 2; pos[i*3+2] = Math.random();
-                sz[i] = Math.random() * 2 + 0.5; spd[i] = Math.random() * 0.0002 + 0.00005;
+                sz[i] = Math.random() * 2.5 + 0.5; spd[i] = Math.random() * 0.00015 + 0.00003;
             }
-            var vs = 'attribute vec3 a_pos;attribute float a_size;uniform float u_time;varying float v_alpha;void main(){float tw=sin(u_time*2.0+a_pos.x*10.0)*0.3+0.7;v_alpha=a_pos.z*tw*0.5;gl_Position=vec4(a_pos.xy,0.0,1.0);gl_PointSize=a_size*(0.6+a_pos.z*0.4);}';
-            var fs = 'precision mediump float;varying float v_alpha;void main(){float d=length(gl_PointCoord-0.5)*2.0;if(d>1.0)discard;gl_FragColor=vec4(0.55,0.55,1.0,(1.0-d*d)*v_alpha);}';
+            var vs = 'attribute vec3 a_pos;attribute float a_size;uniform float u_time;varying float v_alpha;varying float v_colorMix;void main(){float tw=sin(u_time*1.5+a_pos.x*8.0+a_pos.y*6.0)*0.4+0.6;v_alpha=a_pos.z*tw*0.6;v_colorMix=sin(a_pos.x*3.0+u_time*0.5)*0.5+0.5;gl_Position=vec4(a_pos.xy,0.0,1.0);gl_PointSize=a_size*(0.6+a_pos.z*0.5);}';
+            var fs = 'precision mediump float;varying float v_alpha;varying float v_colorMix;void main(){float d=length(gl_PointCoord-0.5)*2.0;if(d>1.0)discard;vec3 c1=vec3(0.39,0.4,0.95);vec3 c2=vec3(0.13,0.83,0.93);vec3 c3=vec3(0.65,0.55,0.98);vec3 col=mix(mix(c1,c2,v_colorMix),c3,v_colorMix*0.3);gl_FragColor=vec4(col,(1.0-d*d)*v_alpha);}';
             function mk(type, src) { var s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; }
             var prog = gl.createProgram();
             gl.attachShader(prog, mk(gl.VERTEX_SHADER, vs)); gl.attachShader(prog, mk(gl.FRAGMENT_SHADER, fs));
@@ -791,11 +830,40 @@
                 var rect = card.getBoundingClientRect();
                 var x = (e.clientX - rect.left) / rect.width - 0.5;
                 var y = (e.clientY - rect.top) / rect.height - 0.5;
-                card.style.transform = 'translateY(-4px) perspective(600px) rotateY(' + (x * 6) + 'deg) rotateX(' + (-y * 6) + 'deg)';
+                card.style.transform = 'translateY(-6px) perspective(600px) rotateY(' + (x * 8) + 'deg) rotateX(' + (-y * 8) + 'deg)';
+                // Dynamic border glow based on mouse position
+                var intensity = Math.sqrt(x*x + y*y) * 2;
+                card.style.borderColor = 'rgba(99, 102, 241, ' + (0.15 + intensity * 0.3) + ')';
             });
             card.addEventListener('mouseleave', function() {
                 card.style.transform = '';
+                card.style.borderColor = '';
             });
+        });
+
+        // ====== Scroll Reveal Animation ======
+        var revealElements = document.querySelectorAll('.section-header, .feature-card, .arch-layer, .blog-post, .step, .sponsor-tier, .video-feature');
+        var revealObs = new IntersectionObserver(function(entries) {
+            entries.forEach(function(entry) {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('reveal', 'visible');
+                }
+            });
+        }, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
+        revealElements.forEach(function(el, i) {
+            el.classList.add('reveal');
+            el.style.transitionDelay = (i % 4) * 0.1 + 's';
+            revealObs.observe(el);
+        });
+
+        // ====== Parallax on scroll for hero ======
+        var heroBg = document.querySelector('.hero::before');
+        window.addEventListener('scroll', function() {
+            var scrolled = window.pageYOffset;
+            var meshBg = document.querySelector('.mesh-bg');
+            if (meshBg) {
+                meshBg.style.transform = 'translateY(' + (scrolled * 0.1) + 'px)';
+            }
         });
     </script>
 </body>

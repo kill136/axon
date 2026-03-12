@@ -116,6 +116,23 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
     // 其他路径（如 Vite HMR）由 Vite 处理，不需要在这里处理
   });
 
+  // 确保全局 AXON.md 存在（~/.axon/AXON.md），让铁律等行为规范开箱即用
+  // CLI 入口有自己的初始化逻辑，Web 模式需要在这里兜底
+  const globalAxonDir = path.join(os.homedir(), '.axon');
+  const globalAxonMd = path.join(globalAxonDir, 'AXON.md');
+  if (!fs.existsSync(globalAxonMd)) {
+    try {
+      const { createClaudeMdTemplate } = await import('../../rules/index.js');
+      if (!fs.existsSync(globalAxonDir)) {
+        fs.mkdirSync(globalAxonDir, { recursive: true });
+      }
+      fs.writeFileSync(globalAxonMd, createClaudeMdTemplate(), 'utf-8');
+      console.log(`[Axon] Created default ~/.axon/AXON.md`);
+    } catch (e) {
+      // Non-fatal: skip if template generation fails
+    }
+  }
+
   // 初始化 i18n（WebUI server 需要独立初始化，CLI 入口有自己的初始化）
   await initI18n(configManager.getAll().language);
 
@@ -224,33 +241,20 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
   const clientDistPath = path.join(clientPath, 'dist');
 
   if (isDev) {
-    // 开发模式：使用 Vite 中间件
+    // 开发模式：使用 Vite 中间件（始终启用 HMR）
     try {
       const { createServer: createViteServer } = await import('vite');
-
-      // Evolve 模式下禁用 Vite 文件监听
-      // 原因：模型修改多个前端文件时，改完第 1 个 Vite 就 HMR 推送半成品代码到浏览器 → 崩溃
-      // 禁用后文件随便改，等 SelfEvolve 重启后浏览器重连加载完整的新代码
-      const isEvolve = isEvolveEnabled();
-      const viteWatchConfig = isEvolve
-        ? { ignored: ['**/*'] } // 忽略所有文件变化
-        : undefined;
 
       const vite = await createViteServer({
         root: clientPath,
         server: {
           middlewareMode: true,
           allowedHosts: true,
-          watch: viteWatchConfig,
         },
         appType: 'spa',
       });
       app.use(vite.middlewares);
-      if (isEvolve) {
-        console.log('   Mode: Development (Vite, HMR disabled - Evolve mode)');
-      } else {
-        console.log('   Mode: Development (Vite HMR)');
-      }
+      console.log('   Mode: Development (Vite HMR)');
     } catch (e) {
       console.warn('   Warning: Vite not installed, using static file mode');
       setupStaticFiles(app, clientDistPath);

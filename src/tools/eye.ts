@@ -20,6 +20,8 @@ interface EyeInput {
 
 export class EyeTool extends BaseTool<EyeInput, ToolResult> {
   name = 'Eye';
+  shouldDefer = true;
+  searchHint = 'see camera, look around, capture photo, visual perception, what do you see';
   description = 'See through the camera. Returns a photo of what the camera currently sees. The perception daemon must be running (auto-starts if configured in settings.json). Use action "look" (default) to see, "status" to check daemon, "start"/"stop" to manage.';
 
   getInputSchema(): ToolDefinition['inputSchema'] {

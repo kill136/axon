@@ -1619,9 +1619,10 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  height: 100%;
+  min-height: 100%;
   text-align: center;
   padding: 40px;
+  padding-bottom: 120px;
   background: radial-gradient(ellipse at center, rgba(99,102,241,0.08) 0%, transparent 70%);
 }
 
@@ -1929,6 +1930,184 @@ body {
   background: rgba(255,255,255,0.05);
   padding: 2px 6px;
   border-radius: var(--radius-sm);
+}
+
+/* =========================================
+   Command Wall (跑马灯指令墙)
+   ========================================= */
+
+.command-wall {
+  position: relative;
+  width: 100%;
+  max-width: 700px;
+  margin-top: 24px;
+  animation: fadeInUp 0.6s ease-out 0.25s both;
+}
+
+.cw-close-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s, background 0.2s, color 0.2s;
+}
+
+.command-wall:hover .cw-close-btn {
+  opacity: 1;
+}
+
+.cw-close-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+}
+
+.cw-tabs {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  margin-bottom: 20px;
+  background: rgba(255,255,255,0.03);
+  border-radius: var(--radius-full);
+  padding: 4px;
+  border: 1px solid var(--border-color);
+}
+
+.cw-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 20px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.25s var(--ease-smooth);
+  white-space: nowrap;
+}
+
+.cw-tab:hover {
+  color: var(--text-secondary);
+  background: rgba(255,255,255,0.04);
+}
+
+.cw-tab-active {
+  background: var(--accent-primary) !important;
+  color: #fff !important;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.35);
+}
+
+.cw-tab-icon {
+  font-size: 15px;
+  line-height: 1;
+}
+
+.cw-tab-label {
+  font-size: 13px;
+}
+
+.cw-marquee-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: hidden;
+  mask-image: linear-gradient(to right, transparent 0%, black 5%, black 95%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, black 5%, black 95%, transparent 100%);
+}
+
+.cw-marquee-row {
+  overflow: hidden;
+  width: 100%;
+}
+
+.cw-marquee-track {
+  display: flex;
+  width: max-content;
+  will-change: transform;
+}
+
+.cw-marquee-track:hover {
+  animation-play-state: paused !important;
+}
+
+.cw-marquee-left {
+  animation-name: cw-scroll-left;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+.cw-marquee-right {
+  animation-name: cw-scroll-right;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+@keyframes cw-scroll-left {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+@keyframes cw-scroll-right {
+  0% { transform: translateX(-50%); }
+  100% { transform: translateX(0); }
+}
+
+.cw-marquee-group {
+  display: flex;
+  gap: 8px;
+  padding-right: 8px;
+  flex-shrink: 0;
+}
+
+.cw-command-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: var(--glass-panel);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: all 0.2s var(--ease-smooth);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.cw-command-pill:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--accent-primary);
+  color: var(--text-primary);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+}
+
+.cw-pill-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.cw-pill-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.cw-command-pill:hover .cw-pill-label {
+  color: var(--text-primary);
 }
 
 /* =========================================

@@ -62,6 +62,9 @@ const EXTERNAL_ERROR_PATTERNS = [
   /rate_limit/i, /overloaded/i, /network/i, /EPIPE/i,
   /EHOSTUNREACH/i, /fetch failed/i, /getaddrinfo/i,
   /certificate/i, /SSL/i, /TLS/i, /CERT_/i, /readyState/i,
+  // Claude API 业务错误（非代码 bug）
+  /content filtering policy/i, /invalid_request_error/i,
+  /authentication_error/i, /permission_error/i,
 ];
 
 const VARIABLE_PATTERNS: Array<[RegExp, string]> = [

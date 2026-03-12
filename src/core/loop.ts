@@ -3,13 +3,13 @@
  * 处理用户输入、工具调用和响应
  */
 
-import { ClaudeClient, type ClientConfig } from './client.js';
+import { ClaudeClient, type ClientConfig, formatSystemPrompt } from './client.js';
 import { Session, setCurrentSessionId } from './session.js';
 import { toolRegistry } from '../tools/index.js';
 import { runWithCwd, runGeneratorWithCwd } from './cwd-context.js';
 import { runWithSessionId } from './session-context.js';
-import { isToolSearchEnabled } from '../tools/mcp.js';
-import { isDeferredTool, getDiscoveredToolsFromMessages } from '../mcp/tools.js';
+import { isToolSearchEnabled, MCPSearchTool, isThirdPartyApiEndpoint } from '../tools/mcp.js';
+import { isDeferredTool, getDiscoveredToolsFromMessages, setBuiltinDeferredToolNames } from '../mcp/tools.js';
 import { t } from '../i18n/index.js';
 import type { Message, ContentBlock, ToolDefinition, PermissionMode, AnyContentBlock, ToolResult } from '../types/index.js';
 
@@ -77,6 +77,7 @@ import { configManager } from '../config/index.js';
 import { accountUsageManager } from '../ratelimit/index.js';
 import { initNotebookManager, getNotebookManager } from '../memory/notebook.js';
 import { initMemorySearchManager, getMemorySearchManager } from '../memory/memory-search.js';
+import { startCacheKeepalive, stopCacheKeepalive } from './cache-keepalive.js';
 import { estimateTokens } from '../utils/token-estimate.js';
 import { loadActiveGoals } from '../goals/index.js';
 import {
@@ -2360,6 +2361,11 @@ export class ConversationLoop {
       }
     }
 
+    // 注入内置 deferred 工具列表（供 MCPSearchTool 搜索和 getDiscoveredToolsFromMessages 提取）
+    const builtinDeferred = tools.filter(t => t.shouldDefer === true && !t.isMcp);
+    MCPSearchTool.builtinDeferredTools = builtinDeferred;
+    setBuiltinDeferredToolNames(new Set(builtinDeferred.map(t => t.name)));
+
     // v2.1.7+: MCP 工具搜索/延迟加载模式（对齐官方 v2.1.34）
     // 判断是否启用 tool search，但不在初始化时过滤工具
     // 工具过滤推迟到每次 API 请求前动态执行（filterToolsForRequest）
@@ -2479,7 +2485,7 @@ export class ConversationLoop {
     // 启用 tool search：从消息历史中找出已发现的 MCP 工具
     const discovered = getDiscoveredToolsFromMessages(messages);
 
-    return this.allTools.filter(t => {
+    const filtered = this.allTools.filter(t => {
       // 非 deferred 工具（内置工具）始终保留
       if (!isDeferredTool(t)) return true;
       // Mcp（ToolSearch）工具自身始终保留
@@ -2487,6 +2493,15 @@ export class ConversationLoop {
       // 已被模型通过 ToolSearch 发现的 MCP 工具保留
       return discovered.has(t.name);
     });
+
+    // Harness 效率度量：记录工具过滤效果
+    const totalDeferred = this.allTools.filter(isDeferredTool).length;
+    const loadedDeferred = filtered.length - filtered.filter(t => !isDeferredTool(t)).length - (filtered.some(t => t.name === 'Mcp') ? 1 : 0);
+    if (process.env.DEBUG) {
+      console.log(`[Harness] Tool filtering: ${filtered.length}/${this.allTools.length} tools sent (${totalDeferred - loadedDeferred} deferred tools saved, ${discovered.size} discovered)`);
+    }
+
+    return filtered;
   }
 
   /**
@@ -2817,8 +2832,8 @@ export class ConversationLoop {
         systemPrompt = buildResult.content;
         promptBlocks = buildResult.blocks;
 
-        if (this.options.verbose) {
-          console.log(chalk.gray(`[SystemPrompt] Built in ${buildResult.buildTimeMs}ms, ${buildResult.hashInfo.estimatedTokens} tokens`));
+        if (this.options.verbose || process.env.DEBUG) {
+          console.log(chalk.gray(`[Harness] System prompt: ${buildResult.hashInfo.estimatedTokens} tokens, built in ${buildResult.buildTimeMs}ms`));
         }
       } catch (error) {
         console.warn('Failed to build system prompt, using default:', error);
@@ -2874,6 +2889,19 @@ export class ConversationLoop {
       // v2.1.34: 每次请求前动态过滤工具列表
       // 根据消息历史中已发现的 MCP 工具决定传哪些工具 schema 给 API
       const filteredTools = this.filterToolsForRequest(messages);
+
+      // 对齐官方：注入 <available-deferred-tools> 列表到系统提示词
+      // 让模型知道有哪些 deferred 工具可以通过 Mcp (ToolSearch) 发现
+      if (this.toolSearchEnabled && !isThirdPartyApiEndpoint()) {
+        const deferredToolsList = this.allTools
+          .filter(isDeferredTool)
+          .map(t => `- ${t.name}: ${t.searchHint || t.description.slice(0, 80)}`)
+          .sort()
+          .join('\n');
+        if (deferredToolsList) {
+          systemPrompt = `${systemPrompt}\n\n<available-deferred-tools>\nUse the Mcp tool with select:<tool_name> to load any of these tools before use:\n${deferredToolsList}\n</available-deferred-tools>`;
+        }
+      }
 
       let response;
       try {
@@ -2952,6 +2980,14 @@ export class ConversationLoop {
 
       // 并行执行所有工具（对齐官方 KM5 函数：Promise.all(toolUseBlocks.map(...))）
       if (toolUseBlocks.length > 0) {
+        // Cache Keepalive：工具执行期间保持 prompt cache 活跃
+        const stopKeepalive = startCacheKeepalive({
+          client: this.client.getAnthropicClient(),
+          model: this.client.getModel(),
+          formattedSystem: formatSystemPrompt(systemPrompt, this.client.getIsOAuth(), promptBlocks),
+          debug: this.options.debug || this.options.verbose,
+        });
+
         const execResults = await Promise.all(toolUseBlocks.map(async (block) => {
           const toolBlock = block as any;
           const toolName: string = toolBlock.name || '';
@@ -2985,6 +3021,8 @@ export class ConversationLoop {
             return { toolName, toolInput, toolId, result: null, error: err };
           }
         }));
+
+        stopKeepalive();
 
         // 按顺序处理结果
         for (const exec of execResults) {
@@ -3083,6 +3121,13 @@ export class ConversationLoop {
       }
 
       // 更新使用统计
+      const turnCost = modelConfig.calculateCost(resolvedModel, {
+        inputTokens: response.usage.inputTokens,
+        outputTokens: response.usage.outputTokens,
+        cacheReadTokens: response.usage.cacheReadTokens,
+        cacheCreationTokens: response.usage.cacheCreationTokens,
+        thinkingTokens: response.usage.thinkingTokens,
+      });
       this.session.updateUsage(
         resolvedModel,
         {
@@ -3092,16 +3137,14 @@ export class ConversationLoop {
           cacheCreationInputTokens: response.usage.cacheCreationTokens || 0,
           webSearchRequests: 0,
         },
-        modelConfig.calculateCost(resolvedModel, {
-          inputTokens: response.usage.inputTokens,
-          outputTokens: response.usage.outputTokens,
-          cacheReadTokens: response.usage.cacheReadTokens,
-          cacheCreationTokens: response.usage.cacheCreationTokens,
-          thinkingTokens: response.usage.thinkingTokens,
-        }),
+        turnCost,
         0,
         0
       );
+
+      if (process.env.DEBUG) {
+        console.log(chalk.gray(`[Harness] Turn ${turns}: in=${response.usage.inputTokens} out=${response.usage.outputTokens} cache_read=${response.usage.cacheReadTokens || 0} cost=${turnCost.toFixed(4)} tools=${filteredTools.length}/${this.allTools.length}`));
+      }
     }
 
     // maxTurns 耗尽但仍有工具调用 → 标记为截断
@@ -3270,6 +3313,18 @@ Guidelines:
 
       // v2.1.34: 流式 API 也使用动态过滤
       const streamFilteredTools = this.filterToolsForRequest(messages);
+
+      // 对齐官方：注入 <available-deferred-tools> 列表到系统提示词（streaming 路径）
+      if (this.toolSearchEnabled && !isThirdPartyApiEndpoint()) {
+        const deferredToolsList = this.allTools
+          .filter(isDeferredTool)
+          .map(t => `- ${t.name}: ${t.searchHint || t.description.slice(0, 80)}`)
+          .sort()
+          .join('\n');
+        if (deferredToolsList) {
+          systemPrompt = `${systemPrompt}\n\n<available-deferred-tools>\nUse the Mcp tool with select:<tool_name> to load any of these tools before use:\n${deferredToolsList}\n</available-deferred-tools>`;
+        }
+      }
 
       try {
         for await (const event of this.client.createMessageStream(
@@ -3515,6 +3570,14 @@ Guidelines:
       }
 
       // 第三步：并行执行所有工具（核心修复）
+      // Cache Keepalive：工具执行期间保持 prompt cache 活跃
+      const stopKeepalive = startCacheKeepalive({
+        client: this.client.getAnthropicClient(),
+        model: this.client.getModel(),
+        formattedSystem: formatSystemPrompt(systemPrompt, this.client.getIsOAuth(), promptBlocks),
+        debug: this.options.debug || this.options.verbose,
+      });
+
       type ToolExecResult = {
         id: string;
         toolName: string;
@@ -3587,6 +3650,7 @@ Guidelines:
 
       // 等待所有工具并行执行完成
       const execResults = await Promise.all(execPromises);
+      stopKeepalive();
 
       // 第四步：按顺序处理结果（yield tool_end 事件、构建 toolResults）
       let circuitBroken = false;

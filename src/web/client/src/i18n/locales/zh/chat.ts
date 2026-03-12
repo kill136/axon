@@ -259,6 +259,10 @@ const chat = {
   'welcome.template.test.prompt': '分析项目，为需要测试覆盖的关键模块编写单元测试。',
   'welcome.template.todoApp': 'Todo App',
   'welcome.template.todoApp.prompt': '用 React 前端 + Express 后端 + SQLite 数据库构建一个全栈待办应用，包含增删改查和简洁的界面。',
+  'welcome.tab.office': '上班族',
+  'welcome.tab.student': '学生族',
+  'welcome.tab.developer': '程序员',
+  'welcome.commandWall.close': '关闭快捷提示',
 } as const;
 
 export default chat;

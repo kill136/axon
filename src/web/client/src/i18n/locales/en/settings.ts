@@ -9,7 +9,7 @@ const settings = {
   'apiConfig.authPriority.oauth': 'OAuth preferred',
   'apiConfig.baseUrl.error': 'API Base URL format is invalid. Must be a valid URL (e.g. https://api.example.com)',
   'apiConfig.gemini.title': 'Google Gemini',
-  'apiConfig.gemini.description': 'Configure Google Gemini API Key for image generation (GenerateImage tool and Blueprint design preview).',
+  'apiConfig.gemini.description': 'Configure Google Gemini API Key for image generation and editing (ImageGen tool and Blueprint design preview).',
   'apiConfig.geminiApiKey.label': 'Gemini API Key',
   'apiConfig.geminiApiKey.placeholder': 'AIzaSy...',
   'apiConfig.geminiApiKey.help': 'Get your API Key from Google AI Studio (aistudio.google.com). Used for AI image generation.',

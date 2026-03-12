@@ -9,6 +9,7 @@ import { GoogleGenAI } from '@google/genai';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
+import { setupGlobalFetchProxy } from '../../../network/global-proxy.js';
 
 // 生成配置类型
 interface GenerateDesignOptions {
@@ -72,6 +73,9 @@ export class GeminiImageService {
 
     // Key 变化时重建客户端
     if (this.ai && apiKey === this.lastApiKey) return;
+
+    // 确保全局 fetch 代理已初始化（幂等）
+    setupGlobalFetchProxy();
 
     this.ai = new GoogleGenAI({ apiKey });
     this.lastApiKey = apiKey;
@@ -295,7 +299,7 @@ Generate a complete system interface design showing the overall layout and main 
    * 通用图片生成方法
    * 直接使用 prompt 调用 Gemini API
    */
-  async generateImage(prompt: string, style?: string): Promise<GenerateImageResult> {
+  async generateImage(prompt: string, style?: string, imagePath?: string): Promise<GenerateImageResult> {
     try {
       this.initClient();
 
@@ -305,8 +309,9 @@ Generate a complete system interface design showing the overall layout and main 
         fullPrompt = `${prompt}\n\nStyle: ${style}`;
       }
 
-      // 检查缓存
-      const cacheKey = crypto.createHash('md5').update(fullPrompt).digest('hex');
+      // 检查缓存（图生图时把文件路径也算进缓存 key）
+      const cacheInput = imagePath ? `${fullPrompt}::${imagePath}::${fs.statSync(imagePath).mtimeMs}` : fullPrompt;
+      const cacheKey = crypto.createHash('md5').update(cacheInput).digest('hex');
       const cachedImage = this.getFromCache(cacheKey);
       if (cachedImage) {
         console.log('[GeminiImageService] Using cached image');
@@ -316,7 +321,28 @@ Generate a complete system interface design showing the overall layout and main 
         };
       }
 
-      console.log('[GeminiImageService] Starting image generation...');
+      // 构建 parts：文生图只有 text，图生图先传图片再传 prompt
+      const parts: any[] = [];
+
+      if (imagePath) {
+        // 图生图：读取图片文件
+        if (!fs.existsSync(imagePath)) {
+          return { success: false, error: `Image file not found: ${imagePath}` };
+        }
+        const imageBuffer = fs.readFileSync(imagePath);
+        const ext = path.extname(imagePath).toLowerCase().slice(1);
+        const mimeMap: Record<string, string> = {
+          png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+          webp: 'image/webp', gif: 'image/gif',
+        };
+        const mimeType = mimeMap[ext] || 'image/png';
+        parts.push({ inlineData: { mimeType, data: imageBuffer.toString('base64') } });
+        console.log(`[GeminiImageService] Image-to-image: ${imagePath} (${(imageBuffer.length / 1024).toFixed(1)} KB)`);
+      }
+
+      parts.push({ text: fullPrompt });
+
+      console.log(`[GeminiImageService] Starting ${imagePath ? 'image-to-image' : 'text-to-image'} generation...`);
       console.log('[GeminiImageService] Prompt:', fullPrompt.substring(0, 200) + '...');
 
       // 调用 Gemini API
@@ -325,7 +351,7 @@ Generate a complete system interface design showing the overall layout and main 
         contents: [
           {
             role: 'user',
-            parts: [{ text: fullPrompt }],
+            parts,
           },
         ],
         config: {

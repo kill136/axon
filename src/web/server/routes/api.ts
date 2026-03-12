@@ -5,12 +5,15 @@
 import type { Express, Request, Response } from 'express';
 import type { ConversationManager } from '../conversation.js';
 import { toolRegistry } from '../../../tools/index.js';
+import { MCPSearchTool, getMcpServers } from '../../../tools/mcp.js';
+import { getAllSkills } from '../../../tools/skill.js';
 import { apiManager } from '../api-manager.js';
 import { webAuth } from '../web-auth.js';
 import { CheckpointManager } from '../checkpoint-manager.js';
 import blueprintApiRouter from './blueprint-api.js';
 import agentApiRouter from './agent-api.js';
 import fileApiRouter from './file-api.js';
+import notebookApiRouter from './notebook-api.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
@@ -41,6 +44,10 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
   // 注册文件 API 路由（供 CodeView 文件树使用）
   app.use('/api/files', fileApiRouter);
 
+  // ============ Notebook API ============
+  // AI 可定制属性管理（profile/experience/project notebooks + AXON.md）
+  app.use('/api/notebook', notebookApiRouter);
+
   // 健康检查
   app.get('/api/health', (req: Request, res: Response) => {
     res.json({
@@ -68,6 +75,74 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
       count: tools.length,
       tools,
     });
+  });
+
+  // 获取能力全景（聚合内置工具 + Skills + MCP servers）
+  app.get('/api/capabilities', async (req: Request, res: Response) => {
+    try {
+      // 1. 内置工具
+      const builtinTools = toolRegistry.getAll().map(tool => ({
+        name: tool.name,
+        description: tool.description.split('\n')[0].slice(0, 120), // 首行摘要
+        source: 'builtin' as const,
+        status: 'active' as const,
+        deferred: tool.shouldDefer || false,
+      }));
+
+      // 2. Skills
+      let skills: Array<{ name: string; description: string; source: 'skill'; status: 'active' }> = [];
+      try {
+        const allSkills = getAllSkills();
+        skills = allSkills.map((s: any) => ({
+          name: s.name || s.id || 'unknown',
+          description: (s.description || s.whenToUse || '').slice(0, 120),
+          source: 'skill' as const,
+          status: 'active' as const,
+        }));
+      } catch { /* skills not loaded yet */ }
+
+      // 3. MCP servers (enabled)
+      const enabledMcp: Array<{ name: string; description: string; source: 'mcp'; status: 'active'; tools: string[] }> = [];
+      for (const [serverName, server] of getMcpServers()) {
+        if (server.connected) {
+          enabledMcp.push({
+            name: serverName,
+            description: MCPSearchTool.serverCapabilitySummaries.get(serverName) || `${server.tools.length} tools`,
+            source: 'mcp' as const,
+            status: 'active' as const,
+            tools: server.tools.map(t => t.name),
+          });
+        }
+      }
+
+      // 4. MCP servers (disabled)
+      const disabledMcp = MCPSearchTool.disabledServers.map(name => ({
+        name,
+        description: MCPSearchTool.serverCapabilitySummaries.get(name) || '',
+        source: 'mcp' as const,
+        status: 'disabled' as const,
+        tools: [] as string[],
+      }));
+
+      res.json({
+        builtin: builtinTools,
+        skills,
+        mcp: {
+          enabled: enabledMcp,
+          disabled: disabledMcp,
+        },
+        summary: {
+          totalBuiltin: builtinTools.length,
+          activeBuiltin: builtinTools.filter(t => !t.deferred).length,
+          deferredBuiltin: builtinTools.filter(t => t.deferred).length,
+          totalSkills: skills.length,
+          mcpEnabled: enabledMcp.length,
+          mcpDisabled: disabledMcp.length,
+        },
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
   });
 
   // 获取模型列表

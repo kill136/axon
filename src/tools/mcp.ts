@@ -1031,7 +1031,7 @@ export function calculateMcpToolDescriptionChars(): number {
  * @param tools 工具列表
  * @returns 是否启用延迟加载
  */
-export function isToolSearchEnabled(model: string, tools: Array<{ name: string }>): boolean {
+export function isToolSearchEnabled(model: string, tools: ToolDefinition[]): boolean {
   const mcpToolCount = Array.from(mcpServers.values()).reduce((sum, s) => sum + s.tools.length, 0);
 
   // v2.1.70: 第三方 API 网关不支持 tool_reference blocks
@@ -1073,10 +1073,15 @@ export function isToolSearchEnabled(model: string, tools: Array<{ name: string }
       // 自动判断：计算 MCP 工具描述总字符数
       const mcpToolDescriptionChars = calculateMcpToolDescriptionChars();
       const threshold = getAutoToolSearchCharThreshold(model);
-      const enabled = mcpToolDescriptionChars >= threshold;
+      const mcpOverThreshold = mcpToolDescriptionChars >= threshold;
+
+      // 对齐官方 tengu_tst_kx7：即使 MCP 描述未达阈值，
+      // 只要有内置 deferred 工具就启用 ToolSearch
+      const hasBuiltinDeferred = tools.some(t => t.shouldDefer === true);
+      const enabled = mcpOverThreshold || hasBuiltinDeferred;
 
       if (process.env.DEBUG) {
-        console.log(`[MCP] Auto tool search ${enabled ? 'enabled' : 'disabled'}: ${mcpToolDescriptionChars} chars (threshold: ${threshold}, ${Math.round(MCP_TOOL_THRESHOLD_PERCENT * 100)}% of context)`);
+        console.log(`[MCP] Auto tool search ${enabled ? 'enabled' : 'disabled'}: mcpChars=${mcpToolDescriptionChars} (threshold: ${threshold}), hasBuiltinDeferred=${hasBuiltinDeferred}`);
       }
 
       return enabled;
@@ -1194,6 +1199,19 @@ export class MCPSearchTool extends BaseTool<MCPSearchInput, MCPSearchToolResult>
    */
   static disabledServers: string[] = [];
 
+  /**
+   * MCP 服务器能力摘要缓存
+   * key: server name, value: 一行描述（从工具名称自动生成）
+   * 首次连接成功后缓存，disable 后保留，使 AI 知道 disabled server 能做什么
+   */
+  static serverCapabilitySummaries: Map<string, string> = new Map();
+
+  /**
+   * 内置 deferred 工具定义列表
+   * 由 ConversationLoop 初始化时注入，用于搜索内置 deferred 工具
+   */
+  static builtinDeferredTools: ToolDefinition[] = [];
+
   // 静态描述（不包含工具列表）
   private static baseDescription = `Search for or select MCP tools to make them available for use.
 
@@ -1259,7 +1277,10 @@ WRONG - You must load the tool FIRST using this tool
 
     const disabled = MCPSearchTool.disabledServers;
     const disabledHint = disabled.length > 0
-      ? `\n\nDisabled MCP servers (use McpManage to enable):\n${disabled.join('\n')}`
+      ? `\n\nDisabled MCP servers (use McpManage to enable):\n${disabled.map(name => {
+          const summary = MCPSearchTool.serverCapabilitySummaries.get(name);
+          return summary ? `${name} — ${summary}` : name;
+        }).join('\n')}`
       : '';
 
     if (tools.length > 0) {
@@ -1313,16 +1334,33 @@ ${tools.join('\n')}${disabledHint}`;
   private getDisabledServersHint(): string {
     const disabled = MCPSearchTool.disabledServers;
     if (disabled.length === 0) return '';
-    return `\n\nNote: The following MCP servers are installed but DISABLED. Use the McpManage tool with action="enable" to activate them:\n${disabled.map(s => `- ${s}`).join('\n')}`;
+    return `\n\nNote: The following MCP servers are installed but DISABLED. Use the McpManage tool with action="enable" to activate them:\n${disabled.map(name => {
+      const summary = MCPSearchTool.serverCapabilitySummaries.get(name);
+      return summary ? `- ${name} — ${summary}` : `- ${name}`;
+    }).join('\n')}`;
   }
 
   /**
-   * 执行关键词搜索
+   * 从工具列表生成 MCP 服务器能力摘要并缓存
+   * 在服务器首次连接成功后调用
+   */
+  static cacheServerCapability(serverName: string, tools: McpToolDefinition[]): void {
+    if (tools.length === 0) return;
+    // 取前 5 个工具名作为能力概览，超过 5 个则加 "+N more"
+    const toolNames = tools.map(t => t.name.replace(/_/g, ' '));
+    const shown = toolNames.slice(0, 5);
+    const suffix = toolNames.length > 5 ? ` +${toolNames.length - 5} more` : '';
+    MCPSearchTool.serverCapabilitySummaries.set(serverName, shown.join(', ') + suffix);
+  }
+
+  /**
+   * 执行关键词搜索（同时搜索 MCP 工具和内置 deferred 工具）
    */
   private async keywordSearch(query: string, maxResults: number): Promise<string[]> {
     const keywords = query.toLowerCase().split(/\s+/).filter((k) => k.length > 0);
     const results: Array<{ name: string; score: number }> = [];
 
+    // 搜索 MCP 工具
     for (const [serverName, server] of mcpServers) {
       for (const tool of server.tools) {
         const fullName = `mcp__${serverName}__${tool.name}`;
@@ -1331,15 +1369,11 @@ ${tools.join('\n')}${disabledHint}`;
 
         let score = 0;
         for (const keyword of keywords) {
-          // 完全匹配工具名
           if (searchableName === keyword) {
             score += 10;
-          }
-          // 工具名包含关键词
-          else if (searchableName.includes(keyword)) {
+          } else if (searchableName.includes(keyword)) {
             score += 5;
           }
-          // 描述包含关键词
           if (searchableDesc.includes(keyword)) {
             score += 2;
           }
@@ -1348,6 +1382,32 @@ ${tools.join('\n')}${disabledHint}`;
         if (score > 0) {
           results.push({ name: fullName, score });
         }
+      }
+    }
+
+    // 搜索内置 deferred 工具
+    for (const tool of MCPSearchTool.builtinDeferredTools) {
+      const searchableName = tool.name.toLowerCase();
+      const searchableDesc = tool.description.toLowerCase();
+      const searchableHint = (tool.searchHint || '').toLowerCase();
+
+      let score = 0;
+      for (const keyword of keywords) {
+        if (searchableName === keyword) {
+          score += 10;
+        } else if (searchableName.includes(keyword)) {
+          score += 5;
+        }
+        if (searchableHint.includes(keyword)) {
+          score += 3;
+        }
+        if (searchableDesc.includes(keyword)) {
+          score += 2;
+        }
+      }
+
+      if (score > 0) {
+        results.push({ name: tool.name, score });
       }
     }
 
@@ -1372,7 +1432,7 @@ ${tools.join('\n')}${disabledHint}`;
     if (selectMatch) {
       const toolName = selectMatch[1].trim();
 
-      // 验证工具是否存在
+      // 验证工具是否存在（MCP 工具或内置 deferred 工具）
       let found = false;
       for (const [serverName, server] of mcpServers) {
         for (const tool of server.tools) {
@@ -1384,6 +1444,10 @@ ${tools.join('\n')}${disabledHint}`;
         }
         if (found) break;
       }
+      // 也检查内置 deferred 工具
+      if (!found) {
+        found = MCPSearchTool.builtinDeferredTools.some(t => t.name === toolName);
+      }
 
       if (!found) {
         return {
@@ -1393,6 +1457,11 @@ ${tools.join('\n')}${disabledHint}`;
           query,
           total_mcp_tools: totalMcpTools,
         };
+      }
+
+      if (process.env.DEBUG) {
+        const isBuiltin = MCPSearchTool.builtinDeferredTools.some(t => t.name === toolName);
+        console.log(`[Harness] ToolSearch select: ${toolName} (${isBuiltin ? 'builtin-deferred' : 'mcp'})`);
       }
 
       return {
@@ -1415,6 +1484,10 @@ ${tools.join('\n')}${disabledHint}`;
         query,
         total_mcp_tools: totalMcpTools,
       };
+    }
+
+    if (process.env.DEBUG) {
+      console.log(`[Harness] ToolSearch keyword "${query}": ${matches.length} matches`);
     }
 
     const output = `Found ${matches.length} MCP tool${matches.length === 1 ? '' : 's'} matching "${query}":\n\n${matches.map((m, i) => `${i + 1}. ${m}`).join('\n')}\n\nThese tools are now loaded and ready to use.`;
@@ -1776,6 +1849,8 @@ Parameters:
  */
 export class McpResourceTool extends BaseTool<McpResourceInput, ToolResult> {
   name = 'McpResource';
+  shouldDefer = true;
+  searchHint = 'MCP resources, read server data, list available resources, external data source';
 
   description = `List available resources from configured MCP servers or read a specific resource.
 

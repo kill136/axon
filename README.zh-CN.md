@@ -8,7 +8,7 @@
 
 [![npm](https://img.shields.io/npm/v/axon?style=flat-square&color=CB3837)](https://www.npmjs.com/package/axon)
 [![GitHub Stars](https://img.shields.io/github/stars/kill136/claude-code-open?style=flat-square)](https://github.com/kill136/claude-code-open)
-[![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
+[![License](https://img.shields.io/badge/License-AGPL--3.0-blue?style=flat-square)](LICENSE)
 [![Node](https://img.shields.io/badge/Node.js-%3E%3D18.0.0-brightgreen?style=flat-square)](https://nodejs.org)
 [![Discord](https://img.shields.io/discord/1454020463486566432?style=flat-square&label=Discord&color=5865F2)](https://discord.gg/bNyJKk6PVZ)
 
@@ -284,12 +284,21 @@ Axon 免费开源，赞助帮助我们持续开发。[查看赞助层级 →](SP
 
 - **Jack Darcy** — jack@jackdarcy.com.au
 
-*你的名字/Logo 也可以出现在这里 — [成为赞助者](https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=694623326%40qq.com&item_name=Support+Axon+Development&currency_code=USD)*
+*你的名字/Logo 也可以出现在这里 — [成为赞助者](SPONSORS.md)*
 
-<a href="https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=694623326%40qq.com&item_name=Support+Axon+Development&currency_code=USD"><img src="https://img.shields.io/badge/PayPal-赞助-00457C?style=for-the-badge&logo=paypal" alt="PayPal"></a>
+<a href="https://github.com/sponsors/kill136"><img src="https://img.shields.io/badge/GitHub-Sponsors-EA4AAA?style=for-the-badge&logo=githubsponsors" alt="GitHub Sponsors"></a>
+<a href="https://paypal.me/wangbingjie20"><img src="https://img.shields.io/badge/PayPal-赞助-00457C?style=for-the-badge&logo=paypal" alt="PayPal"></a>
+
+<p>
+<img src="wechat.jpg" width="180" alt="微信赞赏">&nbsp;&nbsp;&nbsp;
+<img src="alipay.jpg" width="180" alt="支付宝赞赏">
+</p>
 
 ## 许可证
 
-MIT
+Axon 采用双授权模式：
+
+- **开源版** — [AGPL-3.0](LICENSE)。个人使用、学术研究、开源项目免费。如果你修改了 Axon 或基于 Axon 提供网络服务，必须以 AGPL-3.0 开源你的完整代码。
+- **商业版** — 闭源使用、SaaS 部署、或任何无法遵守 AGPL 条款的场景，需要购买商业授权。详见 [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md)，或联系 **kill.136@163.com**。
 
 [English README](README.md)

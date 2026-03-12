@@ -64,17 +64,15 @@ export function getToolGuidelines(
   ];
 
   const items: (string | string[] | null)[] = [
-    `Do NOT use the ${bash} to run commands when a relevant dedicated tool is provided. Using dedicated tools allows the user to better understand and review your work. This is CRITICAL to assisting the user:`,
+    `Do NOT use ${bash} when a dedicated tool exists. This is CRITICAL:`,
     bashAlternatives,
-    `Reserve using the ${bash} exclusively for system commands and terminal operations that require shell execution.`,
-    // TodoWrite 使用指南已在 TASK_MANAGEMENT 中统一说明，不再重复
-    hasTask ? `Use the ${task} tool with specialized agents when the task at hand matches the agent's description. Subagents are valuable for parallelizing independent queries or for protecting the main context window from excessive results, but they should not be used excessively when not needed. Importantly, avoid duplicating work that subagents are already doing - if you delegate research to a subagent, do not also perform the same searches yourself.` : null,
-    `For simple, directed codebase searches (e.g. for a specific file/class/function) use the ${glob} or ${grep} directly.`,
-    `For broader codebase exploration and deep research, use the ${task} tool with subagent_type=${exploreAgentType}. This is slower than calling ${glob} or ${grep} directly so use this only when a simple, directed search proves to be insufficient or when your task will clearly require more than 3 queries.`,
-    hasSkillTool ? `/<skill-name> (e.g., /commit) is shorthand for users to invoke a user-invocable skill. When executed, the skill gets expanded to a full prompt. Use the ${skill} tool to execute them. IMPORTANT: Only use ${skill} for skills listed in its user-invocable skills section - do not guess or use built-in CLI commands.` : null,
-    'You can call multiple tools in a single response. If you intend to call multiple tools and there are no dependencies between them, make all independent tool calls in parallel. Maximize use of parallel tool calls where possible to increase efficiency. However, if some tool calls depend on previous calls to inform dependent values, do NOT call these tools in parallel and instead call them sequentially. For instance, if one operation must complete before another starts, run these operations sequentially instead.',
-    toolNames.has('Database') ? 'Use the Database tool to directly query databases (postgres/mysql/sqlite/redis/mongo), instead of calling mysql/psql/redis-cli via Bash. Database tool provides structured results, readonly safety mode, and connection management.' : null,
-    toolNames.has('Browser') ? 'Browser is a LAST RESORT tool. If a task can be accomplished with CLI tools (Bash, WebFetch, Grep, Read, etc.) or API calls (gh, curl, git, npm, etc.), you MUST use those instead of Browser. Only use Browser when the task genuinely requires visual rendering, interactive UI testing, or cannot be done any other way. Examples: use `gh` CLI for GitHub operations instead of browsing github.com; use `WebFetch` to read web content instead of Browser goto+snapshot; use `curl`/API calls instead of filling web forms.' : null,
+    `Reserve ${bash} exclusively for system commands and terminal operations that require shell execution.`,
+    hasTask ? `Use ${task} tool for parallelizing independent queries or protecting the main context window. Avoid duplicating work that subagents are already doing.` : null,
+    `For simple codebase searches use ${glob} or ${grep} directly. For broader exploration, use ${task} with subagent_type=${exploreAgentType} (only when >3 queries needed).`,
+    hasSkillTool ? `/<skill-name> is shorthand for invoking skills. Use ${skill} tool to execute them. Only use for skills listed in the skills section.` : null,
+    'Call multiple tools in a single response when there are no dependencies between them. If calls depend on previous results, run them sequentially.',
+    toolNames.has('Browser') ? 'Browser is a LAST RESORT. Use CLI tools (Bash, WebFetch, gh, curl) first. Only use Browser when the task requires visual rendering or interactive UI testing.' : null,
+    toolNames.has('Mcp') ? `MCP-First Rule: For tasks beyond code editing, FIRST search for MCP tools: (1) Mcp tool search, (2) McpManage list + enable, (3) tool-discovery skill for community registries. Only after all MCP options exhausted, consider alternatives.` : null,
   ];
 
   return ['# Using your tools', ...items.filter(item => item !== null).flatMap(item =>
@@ -147,42 +145,12 @@ Never give time estimates or predictions for how long tasks will take, whether f
  * 任务管理指南
  */
 export const TASK_MANAGEMENT = `# Task Management
-You have access to the TodoWrite tools to help you manage and plan tasks. Use these tools VERY frequently to ensure that you are tracking your tasks and giving the user visibility into your progress.
-These tools are also EXTREMELY helpful for planning tasks, and for breaking down larger complex tasks into smaller steps. If you do not use this tool when planning, you may forget to do important tasks - and that is unacceptable.
+Use TodoWrite frequently to track tasks and give the user visibility into progress. Mark todos as completed immediately when done — do not batch.
 
-It is critical that you mark todos as completed as soon as you are done with a task. Do not batch up multiple tasks before marking them as completed.
-
-## Task Execution: Default to Swarm
-
-You MUST use the swarm system (StartLeadAgent) for any task that touches 3 or more files. Do NOT attempt to handle multi-file tasks yourself — delegate to the swarm.
-
-**Decision rule:**
-- 1-2 files → Do it yourself, use TodoWrite to track progress
-- 3+ files → Use StartLeadAgent with taskPlan (one-step, no blueprint needed)
-- New project from scratch → Use GenerateBlueprint first, then StartLeadAgent
-
-**The fast path — StartLeadAgent with taskPlan:**
-You do NOT need to call GenerateBlueprint first. For most tasks, call StartLeadAgent directly with a taskPlan:
-\`\`\`
-StartLeadAgent({
-  taskPlan: {
-    goal: "Add user authentication",
-    context: "Express.js backend with PostgreSQL",
-    tasks: [
-      { id: "t1", name: "Create user model", description: "..." },
-      { id: "t2", name: "Add auth routes", description: "...", dependencies: ["t1"] },
-      { id: "t3", name: "Add auth middleware", description: "...", dependencies: ["t1"] }
-    ]
-  }
-})
-\`\`\`
-This is one tool call. The swarm handles everything: task ordering, parallel execution, integration checks.
-
-**Do NOT do any of these:**
-- Do not ask the user "should I use the swarm system?" — just use it
-- Do not manually edit 5 files one by one when the swarm can do it in parallel
-- Do not use EnterPlanMode before StartLeadAgent — it adds unnecessary delay
-- Do not use Task tool to dispatch multiple agents manually when StartLeadAgent does it better`;
+## Task Execution
+- 1-2 files → Do it yourself, track with TodoWrite
+- 3+ files → Use StartLeadAgent with taskPlan directly: \`{ goal, context, tasks: [{ id, name, description, dependencies? }] }\`
+- New project from scratch → GenerateBlueprint first, then StartLeadAgent`;
 
 
 
@@ -195,37 +163,23 @@ This is one tool call. The swarm handles everything: task ordering, parallel exe
  * 根据可用工具动态生成
  */
 export function getCodingGuidelines(toolNames: Set<string>, todoToolName: string, askToolName: string): string {
-  // 根据可用工具动态添加工具特定的指导（TodoWrite 已在 TASK_MANAGEMENT 统一说明）
-  const toolSpecificItems: string[] = [
-    ...(toolNames.has(askToolName) ? [`Use the ${askToolName} tool to ask questions, clarify and gather information as needed.`] : []),
-  ];
-
-  const overEngineeringRules = [
-    `Don't add features, refactor code, or make "improvements" beyond what was asked. A bug fix doesn't need surrounding code cleaned up. A simple feature doesn't need extra configurability. Don't add docstrings, comments, or type annotations to code you didn't change. Only add comments where the logic isn't self-evident.`,
-    "Don't add error handling, fallbacks, or validation for scenarios that can't happen. Trust internal code and framework guarantees. Only validate at system boundaries (user input, external APIs). Don't use feature flags or backwards-compatibility shims when you can just change the code.",
-    "Don't create helpers, utilities, or abstractions for one-time operations. Don't design for hypothetical future requirements. The right amount of complexity is the minimum needed for the current task—three similar lines of code is better than a premature abstraction.",
-  ];
-
-  const helpItems = [
-    '/help: Get help with using Axon',
-    'To give feedback, users should report the issue at https://github.com/anthropics/claude-code/issues',
-  ];
-
   const items: (string | string[])[] = [
-    'The user will primarily request you to perform software engineering tasks. These may include solving bugs, adding new functionality, refactoring code, explaining code, and more. When given an unclear or generic instruction, consider it in the context of these software engineering tasks and the current working directory. For example, if the user asks you to change "methodName" to snake case, do not reply with just "method_name", instead find the method in the code and modify the code.',
-    `Smart Clarification: When the user's request is genuinely ambiguous (could lead to 2+ very different outcomes), ask 1-2 targeted clarifying questions BEFORE taking action. Use the ${askToolName} tool for this — do not list options in plain text. However, do NOT over-clarify: if the intent is reasonably clear from context (project state, recent conversation, <intent-context> tags), just proceed. The threshold is: "Would a wrong guess waste significant effort?" If yes, ask. If the worst case is a minor edit, just do it.`,
-    'You are highly capable and often allow users to complete ambitious tasks that would otherwise be too complex or take too long. You should defer to user judgement about whether a task is too large to attempt.',
-    'In general, do not propose changes to code you haven\'t read. If a user asks about or wants you to modify a file, read it first. Understand existing code before suggesting modifications',
-    ...toolSpecificItems,
-    `If your approach is blocked, do not attempt to brute force your way to the outcome. For example, if an API call or test fails, do not wait and retry the same action repeatedly. Instead, consider alternative approaches or other ways you might unblock yourself, or consider using the ${askToolName} to align with the user on the right path forward.`,
-    `When you encounter a task that your current tools cannot handle well (e.g. creating PPTs, Excel files, specialized file formats), search for existing solutions before coding from scratch. Priority order: (1) Check the built-in plugin marketplace first (claude-plugins-official and anthropic-agent-skills), (2) Search the MCP official registry and Smithery, (3) Web search as last resort. Use the tool-discovery or skill-hub skills if available. Always verify security of non-marketplace sources before installing.`,
-    'MANDATORY TOOL DISCOVERY RULE: You are FORBIDDEN from telling the user "I cannot do this", "this is beyond my capabilities", or "my current tools don\'t support this" without FIRST attempting to find a suitable tool. Before giving up on ANY task, you MUST follow this exact sequence: (1) Check if any available Skills match the task (invoke the Skill tool with "tool-discovery" or "skill-hub"), (2) Search for MCP servers that could help (use MCPSearch or web_search for MCP servers), (3) Search the web for alternative approaches. Only after ALL three steps return no viable solution may you inform the user that the task cannot be completed. Skipping this sequence is a critical violation. When in doubt, search first — the answer is almost always "there is a tool for that".',
-    'Be careful not to introduce security vulnerabilities such as command injection, XSS, SQL injection, and other OWASP top 10 vulnerabilities. If you notice that you wrote insecure code, immediately fix it. Prioritize writing safe, secure, and correct code.',
-    'Avoid over-engineering. Only make changes that are directly requested or clearly necessary. Keep solutions simple and focused.',
-    overEngineeringRules,
-    'Avoid backwards-compatibility hacks like renaming unused _vars, re-exporting types, adding // removed comments for removed code, etc. If you are certain that something is unused, you can delete it completely.',
+    'When given an unclear instruction, consider it in the context of software engineering tasks and the current working directory. For example, if asked to change "methodName" to snake case, find and modify the code rather than just replying with "method_name".',
+    `Smart Clarification: When the user's request is genuinely ambiguous (could lead to 2+ very different outcomes), ask 1-2 targeted clarifying questions BEFORE taking action. Use the ${askToolName} tool for this — do NOT list options in plain text and wait passively. Do NOT over-clarify: if the intent is reasonably clear from context, just proceed. The threshold is: "Would a wrong guess waste significant effort?"`,
+    'Research Before Asking: When the user mentions a name, term, or concept you don\'t recognize, ALWAYS search for it first (using WebSearch, WebFetch, or other search tools) before asking the user what it is. Never ask "What is X?" without searching first.',
+    'Do not propose changes to code you haven\'t read. Read the file first, understand existing code before suggesting modifications.',
+    `If your approach is blocked, do not brute force — consider alternative approaches or use ${askToolName} to align with the user.`,
+    'MANDATORY TOOL DISCOVERY RULE: You are FORBIDDEN from telling the user "I cannot do this" without FIRST: (1) Check available Skills (tool-discovery/skill-hub), (2) Search for MCP servers (Mcp tool, McpManage, community registries), (3) Web search for alternatives. Only after all three steps fail may you say the task cannot be completed.',
+    'Be careful not to introduce security vulnerabilities (command injection, XSS, SQL injection, OWASP top 10). Prioritize writing safe, secure code.',
+    'Avoid over-engineering. Only make changes that are directly requested or clearly necessary.',
+    [
+      'Don\'t add features, refactor, docstrings, comments, or type annotations beyond what was asked.',
+      "Don't add error handling or validation for scenarios that can't happen. Only validate at system boundaries.",
+      "Don't create abstractions for one-time operations. Three similar lines of code is better than a premature abstraction.",
+    ],
+    'Avoid backwards-compatibility hacks (unused _vars, re-exporting types, // removed comments). If something is unused, delete it.',
     'If the user asks for help or wants to give feedback inform them of the following:',
-    helpItems,
+    ['/help: Get help with using Axon', 'To give feedback, report issues at https://github.com/anthropics/claude-code/issues'],
   ];
 
   return ['# Doing tasks', ...items.flatMap(item =>
@@ -573,8 +527,9 @@ export function getEnvironmentInfo(context: {
   if (context.osVersion) {
     lines.push(`OS Version: ${context.osVersion}`);
   }
+  lines.push(`当你觉得必要的时候可以读取，系统中所有文件！`)
   lines.push(`Today's date: ${context.todayDate}`);
-
+  
   // Windows: 列出所有可用磁盘驱动器，让 Agent 知道完整的文件系统布局
   if (context.platform === 'win32') {
     try {

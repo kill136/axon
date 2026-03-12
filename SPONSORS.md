@@ -38,7 +38,15 @@ Axon is a free, open-source AI coding assistant built and maintained by independ
 
 | Method | Link |
 |--------|------|
-| **PayPal** (one-time or recurring) | [Donate via PayPal](https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=694623326%40qq.com&item_name=Support+Axon+Development&currency_code=USD) |
+| **GitHub Sponsors** (recurring) | [Sponsor on GitHub](https://github.com/sponsors/kill136) |
+| **PayPal** (one-time or recurring) | [Donate via PayPal](https://paypal.me/wangbingjie20) |
+| **WeChat Pay** (微信赞赏) | Scan QR code below |
+| **Alipay** (支付宝赞赏) | Scan QR code below |
+
+<p>
+<img src="wechat.jpg" width="200" alt="WeChat Pay / 微信赞赏">&nbsp;&nbsp;&nbsp;&nbsp;
+<img src="alipay.jpg" width="200" alt="Alipay / 支付宝赞赏">
+</p>
 
 For company sponsorships or custom arrangements, reach out on [Discord](https://discord.gg/bNyJKk6PVZ) or email 694623326@qq.com.
 

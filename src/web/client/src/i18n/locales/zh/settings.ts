@@ -9,7 +9,7 @@ const settings = {
   'apiConfig.authPriority.oauth': '优先 OAuth',
   'apiConfig.baseUrl.error': 'API Base URL 格式无效。必须是有效的 URL（例如 https://api.example.com）',
   'apiConfig.gemini.title': 'Google Gemini',
-  'apiConfig.gemini.description': '配置 Google Gemini API Key，用于 AI 图片生成（GenerateImage 工具和蓝图设计预览）。',
+  'apiConfig.gemini.description': '配置 Google Gemini API Key，用于 AI 图片生成/编辑（ImageGen 工具和蓝图设计预览）。',
   'apiConfig.geminiApiKey.label': 'Gemini API Key',
   'apiConfig.geminiApiKey.placeholder': 'AIzaSy...',
   'apiConfig.geminiApiKey.help': '从 Google AI Studio (aistudio.google.com) 获取 API Key。用于 AI 图片生成。',

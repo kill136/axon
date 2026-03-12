@@ -27,13 +27,15 @@ const MAX_TOKENS: Record<NotebookType, number> = {
   profile: 2000,
   experience: 4000,
   project: 8000,
+  identity: 2000,
+  'tools-notes': 2000,
 };
 
 // ============================================================================
 // 类型
 // ============================================================================
 
-export type NotebookType = 'profile' | 'experience' | 'project';
+export type NotebookType = 'profile' | 'experience' | 'project' | 'identity' | 'tools-notes';
 
 export interface NotebookWriteResult {
   success: boolean;
@@ -46,6 +48,8 @@ export interface NotebookStats {
   profile: { tokens: number; exists: boolean; path: string };
   experience: { tokens: number; exists: boolean; path: string };
   project: { tokens: number; exists: boolean; path: string };
+  identity: { tokens: number; exists: boolean; path: string };
+  'tools-notes': { tokens: number; exists: boolean; path: string };
   totalTokens: number;
 }
 
@@ -75,6 +79,58 @@ function ensureDir(dir: string): void {
 }
 
 // ============================================================================
+// Default Templates
+// ============================================================================
+
+/** Default experience notebook — universal AI behavior guidelines */
+const DEFAULT_EXPERIENCE = `# Experience Notebook
+
+## Working Principles
+- Important information must be written to Notebook immediately. Not writing = guaranteed to forget next time.
+- Three means to correct flaws: AXON.md hard rules, Notebook persistent memory, Hooks automated checks.
+
+## Anti-Patterns
+- Don't say "I'll improve through self-discipline" — empty promise
+- Don't say "You have a good point, but..." — people-pleasing
+- Don't "optimize while I'm at it" — over-engineering
+- Don't guess implementations — the biggest time waste
+- Don't claim "monitoring" when you actually aren't — background tasks don't survive restarts
+- Confirm the environment before acting — env vars, whether daemon is running, whether features are actually enabled
+- MCP must be disabled immediately after use — enable → use → disable is atomic
+- Don't passively report options — proactively use AskUserQuestion
+- Don't treat tools as black boxes — when tools are insufficient, don't give up or ask users to do it manually
+
+## Task Execution Discipline
+- When user says "start" = start everything, not do one step and report back
+- Large tasks must: list complete checklist → Task parallel dispatch → ScheduleTask for continuous tasks
+- Test: Can the task continue after the user leaves? If not = you didn't use tools well
+
+## Tool Priority When Capabilities Are Insufficient
+1. Check installed Skills
+2. Search community Skills/MCP — use \`tool-discovery\` or \`skill-hub\`
+3. Search the internet — \`web_search\` for GitHub open source MCP servers
+4. Modify source code as last resort — SelfEvolve is the most expensive option
+
+## Self-Evolution Principles
+- Flow: Check Skills → Search community → Search internet → Modify source → SelfEvolve
+- Three persistence methods: experience.md (short-term) + AXON.md (system) + source improvement (capability)
+
+## Key Lessons
+- SelfEvolve restart kills all background Bash tasks
+- Basic sensing capabilities should not be guarded by feature flags
+`;
+
+/** Default profile notebook — minimal placeholder */
+const DEFAULT_PROFILE = `# User Profile
+
+## Basic Info
+- Language preference: (auto-detected)
+
+## Communication Preferences
+- (The AI will learn your preferences over time and update this notebook)
+`;
+
+// ============================================================================
 // NotebookManager
 // ============================================================================
 
@@ -101,6 +157,10 @@ export class NotebookManager {
         return path.join(claudeDir, 'memory', 'experience.md');
       case 'project':
         return path.join(projectDir, 'project.md');
+      case 'identity':
+        return path.join(claudeDir, 'memory', 'identity.md');
+      case 'tools-notes':
+        return path.join(claudeDir, 'memory', 'tools-notes.md');
     }
   }
 
@@ -108,17 +168,53 @@ export class NotebookManager {
   // 读写操作
   // --------------------------------------------------------------------------
 
-  /** 读取笔记本内容 */
+  /** 读取笔记本内容（experience/profile 不存在时自动初始化默认模板） */
   read(type: NotebookType): string {
     const filePath = this.getPath(type);
     try {
       if (fs.existsSync(filePath)) {
         return fs.readFileSync(filePath, 'utf-8');
       }
+      // Auto-initialize: try bundled default-memory/ first, then fallback to hardcoded template
+      const defaultContent = this.getBundledOrDefault(type);
+      if (defaultContent) {
+        try {
+          ensureDir(path.dirname(filePath));
+          fs.writeFileSync(filePath, defaultContent, 'utf-8');
+          return defaultContent;
+        } catch {
+          // Non-fatal: return the template content even if file write fails
+          return defaultContent;
+        }
+      }
     } catch (error) {
       console.warn(`[Notebook] Failed to read ${type}:`, error);
     }
     return '';
+  }
+
+  /**
+   * 获取初始化内容：优先从 Electron 打包的 default-memory/ 目录读取，
+   * 回退到硬编码默认模板。仅 experience 和 profile 有默认内容。
+   */
+  private getBundledOrDefault(type: NotebookType): string | null {
+    if (type !== 'experience' && type !== 'profile') return null;
+
+    const filename = `${type}.md`;
+    // Electron 打包后 cwd = resources/app/，default-memory/ 在其中
+    const bundledPath = path.join(process.cwd(), 'default-memory', filename);
+    try {
+      if (fs.existsSync(bundledPath)) {
+        const content = fs.readFileSync(bundledPath, 'utf-8');
+        if (content.trim()) return content;
+      }
+    } catch {
+      // Ignore — fallback to hardcoded default
+    }
+
+    return type === 'experience' ? DEFAULT_EXPERIENCE
+      : type === 'profile' ? DEFAULT_PROFILE
+      : null;
   }
 
   /** 写入笔记本（带 token 预算检查） */
@@ -176,6 +272,16 @@ export class NotebookManager {
       parts.push(`<notebook type="project" max-tokens="8000">\n${project.trim()}\n</notebook>`);
     }
 
+    const identity = this.read('identity');
+    if (identity.trim()) {
+      parts.push(`<ai-identity>\n${identity.trim()}\n</ai-identity>`);
+    }
+
+    const toolsNotes = this.read('tools-notes');
+    if (toolsNotes.trim()) {
+      parts.push(`<tools-notes>\n${toolsNotes.trim()}\n</tools-notes>`);
+    }
+
     if (parts.length === 0) {
       return '';
     }
@@ -189,7 +295,7 @@ export class NotebookManager {
 
   /** 获取统计信息 */
   getStats(): NotebookStats {
-    const types: NotebookType[] = ['profile', 'experience', 'project'];
+    const types: NotebookType[] = ['profile', 'experience', 'project', 'identity', 'tools-notes'];
     const stats: any = {};
     let totalTokens = 0;
 

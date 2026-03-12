@@ -28,6 +28,9 @@ export {
   isAbortError,
 } from './timeout.js';
 
+// 全局 fetch 代理
+export { setupGlobalFetchProxy } from './global-proxy.js';
+
 // 重试策略
 export type { RetryConfig } from './retry.js';
 export {

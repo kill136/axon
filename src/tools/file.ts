@@ -29,6 +29,11 @@ import {
   formatBytes,
   PDF_MAX_PAGES_PER_REQUEST,
   PDF_LARGE_THRESHOLD,
+  isOfficeFile,
+  documentToHtml,
+  editDocument,
+  documentToText,
+  clearDocumentCache,
 } from '../media/index.js';
 // 注意：旧的 blueprintContext 已被移除，新架构使用 SmartPlanner
 // 边界检查由 SmartPlanner 在任务规划阶段处理，工具层不再需要
@@ -445,6 +450,7 @@ Usage:
 - This tool allows Axon to read images (eg PNG, JPG, etc). When reading an image file the contents are presented visually as Axon is a multimodal LLM.
 - This tool can read PDF files (.pdf). For large PDFs (more than 10 pages), you MUST provide the pages parameter to read specific page ranges (e.g., pages: "1-5"). Reading a large PDF without the pages parameter will fail. Maximum 20 pages per request.
 - This tool can read Jupyter notebooks (.ipynb files) and returns all cells with their outputs, combining code, text, and visualizations.
+- This tool can read Office documents (.docx, .xlsx, .pptx) and converts them to HTML for easy reading. Word documents preserve formatting, Excel files show all sheets as tables, PowerPoint files extract slide text.
 - This tool can only read files, not directories. To read a directory, use an ls command via the Bash tool.
 - You can call multiple tools in a single response. It is always better to speculatively read multiple potentially useful files in parallel.
 - You will regularly be asked to read screenshots. If the user provides a path to a screenshot, ALWAYS use this tool to view the file at the path. This tool will work with all temporary file paths.
@@ -521,6 +527,11 @@ Usage:
         };
       }
 
+      // 处理 Office 文档 (docx/xlsx/pptx)
+      if (isOfficeFile(file_path)) {
+        return await this.readOfficeDocument(file_path);
+      }
+
       // 检测媒体文件类型
       const mediaType = detectMediaType(file_path);
 
@@ -586,6 +597,29 @@ Usage:
       };
     } catch (err) {
       return { success: false, error: t('file.readError', { error: err }) };
+    }
+  }
+
+  /**
+   * Office 文档读取（docx/xlsx/pptx → HTML）
+   */
+  private async readOfficeDocument(filePath: string): Promise<FileResult> {
+    try {
+      const stat = fs.statSync(filePath);
+      const ext = path.extname(filePath).toLowerCase().slice(1);
+      const sizeKB = (stat.size / 1024).toFixed(2);
+
+      const html = await documentToHtml(filePath);
+
+      const header = `[${ext.toUpperCase()} Document: ${filePath}] (${sizeKB} KB)\n\n`;
+      const output = header + html;
+
+      return { success: true, output };
+    } catch (err) {
+      return {
+        success: false,
+        error: `Failed to read Office document: ${err}`,
+      };
     }
   }
 
@@ -1368,7 +1402,7 @@ enum EditErrorCode {
 
 export class EditTool extends BaseTool<ExtendedFileEditInput, EditToolResult> {
   name = 'Edit';
-  description = `Performs exact string replacements in files.
+  description = `Performs exact string replacements in files, including Office documents (.docx, .xlsx, .pptx).
 
 Usage:
 - You must use your \`Read\` tool at least once in the conversation before editing. This tool will error if you attempt an edit without reading the file.
@@ -1376,7 +1410,8 @@ Usage:
 - ALWAYS prefer editing existing files in the codebase. NEVER write new files unless explicitly required.
 - Only use emojis if the user explicitly requests it. Avoid adding emojis to files unless asked.
 - The edit will FAIL if \`old_string\` is not unique in the file. Either provide a larger string with more surrounding context to make it unique or use \`replace_all\` to change every instance of \`old_string\`.
-- Use \`replace_all\` for replacing and renaming strings across the file. This parameter is useful if you want to rename a variable for instance.`;
+- Use \`replace_all\` for replacing and renaming strings across the file. This parameter is useful if you want to rename a variable for instance.
+- For Office documents (.docx, .xlsx, .pptx), performs text replacement while preserving formatting. The old_string/new_string work on the text content (same as what Read tool shows). Only text content can be edited; formatting/layout changes are not supported.`;
 
   private fileBackup = new FileBackup();
   /** 是否强制要求先读取文件（可通过环境变量配置） */
@@ -1487,6 +1522,17 @@ Usage:
       const stat = fs.statSync(file_path);
       if (stat.isDirectory()) {
         return { success: false, error: t('file.isDirectory', { path: file_path }) };
+      }
+
+      // Office 文档走专用编辑路径（JSZip XML 级编辑，保留格式）
+      if (isOfficeFile(file_path)) {
+        const result = await this.editOfficeDocument(
+          file_path, old_string!, new_string!, replace_all, batch_edits, show_diff,
+        );
+        if (result.success) {
+          await runPostToolUseHooks('Edit', input, result.output || '');
+        }
+        return result;
       }
 
       // 5. 读取原始内容并标准化换行符
@@ -1723,6 +1769,94 @@ Usage:
       return {
         success: false,
         error: t('file.createError', { error: err }),
+      };
+    }
+  }
+
+  /**
+   * 编辑 Office 文档（docx/xlsx/pptx）
+   * 使用 JSZip 在 XML 级别进行文本替换，保留原始格式
+   */
+  private async editOfficeDocument(
+    filePath: string,
+    oldString: string,
+    newString: string,
+    replaceAll: boolean,
+    batchEdits?: Array<{ old_string: string; new_string: string; replace_all?: boolean }>,
+    showDiff = true,
+  ): Promise<EditToolResult> {
+    try {
+      // 获取编辑前的文本表示（用于生成 diff）
+      const textBefore = await documentToText(filePath);
+
+      // 备份原始文件（二进制备份）
+      const backupBuffer = fs.readFileSync(filePath);
+
+      // 确定编辑列表
+      const edits = batchEdits || [{ old_string: oldString, new_string: newString, replace_all: replaceAll }];
+
+      let totalReplacements = 0;
+
+      for (const edit of edits) {
+        const result = await editDocument(
+          filePath,
+          edit.old_string,
+          edit.new_string,
+          edit.replace_all ?? false,
+        );
+
+        if (!result.success) {
+          // 回滚到备份
+          fs.writeFileSync(filePath, backupBuffer);
+          return {
+            success: false,
+            error: result.error || `Failed to edit document: "${edit.old_string}" not found`,
+            errorCode: EditErrorCode.STRING_NOT_FOUND,
+          };
+        }
+
+        totalReplacements += result.replacements;
+      }
+
+      // 获取编辑后的文本表示
+      const textAfter = await documentToText(filePath);
+
+      // 更新 fileReadTracker（用文本表示，与 Read 工具保持一致）
+      try {
+        const stat = fs.statSync(filePath);
+        fileReadTracker.markAsRead(filePath, textAfter, stat.mtimeMs);
+      } catch {
+        // 不影响编辑结果
+      }
+
+      // 清除搜索缓存
+      clearDocumentCache(filePath);
+
+      // 生成文本层 diff
+      const ext = path.extname(filePath).toLowerCase().slice(1).toUpperCase();
+      let output = '';
+
+      if (batchEdits) {
+        output += `${ext} document edited successfully: ${edits.length} edits, ${totalReplacements} replacements in ${filePath}\n`;
+      } else {
+        output += `${ext} document edited successfully: ${totalReplacements} replacement(s) in ${filePath}\n`;
+      }
+
+      if (showDiff) {
+        const diffPreview = generateUnifiedDiff(filePath, textBefore, textAfter);
+        if (diffPreview) {
+          output += '\n' + this.formatDiffOutput(diffPreview);
+        }
+      }
+
+      return {
+        success: true,
+        output,
+      };
+    } catch (err) {
+      return {
+        success: false,
+        error: `Failed to edit Office document: ${err}`,
       };
     }
   }
