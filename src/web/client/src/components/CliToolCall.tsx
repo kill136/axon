@@ -216,6 +216,9 @@ function EditToolContent({ input, result }: { input: any; result?: any }) {
   const { t } = useLanguage();
   const oldString = input?.old_string || '';
   const newString = input?.new_string || '';
+  const filePath = input?.file_path || '';
+  const fileExt = filePath.split('.').pop()?.toLowerCase() || '';
+  const isDocumentFile = ['docx', 'xlsx', 'pptx'].includes(fileExt);
 
   const oldLines = oldString ? oldString.split('\n') : [];
   const newLines = newString ? newString.split('\n') : [];
@@ -242,6 +245,9 @@ function EditToolContent({ input, result }: { input: any; result?: any }) {
   return (
     <div className="cli-edit-content">
       <div className="cli-edit-header">
+        {isDocumentFile && (
+          <span className="cli-edit-doc-badge">{fileExt.toUpperCase()}</span>
+        )}
         <div className="cli-edit-status">{summary}</div>
         <div className="cli-edit-stats">
           {removedCount > 0 && <span className="cli-stat-removed">-{removedCount}</span>}

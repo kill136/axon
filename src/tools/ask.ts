@@ -86,6 +86,8 @@ const MAX_HEADER_LENGTH = 12;
 
 export class AskUserQuestionTool extends BaseTool<AskUserQuestionInput, ToolResult> {
   name = 'AskUserQuestion';
+  shouldDefer = true;
+  searchHint = 'ask user, clarify requirement, get preference, multiple choice question';
   description = `Use this tool when you need to ask the user questions during execution. This allows you to:
 1. Gather user preferences or requirements
 2. Clarify ambiguous instructions

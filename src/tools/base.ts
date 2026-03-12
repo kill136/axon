@@ -48,6 +48,11 @@ export abstract class BaseTool<TInput = unknown, TOutput extends ToolResult = To
   abstract name: string;
   abstract description: string;
 
+  /** 是否应延迟加载（对齐官方 shouldDefer） */
+  shouldDefer: boolean = false;
+  /** ToolSearch 列表中的简短描述（对齐官方 searchHint） */
+  searchHint?: string;
+
   /** 工具配置选项 */
   protected options: ToolOptions;
 
@@ -187,6 +192,8 @@ export abstract class BaseTool<TInput = unknown, TOutput extends ToolResult = To
       name: this.name,
       description: this.description,
       inputSchema: this.getInputSchema(),
+      shouldDefer: this.shouldDefer || undefined,
+      searchHint: this.searchHint || undefined,
     };
   }
 

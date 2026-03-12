@@ -26,6 +26,8 @@ export interface McpManageInput {
 
 export class McpManageTool extends BaseTool<McpManageInput, ToolResult> {
   name = 'McpManage';
+  shouldDefer = true;
+  searchHint = 'manage MCP servers, enable plugin, disable integration, list external tools';
   description = `Manage MCP server lifecycle: list, enable, or disable MCP servers.
 
 Use this tool when you need to:

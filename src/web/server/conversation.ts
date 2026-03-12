@@ -683,6 +683,11 @@ export class ConversationManager {
               isMcp: true,
             });
           }
+          // 缓存能力摘要，使 disabled 后仍可展示 server 能做什么
+          const serverState = getMcpServers().get(name);
+          if (serverState?.tools) {
+            MCPSearchTool.cacheServerCapability(name, serverState.tools);
+          }
         } else {
           failedCount++;
         }
@@ -3145,15 +3150,15 @@ export class ConversationManager {
         }
       }
 
-      // 拦截 GenerateImage 工具 - 使用 Gemini 生成任意类型图片
-      if (toolUse.name === 'GenerateImage') {
+      // 拦截 ImageGen 工具 - 文生图 / 图生图
+      if (toolUse.name === 'ImageGen') {
         const input = toolUse.input as any;
 
         try {
-          const { prompt, style } = input;
-          console.log(`[Tool] GenerateImage: Starting image generation - ${prompt.substring(0, 50)}...`);
+          const { prompt, style, image_path } = input;
+          console.log(`[Tool] ImageGen: ${image_path ? 'image-to-image' : 'text-to-image'} - ${prompt.substring(0, 50)}...`);
 
-          const result = await geminiImageService.generateImage(prompt, style);
+          const result = await geminiImageService.generateImage(prompt, style, image_path);
 
           if (!result.success) {
             const error = result.error || 'Image generation failed';
@@ -3179,7 +3184,7 @@ export class ConversationManager {
           return { success: true, output };
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error);
-          console.error(`[Tool] GenerateImage execution failed:`, errorMessage);
+          console.error(`[Tool] ImageGen execution failed:`, errorMessage);
           callbacks.onToolResult?.(toolUse.id, false, undefined, errorMessage);
           return { success: false, error: errorMessage };
         }
@@ -4004,7 +4009,7 @@ Respond ONLY with valid JSON, no other text.`;
       extraParts.push(config.appendPrompt);
     }
 
-    // 注入 WebUI 专属工具引导（GenerateImage 等）
+    // 注入 WebUI 专属工具引导（ImageGen 等）
     const webuiToolGuidance = this.buildWebuiToolGuidance();
     if (webuiToolGuidance) {
       extraParts.push(webuiToolGuidance);
@@ -4100,7 +4105,7 @@ Respond ONLY with valid JSON, no other text.`;
 
   /**
    * 构建 WebUI 专属工具引导指令
-   * 让 Agent 知道何时应主动调用 WebUI 专属工具（如 GenerateImage）
+   * 让 Agent 知道何时应主动调用 WebUI 专属工具（如 ImageGen）
    */
   private buildWebuiToolGuidance(): string | null {
     const sections: string[] = [];
@@ -5097,6 +5102,7 @@ Guidelines:
                 isMcp: true,
               });
             }
+            MCPSearchTool.cacheServerCapability(name, existingServer.tools);
           } else {
             // 普通 MCP 服务器：需要连接并获取工具
             const mcpServerConfigs = this.mcpConfigManager.getServers();
@@ -5113,6 +5119,11 @@ Guidelines:
                     inputSchema: tool.getInputSchema(),
                     isMcp: true,
                   });
+                }
+                // 缓存能力摘要
+                const serverState = getMcpServers().get(name);
+                if (serverState?.tools) {
+                  MCPSearchTool.cacheServerCapability(name, serverState.tools);
                 }
               }
             }

@@ -70,7 +70,7 @@ import { GenerateBlueprintTool } from './generate-blueprint.js';
 import { StartLeadAgentTool } from './start-lead-agent.js';
 import { UpdateTaskPlanTool } from './update-task-plan.js';
 import { DispatchWorkerTool } from './dispatch-worker.js';
-import { GenerateImageTool } from './generate-design.js';
+import { ImageGenTool } from './generate-design.js';
 
 // ============ 幂等保护标志 ============
 let coreToolsRegistered = false;
@@ -180,7 +180,7 @@ export function registerCoreTools(): void {
  * 仅在 Web 模式下由 ConversationManager.initialize() 调用
  *
  * 各 Agent 类型使用的蓝图工具：
- * - Chat Tab Agent: BlueprintTool, GenerateBlueprintTool, StartLeadAgentTool, GenerateImageTool
+ * - Chat Tab Agent: BlueprintTool, GenerateBlueprintTool, StartLeadAgentTool, ImageGenTool
  */
 export function registerBlueprintTools(): void {
   if (blueprintToolsRegistered) return;
@@ -190,7 +190,7 @@ export function registerBlueprintTools(): void {
   toolRegistry.register(new BlueprintTool());
   toolRegistry.register(new GenerateBlueprintTool());
   toolRegistry.register(new StartLeadAgentTool());
-  toolRegistry.register(new GenerateImageTool());
+  toolRegistry.register(new ImageGenTool());
 
   // LeadAgent 专用 (2个) - 任务计划管理、Worker 派发
   toolRegistry.register(new UpdateTaskPlanTool());

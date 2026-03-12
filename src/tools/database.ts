@@ -73,6 +73,8 @@ function formatColumns(cols: ColumnInfo[]): string {
 
 export class DatabaseTool extends BaseTool<DatabaseToolInput, ToolResult> {
   name = 'Database';
+  shouldDefer = true;
+  searchHint = 'database query, SQL, connect DB, PostgreSQL MySQL SQLite Redis MongoDB, table data';
   description = `Database client tool supporting PostgreSQL, MySQL, SQLite, Redis, MongoDB.
 
 Supported operations:

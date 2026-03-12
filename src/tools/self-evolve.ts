@@ -47,6 +47,8 @@ interface EvolveLogEntry {
 
 export class SelfEvolveTool extends BaseTool<SelfEvolveInput, ToolResult> {
   name = 'SelfEvolve';
+  shouldDefer = true;
+  searchHint = 'self improve, hot reload, restart process, apply source code change, evolve';
   description = 'Trigger a controlled process restart after modifying source code. Only available when running with --evolve flag (AXON_EVOLVE_ENABLED=1). Runs TypeScript compilation check before restarting to prevent broken restarts.';
 
   getInputSchema(): ToolDefinition['inputSchema'] {

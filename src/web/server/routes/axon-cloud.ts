@@ -6,6 +6,7 @@
 import { Router, Request, Response } from 'express';
 import { axonCloudService, type AxonCloudSession } from '../services/axon-cloud-service.js';
 import { webConfigService } from '../services/config-service.js';
+import { webAuth } from '../web-auth.js';
 
 const router = Router();
 
@@ -108,6 +109,63 @@ router.get('/balance', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[AxonCloud] Balance error:', error);
     res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Internal server error' });
+  }
+});
+
+/**
+ * GET /api/axon-cloud/quota
+ * 通过已保存的 API Key 查询 Axon Cloud 余额（兼容 OpenAI billing API）
+ * 不依赖内存 session，直接读 settings.json 中的 apiKey
+ */
+router.get('/quota', async (req: Request, res: Response) => {
+  try {
+    if (!webAuth.isAxonCloudUser()) {
+      return res.status(400).json({ success: false, error: 'Not an Axon Cloud user' });
+    }
+
+    const creds = webAuth.getCredentials();
+    if (!creds.apiKey) {
+      return res.status(400).json({ success: false, error: 'No API key configured' });
+    }
+
+    const headers = { 'Authorization': `Bearer ${creds.apiKey}` };
+    const baseUrl = (creds.baseUrl || 'https://api.chatbi.site').replace(/\/+$/, '');
+
+    // NewAPI 兼容 OpenAI 的 billing 接口
+    const subRes = await fetch(`${baseUrl}/v1/dashboard/billing/subscription`, { headers });
+    if (!subRes.ok) {
+      throw new Error(`Billing API returned ${subRes.status}`);
+    }
+    const sub = await subRes.json() as any;
+
+    // hard_limit_usd = 总额度, 用 usage 接口获取已用额度
+    const totalQuota = sub.hard_limit_usd ?? sub.system_hard_limit_usd ?? 0;
+
+    // 获取当月用量
+    const now = new Date();
+    const startDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+    const endDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    
+    let usedQuota = 0;
+    try {
+      const usageRes = await fetch(`${baseUrl}/v1/dashboard/billing/usage?start_date=${startDate}&end_date=${endDate}`, { headers });
+      if (usageRes.ok) {
+        const usage = await usageRes.json() as any;
+        usedQuota = (usage.total_usage ?? 0) / 100; // OpenAI 返回的是 cents
+      }
+    } catch {
+      // usage 接口可能不支持，忽略
+    }
+
+    res.json({
+      success: true,
+      total: totalQuota,
+      used: usedQuota,
+      remaining: totalQuota - usedQuota,
+    });
+  } catch (error) {
+    console.error('[AxonCloud] Quota error:', error);
+    res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Failed to query quota' });
   }
 });
 

@@ -1937,10 +1937,39 @@ body {
    ========================================= */
 
 .command-wall {
+  position: relative;
   width: 100%;
   max-width: 700px;
   margin-top: 24px;
   animation: fadeInUp 0.6s ease-out 0.25s both;
+}
+
+.cw-close-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s, background 0.2s, color 0.2s;
+}
+
+.command-wall:hover .cw-close-btn {
+  opacity: 1;
+}
+
+.cw-close-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
 }
 
 .cw-tabs {

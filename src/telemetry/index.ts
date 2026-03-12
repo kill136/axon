@@ -484,6 +484,21 @@ export function trackToolCall(
 }
 
 /**
+ * 跟踪 Harness 工具过滤效率
+ * 记录 progressive disclosure 的实际效果
+ */
+export function trackToolFiltering(data: {
+  totalTools: number;
+  filteredTools: number;
+  deferredTotal: number;
+  deferredLoaded: number;
+  discoveredCount: number;
+}): void {
+  if (!telemetryConfig.enabled) return;
+  trackEvent('harness_tool_filtering', data);
+}
+
+/**
  * 跟踪命令使用
  */
 export function trackCommand(commandName: string, success: boolean, duration: number): void {

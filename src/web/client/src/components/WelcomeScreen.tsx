@@ -159,8 +159,9 @@ function MarqueeRow({ items, direction, speed, onItemClick, isZh }: {
   );
 }
 
-function CommandWall({ onItemClick, isZh, t }: {
+function CommandWall({ onItemClick, onClose, isZh, t }: {
   onItemClick: (prompt: string) => void;
+  onClose: () => void;
   isZh: boolean;
   t: (key: string) => string;
 }) {
@@ -188,6 +189,11 @@ function CommandWall({ onItemClick, isZh, t }: {
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
     >
+      <button className="cw-close-btn" onClick={onClose} title={t('welcome.commandWall.close')}>
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+          <path d="M1 1l12 12M13 1L1 13" />
+        </svg>
+      </button>
       <div className="cw-tabs">
         {TABS.map(tab => (
           <button
@@ -226,10 +232,15 @@ const EMPTY_TEMPLATES: QuickTemplate[] = [
   { icon: '🤖', labelKey: 'welcome.template.cli', promptKey: 'welcome.template.cli.prompt' },
 ];
 
+const COMMAND_WALL_DISMISSED_KEY = 'axon-command-wall-dismissed';
+
 export function WelcomeScreen({ onBlueprintCreated: _onBlueprintCreated, onQuickPrompt, onOpenFolder }: WelcomeScreenProps) {
   const { state: projectState } = useProject();
   const { t, locale } = useLanguage();
   const isZh = locale === 'zh';
+  const [commandWallDismissed, setCommandWallDismissed] = useState(() => {
+    return localStorage.getItem(COMMAND_WALL_DISMISSED_KEY) === '1';
+  });
 
   const hasProject = !!projectState.currentProject;
   const isEmptyProject = hasProject && projectState.currentProject?.isEmpty === true;
@@ -237,6 +248,11 @@ export function WelcomeScreen({ onBlueprintCreated: _onBlueprintCreated, onQuick
 
   const handlePromptClick = (prompt: string) => {
     onQuickPrompt?.(prompt);
+  };
+
+  const handleCommandWallClose = () => {
+    setCommandWallDismissed(true);
+    localStorage.setItem(COMMAND_WALL_DISMISSED_KEY, '1');
   };
 
   return (
@@ -304,7 +320,9 @@ export function WelcomeScreen({ onBlueprintCreated: _onBlueprintCreated, onQuick
             {t('welcome.project.subtitle')}
           </p>
 
-          <CommandWall onItemClick={handlePromptClick} isZh={isZh} t={t} />
+          {!commandWallDismissed && (
+            <CommandWall onItemClick={handlePromptClick} onClose={handleCommandWallClose} isZh={isZh} t={t} />
+          )}
         </>
       )}
 

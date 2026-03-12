@@ -35,6 +35,8 @@ interface NotebookContent {
 
 export class NotebookEditTool extends BaseTool<NotebookEditInput, ToolResult> {
   name = 'NotebookEdit';
+  shouldDefer = true;
+  searchHint = 'Jupyter notebook, edit ipynb cell, modify notebook code or markdown';
   description = 'Replace the contents of a specific cell in a Jupyter notebook.';
 
   /**

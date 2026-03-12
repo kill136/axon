@@ -46,6 +46,8 @@ function getUserSkillsDir(): string {
  */
 export class CreateToolTool extends BaseTool<CreateToolInput, ToolResult> {
   name = 'CreateTool';
+  shouldDefer = true;
+  searchHint = 'create new skill, extend capabilities, custom automation, add new command';
   description = `Create, cancel, or list custom tools at runtime. Custom tools are persisted to ~/.axon/custom-tools/ and auto-loaded on startup.
 
 Use this to create new tools that extend your capabilities:

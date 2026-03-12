@@ -915,6 +915,8 @@ const MAX_SUBAGENT_DEPTH = 5;
 
 export class TaskTool extends BaseTool<AgentInput, ToolResult> {
   name = 'Task';
+  shouldDefer = true;
+  searchHint = 'parallel tasks, research codebase, explore files, delegate subtask, autonomous worker';
   
   // 全局跟踪当前嵌套深度
   private static currentDepth: number = 0;
@@ -1512,6 +1514,8 @@ Usage notes:
 
 export class TaskOutputTool extends BaseTool<{ task_id: string; block?: boolean; timeout?: number; show_history?: boolean }, ToolResult> {
   name = 'TaskOutput';
+  shouldDefer = true;
+  searchHint = 'check background task result, wait for agent, get task output';
   description = `Get output and status from a background task (Agent or Bash).
 
 Usage notes:

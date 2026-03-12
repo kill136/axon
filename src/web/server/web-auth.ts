@@ -194,6 +194,14 @@ class WebAuthProvider {
   // ---------- 状态查询（给前端显示用） ----------
 
   /**
+   * 判断当前用户是否通过 Axon Cloud 认证（apiBaseUrl 包含 chatbi.site）
+   */
+  isAxonCloudUser(): boolean {
+    const settings = this.readSettings();
+    return !!settings.apiBaseUrl && settings.apiBaseUrl.includes('chatbi.site');
+  }
+
+  /**
    * 获取认证状态（给 /api/auth/status 和 websocket 用）
    */
   getStatus(): AuthStatus {

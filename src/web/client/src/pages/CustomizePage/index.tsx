@@ -3,6 +3,7 @@ import { useLanguage } from '../../i18n';
 import ConnectorsPanel from './ConnectorsPanel';
 import SkillsPanel from './SkillsPanel';
 import McpServerPanel from './McpServerPanel';
+import CapabilitiesPanel from './CapabilitiesPanel';
 import SchedulePage from '../SchedulePage';
 import ChannelsPanel from '../../components/ChannelsPanel';
 import PerceptionPanel from '../../components/PerceptionPanel';
@@ -10,7 +11,7 @@ import ProxyPanel from '../../components/ProxyPanel';
 import DocsPanel from './DocsPanel';
 import styles from './CustomizePage.module.css';
 
-type ActiveSection = 'skills' | 'mcp' | 'connectors' | 'channels' | 'schedule' | 'perception' | 'proxy' | 'aiprofile';
+type ActiveSection = 'capabilities' | 'skills' | 'mcp' | 'connectors' | 'channels' | 'schedule' | 'perception' | 'proxy' | 'aiprofile';
 
 interface CustomizePageProps {
   onNavigateBack?: () => void;
@@ -83,6 +84,14 @@ const ProxyIcon = () => (
   </svg>
 );
 
+const CapabilitiesIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="8" cy="8" r="2" />
+    <circle cx="8" cy="8" r="6" />
+    <path d="M8 2v2M8 12v2M2 8h2M12 8h2" />
+  </svg>
+);
+
 const AiProfileIcon = () => (
   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="8" cy="5" r="3" />
@@ -106,7 +115,7 @@ export default function CustomizePage({
   sessionId,
 }: CustomizePageProps) {
   const { t } = useLanguage();
-  const [activeSection, setActiveSection] = useState<ActiveSection>('skills');
+  const [activeSection, setActiveSection] = useState<ActiveSection>('capabilities');
 
   return (
     <div className={styles.customizePage}>
@@ -124,6 +133,16 @@ export default function CustomizePage({
 
         {/* 导航菜单 */}
         <nav className={styles.navMenu}>
+          <button
+            className={`${styles.navItem} ${activeSection === 'capabilities' ? styles.active : ''}`}
+            onClick={() => setActiveSection('capabilities')}
+          >
+            <span className={styles.navIcon}>
+              <CapabilitiesIcon />
+            </span>
+            <span className={styles.navLabel}>{t('customize.capabilities') || 'Capabilities'}</span>
+          </button>
+
           <button
             className={`${styles.navItem} ${activeSection === 'skills' ? styles.active : ''}`}
             onClick={() => setActiveSection('skills')}
@@ -208,6 +227,9 @@ export default function CustomizePage({
 
       {/* 右侧内容区（中栏 + 右栏由子组件渲染） */}
       <div className={styles.contentArea}>
+        {activeSection === 'capabilities' && (
+          <CapabilitiesPanel />
+        )}
         {activeSection === 'skills' && (
           <SkillsPanel
             onSendMessage={onSendMessage}
