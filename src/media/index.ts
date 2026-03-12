@@ -59,6 +59,9 @@ export {
   documentToHtml,
   documentToText,
   getSearchableText,
+  editDocument,
+  clearDocumentCache,
+  type EditDocumentResult,
 } from './office.js';
 
 // SVG 渲染

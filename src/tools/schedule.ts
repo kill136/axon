@@ -55,6 +55,8 @@ interface ScheduleTaskInput {
 
 export class ScheduleTaskTool extends BaseTool<ScheduleTaskInput> {
   name = 'ScheduleTask';
+  shouldDefer = true;
+  searchHint = 'schedule task, set reminder, timer, cron job, run later, recurring, watch file changes';
   description = 'Create, update, cancel, or list scheduled tasks. Tasks are executed by the daemon process and results are sent via desktop notification or Feishu. The daemon must be running (claude daemon start) for tasks to execute. For once-type tasks triggering within 10 minutes, execution happens inline in the current session. Use action=watch with taskId to view execution history. Use action=update with taskId to modify existing task fields.\n\nNever call ScheduleTask twice for the same task — one call is sufficient.';
 
   getInputSchema(): ToolDefinition['inputSchema'] {

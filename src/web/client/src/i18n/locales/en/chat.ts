@@ -262,6 +262,7 @@ const chat = {
   'welcome.tab.office': 'Office Worker',
   'welcome.tab.student': 'Student',
   'welcome.tab.developer': 'Developer',
+  'welcome.commandWall.close': 'Dismiss quick prompts',
 } as const;
 
 export type ChatKeys = keyof typeof chat;

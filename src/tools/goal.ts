@@ -67,6 +67,8 @@ interface GoalManageInput {
 
 export class GoalManageTool extends BaseTool<GoalManageInput> {
   name = 'GoalManage';
+  shouldDefer = true;
+  searchHint = 'long-term goal, OKR, track progress, autonomous objective, milestone, metrics';
   description = `Create and manage persistent long-term goals that execute autonomously via the daemon.
 Goals persist across sessions and the daemon continuously works towards them.
 Actions: create, list, status, pause, resume, cancel, add_strategy, update_step, update_metric, logs, run_now.`;

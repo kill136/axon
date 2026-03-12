@@ -837,6 +837,10 @@ export interface ToolDefinition {
   };
   /** 是否为 MCP 工具（用于 deferred tool 判断） */
   isMcp?: boolean;
+  /** 是否应延迟加载（对齐官方 shouldDefer 属性） */
+  shouldDefer?: boolean;
+  /** ToolSearch 列表中的简短描述（对齐官方 searchHint 属性） */
+  searchHint?: string;
 }
 
 /**

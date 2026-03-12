@@ -5,6 +5,9 @@
  * 还原版本 2.1.4 - 完整功能版
  */
 
+import { setupGlobalFetchProxy } from './network/global-proxy.js';
+setupGlobalFetchProxy();
+
 import { Command, Option } from 'commander';
 import chalk from 'chalk';
 import * as readline from 'readline';

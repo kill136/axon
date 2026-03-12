@@ -262,6 +262,7 @@ const chat = {
   'welcome.tab.office': '上班族',
   'welcome.tab.student': '学生族',
   'welcome.tab.developer': '程序员',
+  'welcome.commandWall.close': '关闭快捷提示',
 } as const;
 
 export default chat;

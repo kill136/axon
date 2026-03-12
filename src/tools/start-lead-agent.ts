@@ -80,6 +80,8 @@ export interface StartLeadAgentContext {
  */
 export class StartLeadAgentTool extends BaseTool<StartLeadAgentInput, ToolResult> {
   name = 'StartLeadAgent';
+  shouldDefer = true;
+  searchHint = 'build entire project, execute blueprint, multi-agent development, batch implement tasks';
   description = `Start LeadAgent to execute development tasks (blocks until completion)
 
 ## When to Use

@@ -57,6 +57,8 @@ export interface GenerateBlueprintInput {
  */
 export class GenerateBlueprintTool extends BaseTool<GenerateBlueprintInput, ToolResult> {
   name = 'GenerateBlueprint';
+  shouldDefer = true;
+  searchHint = 'project architecture, new project setup, requirements analysis, system design, tech stack planning';
   description = `Structure conversation requirements or codebase analysis results into a project blueprint
 
 ## Two Modes

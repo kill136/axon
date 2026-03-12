@@ -8,6 +8,9 @@
  * 本脚本检测到后自动重启子进程（tsx），新代码即刻生效。
  */
 
+import { setupGlobalFetchProxy } from './network/global-proxy.js';
+setupGlobalFetchProxy();
+
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';

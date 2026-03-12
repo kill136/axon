@@ -15,6 +15,8 @@ import { getSessionId } from '../core/session-context.js';
 
 export class BrowserTool extends BaseTool<BrowserToolInput, ToolResult> {
   name = 'Browser';
+  shouldDefer = true;
+  searchHint = 'browse website, take screenshot, click button, fill form, test UI, login page, web scraping, visual check';
   description = `Control a Chromium browser through Chrome DevTools Protocol (CDP) and Playwright.
 Supports persistent profiles, snapshot/ref/action interaction pattern.
 

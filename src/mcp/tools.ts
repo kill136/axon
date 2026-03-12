@@ -820,15 +820,26 @@ export function createToolDefinition(mcpTool: McpTool): ToolDefinition {
 /**
  * 判断工具是否为 deferred 工具
  *
- * 对齐官方 isDeferredTool (OG) 函数：
- * function OG(A){ if(A.isMcp===true) return true; return false; }
+ * 对齐官方 isDeferredTool (qG) 函数：
+ * function qG(A){
+ *   if(A.isMcp===true) return true;
+ *   if(A.name===zT) return false;          // ToolSearch 本身不 defer
+ *   if(e8("tengu_defer_all_bn4",true)) return true;  // 全量 defer（默认开启）
+ *   return A.shouldDefer===true;
+ * }
+ *
+ * 我们简化为：isMcp → true | name==="Mcp" → false | shouldDefer → true
  *
  * @param tool 工具定义
  * @returns 是否为 deferred 工具
  */
 export function isDeferredTool(tool: ToolDefinition): boolean {
+  // MCP 工具始终 deferred
   if (tool.isMcp === true) return true;
-  return false;
+  // ToolSearch (Mcp) 本身不 defer
+  if (tool.name === 'Mcp') return false;
+  // 内置工具的 shouldDefer 标记
+  return tool.shouldDefer === true;
 }
 
 /**
@@ -871,9 +882,9 @@ export function getDiscoveredToolsFromMessages(messages: Array<Record<string, an
       if (block.type === 'tool_result') {
         const resultContent = block.content;
         if (!Array.isArray(resultContent)) {
-          // 如果 content 是字符串，尝试解析 MCP 工具名
+          // 如果 content 是字符串，尝试解析工具名
           if (typeof resultContent === 'string') {
-            extractMcpToolNames(resultContent, discovered);
+            extractToolNames(resultContent, discovered);
           }
           continue;
         }
@@ -884,7 +895,7 @@ export function getDiscoveredToolsFromMessages(messages: Array<Record<string, an
           }
           // 也从文本内容中提取
           if (item.type === 'text' && item.text) {
-            extractMcpToolNames(item.text, discovered);
+            extractToolNames(item.text, discovered);
           }
         }
       }
@@ -895,15 +906,34 @@ export function getDiscoveredToolsFromMessages(messages: Array<Record<string, an
 }
 
 /**
- * 从文本中提取 MCP 工具名
+ * 已知的内置 deferred 工具名集合
+ * 由 ConversationLoop 初始化时通过 setBuiltinDeferredToolNames() 设置
+ */
+let builtinDeferredToolNames: Set<string> = new Set();
+
+/**
+ * 设置已知内置 deferred 工具名（供 extractToolNames 使用）
+ */
+export function setBuiltinDeferredToolNames(names: Set<string>): void {
+  builtinDeferredToolNames = names;
+}
+
+/**
+ * 从文本中提取工具名（MCP 工具和内置 deferred 工具）
  * MCPSearchTool 返回的结果中包含工具名
  */
-function extractMcpToolNames(text: string, discovered: Set<string>): void {
+function extractToolNames(text: string, discovered: Set<string>): void {
   // 匹配 "mcp__server__tool" 模式的工具名
   const mcpToolNameRegex = /\bmcp__[a-zA-Z0-9_-]+__[a-zA-Z0-9_-]+\b/g;
   let match;
   while ((match = mcpToolNameRegex.exec(text)) !== null) {
     discovered.add(match[0]);
+  }
+  // 匹配已知内置 deferred 工具名
+  for (const name of builtinDeferredToolNames) {
+    if (text.includes(name)) {
+      discovered.add(name);
+    }
   }
 }
 

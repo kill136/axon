@@ -35,6 +35,8 @@ export interface MemorySearchInput {
  */
 export class MemorySearchTool extends BaseTool<MemorySearchInput, ToolResult> {
   name = 'MemorySearch';
+  shouldDefer = true;
+  searchHint = 'recall past conversation, search history, what did we discuss before, previous session';
   
   description = `Search long-term memory for relevant past knowledge, session history, and project patterns.
 

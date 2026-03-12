@@ -8,7 +8,7 @@
 
 [![npm](https://img.shields.io/npm/v/axon?style=flat-square&color=CB3837)](https://www.npmjs.com/package/axon)
 [![GitHub Stars](https://img.shields.io/github/stars/kill136/claude-code-open?style=flat-square)](https://github.com/kill136/claude-code-open)
-[![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
+[![License](https://img.shields.io/badge/License-AGPL--3.0-blue?style=flat-square)](LICENSE)
 [![Node](https://img.shields.io/badge/Node.js-%3E%3D18.0.0-brightgreen?style=flat-square)](https://nodejs.org)
 [![Discord](https://img.shields.io/discord/1454020463486566432?style=flat-square&label=Discord&color=5865F2)](https://discord.gg/bNyJKk6PVZ)
 
@@ -294,6 +294,9 @@ Axon is free and open-source. Sponsorships keep development going. [See sponsor 
 
 ## License
 
-MIT
+Axon is dual-licensed:
+
+- **Open Source** — [AGPL-3.0](LICENSE). Free for personal use, academic research, and open-source projects. If you modify Axon or use it to provide a network service, you must release your complete source code under AGPL-3.0.
+- **Commercial** — For proprietary/closed-source usage, SaaS deployment, or any scenario where AGPL compliance is not feasible, a commercial license is required. See [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md) for details, or contact **kill.136@163.com**.
 
 [中文版 README](README.zh-CN.md)

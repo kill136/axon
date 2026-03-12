@@ -19,6 +19,8 @@ interface EarInput {
 
 export class EarTool extends BaseTool<EarInput, ToolResult> {
   name = 'Ear';
+  shouldDefer = true;
+  searchHint = 'listen, hear, microphone, what did they say, voice input, speech recognition';
   description = "Recall what was heard recently through the user's microphone. The browser continuously transcribes ambient speech — this tool retrieves the last N seconds of transcription. Use when the user asks you to listen, or when you need to know what was said.";
 
   getInputSchema(): ToolDefinition['inputSchema'] {

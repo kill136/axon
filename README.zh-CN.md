@@ -8,7 +8,7 @@
 
 [![npm](https://img.shields.io/npm/v/axon?style=flat-square&color=CB3837)](https://www.npmjs.com/package/axon)
 [![GitHub Stars](https://img.shields.io/github/stars/kill136/claude-code-open?style=flat-square)](https://github.com/kill136/claude-code-open)
-[![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
+[![License](https://img.shields.io/badge/License-AGPL--3.0-blue?style=flat-square)](LICENSE)
 [![Node](https://img.shields.io/badge/Node.js-%3E%3D18.0.0-brightgreen?style=flat-square)](https://nodejs.org)
 [![Discord](https://img.shields.io/discord/1454020463486566432?style=flat-square&label=Discord&color=5865F2)](https://discord.gg/bNyJKk6PVZ)
 
@@ -296,6 +296,9 @@ Axon 免费开源，赞助帮助我们持续开发。[查看赞助层级 →](SP
 
 ## 许可证
 
-MIT
+Axon 采用双授权模式：
+
+- **开源版** — [AGPL-3.0](LICENSE)。个人使用、学术研究、开源项目免费。如果你修改了 Axon 或基于 Axon 提供网络服务，必须以 AGPL-3.0 开源你的完整代码。
+- **商业版** — 闭源使用、SaaS 部署、或任何无法遵守 AGPL 条款的场景，需要购买商业授权。详见 [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md)，或联系 **kill.136@163.com**。
 
 [English README](README.md)

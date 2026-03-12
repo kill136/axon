@@ -175,6 +175,115 @@
   background: color-mix(in srgb, var(--error-color, #ef4444) 10%, transparent);
 }
 
+/* Axon Cloud Quota Section */
+.auth-dropdown-quota {
+  padding: 10px 14px;
+}
+
+.quota-loading {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 4px 0;
+}
+
+.quota-error {
+  font-size: 12px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.quota-retry {
+  background: none;
+  border: none;
+  color: var(--accent-primary);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+
+.quota-retry:hover {
+  background: var(--bg-tertiary);
+}
+
+.quota-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.quota-bar-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.quota-bar {
+  height: 6px;
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.quota-bar-fill {
+  height: 100%;
+  background: var(--accent-primary);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+  min-width: 2px;
+}
+
+.quota-numbers {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.quota-remaining {
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.quota-total {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.quota-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.quota-action-btn {
+  flex: 1;
+  text-align: center !important;
+  padding: 6px 8px !important;
+  border-radius: 6px !important;
+  font-size: 12px !important;
+  font-weight: 500;
+  text-decoration: none;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+}
+
+.quota-action-btn.recharge {
+  background: var(--accent-primary) !important;
+  color: #fff !important;
+}
+
+.quota-action-btn.recharge:hover {
+  background: var(--accent-hover) !important;
+}
+
 /* Not Authenticated State */
 .auth-status.not-authenticated {
   display: flex;

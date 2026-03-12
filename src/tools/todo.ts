@@ -148,6 +148,8 @@ export function generateTodoReminder(
 
 export class TodoWriteTool extends BaseTool<TodoWriteInput, ToolResult> {
   name = 'TodoWrite';
+  shouldDefer = true;
+  searchHint = 'todo list, track progress, task checklist, show steps, mark done';
   description = `Create and manage a structured task list for your current coding session. Helps track progress and give the user visibility into your work.
 
 ## When to Use

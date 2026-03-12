@@ -266,10 +266,13 @@ router.get('/status', async (req: Request, res: Response) => {
   }
 
   if (status.type === 'api_key') {
+    // 检查是否是 Axon Cloud 用户（apiBaseUrl 包含 chatbi.site）
+    const isAxonCloud = webAuth.isAxonCloudUser();
     return res.json({
       authenticated: true,
       type: 'api_key',
-      accountType: 'api',
+      accountType: isAxonCloud ? 'axon-cloud' : 'api',
+      isAxonCloud,
       isDemoMode: demoMode,
     });
   }

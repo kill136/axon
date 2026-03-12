@@ -1,6 +1,6 @@
 {
   "name": "axon",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "description": "Free & open source AI coding assistant with Web IDE, multi-agent system, and self-evolution",
   "type": "module",
   "main": "electron/main.cjs",
@@ -125,7 +125,7 @@
     "url": "https://github.com/kill136/claude-code-open"
   },
   "author": "",
-  "license": "MIT",
+  "license": "AGPL-3.0-only",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.70.0",
     "@google/genai": "^1.38.0",
