@@ -67,13 +67,31 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
         rel="stylesheet">
 
     <link rel="stylesheet" href="../style.css">
 </head>
 
 <body>
+    <!-- Animated Mesh Gradient Background -->
+    <div class="mesh-bg"></div>
+    <!-- WebGL Starfield Background -->
+    <canvas id="starfield"></canvas>
+    <!-- Mouse Follow Glow -->
+    <div class="mouse-glow" id="mouseGlow"></div>
+    <!-- Floating Particles -->
+    <div class="particles">
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+    </div>
+
     <!-- Navigation -->
     <nav class="navbar">
         <div class="container">
@@ -103,6 +121,8 @@
 
     <!-- Hero Section -->
     <header class="hero">
+        <!-- Animated grid background -->
+        <div class="grid-bg"></div>
         <div class="container">
             <div class="hero-content">
                 <div class="hero-badge">开源 &middot; 全功能 &middot; 生产级</div>
@@ -247,7 +267,8 @@
     <section id="features" class="features">
         <div class="container">
             <div class="section-header">
-                <h2 class="section-title">16 大核心能力</h2>
+                <span class="section-badge">核心功能</span>
+                <h2 class="section-title">16 大核心<span class="gradient-text">能力</span></h2>
                 <p class="section-subtitle">从 CLI 到 Web UI，从单体到多智能体，从本地到多云 —— 全面超越原版 Axon</p>
             </div>
             <div class="features-grid">
@@ -339,7 +360,8 @@
     <section id="architecture" class="architecture">
         <div class="container">
             <div class="section-header">
-                <h2 class="section-title">五层架构设计</h2>
+                <span class="section-badge">架构设计</span>
+                <h2 class="section-title">五层<span class="gradient-text">架构</span>设计</h2>
                 <p class="section-subtitle">从入口到扩展，每一层都经过精心设计</p>
             </div>
             <div class="architecture-diagram">
@@ -409,7 +431,8 @@
     <section id="blog" class="blog">
         <div class="container">
             <div class="section-header">
-                <h2 class="section-title">技术博客</h2>
+                <span class="section-badge">技术文章</span>
+                <h2 class="section-title">技术<span class="gradient-text">博客</span></h2>
                 <p class="section-subtitle">10 篇深度技术文章，记录我们从零构建 AI 编程平台的每一步</p>
             </div>
             <div class="blog-posts">
@@ -488,7 +511,8 @@
     <section id="quickstart" class="quickstart">
         <div class="container">
             <div class="section-header">
-                <h2 class="section-title">快速开始</h2>
+                <span class="section-badge">快速上手</span>
+                <h2 class="section-title">快速<span class="gradient-text">开始</span></h2>
                 <p class="section-subtitle">只需几个简单步骤，即可运行本地开发环境</p>
             </div>
             <div class="steps">
@@ -652,6 +676,87 @@
                 navbar.classList.add('scrolled');
             } else {
                 navbar.classList.remove('scrolled');
+            }
+        });
+
+        // ====== WebGL Starfield ======
+        (function() {
+            var c = document.getElementById('starfield');
+            var gl = c.getContext('webgl') || c.getContext('experimental-webgl');
+            if (!gl) return;
+            function resize() { c.width = innerWidth; c.height = innerHeight; gl.viewport(0, 0, c.width, c.height); }
+            addEventListener('resize', resize); resize();
+            var N = 350, pos = new Float32Array(N * 3), sz = new Float32Array(N), spd = new Float32Array(N);
+            for (var i = 0; i < N; i++) {
+                pos[i*3] = (Math.random() - 0.5) * 2; pos[i*3+1] = (Math.random() - 0.5) * 2; pos[i*3+2] = Math.random();
+                sz[i] = Math.random() * 2.5 + 0.5; spd[i] = Math.random() * 0.00015 + 0.00003;
+            }
+            var vs = 'attribute vec3 a_pos;attribute float a_size;uniform float u_time;varying float v_alpha;varying float v_colorMix;void main(){float tw=sin(u_time*1.5+a_pos.x*8.0+a_pos.y*6.0)*0.4+0.6;v_alpha=a_pos.z*tw*0.6;v_colorMix=sin(a_pos.x*3.0+u_time*0.5)*0.5+0.5;gl_Position=vec4(a_pos.xy,0.0,1.0);gl_PointSize=a_size*(0.6+a_pos.z*0.5);}';
+            var fs = 'precision mediump float;varying float v_alpha;varying float v_colorMix;void main(){float d=length(gl_PointCoord-0.5)*2.0;if(d>1.0)discard;vec3 c1=vec3(0.39,0.4,0.95);vec3 c2=vec3(0.13,0.83,0.93);vec3 c3=vec3(0.65,0.55,0.98);vec3 col=mix(mix(c1,c2,v_colorMix),c3,v_colorMix*0.3);gl_FragColor=vec4(col,(1.0-d*d)*v_alpha);}';
+            function mk(type, src) { var s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; }
+            var prog = gl.createProgram();
+            gl.attachShader(prog, mk(gl.VERTEX_SHADER, vs)); gl.attachShader(prog, mk(gl.FRAGMENT_SHADER, fs));
+            gl.linkProgram(prog); gl.useProgram(prog);
+            var pb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, pb); gl.bufferData(gl.ARRAY_BUFFER, pos, gl.DYNAMIC_DRAW);
+            var aP = gl.getAttribLocation(prog, 'a_pos'); gl.enableVertexAttribArray(aP); gl.vertexAttribPointer(aP, 3, gl.FLOAT, false, 0, 0);
+            var sb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, sb); gl.bufferData(gl.ARRAY_BUFFER, sz, gl.STATIC_DRAW);
+            var aS = gl.getAttribLocation(prog, 'a_size'); gl.enableVertexAttribArray(aS); gl.vertexAttribPointer(aS, 1, gl.FLOAT, false, 0, 0);
+            var uT = gl.getUniformLocation(prog, 'u_time');
+            gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+            var t = 0;
+            (function frame() {
+                t += 0.016; gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); gl.uniform1f(uT, t);
+                for (var i = 0; i < N; i++) { pos[i*3+1] -= spd[i]; if (pos[i*3+1] < -1) { pos[i*3+1] = 1; pos[i*3] = (Math.random()-0.5)*2; } }
+                gl.bindBuffer(gl.ARRAY_BUFFER, pb); gl.bufferSubData(gl.ARRAY_BUFFER, 0, pos);
+                gl.vertexAttribPointer(aP, 3, gl.FLOAT, false, 0, 0);
+                gl.drawArrays(gl.POINTS, 0, N); requestAnimationFrame(frame);
+            })();
+        })();
+
+        // ====== Mouse Follow Glow ======
+        var glow = document.getElementById('mouseGlow');
+        document.addEventListener('mousemove', function(e) {
+            glow.style.left = e.clientX + 'px';
+            glow.style.top = e.clientY + 'px';
+        });
+
+        // ====== Feature Card 3D Tilt ======
+        document.querySelectorAll('.feature-card').forEach(function(card) {
+            card.addEventListener('mousemove', function(e) {
+                var rect = card.getBoundingClientRect();
+                var x = (e.clientX - rect.left) / rect.width - 0.5;
+                var y = (e.clientY - rect.top) / rect.height - 0.5;
+                card.style.transform = 'translateY(-6px) perspective(600px) rotateY(' + (x * 8) + 'deg) rotateX(' + (-y * 8) + 'deg)';
+                var intensity = Math.sqrt(x*x + y*y) * 2;
+                card.style.borderColor = 'rgba(99, 102, 241, ' + (0.15 + intensity * 0.3) + ')';
+            });
+            card.addEventListener('mouseleave', function() {
+                card.style.transform = '';
+                card.style.borderColor = '';
+            });
+        });
+
+        // ====== Scroll Reveal Animation ======
+        var revealElements = document.querySelectorAll('.section-header, .feature-card, .arch-layer, .blog-post, .step, .sponsor-tier, .video-feature');
+        var revealObs = new IntersectionObserver(function(entries) {
+            entries.forEach(function(entry) {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('reveal', 'visible');
+                }
+            });
+        }, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
+        revealElements.forEach(function(el, i) {
+            el.classList.add('reveal');
+            el.style.transitionDelay = (i % 4) * 0.1 + 's';
+            revealObs.observe(el);
+        });
+
+        // ====== Parallax on scroll ======
+        window.addEventListener('scroll', function() {
+            var scrolled = window.pageYOffset;
+            var meshBg = document.querySelector('.mesh-bg');
+            if (meshBg) {
+                meshBg.style.transform = 'translateY(' + (scrolled * 0.1) + 'px)';
             }
         });
     </script>
