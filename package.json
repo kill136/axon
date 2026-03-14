@@ -1,13 +1,14 @@
 {
   "name": "axon",
-  "version": "2.2.1",
+  "version": "2.2.2",
   "description": "Free & open source AI coding assistant with Web IDE, multi-agent system, and self-evolution",
   "type": "module",
   "main": "electron/main.cjs",
   "bin": {
     "axon": "./dist/cli.js",
     "axon-web": "./dist/web-cli.js",
-    "axon-proxy": "./dist/proxy-cli.js"
+    "axon-proxy": "./dist/proxy-cli.js",
+    "mcp-cli": "./dist/mcp-cli.js"
   },
   "funding": {
     "type": "paypal",
