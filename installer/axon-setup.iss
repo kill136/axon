@@ -13,7 +13,7 @@
 ;   .\build-installer.ps1
 
 #define MyAppName "Axon"
-#define MyAppVersion "2.2.1"
+#define MyAppVersion "2.2.2"
 #define MyAppPublisher "Axon"
 #define MyAppURL "https://github.com/anthropics/claude-code"
 #define MyAppExeName "Axon.exe"
