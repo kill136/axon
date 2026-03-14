@@ -14,6 +14,7 @@ import blueprintApiRouter from './blueprint-api.js';
 import agentApiRouter from './agent-api.js';
 import fileApiRouter from './file-api.js';
 import notebookApiRouter from './notebook-api.js';
+import mcpCliApiRouter from './mcp-cli-api.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
@@ -47,6 +48,10 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
   // ============ Notebook API ============
   // AI 可定制属性管理（profile/experience/project notebooks + AXON.md）
   app.use('/api/notebook', notebookApiRouter);
+
+  // ============ MCP CLI API ============
+  // HTTP bridge for mcp-cli command (progressive MCP tool loading)
+  app.use('/api/mcp-cli', mcpCliApiRouter);
 
   // 健康检查
   app.get('/api/health', (req: Request, res: Response) => {
@@ -94,7 +99,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
       try {
         const allSkills = getAllSkills();
         skills = allSkills.map((s: any) => ({
-          name: s.name || s.id || 'unknown',
+          name: s.displayName || s.skillName || 'unknown',
           description: (s.description || s.whenToUse || '').slice(0, 120),
           source: 'skill' as const,
           status: 'active' as const,

@@ -31,6 +31,10 @@ interface ApiConfig {
   authPriority?: 'apiKey' | 'oauth' | 'auto';
   /** Gemini API Key（图片生成） */
   geminiApiKey?: string;
+  /** Ollama 服务地址 */
+  ollamaUrl?: string;
+  /** Ollama 模型名称 */
+  ollamaModel?: string;
 }
 
 /**
@@ -104,6 +108,8 @@ export function ApiConfigPanel({ onSave, onClose }: ApiConfigPanelProps) {
     customModelName: '',
     authPriority: 'auto',
     geminiApiKey: '',
+    ollamaUrl: 'http://localhost:11434',
+    ollamaModel: '',
   });
 
   // 跟踪 apiKey 是否被用户手动修改过（防止掩码值或空值覆盖已有 key）
@@ -124,6 +130,10 @@ export function ApiConfigPanel({ onSave, onClose }: ApiConfigPanelProps) {
   const [testError, setTestError] = useState<string | null>(null);
   // 保存成功消息
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
+  // Ollama 测试状态
+  const [ollamaTesting, setOllamaTesting] = useState(false);
+  const [ollamaTestSuccess, setOllamaTestSuccess] = useState<string | null>(null);
+  const [ollamaTestError, setOllamaTestError] = useState<string | null>(null);
 
   /**
    * 加载当前配置
@@ -258,6 +268,36 @@ export function ApiConfigPanel({ onSave, onClose }: ApiConfigPanelProps) {
       setTestSuccess(null);
     } finally {
       setTesting(false);
+    }
+  };
+
+  /**
+   * 测试 Ollama 连接
+   */
+  const handleOllamaTest = async () => {
+    setOllamaTesting(true);
+    setOllamaTestError(null);
+    setOllamaTestSuccess(null);
+
+    try {
+      const response = await fetch('/api/config/ollama/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ollamaUrl: config.ollamaUrl || 'http://localhost:11434' }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        const models = data.data.models?.slice(0, 5).join(', ') || 'none';
+        setOllamaTestSuccess(t('apiConfig.ollama.testSuccess', { models }));
+      } else {
+        setOllamaTestError(t('apiConfig.ollama.testFailed', { error: data.error || 'Unknown error' }));
+      }
+    } catch (err) {
+      setOllamaTestError(t('apiConfig.ollama.testFailed', { error: err instanceof Error ? err.message : String(err) }));
+    } finally {
+      setOllamaTesting(false);
     }
   };
 
@@ -489,6 +529,78 @@ export function ApiConfigPanel({ onSave, onClose }: ApiConfigPanelProps) {
             <span className="help-text">
               {t('apiConfig.geminiApiKey.help')}
             </span>
+          </div>
+
+          {/* 分隔线 - Ollama */}
+          <div style={{ margin: '24px 0', borderTop: '1px solid var(--border-color)' }} />
+          <h4 style={{ marginBottom: '16px', color: 'var(--text-primary)' }}>{t('apiConfig.ollama.title')}</h4>
+          <p className="help-text" style={{ marginBottom: '16px' }}>
+            {t('apiConfig.ollama.description')}
+          </p>
+
+          {/* Ollama URL */}
+          <div className="mcp-form-group">
+            <label>
+              {t('apiConfig.ollama.url.label')}
+              <input
+                type="text"
+                className="mcp-form-input"
+                placeholder={t('apiConfig.ollama.url.placeholder')}
+                value={config.ollamaUrl ?? 'http://localhost:11434'}
+                onChange={(e) => updateConfig('ollamaUrl', e.target.value)}
+              />
+            </label>
+            <span className="help-text">
+              {t('apiConfig.ollama.url.help')}
+            </span>
+          </div>
+
+          {/* Ollama Model */}
+          <div className="mcp-form-group">
+            <label>
+              {t('apiConfig.ollama.model.label')}
+              <input
+                type="text"
+                className="mcp-form-input"
+                placeholder={t('apiConfig.ollama.model.placeholder')}
+                value={config.ollamaModel ?? ''}
+                onChange={(e) => updateConfig('ollamaModel', e.target.value)}
+              />
+            </label>
+            <span className="help-text">
+              {t('apiConfig.ollama.model.help')}
+            </span>
+          </div>
+
+          {/* Ollama 测试结果 */}
+          {ollamaTestError && (
+            <div className="mcp-form-error" style={{ marginBottom: '12px' }}>
+              {ollamaTestError}
+            </div>
+          )}
+          {ollamaTestSuccess && (
+            <div style={{
+              padding: '10px 12px',
+              marginBottom: '12px',
+              backgroundColor: 'rgba(34, 197, 94, 0.1)',
+              border: '1px solid rgba(34, 197, 94, 0.3)',
+              borderRadius: '4px',
+              color: '#22c55e',
+              fontSize: '13px',
+            }}>
+              {ollamaTestSuccess}
+            </div>
+          )}
+
+          {/* Ollama 测试按钮 */}
+          <div style={{ marginBottom: '8px' }}>
+            <button
+              className="mcp-btn-secondary mcp-btn"
+              onClick={handleOllamaTest}
+              disabled={ollamaTesting}
+            >
+              {ollamaTesting ? t('apiConfig.ollama.testing') : t('apiConfig.ollama.testConnection')}
+            </button>
           </div>
         </div>
 

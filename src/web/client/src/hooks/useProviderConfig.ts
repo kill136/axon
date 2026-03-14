@@ -17,6 +17,7 @@ export const PROVIDER_LIST: ProviderInfo[] = [
   { id: 'deepseek', name: 'DeepSeek', icon: '🔵' },
   { id: 'bedrock', name: 'Bedrock', icon: '🟠' },
   { id: 'vertex', name: 'Vertex', icon: '🔴' },
+  { id: 'ollama', name: 'Ollama', icon: '🦙' },
 ];
 
 /**
@@ -26,6 +27,8 @@ function detectProvider(config: any): string {
   const baseUrl = config.apiBaseUrl || '';
   const provider = config.apiProvider || 'anthropic';
 
+  // Ollama 检测：ollamaModel 非空 = Ollama 模式
+  if (config.ollamaModel) return 'ollama';
   if (baseUrl.includes('openrouter.ai')) return 'openrouter';
   if (baseUrl.includes('deepseek.com')) return 'deepseek';
   if (provider === 'bedrock') return 'bedrock';
@@ -77,6 +80,11 @@ export function useProviderConfig() {
         case 'vertex':
           payload.apiProvider = 'vertex';
           payload.apiBaseUrl = '';
+          break;
+        case 'ollama':
+          // Ollama 切换由后端 /api/config/ollama/enable 处理
+          // 这里只标记 provider，实际启用由 ApiConfigPanel 的 Save 触发
+          payload.apiProvider = 'anthropic';
           break;
       }
 

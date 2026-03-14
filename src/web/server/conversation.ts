@@ -42,7 +42,8 @@ import {
 } from '../../context/session-memory.js';
 import { initNotebookManager, getNotebookManager, activateNotebookManager } from '../../memory/notebook.js';
 import { initMemorySearchManager, getMemorySearchManager } from '../../memory/memory-search.js';
-import { registerMcpServer, connectMcpServer, createMcpTools, getMcpServers, callMcpTool, disconnectMcpServer, unregisterMcpServer, MCPSearchTool, type McpToolDefinition } from '../../tools/mcp.js';
+import { registerMcpServer, connectMcpServer, createMcpTools, getMcpServers, callMcpTool, disconnectMcpServer, unregisterMcpServer, MCPSearchTool, isThirdPartyApiEndpoint, getMcpMode, type McpToolDefinition } from '../../tools/mcp.js';
+import { isDeferredTool } from '../../mcp/tools.js';
 import { getChromeIntegrationConfig } from '../../chrome-mcp/index.js';
 import { CHROME_MCP_TOOLS } from '../../chrome-mcp/tools.js';
 import { RewindManager, type RewindOption } from '../../rewind/index.js';
@@ -487,6 +488,8 @@ export class ConversationManager {
    * 对应官方 LM6() / DV6() 合并逻辑
    */
   private mcpTools: Array<{ name: string; description: string; inputSchema: any; isMcp?: boolean }> = [];
+  /** MCP CLI 模式日志是否已输出（避免高频重复） */
+  private _mcpCliModeLogged = false;
   /** 插件市场管理器 */
   private marketplaceManager?: MarketplaceManager;
   /** Web Server 内嵌调度器（由 index.ts 注入） */
@@ -1772,6 +1775,38 @@ export class ConversationManager {
       let stopReason: string | null = null;
       let thinkingStarted = false;
 
+      // 对齐官方 v2.1.70：检查是否有 ToolSearch 工具（Mcp），决定是否启用 deferred tools
+      const hasToolSearch = tools.some(t => t.name === 'Mcp');
+
+      // 对齐官方 v2.1.70：注入 <available-deferred-tools> 列表到消息中
+      if (hasToolSearch && !isThirdPartyApiEndpoint()) {
+        const allTools = [...toolRegistry.getAll().map(t => ({
+          name: t.name,
+          description: t.description,
+          searchHint: (t as any).searchHint,
+          shouldDefer: (t as any).shouldDefer,
+          isMcp: false,
+        })), ...this.mcpTools.map(t => ({
+          name: t.name,
+          description: t.description,
+          searchHint: undefined,
+          shouldDefer: undefined,
+          isMcp: true,
+        }))];
+        const deferredToolsList = allTools
+          .filter(t => isDeferredTool(t as any))
+          .map(t => `- ${t.name}: ${t.searchHint || t.description.slice(0, 80)}`)
+          .sort()
+          .join('\n');
+        if (deferredToolsList) {
+          const deferredToolsMessage: Message = {
+            role: 'user',
+            content: [{ type: 'text', text: `<available-deferred-tools>\n${deferredToolsList}\n</available-deferred-tools>` }],
+          };
+          cleanedMessages = [deferredToolsMessage, ...cleanedMessages];
+        }
+      }
+
       try {
         // 调用 Claude API（使用 createMessageStream，默认开启 Extended Thinking）
         // 传递 abort signal，取消时可直接中止 HTTP 流（对齐官方 CLI）
@@ -1784,6 +1819,7 @@ export class ConversationManager {
             thinkingBudget: 10000,
             signal: state.currentAbortController?.signal,
             promptBlocks: systemPrompt.blocks,
+            toolSearchEnabled: hasToolSearch,
           }
         );
 
@@ -3971,6 +4007,21 @@ Respond ONLY with valid JSON, no other text.`;
         notebookSummary,
         // MCP 服务器信息（用于系统提示中的 MCP 指令）
         mcpServers: mcpServerInfos.length > 0 ? mcpServerInfos : undefined,
+        // MCP CLI 模式：通过 Bash 调用 mcp-cli 而非直接注入 MCP 工具定义
+        mcpCliMode: getMcpMode() === 'mcp-cli',
+        // MCP CLI 端口（硬编码到提示词中，避免 CLI 猜错端口）
+        mcpCliPort: parseInt(process.env.AXON_WEB_PORT || '3456', 10),
+        // MCP 工具列表（mcp-cli 模式下附带 description 和关键参数名）
+        mcpTools: this.mcpTools.length > 0 ? this.mcpTools.map(t => {
+          // 从 inputSchema 提取 required 参数名
+          const schema = t.inputSchema as Record<string, unknown> | undefined;
+          const required = (schema?.required as string[]) || [];
+          const properties = schema?.properties as Record<string, unknown> | undefined;
+          const params = required.length > 0
+            ? required
+            : properties ? Object.keys(properties).slice(0, 5) : [];
+          return { name: t.name, description: t.description, params };
+        }) : undefined,
         // 活跃目标（常驻到提示词，每次对话都能看到）
         activeGoals: (() => {
           const goals = loadActiveGoals(state.session.cwd);
@@ -3993,15 +4044,26 @@ Respond ONLY with valid JSON, no other text.`;
       prompt = this.getDefaultSystemPrompt();
     }
 
-    // WebUI 专属追加内容，放入独立 block（不影响 builder 静态块的缓存）
+    // WebUI 专属追加内容，全部追加到动态部分末尾
+    // 重要：不能在 global-scope 块之前前置 null-scope 块，否则打破 Anthropic 的前缀缓存匹配
     const extraParts: string[] = [];
 
-    // 【与 CLI cli.ts:397-398 一致】如果 Chrome 集成已启用且未被禁用，前置 Chrome 系统提示
-    // 通过检查 mcpTools 中是否有 chrome MCP 工具来判断是否启用
+    // Chrome 集成提示：追加到末尾（而非前置），避免打破缓存前缀
     if (this.chromeSystemPrompt && this.mcpTools.some(t => t.name.startsWith('mcp__claude-in-chrome__'))) {
-      prompt = `${this.chromeSystemPrompt}\n\n${prompt}`;
-      // Chrome prompt 前置到 static block 之前（作为独立 block）
-      blocks = [{ text: this.chromeSystemPrompt, cacheScope: null }, ...blocks];
+      extraParts.push(this.chromeSystemPrompt);
+    }
+
+    // 用户自定义提示词片段（~/.axon/prompt-snippets/）
+    try {
+      const { prepend, append } = promptSnippetsManager.getInjectionTexts();
+      if (prepend) {
+        extraParts.push(prepend);
+      }
+      if (append) {
+        extraParts.push(append);
+      }
+    } catch {
+      // 片段加载失败不影响主流程
     }
 
     // 如果有追加提示，添加到默认提示后
@@ -4021,26 +4083,12 @@ Respond ONLY with valid JSON, no other text.`;
       extraParts.push(codebaseContext);
     }
 
-    // 注入用户自定义提示词片段（~/.axon/prompt-snippets/）
-    try {
-      const { prepend, append } = promptSnippetsManager.getInjectionTexts();
-      if (prepend) {
-        prompt = prepend + '\n\n' + prompt;
-        blocks = [{ text: prepend, cacheScope: null }, ...blocks];
-      }
-      if (append) {
-        extraParts.push(append);
-      }
-    } catch {
-      // 片段加载失败不影响主流程
-    }
-
-    // 将所有额外动态内容合并到 prompt 和 blocks 的动态部分
+    // 将所有额外动态内容合并到 prompt 和 blocks 的动态部分（总是追加到末尾）
     if (extraParts.length > 0) {
       const extraText = extraParts.join('\n\n');
       prompt += '\n\n' + extraText;
 
-      // 追加到已有的 null 块，或新建
+      // 追加到已有的 null 块，或新建一个
       let lastDynamicIdx = -1;
       for (let i = blocks.length - 1; i >= 0; i--) {
         if (blocks[i].cacheScope === null) {
@@ -4326,15 +4374,21 @@ Guidelines:
     }));
 
     // 2. MCP 工具（来自 mcpTools state，对应官方 JQ1(mcp.tools, ctx)）
-    const filteredMcpTools = this.mcpTools.filter(tool =>
-      this.isToolEnabled(tool.name, config)
-    );
+    // mcp-cli 模式下不注入 MCP 工具定义 — 通过 Bash + mcp-cli 命令渐进式调用
+    const isMcpCliMode = getMcpMode() === 'mcp-cli';
+    let mcpDefs: any[] = [];
 
-    const mcpDefs = filteredMcpTools.map(tool => ({
-      name: tool.name,
-      description: tool.description,
-      inputSchema: tool.inputSchema,
-    }));
+    if (!isMcpCliMode) {
+      const filteredMcpTools = this.mcpTools.filter(tool =>
+        this.isToolEnabled(tool.name, config)
+      );
+
+      mcpDefs = filteredMcpTools.map(tool => ({
+        name: tool.name,
+        description: tool.description,
+        inputSchema: tool.inputSchema,
+      }));
+    }
 
     // 3. 合并并去重（对应官方 LM6() / DV6()：$x([...builtinTools, ...mcpTools], "name")）
     const seen = new Set<string>();
@@ -4346,9 +4400,9 @@ Guidelines:
       }
     }
 
-    const mcpNames = merged.filter(t => t.name.startsWith('mcp__')).map(t => t.name);
-    if (mcpNames.length > 0) {
-      console.log(`[getFilteredTools] MCP tools sent to model (${mcpNames.length}): [${mcpNames.join(', ')}]`);
+    if (isMcpCliMode && this.mcpTools.length > 0 && !this._mcpCliModeLogged) {
+      console.log(`[getFilteredTools] MCP CLI mode: ${this.mcpTools.length} MCP tools available via mcp-cli command (not injected as API tools)`);
+      this._mcpCliModeLogged = true;
     }
 
     return merged;
@@ -4984,6 +5038,8 @@ Guidelines:
    * 返回真实的 enabled 状态（基于 disabledMcpServers 数组）和工具数量
    */
   listMcpServers(): any[] {
+    // 热加载配置：用户可能在运行时添加了新的 MCP 服务器
+    this.mcpConfigManager.reloadSync();
     const servers = this.mcpConfigManager.getServers();
     const disabledServers = this.getDisabledMcpServers();
 
@@ -5090,6 +5146,9 @@ Guidelines:
         // 启用：重新连接并加载工具
         // 对应官方：qm(name, config) + handleConnectionResult
         try {
+          // 热加载配置：用户可能在运行时添加了新的 MCP 服务器
+          await this.mcpConfigManager.reload();
+
           // 先检查是否已有预加载的工具（如 Chrome MCP）
           const existingServer = getMcpServers().get(name);
           if (existingServer && existingServer.tools && existingServer.tools.length > 0) {

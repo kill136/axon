@@ -1389,7 +1389,7 @@ router.post('/search', async (req: Request, res: Response) => {
     const rgPath = getRgPath();
     if (rgPath) {
       try {
-        const rgResult = searchWithRipgrep(rgPath, projectRoot, query, {
+        const rgResult = await searchWithRipgrep(rgPath, projectRoot, query, {
           isRegex,
           isCaseSensitive,
           isWholeWord,

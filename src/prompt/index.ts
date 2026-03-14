@@ -9,7 +9,6 @@ export {
   PromptTemplates,
   CORE_IDENTITY,
   getCoreIdentity,
-  PERMISSION_MODES,
   EXECUTING_WITH_CARE,
   getCodingGuidelines,
   getToolGuidelines,

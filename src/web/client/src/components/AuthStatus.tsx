@@ -32,7 +32,7 @@ interface AuthStatusProps {
   refreshKey?: number;
 }
 
-const AXON_CLOUD_DASHBOARD = 'https://api.chatbi.site';
+const AXON_CLOUD_DASHBOARD = 'https://api.chatbi.site/console';
 
 export function AuthStatus({ onLoginClick, refreshKey }: AuthStatusProps) {
   const { t } = useLanguage();

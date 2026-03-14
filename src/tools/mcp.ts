@@ -1916,3 +1916,19 @@ Parameters:
     };
   }
 }
+
+// ============ MCP CLI Bridge ============
+
+/**
+ * Exported wrapper for sendMcpMessage, used by mcp-cli API routes.
+ * sendMcpMessage itself is a module-private function, so we expose
+ * a public facade for the CLI bridge.
+ */
+export async function sendMcpMessageForCli(
+  serverName: string,
+  method: string,
+  params: unknown,
+  timeout?: number,
+): Promise<unknown | null> {
+  return sendMcpMessage(serverName, method, params, timeout);
+}

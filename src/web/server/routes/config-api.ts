@@ -285,6 +285,92 @@ export function setupConfigApiRoutes(app: Express): void {
 
 
   /**
+   * POST /api/config/ollama/test
+   * 测试 Ollama 连接
+   */
+  app.post('/api/config/ollama/test', async (req: Request, res: Response) => {
+    try {
+      const { ollamaUrl } = req.body;
+      const url = ollamaUrl || 'http://localhost:11434';
+
+      const { testOllamaConnection } = await import('../../../proxy/ollama-adapter.js');
+      const result = await testOllamaConnection(url);
+
+      if (result.ok) {
+        sendSuccess(res, { models: result.models }, 'Ollama connection successful');
+      } else {
+        return res.status(400).json({
+          success: false,
+          error: result.error || 'Failed to connect to Ollama',
+        });
+      }
+    } catch (error) {
+      console.error('[Config API] Failed to test Ollama connection:', error);
+      sendError(res, error, 500);
+    }
+  });
+
+  /**
+   * POST /api/config/ollama/enable
+   * 启用 Ollama 模式（启动适配器代理）
+   */
+  app.post('/api/config/ollama/enable', async (req: Request, res: Response) => {
+    try {
+      const { ollamaUrl, ollamaModel } = req.body;
+
+      if (!ollamaModel) {
+        return sendError(res, new Error('Model name is required'), 400);
+      }
+
+      const { startOllamaAdapter } = await import('../../../proxy/ollama-adapter.js');
+      const adapterBaseUrl = await startOllamaAdapter({
+        port: 18080,
+        ollamaUrl: ollamaUrl || 'http://localhost:11434',
+        model: ollamaModel,
+      });
+
+      // 保存 Ollama 配置
+      await webConfigService.updateApiConfig({
+        ollamaUrl: ollamaUrl || 'http://localhost:11434',
+        ollamaModel,
+        apiBaseUrl: adapterBaseUrl,
+        customModelName: ollamaModel,
+      } as any);
+
+      sendSuccess(res, {
+        adapterUrl: adapterBaseUrl,
+        model: ollamaModel,
+      }, 'Ollama adapter started');
+    } catch (error) {
+      console.error('[Config API] Failed to enable Ollama:', error);
+      sendError(res, error, 500);
+    }
+  });
+
+  /**
+   * POST /api/config/ollama/disable
+   * 停用 Ollama 模式
+   */
+  app.post('/api/config/ollama/disable', async (req: Request, res: Response) => {
+    try {
+      const { stopOllamaAdapter } = await import('../../../proxy/ollama-adapter.js');
+      await stopOllamaAdapter();
+
+      // 清除 Ollama 配置
+      await webConfigService.updateApiConfig({
+        ollamaModel: '',
+        apiBaseUrl: '',
+        customModelName: '',
+      } as any);
+
+      sendSuccess(res, { disabled: true }, 'Ollama adapter stopped');
+    } catch (error) {
+      console.error('[Config API] Failed to disable Ollama:', error);
+      sendError(res, error, 500);
+    }
+  });
+
+  /**
    * GET /api/config/embedding
    * 获取 Embedding 配置
    */

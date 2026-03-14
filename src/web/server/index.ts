@@ -93,6 +93,13 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
   process.env.AXON_WEB_PROTO = useHttps ? 'https' : 'http';
   process.env.AXON_WEB_PORT = String(port);
 
+  // 生成 mcp-cli 内部通信 token（仅本次进程生命周期有效）
+  // CLI 子进程通过环境变量继承此 token，API 端点校验
+  if (!process.env.MCP_CLI_TOKEN) {
+    const { randomBytes } = await import('crypto');
+    process.env.MCP_CLI_TOKEN = randomBytes(16).toString('hex');
+  }
+
   // 创建 WebSocket 服务器（使用 noServer 模式，手动处理 upgrade 事件）
   // 这样可以避免与 Vite HMR WebSocket 冲突
   const wss = new WebSocketServer({ noServer: true });
@@ -187,6 +194,10 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
   // Axon Cloud 路由（注册、登录、余额查询）
   const axonCloudRouter = await import('./routes/axon-cloud.js');
   app.use('/api/axon-cloud', axonCloudRouter.default);
+
+  // Agent Network API 路由
+  const networkRouter = await import('./routes/network-api.js');
+  app.use('/api/network', networkRouter.default);
 
   // 蓝图 API 路由（项目导航、符号浏览、调用图等）
   const blueprintRouter = await import('./routes/blueprint-api.js');
@@ -314,6 +325,37 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
     }, 2000);
   }
 
+  // 启动 Agent Network（AI Agent 间去中心化通信）
+  let agentNetwork: import('../../network/index.js').AgentNetwork | null = null;
+  {
+    const networkConfig = (configManager.getAll() as any)?.network;
+    if (networkConfig?.enabled) {
+      try {
+        const { AgentNetwork } = await import('../../network/index.js');
+        const { broadcastMessage } = await import('./websocket.js');
+        const { VERSION } = await import('../../version.js');
+        agentNetwork = new AgentNetwork();
+        await agentNetwork.start(
+          { enabled: true, port: networkConfig.port || 7860, advertise: networkConfig.advertise !== false, autoAcceptSameOwner: networkConfig.autoAcceptSameOwner !== false, name: networkConfig.name },
+          cwd,
+          VERSION,
+        );
+
+        // 转发事件到前端
+        agentNetwork.on('agent:found', (agent: any) => broadcastMessage({ type: 'network:agent_found', payload: agent }));
+        agentNetwork.on('agent:lost', (agentId: string) => broadcastMessage({ type: 'network:agent_lost', payload: { agentId } }));
+        agentNetwork.on('agent:updated', (agent: any) => broadcastMessage({ type: 'network:agent_updated', payload: agent }));
+        agentNetwork.on('message', (entry: any) => broadcastMessage({ type: 'network:message', payload: entry }));
+        agentNetwork.on('trust_request', (agent: any) => broadcastMessage({ type: 'network:trust_request', payload: agent }));
+
+        // 注入到 app.locals 供 API 路由使用
+        app.locals.agentNetwork = agentNetwork;
+      } catch (error) {
+        console.error('[AgentNetwork] Failed to start:', error);
+      }
+    }
+  }
+
   // 启动 Eye Daemon（摄像头持续拍照后台服务）
   // 用户在 settings.json 的 eye 字段配置 { autoStart: true, camera: 0, interval: 0.5 }
   {
@@ -329,6 +371,25 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
         }
       } catch (error) {
         console.warn('[Eye] Failed to start eye daemon:', error);
+      }
+    }
+  }
+
+  // 自动启动 Ollama 适配器（如果 settings.json 中配置了 ollamaModel）
+  {
+    const ollamaModel = (configManager.getAll() as any)?.ollamaModel;
+    const ollamaUrl = (configManager.getAll() as any)?.ollamaUrl || 'http://localhost:11434';
+    if (ollamaModel) {
+      try {
+        const { startOllamaAdapter } = await import('../../proxy/ollama-adapter.js');
+        const adapterUrl = await startOllamaAdapter({
+          port: 18080,
+          ollamaUrl,
+          model: ollamaModel,
+        });
+        console.log(`[Ollama] Adapter started: ${adapterUrl} → ${ollamaUrl} (model: ${ollamaModel})`);
+      } catch (error) {
+        console.warn('[Ollama] Failed to start adapter:', error);
       }
     }
   }

@@ -32,6 +32,7 @@ export * from './mcp-manage.js';
 export * from './eye.js';
 export * from './ear.js';
 export * from './goal.js';
+export * from './network-agent.js';
 
 // 蓝图工具不通过此处 re-export
 // 蓝图模块直接 import 各自需要的工具文件 (如 ../tools/dispatch-worker.js)
@@ -63,6 +64,7 @@ import { EyeTool } from './eye.js';
 import { EarTool } from './ear.js';
 import { McpManageTool } from './mcp-manage.js';
 import { GoalManageTool } from './goal.js';
+import { NetworkTool } from './network-agent.js';
 
 // ============ 蓝图工具 imports (lazy) ============
 import { BlueprintTool } from './blueprint.js';
@@ -173,6 +175,9 @@ export function registerCoreTools(): void {
 
   // 23. GoalManage 持久目标管理工具
   toolRegistry.register(new GoalManageTool());
+
+  // 24. AgentNetwork Agent 间通信协作工具
+  toolRegistry.register(new NetworkTool());
 }
 
 /**

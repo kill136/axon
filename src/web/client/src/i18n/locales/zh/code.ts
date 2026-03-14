@@ -187,6 +187,8 @@ const code = {
   'compactChat.title': '对话',
   'fileTree.andMoreFiles': '…等共 {{count}} 个文件',
   'fileTree.clearSelection': '清除选择',
+  'fileTree.collapseAll': '全部折叠',
+  'fileTree.expandAll': '全部展开',
   'fileTree.confirmBatchDelete': '确定要删除 {{count}} 个项目吗？',
   'fileTree.confirmDelete': '确定要删除 "{{name}}" 吗？',
   'fileTree.copy': '复制',

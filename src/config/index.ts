@@ -61,6 +61,10 @@ const UserConfigSchema = z.object({
   authPriority: z.enum(['apiKey', 'oauth', 'auto']).default('auto').optional(),
   oauthAccount: z.record(z.any()).optional(),
 
+  // Ollama / 本地模型配置
+  ollamaUrl: z.string().default('http://localhost:11434').optional(),
+  ollamaModel: z.string().optional(),
+
   // 功能配置
   maxRetries: z.number().int().min(0).max(10).default(3),
   bashMaxOutputLength: z.number().int().min(1000).max(150000).default(30000),
@@ -286,6 +290,20 @@ const UserConfigSchema = z.object({
       enabled: z.boolean().default(false),
       lambda: z.number().min(0).max(1).default(0.7),
     }).optional(),
+  }).optional(),
+
+  // Agent Network 配置（v2.2.3+）
+  network: z.object({
+    /** 是否启用 Agent Network */
+    enabled: z.boolean().default(false),
+    /** Agent 间通信端口 */
+    port: z.number().int().min(1024).max(65535).default(7860),
+    /** Agent 显示名（默认 hostname-port） */
+    name: z.string().optional(),
+    /** 是否通过 mDNS 广播自己 */
+    advertise: z.boolean().default(true),
+    /** 同 Owner 的 Agent 自动信任 */
+    autoAcceptSameOwner: z.boolean().default(true),
   }).optional(),
 }).passthrough(); // 允许额外字段，便于扩展
 

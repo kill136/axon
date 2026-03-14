@@ -20,6 +20,7 @@ import {
   getToneAndStyle,
   getEnvironmentInfo,
   getMcpInstructions,
+  getMcpCliInstructions,
   getOutputStylePrompt,
 } from './templates.js';
 import { AttachmentManager, attachmentManager as defaultAttachmentManager } from './attachments.js';
@@ -216,9 +217,21 @@ Always respond in ${context.language}. Use ${context.language} for all explanati
     }
 
     // 17. MCP 指令（因安装的 MCP 服务器而异）
-    const mcpInstructions = getMcpInstructions(context.mcpServers);
-    if (mcpInstructions) {
-      dynamicParts.push(mcpInstructions);
+    if (context.mcpCliMode) {
+      // MCP CLI 模式：注入 mcp-cli 命令使用说明（即使无工具也注入 discovery 命令）
+      const mcpCliInstructions = getMcpCliInstructions(
+        context.mcpTools,
+        'Bash',
+        context.mcpCliPort,
+      );
+      if (mcpCliInstructions) {
+        dynamicParts.push(mcpCliInstructions);
+      }
+    } else {
+      const mcpInstructions = getMcpInstructions(context.mcpServers);
+      if (mcpInstructions) {
+        dynamicParts.push(mcpInstructions);
+      }
     }
 
     // 18. 附件内容（CLAUDE.md 等，因项目而异）
