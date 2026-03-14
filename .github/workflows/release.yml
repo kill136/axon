@@ -87,7 +87,7 @@ jobs:
             label: Linux x64
             artifact: axon-linux-x64
             shell: bash
-          - os: macos-13
+          - os: macos-14
             label: macOS x64 (Intel)
             artifact: axon-macos-x64
             shell: bash
@@ -258,15 +258,13 @@ jobs:
         shell: pwsh
         run: |
           $version = "${{ github.ref_name }}"
-          # version without 'v' prefix for Inno Setup
           $appVersion = $version.TrimStart('v')
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DAppVersion=$appVersion" "installer.iss"
-          $exeName = "Axon-Setup-${appVersion}.exe"
-          if (Test-Path $exeName) {
-            $sizeMB = [math]::Round((Get-Item $exeName).Length / 1MB, 1)
-            Write-Host "Created $exeName ($sizeMB MB)"
+          if (Test-Path "Axon-Setup.exe") {
+            $sizeMB = [math]::Round((Get-Item "Axon-Setup.exe").Length / 1MB, 1)
+            Write-Host "Created Axon-Setup.exe ($sizeMB MB)"
           } else {
-            Write-Error "Inno Setup output not found: $exeName"
+            Write-Error "Inno Setup output not found: Axon-Setup.exe"
             exit 1
           }
 
@@ -275,7 +273,7 @@ jobs:
         with:
           files: |
             Axon-Windows-Portable-${{ github.ref_name }}.zip
-            Axon-Setup-*.exe
+            Axon-Setup.exe
           fail_on_unmatched_files: true
 
   build-electron-macos:
