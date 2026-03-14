@@ -91,8 +91,12 @@ export interface PromptContext {
   outputStyle?: { name: string; prompt: string; keepCodingInstructions?: boolean } | null;
   /** MCP 服务器信息 */
   mcpServers?: Array<{ name: string; type: string; instructions?: string }>;
-  /** MCP 工具列表 */
-  mcpTools?: Array<{ name: string }>;
+  /** MCP 工具列表（mcp-cli 模式下用于生成命令提示词） */
+  mcpTools?: Array<{ name: string; description?: string; params?: string[] }>;
+  /** MCP CLI 模式：通过 mcp-cli 命令调用 MCP 工具而非直接注入工具定义 */
+  mcpCliMode?: boolean;
+  /** MCP CLI 端口号（mcp-cli 模式下硬编码到提示词中） */
+  mcpCliPort?: number;
   /** 是否有技能可用 */
   hasSkills?: boolean;
   /** 项目目录路径（用于 Past Sessions） */

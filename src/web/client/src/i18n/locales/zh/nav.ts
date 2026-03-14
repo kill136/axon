@@ -124,6 +124,7 @@ const nav = {
   'terminal.closePanel': '关闭面板',
   'terminal.newTerminal': '新建终端',
   'terminal.restartTerminal': '重启终端',
+  'customize.network': 'Agent 网络',
 } as const;
 
 export default nav;

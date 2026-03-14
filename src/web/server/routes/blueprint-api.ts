@@ -4628,14 +4628,21 @@ router.post('/projects/browse', async (req: Request, res: Response) => {
 
     if (platform === 'win32') {
       // Windows: 使用 PowerShell
+      // 创建一个隐藏的 TopMost 窗体作为 owner，确保对话框在最前面
+      // 不设 owner 的话，对话框会弹到 Electron 窗口后面
       const psScript = `
 Add-Type -AssemblyName System.Windows.Forms
+$owner = New-Object System.Windows.Forms.Form
+$owner.TopMost = $true
+$owner.ShowInTaskbar = $false
+$owner.WindowState = [System.Windows.Forms.FormWindowState]::Minimized
 $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
 $dialog.Description = "Select project folder"
 $dialog.ShowNewFolderButton = $true
-if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+if ($dialog.ShowDialog($owner) -eq [System.Windows.Forms.DialogResult]::OK) {
   Write-Output $dialog.SelectedPath
 }
+$owner.Dispose()
 `;
       cmd = 'powershell';
       args = ['-NoProfile', '-NonInteractive', '-Command', psScript];

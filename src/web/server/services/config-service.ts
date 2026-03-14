@@ -29,6 +29,9 @@ export interface ApiConfig {
   authPriority?: 'apiKey' | 'oauth' | 'auto';
   // Gemini API Key（用于图片生成）
   geminiApiKey?: string;
+  // Ollama / 本地模型配置
+  ollamaUrl?: string;
+  ollamaModel?: string;
 }
 
 /**
@@ -298,6 +301,8 @@ export class WebConfigService {
         customModelName: webAuth.getCustomModelName(),
         authPriority: (config as any).authPriority || 'auto',
         geminiApiKey: maskedGeminiKey,
+        ollamaUrl: (config as any).ollamaUrl || 'http://localhost:11434',
+        ollamaModel: (config as any).ollamaModel || '',
       };
     } catch (error) {
       console.error('[WebConfigService] Failed to get API config:', error);

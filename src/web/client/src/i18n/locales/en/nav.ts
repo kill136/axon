@@ -124,6 +124,7 @@ const nav = {
   'terminal.closePanel': 'Close Panel',
   'terminal.newTerminal': 'New Terminal',
   'terminal.restartTerminal': 'Restart Terminal',
+  'customize.network': 'Agent Network',
 } as const;
 
 export type NavKeys = keyof typeof nav;

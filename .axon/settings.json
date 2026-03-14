@@ -22,16 +22,10 @@
     "deny": []
   },
   "mcpServers": {
-    "claude-in-chrome": {
+    "reddit": {
       "type": "stdio",
-      "command": "node",
-      "args": [
-        "F:\\axon\\dist\\cli.js",
-        "--claude-in-chrome-mcp"
-      ],
-      "enabled": false,
-      "timeout": 30000,
-      "retries": 3
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/adhikasp/mcp-reddit.git", "mcp-reddit"]
     }
   }
 }

@@ -187,6 +187,8 @@ const code = {
   'compactChat.title': 'Chat',
   'fileTree.andMoreFiles': '...and {{count}} more files',
   'fileTree.clearSelection': 'Clear selection',
+  'fileTree.collapseAll': 'Collapse All',
+  'fileTree.expandAll': 'Expand All',
   'fileTree.confirmBatchDelete': 'Are you sure you want to delete {{count}} items?',
   'fileTree.confirmDelete': 'Are you sure you want to delete "{{name}}"?',
   'fileTree.copy': 'Copy',

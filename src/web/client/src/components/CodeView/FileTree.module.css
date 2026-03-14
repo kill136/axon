@@ -15,6 +15,51 @@
   position: relative;
 }
 
+/* ==================== 树工具栏 ==================== */
+
+.treeToolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+}
+
+.toolbarButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 22px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.45);
+  cursor: pointer;
+  transition: all 0.1s;
+  padding: 0;
+}
+
+.toolbarButton:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.toolbarButton:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.miniSpinner {
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid rgba(255, 255, 255, 0.15);
+  border-top-color: rgba(255, 255, 255, 0.6);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
 /* ==================== 树形容器 ==================== */
 
 .treeContainer {

@@ -273,6 +273,22 @@ export class ModelConfig {
   private inferCapabilities(modelId: string): ModelCapabilities {
     const normalized = modelId.toLowerCase();
 
+    // 检测是否为非 Claude 模型（Ollama 本地模型等）
+    const isClaude = normalized.includes('claude') || normalized.includes('opus') || normalized.includes('sonnet') || normalized.includes('haiku');
+
+    if (!isClaude) {
+      // 本地 / 第三方模型：保守的默认能力
+      return {
+        contextWindow: 32_000,
+        maxOutputTokens: 4096,
+        supportsThinking: false,
+        supportsTools: true,  // 大多数现代模型支持 function calling
+        supportsVision: false,
+        supportsPdf: false,
+        supportsCaching: false,
+      };
+    }
+
     // 检测 1M token 模型
     if (normalized.includes('[1m]') ||
         normalized.includes('opus-4-6') ||

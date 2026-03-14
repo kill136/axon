@@ -77,6 +77,22 @@ function getParentPath(path: string): string {
 }
 
 /**
+ * 收集树中所有目录的路径
+ */
+function collectAllDirPaths(node: FileTreeNode): string[] {
+  const paths: string[] = [];
+  if (node.type === 'directory') {
+    paths.push(node.path);
+    if (node.children) {
+      for (const child of node.children) {
+        paths.push(...collectAllDirPaths(child));
+      }
+    }
+  }
+  return paths;
+}
+
+/**
  * 在树中按路径查找节点
  */
 function findNodeInTree(node: FileTreeNode, targetPath: string): FileTreeNode | null {
@@ -815,6 +831,34 @@ export const FileTree: React.FC<FileTreeProps> = ({
     }
   }, [projectPath]);
 
+  // ==================== 全部展开 / 全部折叠 ====================
+
+  const [expandingAll, setExpandingAll] = useState(false);
+
+  const handleExpandAll = useCallback(async () => {
+    setExpandingAll(true);
+    try {
+      // 先加载完整树（depth=5 为后端最大值）
+      const response = await fetch(`/api/files/tree?root=${encodeURIComponent(projectPath)}&path=.&depth=5`);
+      if (response.ok) {
+        const fullTree = await response.json();
+        setTree(fullTree);
+        // 收集所有目录路径并全部展开
+        const allDirs = collectAllDirPaths(fullTree);
+        setExpandedDirs(new Set(allDirs));
+      }
+    } catch (err) {
+      console.error('[FileTree] 全部展开失败:', err);
+    } finally {
+      setExpandingAll(false);
+    }
+  }, [projectPath]);
+
+  const handleCollapseAll = useCallback(() => {
+    // 只保留根目录展开
+    setExpandedDirs(new Set(['.']));
+  }, []);
+
   // ==================== 节点点击处理（多选逻辑） ====================
 
   const handleNodeClick = useCallback((e: React.MouseEvent, node: FileTreeNode) => {
@@ -1533,6 +1577,35 @@ export const FileTree: React.FC<FileTreeProps> = ({
 
   return (
     <div className={styles.fileTree}>
+      {/* 展开/折叠工具栏 */}
+      <div className={styles.treeToolbar}>
+        <button
+          className={styles.toolbarButton}
+          onClick={handleExpandAll}
+          disabled={expandingAll}
+          title={t('fileTree.expandAll')}
+        >
+          {expandingAll ? (
+            <div className={styles.miniSpinner} />
+          ) : (
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+              <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M4 2l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.4"/>
+            </svg>
+          )}
+        </button>
+        <button
+          className={styles.toolbarButton}
+          onClick={handleCollapseAll}
+          title={t('fileTree.collapseAll')}
+        >
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+            <path d="M4 10l4-4 4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M4 14l4-4 4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.4"/>
+          </svg>
+        </button>
+      </div>
+
       <div
         ref={treeContainerRef}
         className={styles.treeContainer}

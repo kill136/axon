@@ -2890,8 +2890,8 @@ export class ConversationLoop {
       // 根据消息历史中已发现的 MCP 工具决定传哪些工具 schema 给 API
       const filteredTools = this.filterToolsForRequest(messages);
 
-      // 对齐官方：注入 <available-deferred-tools> 列表到系统提示词
-      // 让模型知道有哪些 deferred 工具可以通过 Mcp (ToolSearch) 发现
+      // 对齐官方 v2.1.70：注入 <available-deferred-tools> 列表到消息中（作为 meta user message 前置）
+      // 官方将 deferred tools 列表注入到消息数组头部，而非系统提示词，避免打破 system prompt 缓存前缀
       if (this.toolSearchEnabled && !isThirdPartyApiEndpoint()) {
         const deferredToolsList = this.allTools
           .filter(isDeferredTool)
@@ -2899,7 +2899,11 @@ export class ConversationLoop {
           .sort()
           .join('\n');
         if (deferredToolsList) {
-          systemPrompt = `${systemPrompt}\n\n<available-deferred-tools>\nUse the Mcp tool with select:<tool_name> to load any of these tools before use:\n${deferredToolsList}\n</available-deferred-tools>`;
+          const deferredToolsMessage: Message = {
+            role: 'user',
+            content: [{ type: 'text', text: `<available-deferred-tools>\n${deferredToolsList}\n</available-deferred-tools>` }],
+          };
+          messages = [deferredToolsMessage, ...messages];
         }
       }
 
@@ -3314,7 +3318,7 @@ Guidelines:
       // v2.1.34: 流式 API 也使用动态过滤
       const streamFilteredTools = this.filterToolsForRequest(messages);
 
-      // 对齐官方：注入 <available-deferred-tools> 列表到系统提示词（streaming 路径）
+      // 对齐官方 v2.1.70：注入 <available-deferred-tools> 列表到消息中（streaming 路径）
       if (this.toolSearchEnabled && !isThirdPartyApiEndpoint()) {
         const deferredToolsList = this.allTools
           .filter(isDeferredTool)
@@ -3322,7 +3326,11 @@ Guidelines:
           .sort()
           .join('\n');
         if (deferredToolsList) {
-          systemPrompt = `${systemPrompt}\n\n<available-deferred-tools>\nUse the Mcp tool with select:<tool_name> to load any of these tools before use:\n${deferredToolsList}\n</available-deferred-tools>`;
+          const deferredToolsMessage: Message = {
+            role: 'user',
+            content: [{ type: 'text', text: `<available-deferred-tools>\n${deferredToolsList}\n</available-deferred-tools>` }],
+          };
+          messages = [deferredToolsMessage, ...messages];
         }
       }
 

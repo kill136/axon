@@ -230,14 +230,15 @@ export function useChatInput({
     setAttachments(prev => prev.filter(a => a.id !== id));
   };
 
-  // 粘贴处理
+  // 粘贴处理 — 支持图片和任意文件
   const handlePaste = (e: React.ClipboardEvent) => {
     const items = e.clipboardData.items;
     const files: File[] = [];
+    const MAX_FILE_SIZE = 100 * 1024 * 1024;
 
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
-      if (item.type.startsWith('image/')) {
+      if (item.kind === 'file') {
         const file = item.getAsFile();
         if (file) files.push(file);
       }
@@ -246,15 +247,21 @@ export function useChatInput({
     if (files.length > 0) {
       e.preventDefault();
       files.forEach(file => {
+        if (file.size > MAX_FILE_SIZE) {
+          alert(`文件过大: ${file.name} (${(file.size / 1024 / 1024).toFixed(1)}MB)，最大支持 100MB`);
+          return;
+        }
+
+        const isImage = file.type.startsWith('image/');
         const reader = new FileReader();
         reader.onload = (event) => {
           setAttachments(prev => [
             ...prev,
             {
               id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-              name: file.name || `粘贴的图片_${new Date().toLocaleTimeString()}.png`,
-              type: 'image',
-              mimeType: file.type,
+              name: file.name || (isImage ? `粘贴的图片_${new Date().toLocaleTimeString()}.png` : `粘贴的文件_${new Date().toLocaleTimeString()}`),
+              type: isImage ? 'image' : 'file',
+              mimeType: file.type || 'application/octet-stream',
               data: event.target?.result as string,
             },
           ]);

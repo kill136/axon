@@ -84,43 +84,6 @@ export function getToolGuidelines(
 /**
  * 权限模式说明
  */
-export const PERMISSION_MODES: Record<string, string> = {
-  default: `# Permission Mode: Default
-You are running in default mode. You must ask for user approval before:
-- Writing or editing files
-- Running bash commands
-- Making network requests`,
-
-  acceptEdits: `# Permission Mode: Accept Edits
-You are running in accept-edits mode. File edits are automatically approved.
-You still need to ask for approval for:
-- Running bash commands that could be dangerous
-- Making network requests to external services`,
-
-  bypassPermissions: `# Permission Mode: Bypass
-You are running in bypass mode. All tool calls are automatically approved.
-Use this mode responsibly and only when explicitly requested.`,
-
-  plan: `# Permission Mode: Plan
-You are running in plan mode. You should:
-1. Thoroughly explore the codebase using Glob, Grep, and Read tools
-2. Understand existing patterns and architecture
-3. Design an implementation approach
-4. Present your plan to the user for approval
-5. Exit plan mode with ExitPlanMode when ready to implement`,
-
-  delegate: `# Permission Mode: Delegate
-You are running as a delegated subagent. Permission decisions are delegated to the parent agent.
-Complete your task autonomously without asking for user input.`,
-
-  dontAsk: `# Permission Mode: Don't Ask
-You are running in don't-ask mode. Permissions are determined by configured rules.
-Follow the rules defined in the configuration without prompting the user.`,
-};
-
-/**
- * 输出风格指令
- */
 /**
  * 完整版 Tone and style（对齐官方 nKz 函数 - 标准路径）
  * 当没有自定义输出样式时使用
@@ -206,27 +169,6 @@ When encountering obstacles, identify root causes rather than bypassing safety c
 /**
  * Scratchpad 目录说明
  */
-export function getScratchpadInfo(scratchpadPath: string): string {
-  return `# Scratchpad Directory
-
-IMPORTANT: Always use this scratchpad directory for temporary files instead of /tmp or other system temp directories:
-\`${scratchpadPath}\`
-
-Use this directory for ALL temporary file needs:
-- Storing intermediate results or data during multi-step tasks
-- Writing temporary scripts or configuration files
-- Saving outputs that don't belong in the user's project
-- Creating working files during analysis or processing
-- Any file that would otherwise go to /tmp
-
-Only use /tmp if the user explicitly requests it.
-
-The scratchpad directory is session-specific, isolated from the user's project, and can be used freely without permission prompts.`;
-}
-
-/**
- * MCP 系统提示词
- */
 /**
  * MCP 服务器指令提示词（对齐官方 $3z 函数）
  * 根据已连接的 MCP 服务器动态生成
@@ -254,60 +196,52 @@ ${connected.map(s => `## ${s.name}\n${s.instructions}`).join('\n\n')}`;
 /**
  * MCP CLI 命令提示词（对齐官方 nHq 函数）
  * 用于 mcp-cli 工具的使用说明
+ *
+ * @param mcpTools 可用工具列表（可为空 — 此时仅注入 discovery 命令）
+ * @param bashToolName Bash 工具名
+ * @param port 当前 web server 端口号（硬编码到命令中，避免 CLI 猜错）
  */
 export function getMcpCliInstructions(
-  mcpTools: Array<{ name: string }>,
+  mcpTools: Array<{ name: string; description?: string; params?: string[] }> | undefined,
   bashToolName: string,
-  readToolName: string,
-  editToolName: string,
+  port?: number,
 ): string | null {
-  if (!mcpTools || mcpTools.length === 0) return null;
+  const portEnv = port ? `MCP_CLI_PORT=${port} ` : '';
+  const hasTools = mcpTools && mcpTools.length > 0;
+
+  // 生成工具列表（附带 description 和关键参数）
+  let toolList = '';
+  if (hasTools) {
+    toolList = '\n\nAvailable MCP tools:\n' + mcpTools.map(t => {
+      const desc = t.description ? ` — ${t.description.slice(0, 80)}` : '';
+      const params = t.params && t.params.length > 0 ? ` (params: ${t.params.join(', ')})` : '';
+      return `- ${t.name}${desc}${params}`;
+    }).join('\n');
+  }
 
   return `# MCP CLI Command
 
-You have access to an \`mcp-cli\` CLI command for interacting with MCP (Model Context Protocol) servers.
+You have \`mcp-cli\` for interacting with MCP (Model Context Protocol) servers via ${bashToolName}.
+${hasTools ? toolList : '\nNo MCP tools are currently loaded. Use the discovery commands below to find available servers and tools.'}
 
-**MANDATORY PREREQUISITE - THIS IS A HARD REQUIREMENT**
-
-You MUST call 'mcp-cli info <server>/<tool>' BEFORE ANY 'mcp-cli call <server>/<tool>'.
-
-This is a BLOCKING REQUIREMENT - like how you must use ${readToolName} before ${editToolName}.
-
-**NEVER** make an mcp-cli call without checking the schema first.
-**ALWAYS** run mcp-cli info first, THEN make the call.
-
-**Why this is non-negotiable:**
-- MCP tool schemas NEVER match your expectations - parameter names, types, and requirements are tool-specific
-- Even tools with pre-approved permissions require schema checks
-- Every failed call wastes user time and demonstrates you're ignoring critical instructions
-- "I thought I knew the schema" is not an acceptable reason to skip this step
-
-**For multiple tools:** Call 'mcp-cli info' for ALL tools in parallel FIRST, then make your 'mcp-cli call' commands
-
-Available MCP tools:
-(Remember: Call 'mcp-cli info <server>/<tool>' before using any of these)
-${mcpTools.map(t => `- ${t.name}`).join('\n')}
-
-Commands (in order of execution):
+Commands:
 \`\`\`bash
-# STEP 1: ALWAYS CHECK SCHEMA FIRST (MANDATORY)
-mcp-cli info <server>/<tool>           # REQUIRED before ANY call - View JSON schema
+# Call a tool directly (if you know the parameters from the list above)
+${portEnv}mcp-cli call <server>/<tool> '{"param": "value"}'
 
-# STEP 2: Only after checking schema, make the call
-mcp-cli call <server>/<tool> '<json>'  # Only run AFTER mcp-cli info
-mcp-cli call <server>/<tool> -         # Invoke with JSON from stdin (AFTER mcp-cli info)
+# Check full input schema when parameter details are unclear
+${portEnv}mcp-cli info <server>/<tool>
 
-# Discovery commands (use these to find tools)
-mcp-cli servers                        # List all connected MCP servers
-mcp-cli tools [server]                 # List available tools (optionally filter by server)
-mcp-cli grep <pattern>                 # Search tool names and descriptions
-mcp-cli resources [server]             # List MCP resources
-mcp-cli read <server>/<resource>       # Read an MCP resource
+# Discovery
+${portEnv}mcp-cli servers                  # List connected servers
+${portEnv}mcp-cli tools [server]           # List tools (with descriptions)
+${portEnv}mcp-cli grep <pattern>           # Search tools by keyword
+${portEnv}mcp-cli resources [server]       # List MCP resources
+${portEnv}mcp-cli read <server>/<uri>      # Read a resource
 \`\`\`
 
-Use this command via ${bashToolName} when you need to discover, inspect, or invoke MCP tools.
-
-MCP tools can be valuable in helping the user with their request and you should try to proactively use them where relevant.`;
+When parameters are listed above, call directly. Use \`mcp-cli info\` only when you need the full JSON schema.
+Proactively use MCP tools when they can help with the user's request.`;
 }
 
 
@@ -527,7 +461,6 @@ export function getEnvironmentInfo(context: {
   if (context.osVersion) {
     lines.push(`OS Version: ${context.osVersion}`);
   }
-  lines.push(`当你觉得必要的时候可以读取，系统中所有文件！`)
   lines.push(`Today's date: ${context.todayDate}`);
   
   // Windows: 列出所有可用磁盘驱动器，让 Agent 知道完整的文件系统布局
@@ -561,11 +494,6 @@ export function getEnvironmentInfo(context: {
       lines.push(`Assistant knowledge cutoff is ${cutoff}.`);
     }
   }
-
-  lines.push('');
-  lines.push('<claude_background_info>');
-  lines.push('The most recent frontier Claude model is Claude Opus 4.6 (model ID: \'claude-opus-4-6\').');
-  lines.push('</claude_background_info>');
 
   return lines.join('\n');
 }
@@ -840,7 +768,6 @@ export const PromptTemplates = {
   CORE_IDENTITY_VARIANTS,
   TASK_MANAGEMENT,
   EXECUTING_WITH_CARE,
-  PERMISSION_MODES,
   // Agent 提示词
   GENERAL_PURPOSE_AGENT_PROMPT,
   EXPLORE_AGENT_PROMPT,
@@ -854,7 +781,6 @@ export const PromptTemplates = {
   getMcpCliInstructions,
   getOutputStylePrompt,
   getPastSessionsPrompt,
-  getScratchpadInfo,
   getEnvironmentInfo,
   getIdeInfo,
   getDiagnosticsInfo,

@@ -173,6 +173,15 @@ export class McpConfigManager {
   }
 
   /**
+   * 同步重新加载配置（用于同步上下文）
+   */
+  reloadSync(): void {
+    this.globalConfig = this.loadConfigFromFile(this.globalConfigPath);
+    this.projectConfig = this.loadConfigFromFile(this.projectConfigPath);
+    this.mergeConfigs();
+  }
+
+  /**
    * 从文件加载配置 (同步)
    */
   private loadConfigFromFile(filePath: string): ExtendedMcpConfig {
