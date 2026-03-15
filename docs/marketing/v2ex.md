@@ -48,7 +48,7 @@ axon-web  # 打开 http://localhost:3456
 
 ### 链接
 
-- GitHub：https://github.com/kill136/claude-code-open
+- GitHub：https://github.com/kill136/axon
 - 官网：https://www.chatbi.site
 - 在线体验：https://voicegpt.site
 - Discord：https://discord.gg/bNyJKk6PVZ
@@ -111,7 +111,7 @@ axon-web
 
 #### 链接
 
-- GitHub：[github.com/kill136/claude-code-open](https://github.com/kill136/claude-code-open)
+- GitHub：[github.com/kill136/axon](https://github.com/kill136/axon)
 - 在线体验：[voicegpt.site](https://voicegpt.site)
 - Discord：[discord.gg/bNyJKk6PVZ](https://discord.gg/bNyJKk6PVZ)
 

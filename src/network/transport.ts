@@ -179,7 +179,20 @@ export class AgentTransport extends EventEmitter {
    */
   async connect(endpoint: string): Promise<AgentConnection> {
     return new Promise((resolve, reject) => {
-      const url = endpoint.startsWith('ws://') ? endpoint : `ws://${endpoint}`;
+      // 处理 IPv6 地址：如果 endpoint 包含裸 IPv6（含冒号但无方括号），需要包裹
+      let normalizedEndpoint = endpoint;
+      if (!endpoint.startsWith('ws://') && !endpoint.startsWith('[')) {
+        // 检测是否为 IPv6 地址（包含多个冒号）
+        // IPv6 endpoint 格式如 "fe80::1:7860"，最后一个冒号后是端口
+        const lastColon = endpoint.lastIndexOf(':');
+        const beforePort = endpoint.substring(0, lastColon);
+        if (beforePort.includes(':')) {
+          // 是 IPv6 地址，需要方括号
+          const port = endpoint.substring(lastColon + 1);
+          normalizedEndpoint = `[${beforePort}]:${port}`;
+        }
+      }
+      const url = normalizedEndpoint.startsWith('ws://') ? normalizedEndpoint : `ws://${normalizedEndpoint}`;
       const ws = new WebSocket(url);
       const conn = new AgentConnection(ws, 'outbound');
 

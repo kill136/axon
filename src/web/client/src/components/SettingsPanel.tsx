@@ -215,7 +215,7 @@ export function SettingsPanel({
                 <strong>{t('settings.about.version')}:</strong> 2.1.4 (Educational)
               </p>
               <p>
-                <strong>{t('settings.about.repository')}:</strong> github.com/kill136/claude-code-open
+                <strong>{t('settings.about.repository')}:</strong> github.com/kill136/axon
               </p>
               <p>
                 <strong>{t('settings.about.license')}:</strong> {t('settings.about.licenseValue')}
@@ -262,7 +262,7 @@ export function SettingsPanel({
               </p>
               <p>
                 <a
-                  href="https://github.com/kill136/claude-code-open"
+                  href="https://github.com/kill136/axon"
                   target="_blank"
                   rel="noopener noreferrer"
                 >

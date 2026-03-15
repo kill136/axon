@@ -193,6 +193,7 @@ export default function NetworkPanel() {
   // Send state
   const [messageText, setMessageText] = useState('');
   const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
   // Dialogs
   const [showToolDialog, setShowToolDialog] = useState(false);
   const [showDelegateDialog, setShowDelegateDialog] = useState(false);
@@ -203,6 +204,10 @@ export default function NetworkPanel() {
   const [delegateContext, setDelegateContext] = useState('');
   const [groupName, setGroupName] = useState('');
   const [groupMembers, setGroupMembers] = useState<string[]>([]);
+  // Manual connect
+  const [manualEndpoint, setManualEndpoint] = useState('');
+  const [manualConnecting, setManualConnecting] = useState(false);
+  const [manualError, setManualError] = useState<string | null>(null);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -373,16 +378,27 @@ export default function NetworkPanel() {
   const doSend = async (method: string, params?: unknown) => {
     if (!selectedContact || selectedContact.startsWith('group:')) return;
     setSending(true);
+    setSendError(null);
     try {
-      await fetch('/api/network/send', {
+      const res = await fetch('/api/network/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ agentId: selectedContact, method, params }),
       });
+      const data = await res.json();
+      if (!res.ok || data.success === false) {
+        setSendError(data.error || `Failed (${res.status})`);
+        // Auto-clear error after 5 seconds
+        setTimeout(() => setSendError(null), 5000);
+      }
       // Refresh audit
       const auditRes = await fetch('/api/network/audit?limit=500');
       setAuditLog(await auditRes.json());
-    } catch { /* ignore */ }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Network error';
+      setSendError(msg);
+      setTimeout(() => setSendError(null), 5000);
+    }
     setSending(false);
   };
 
@@ -418,6 +434,31 @@ export default function NetworkPanel() {
     setSelectedContact(null);
     const statusRes = await fetch('/api/network/status');
     setStatus(await statusRes.json());
+  };
+
+  const handleManualConnect = async () => {
+    if (!manualEndpoint.trim()) return;
+    setManualConnecting(true);
+    setManualError(null);
+    try {
+      const res = await fetch('/api/network/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ endpoint: manualEndpoint.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.success === false) {
+        setManualError(data.error || `Failed (${res.status})`);
+      } else {
+        setManualEndpoint('');
+        // Refresh status
+        const statusRes = await fetch('/api/network/status');
+        setStatus(await statusRes.json());
+      }
+    } catch (err) {
+      setManualError(err instanceof Error ? err.message : 'Connection failed');
+    }
+    setManualConnecting(false);
   };
 
   const handleCallTool = () => {
@@ -516,6 +557,27 @@ export default function NetworkPanel() {
               >
                 {t('network.rescan')}
               </button>
+              <div className={styles.manualConnect}>
+                <p className={styles.manualConnectLabel}>{t('network.manualConnect')}</p>
+                <div className={styles.manualConnectRow}>
+                  <input
+                    className={styles.manualConnectInput}
+                    placeholder="192.168.1.100:7860"
+                    value={manualEndpoint}
+                    onChange={e => setManualEndpoint(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleManualConnect()}
+                    disabled={manualConnecting}
+                  />
+                  <button
+                    className={styles.retryBtn}
+                    onClick={handleManualConnect}
+                    disabled={!manualEndpoint.trim() || manualConnecting}
+                  >
+                    {manualConnecting ? '...' : t('network.connect')}
+                  </button>
+                </div>
+                {manualError && <p className={styles.manualConnectError}>{manualError}</p>}
+              </div>
             </>
           ) : (
             <>
@@ -678,6 +740,9 @@ export default function NetworkPanel() {
                     {t('network.quickDelegate')}
                   </button>
                 </div>
+                {sendError && (
+                  <div className={styles.sendError}>{sendError}</div>
+                )}
                 <div className={styles.inputRow}>
                   <textarea
                     ref={inputRef}

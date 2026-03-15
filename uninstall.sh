@@ -1,8 +1,8 @@
 #!/bin/bash
 # ============================================
 # Axon - One-Click Uninstall Script
-# GitHub:  curl -fsSL https://raw.githubusercontent.com/kill136/claude-code-open/private_web_ui/uninstall.sh | bash
-# China:   curl -fsSL https://gitee.com/lubanbbs/claude-code-open/raw/private_web_ui/uninstall.sh | bash
+# GitHub:  curl -fsSL https://raw.githubusercontent.com/kill136/axon/private_web_ui/uninstall.sh | bash
+# China:   curl -fsSL https://gitee.com/lubanbbs/axon/raw/private_web_ui/uninstall.sh | bash
 # ============================================
 set -e
 

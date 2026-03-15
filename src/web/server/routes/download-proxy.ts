@@ -16,7 +16,7 @@ import { Router, Request, Response } from 'express';
 
 const router = Router();
 
-const GITHUB_REPO = 'kill136/claude-code-open';
+const GITHUB_REPO = 'kill136/axon';
 
 const ALLOWED_FILES = [
   /^Axon-Setup\.exe$/,

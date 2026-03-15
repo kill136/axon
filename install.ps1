@@ -3,23 +3,23 @@
 #
 # Method 1 - Batch file (recommended, no policy issues):
 #   Double-click install.bat, or in cmd:
-#     curl -fsSL https://raw.githubusercontent.com/kill136/claude-code-open/private_web_ui/install.bat -o install.bat && install.bat
+#     curl -fsSL https://raw.githubusercontent.com/kill136/axon/private_web_ui/install.bat -o install.bat && install.bat
 #
 # Method 2 - PowerShell (irm pipe, bypasses execution policy):
-#   irm https://raw.githubusercontent.com/kill136/claude-code-open/private_web_ui/install.ps1 | iex
+#   irm https://raw.githubusercontent.com/kill136/axon/private_web_ui/install.ps1 | iex
 #
 # Method 3 - PowerShell (explicit bypass):
 #   powershell -ExecutionPolicy Bypass -File install.ps1
 #
 # China mirrors (Gitee):
-#   curl -fsSL https://gitee.com/lubanbbs/claude-code-open/raw/private_web_ui/install.bat -o install.bat && install.bat
-#   irm https://gitee.com/lubanbbs/claude-code-open/raw/private_web_ui/install.ps1 | iex
+#   curl -fsSL https://gitee.com/lubanbbs/axon/raw/private_web_ui/install.bat -o install.bat && install.bat
+#   irm https://gitee.com/lubanbbs/axon/raw/private_web_ui/install.ps1 | iex
 # ============================================
 
 $ErrorActionPreference = "Stop"
 
-$RepoUrlGithub = "https://github.com/kill136/claude-code-open.git"
-$RepoUrlGitee  = "https://gitee.com/lubanbbs/claude-code-open.git"
+$RepoUrlGithub = "https://github.com/kill136/axon.git"
+$RepoUrlGitee  = "https://gitee.com/lubanbbs/axon.git"
 $RepoUrl       = ""  # Will be set by Detect-RepoUrl
 $DockerImage   = "wbj66/axon:latest"
 $InstallDir    = if ($env:AXON_CONFIG_DIR) { $env:AXON_CONFIG_DIR } else { "$env:USERPROFILE\.axon" }
@@ -30,7 +30,7 @@ function Write-Banner {
     Write-Host ""
     Write-Host "  +=============================================+" -ForegroundColor Cyan
     Write-Host "  |             Axon Installer                  |" -ForegroundColor Cyan
-    Write-Host "  |        github.com/kill136/claude-code-open              |" -ForegroundColor Cyan
+    Write-Host "  |        github.com/kill136/axon              |" -ForegroundColor Cyan
     Write-Host "  +=============================================+" -ForegroundColor Cyan
     Write-Host ""
 }

@@ -36,7 +36,7 @@ def add_overlays(img, caption, is_first=False):
         caption_font = ImageFont.load_default()
     
     # Title text
-    title = "github.com/kill136/claude-code-open  |  126 Stars  |  MIT License"
+    title = "github.com/kill136/axon  |  126 Stars  |  MIT License"
     bbox = draw.textbbox((0, 0), title, font=title_font)
     text_w = bbox[2] - bbox[0]
     draw.text(

@@ -2,7 +2,7 @@
 AppName=Axon
 AppVersion={#AppVersion}
 AppPublisher=Axon
-AppPublisherURL=https://github.com/kill136/claude-code-open
+AppPublisherURL=https://github.com/kill136/axon
 DefaultDirName={autopf}\Axon
 DefaultGroupName=Axon
 UninstallDisplayIcon={app}\Axon.exe

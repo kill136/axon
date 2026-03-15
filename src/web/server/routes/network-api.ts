@@ -151,6 +151,33 @@ router.post('/kick', (req: Request, res: Response) => {
   res.json({ success: true });
 });
 
+/**
+ * POST /api/network/connect
+ * 手动连接 Agent（mDNS 不可靠时的备选方案）
+ * Body: { endpoint: "ip:port" }
+ */
+router.post('/connect', async (req: Request, res: Response) => {
+  const network = getNetwork(req);
+  if (!network) {
+    return res.status(503).json({ error: 'Agent Network not enabled' });
+  }
+
+  const { endpoint } = req.body;
+  if (!endpoint || typeof endpoint !== 'string') {
+    return res.status(400).json({ error: 'endpoint (string, e.g. "192.168.1.100:7860") is required' });
+  }
+
+  try {
+    const agent = await network.connectManually(endpoint);
+    res.json({ success: true, agent });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
 // ===== 群组 CRUD =====
 
 /**

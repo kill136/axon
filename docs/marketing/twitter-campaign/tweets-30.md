@@ -3,7 +3,7 @@
 ## Category 1: vs Cursor Comparison (10 tweets)
 
 ### Tweet 1 [vs Cursor]
-Cursor charges $20/month. Axon is free, open source, and you can use any model you want. Pick your AI, keep your workflow. No lock-in. https://github.com/kill136/claude-code-open
+Cursor charges $20/month. Axon is free, open source, and you can use any model you want. Pick your AI, keep your workflow. No lock-in. https://github.com/kill136/axon
 (130 chars)
 
 ### Tweet 2 [vs Cursor]
@@ -31,7 +31,7 @@ Switching from Cursor? Axon works with Claude, GPT-4, DeepSeek, anything. Stop p
 (120 chars)
 
 ### Tweet 8 [vs Cursor]
-$240/year for an editor when there's a free, open source alternative? Investing that $240 in yourself instead sounds better. https://github.com/kill136/claude-code-open
+$240/year for an editor when there's a free, open source alternative? Investing that $240 in yourself instead sounds better. https://github.com/kill136/axon
 (168 chars)
 
 ### Tweet 9 [vs Cursor]
@@ -95,7 +95,7 @@ Schedule recurring tasks, monitor file changes, trigger workflows—all through 
 ## Category 4: Open Source Spirit & Community (5 tweets)
 
 ### Tweet 21 [Community]
-MIT license means you own it. Fork Axon, customize it, deploy it. No restrictions, no phone home. True open source for true developers. https://github.com/kill136/claude-code-open
+MIT license means you own it. Fork Axon, customize it, deploy it. No restrictions, no phone home. True open source for true developers. https://github.com/kill136/axon
 (176 chars)
 
 ### Tweet 22 [Community]
@@ -152,7 +152,7 @@ Automate repetitive tasks: schedule daily database backups, monitor logs, run CI
 - CTAs included: GitHub link, voicegpt.site, Discord, npm install command
 
 ## Key Links to Include
-- GitHub: https://github.com/kill136/claude-code-open
+- GitHub: https://github.com/kill136/axon
 - Try Online: https://voicegpt.site
 - Discord: https://discord.gg/bNyJKk6PVZ
 - NPM: npm install -g axon

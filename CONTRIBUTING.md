@@ -14,8 +14,8 @@ Thanks for your interest in contributing! Axon is an open-source AI coding assis
 
 ```bash
 # Fork and clone the repository
-git clone https://github.com/<your-username>/claude-code-open.git
-cd claude-code-open
+git clone https://github.com/<your-username>/axon.git
+cd axon
 
 # Install dependencies
 npm install
@@ -48,7 +48,7 @@ npx tsc --noEmit            # Type checking
 
 ### Report Bugs
 
-1. Search [existing issues](https://github.com/kill136/claude-code-open/issues) first
+1. Search [existing issues](https://github.com/kill136/axon/issues) first
 2. Include: steps to reproduce, expected vs actual behavior, OS, Node.js version, browser (for Web UI)
 3. Attach error logs or screenshots if possible
 
@@ -119,7 +119,7 @@ src/
 ## Need Help?
 
 - [Discord](https://discord.gg/bNyJKk6PVZ)
-- [Open an issue](https://github.com/kill136/claude-code-open/issues)
+- [Open an issue](https://github.com/kill136/axon/issues)
 
 ## License
 

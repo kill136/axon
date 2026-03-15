@@ -626,6 +626,8 @@ const settings = {
   'network.scanningHint': 'Looking for other AI agents on your local network',
   'network.scanTimeoutHint': 'No other AI agents were found on the local network. Make sure other Axon instances have Agent Network enabled.',
   'network.rescan': 'Scan Again',
+  'network.manualConnect': 'Or connect manually by IP address:',
+  'network.connect': 'Connect',
 } as const;
 
 export type SettingsKeys = keyof typeof settings;

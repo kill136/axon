@@ -12,7 +12,7 @@ It works with any model — Anthropic, OpenRouter, DeepSeek, AWS Bedrock, or you
 
 MIT licensed. Runs locally. No telemetry.
 
-GitHub: github.com/kill136/claude-code-open
+GitHub: github.com/kill136/axon
 
 Thread:
 
@@ -79,7 +79,7 @@ Edit TypeScript → run tsc type check → hot-reload the server.
 
 Ask it to "add a weather tool" and it writes the code, compiles, restarts, done.
 
-github.com/kill136/claude-code-open
+github.com/kill136/axon
 
 ### Standalone 2 — Any Model
 
@@ -89,7 +89,7 @@ Set ANTHROPIC_BASE_URL to OpenRouter, DeepSeek, a local LM Studio server, or any
 
 Same 37+ tools, same Web IDE, your choice of model.
 
-github.com/kill136/claude-code-open
+github.com/kill136/axon
 
 ### Standalone 3 — Blueprint Multi-Agent
 
@@ -102,7 +102,7 @@ Give Axon a complex task and it decomposes it across multiple AI agents.
 
 Like a dev team, but AI.
 
-github.com/kill136/claude-code-open
+github.com/kill136/axon
 
 ### Standalone 4 — Database Tool
 
@@ -112,7 +112,7 @@ Connect to PostgreSQL, MySQL, SQLite, Redis, or MongoDB right from the AI conver
 
 Query data, describe tables, explore schemas — all through natural language.
 
-github.com/kill136/claude-code-open
+github.com/kill136/axon
 
 ### Standalone 5 — Perception System
 
@@ -124,7 +124,7 @@ Axon can see and hear.
 
 An AI assistant that perceives the physical world.
 
-github.com/kill136/claude-code-open
+github.com/kill136/axon
 
 ### Standalone 6 — MCP + Skills
 
@@ -134,7 +134,7 @@ Plus a Skills marketplace — community-contributed prompt-based capabilities fo
 
 Build a Skill in 10 minutes.
 
-github.com/kill136/claude-code-open
+github.com/kill136/axon
 
 ### Standalone 7 — vs Cursor
 
@@ -144,4 +144,4 @@ Axon: Free, MIT licensed, any model, any provider, browser-based IDE, multi-agen
 
 Open source wins.
 
-github.com/kill136/claude-code-open
+github.com/kill136/axon

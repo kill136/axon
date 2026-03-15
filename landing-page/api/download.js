@@ -13,7 +13,7 @@
  *   GITHUB_TOKEN - GitHub Personal Access Token (需要 repo 权限)
  */
 
-const GITHUB_REPO = 'kill136/claude-code-open';
+const GITHUB_REPO = 'kill136/axon';
 
 const ALLOWED_FILES = [
   /^Axon-Setup\.exe$/,

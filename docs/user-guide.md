@@ -3,7 +3,7 @@
 > 零基础也能上手的 AI 助手 — 从安装到精通
 
 [![在线体验](https://img.shields.io/badge/在线体验-voicegpt.site-orange?style=flat-square)](http://voicegpt.site/)
-[![GitHub](https://img.shields.io/badge/GitHub-axon-blue?style=flat-square)](https://github.com/kill136/claude-code-open)
+[![GitHub](https://img.shields.io/badge/GitHub-axon-blue?style=flat-square)](https://github.com/kill136/axon)
 [![Discord](https://img.shields.io/badge/Discord-社区-5865F2?style=flat-square)](https://discord.gg/bNyJKk6PVZ)
 
 ---
@@ -83,15 +83,15 @@
 
 **方式一：一键安装脚本（最简单）**
 
-1. 下载安装脚本：[点击下载 install.bat](https://raw.githubusercontent.com/kill136/claude-code-open/private_web_ui/install.bat)
-   - 国内用户下载慢？用这个：[Gitee 镜像下载](https://gitee.com/lubanbbs/claude-code-open/raw/private_web_ui/install.bat)
+1. 下载安装脚本：[点击下载 install.bat](https://raw.githubusercontent.com/kill136/axon/private_web_ui/install.bat)
+   - 国内用户下载慢？用这个：[Gitee 镜像下载](https://gitee.com/lubanbbs/axon/raw/private_web_ui/install.bat)
 2. 双击运行下载的 `install.bat`
 3. 等待自动安装完成（会自动安装所需软件、下载代码、编译程序）
 4. 桌面上会出现 **"Axon WebUI"** 快捷方式
 
 **方式二：下载安装包**
 
-如果你的网络环境不方便运行脚本，可以从 [GitHub Releases](https://github.com/kill136/claude-code-open/releases) 下载预编译的安装包。
+如果你的网络环境不方便运行脚本，可以从 [GitHub Releases](https://github.com/kill136/axon/releases) 下载预编译的安装包。
 
 > 安装完成后，双击桌面快捷方式，浏览器会自动打开 `http://localhost:3456`，你就能看到 Axon 的界面了。
 
@@ -100,12 +100,12 @@
 打开终端（Terminal），粘贴以下命令并回车：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/kill136/claude-code-open/private_web_ui/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/kill136/axon/private_web_ui/install.sh | bash
 ```
 
 国内用户使用加速镜像：
 ```bash
-curl -fsSL https://gitee.com/lubanbbs/claude-code-open/raw/private_web_ui/install.sh | bash
+curl -fsSL https://gitee.com/lubanbbs/axon/raw/private_web_ui/install.sh | bash
 ```
 
 脚本会自动检测你的系统环境，安装所需依赖，构建并启动。
@@ -708,7 +708,7 @@ AI 本身支持几乎所有主流编程语言。Axon 的代码分析功能对以
 
 ## 十一、获取帮助
 
-- **GitHub Issues**: [提交问题或建议](https://github.com/kill136/claude-code-open/issues)
+- **GitHub Issues**: [提交问题或建议](https://github.com/kill136/axon/issues)
 - **Discord 社区**: [加入讨论](https://discord.gg/bNyJKk6PVZ)
 - **在线体验**: [Live Demo](http://voicegpt.site/)（无需安装，直接体验）
 - **项目官网**: [chatbi.site](https://www.chatbi.site)

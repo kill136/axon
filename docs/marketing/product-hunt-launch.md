@@ -85,7 +85,7 @@ Some things I'm particularly proud of:
 
 I'd love your feedback. What features would make this more useful for your workflow?
 
-GitHub: https://github.com/kill136/claude-code-open
+GitHub: https://github.com/kill136/axon
 Live Demo: https://voicegpt.site
 Discord: https://discord.gg/bNyJKk6PVZ
 

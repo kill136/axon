@@ -95,7 +95,7 @@ Axon — 开源 AI 编程助手
 MIT 协议 | 数据本地 | 无遥测
 
 npm install -g axon
-GitHub: github.com/kill136/claude-code-open
+GitHub: github.com/kill136/axon
 在线体验: voicegpt.site
 ```
 

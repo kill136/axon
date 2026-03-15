@@ -24,7 +24,7 @@ I've been building an open-source AI coding assistant called Axon. It's a termin
 
 It runs entirely locally, MIT licensed, no telemetry. One-click installers for all platforms plus Docker.
 
-- GitHub: https://github.com/kill136/claude-code-open
+- GitHub: https://github.com/kill136/axon
 - Live Demo: https://voicegpt.site
 - Website: https://www.chatbi.site
 - Discord: https://discord.gg/bNyJKk6PVZ
