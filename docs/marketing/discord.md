@@ -39,7 +39,7 @@ npm install -g axon
 axon-web
 ```
 
-- GitHub: https://github.com/kill136/claude-code-open
+- GitHub: https://github.com/kill136/axon
 - Live Demo: https://voicegpt.site
 - Website: https://www.chatbi.site
 - Discord: https://discord.gg/bNyJKk6PVZ
@@ -67,7 +67,7 @@ Works with Claude API directly, AWS Bedrock, Google Vertex AI, or any OpenAI-com
 One-click install for Windows/macOS/Linux. Docker deployment. MIT licensed.
 
 Try the live demo: https://voicegpt.site
-GitHub: https://github.com/kill136/claude-code-open
+GitHub: https://github.com/kill136/axon
 
 ---
 
@@ -97,7 +97,7 @@ axon-web
 ```
 
 在线体验：https://voicegpt.site
-GitHub：https://github.com/kill136/claude-code-open
+GitHub：https://github.com/kill136/axon
 Discord：https://discord.gg/bNyJKk6PVZ
 
 欢迎 Star 和反馈！
@@ -112,7 +112,7 @@ Works with any model: Anthropic, OpenRouter, DeepSeek, Bedrock, Vertex AI.
 
 MIT licensed. Runs locally. No telemetry.
 
-GitHub: https://github.com/kill136/claude-code-open
+GitHub: https://github.com/kill136/axon
 Demo: https://voicegpt.site
 
 ---

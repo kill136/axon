@@ -155,11 +155,10 @@ export class AgentNetwork extends EventEmitter {
     const actualPort = await this.transport.listen(config.port);
 
     // 更新身份的 endpoint 和 version
-    // 使用实际主机名而非 0.0.0.0，让远程 Agent 能连接
+    // 使用 LAN IP 地址而非 hostname，因为 hostname 在跨机器时无法 DNS 解析
     const identity = this.identityManager.identity;
-    const os = await import('os');
-    const hostname = os.hostname();
-    identity.endpoint = `${hostname}:${actualPort}`;
+    const lanIp = this.getLanIpAddress();
+    identity.endpoint = `${lanIp}:${actualPort}`;
     identity.version = version;
 
     // 5. 初始化路由
@@ -208,28 +207,13 @@ export class AgentNetwork extends EventEmitter {
   }
 
   getStatus(): NetworkStatus {
-    const addresses: string[] = [];
-    try {
-      const os = require('os');
-      const interfaces = os.networkInterfaces();
-      for (const [, addrs] of Object.entries(interfaces)) {
-        if (!addrs) continue;
-        for (const addr of addrs as any[]) {
-          if (!addr.internal && addr.family === 'IPv4') {
-            addresses.push(addr.address);
-          }
-        }
-      }
-    } catch {
-      // ignore
-    }
     return {
       enabled: this.started,
       identity: this.started ? this.identityManager.identity : null,
       agents: this.discovery.getDiscoveredAgents(),
       groups: this.started ? this.auditLog.getGroups() : [],
       port: this.transport?.port || this.config?.port || 7860,
-      addresses,
+      addresses: this.getLanAddresses(),
     };
   }
 
@@ -367,6 +351,34 @@ export class AgentNetwork extends EventEmitter {
     const conn = this.transport.getConnection(agentId);
     if (conn) conn.close();
     this.discovery.removeAgent(agentId);
+  }
+
+  /**
+   * 手动连接 Agent（mDNS 发现不可靠时的备选方案）
+   * 尝试 WebSocket 连接到指定 endpoint，握手成功后加入发现列表
+   */
+  async connectManually(endpoint: string): Promise<DiscoveredAgent> {
+    const conn = await this.transport.connect(endpoint);
+    if (!conn.identity) {
+      throw new Error('Handshake failed: no identity received');
+    }
+
+    // 将连接信息加入发现列表
+    const agent = this.discovery.addManual(
+      endpoint,
+      conn.identity.agentId,
+      conn.identity.name,
+    );
+
+    // 用握手后获得的完整身份更新
+    this.discovery.updateAgent(conn.identity.agentId, {
+      trustLevel: conn.trustLevel,
+      identity: conn.identity,
+      online: true,
+      lastSeenAt: Date.now(),
+    });
+
+    return this.discovery.getAgent(conn.identity.agentId) || agent;
   }
 
   // ===== 群组管理 =====
@@ -847,8 +859,8 @@ export class AgentNetwork extends EventEmitter {
   private async tryConnect(agent: DiscoveredAgent): Promise<void> {
     try {
       await this.transport.connect(agent.endpoint);
-    } catch {
-      // 连接失败不影响发现
+    } catch (err) {
+      console.warn(`[AgentNetwork] Failed to connect to ${agent.name} at ${agent.endpoint}:`, err instanceof Error ? err.message : err);
     }
   }
 
@@ -865,5 +877,46 @@ export class AgentNetwork extends EventEmitter {
         this.auditLog.incrementRetry(pm.id);
       }
     }
+  }
+
+  /**
+   * 获取本机所有 LAN IPv4 地址
+   */
+  private getLanAddresses(): string[] {
+    const addresses: string[] = [];
+    try {
+      const os = require('os');
+      const interfaces = os.networkInterfaces();
+      for (const [, addrs] of Object.entries(interfaces)) {
+        if (!addrs) continue;
+        for (const addr of addrs as any[]) {
+          if (!addr.internal && addr.family === 'IPv4') {
+            addresses.push(addr.address);
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return addresses;
+  }
+
+  /**
+   * 获取本机最佳 LAN IP 地址
+   * 优先选择常见的私有网段 (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
+   * 如果没有找到，回退到 os.hostname()
+   */
+  private getLanIpAddress(): string {
+    const addresses = this.getLanAddresses();
+    if (addresses.length === 0) {
+      const os = require('os');
+      return os.hostname();
+    }
+    // 优先选择常见私有网段
+    const preferred = addresses.find(a =>
+      a.startsWith('192.168.') || a.startsWith('10.') ||
+      /^172\.(1[6-9]|2\d|3[01])\./.test(a)
+    );
+    return preferred || addresses[0];
   }
 }

@@ -39,6 +39,7 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./
 COPY --from=builder /app/src/web/client/dist ./src/web/client/dist
+COPY --from=builder /app/landing-page ./landing-page
 
 # Create working directories
 RUN mkdir -p /root/.axon /root/.claude /workspace

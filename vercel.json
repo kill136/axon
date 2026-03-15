@@ -4,6 +4,17 @@
   "buildCommand": "echo 'No build needed'",
   "outputDirectory": "landing-page",
   "framework": null,
+  "functions": {
+    "api/download.js": {
+      "maxDuration": 30
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/download/:filename",
+      "destination": "/api/download?file=:filename"
+    }
+  ],
   "headers": [
     {
       "source": "/(.*)",

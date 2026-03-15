@@ -23,7 +23,7 @@ Tech stack: TypeScript, React, Express + WebSocket, Monaco Editor, Tree-sitter W
 
 Everything runs locally. MIT licensed. No telemetry.
 
-GitHub: https://github.com/kill136/claude-code-open
+GitHub: https://github.com/kill136/axon
 Website: https://www.chatbi.site
 Live Demo: https://voicegpt.site
 
@@ -61,7 +61,7 @@ I've been building **Axon**, an open-source AI coding assistant with capabilitie
 
 MIT licensed, runs locally, your data stays on your machine.
 
-GitHub: https://github.com/kill136/claude-code-open
+GitHub: https://github.com/kill136/axon
 Live Demo: https://voicegpt.site
 Discord: https://discord.gg/bNyJKk6PVZ
 
@@ -86,5 +86,5 @@ Features:
 
 MIT licensed. One-click install. No telemetry.
 
-GitHub: https://github.com/kill136/claude-code-open
+GitHub: https://github.com/kill136/axon
 Live Demo: https://voicegpt.site

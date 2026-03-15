@@ -394,7 +394,7 @@ def main():
         "handlers/types.ts",
     ]
     
-    base_dir = Path("F:/claude-code-open/src/web/server")
+    base_dir = Path("F:/axon/src/web/server")
     modified_count = 0
     
     for rel_path in target_files:

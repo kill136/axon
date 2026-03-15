@@ -48,6 +48,6 @@ gh release upload v$ARGUMENTS release/axon-portable.zip --clobber
 ```
 
 ## 常见问题
-- **Windows Defender 拦截**：打包过程中 Defender 可能报告威胁，需要在安全中心排除 `F:\claude-code-open`
+- **Windows Defender 拦截**：打包过程中 Defender 可能报告威胁，需要在安全中心排除 `F:\axon`
 - **内存不足**：不要用 electron-builder，用手动复制方式避免内存溢出
 - **HTTPS/HTTP 自适应**：main.cjs 同时尝试 HTTPS 和 HTTP，打包后默认 HTTP（`.axon-certs` 不在 resources/app/ 下）

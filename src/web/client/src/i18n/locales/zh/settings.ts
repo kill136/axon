@@ -626,6 +626,8 @@ const settings = {
   'network.scanningHint': '正在搜索局域网中的其他 AI Agent',
   'network.scanTimeoutHint': '未在局域网中发现其他 AI Agent。请确认其他 Axon 实例已启用 Agent 网络。',
   'network.rescan': '重新扫描',
+  'network.manualConnect': '或通过 IP 地址手动连接：',
+  'network.connect': '连接',
 } as const;
 
 export default settings;

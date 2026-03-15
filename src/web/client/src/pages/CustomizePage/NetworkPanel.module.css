@@ -280,6 +280,55 @@
   background: rgba(99, 102, 241, 0.1);
 }
 
+.retryBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.manualConnect {
+  margin-top: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.manualConnectLabel {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.manualConnectRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.manualConnectInput {
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-input, rgba(255, 255, 255, 0.05));
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+  width: 200px;
+  font-family: monospace;
+}
+
+.manualConnectInput:focus {
+  border-color: var(--accent-primary);
+}
+
+.manualConnectInput::placeholder {
+  color: var(--text-tertiary);
+}
+
+.manualConnectError {
+  font-size: 12px;
+  color: #f87171;
+}
+
 /* ========================================
    State 3: IM Layout
    ======================================== */
@@ -779,6 +828,13 @@
 }
 
 .quickBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.sendError {
+  padding: 4px 16px;
+  font-size: 12px;
+  color: #f87171;
+  animation: fadeIn 0.2s ease;
+}
 
 .inputRow {
   display: flex;

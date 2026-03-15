@@ -2,13 +2,13 @@
 # Axon - Windows One-Click Uninstaller
 #
 # Method 1 - PowerShell (irm pipe):
-#   irm https://raw.githubusercontent.com/kill136/claude-code-open/private_web_ui/uninstall.ps1 | iex
+#   irm https://raw.githubusercontent.com/kill136/axon/private_web_ui/uninstall.ps1 | iex
 #
 # Method 2 - Batch file:
 #   uninstall.bat
 #
 # China mirrors (Gitee):
-#   irm https://gitee.com/lubanbbs/claude-code-open/raw/private_web_ui/uninstall.ps1 | iex
+#   irm https://gitee.com/lubanbbs/axon/raw/private_web_ui/uninstall.ps1 | iex
 # ============================================
 
 $ErrorActionPreference = "Continue"

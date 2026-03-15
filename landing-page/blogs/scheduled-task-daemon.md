@@ -521,10 +521,10 @@ function getClaudeClient(model) {
 
 ```bash
 # Windows
-irm https://raw.githubusercontent.com/kill136/claude-code-open/main/install.ps1 | iex
+irm https://www.chatbi.site/assets/scripts/install.ps1 | iex
 
 # macOS/Linux
-curl -fsSL https://raw.githubusercontent.com/kill136/claude-code-open/main/install.sh | bash
+curl -fsSL https://www.chatbi.site/assets/scripts/install.sh | bash
 ```
 
 2. **启动守护进程**
@@ -550,7 +550,7 @@ claude
 
 加入我们的社区：
 - **Discord**：[https://discord.gg/bNyJKk6PVZ](https://discord.gg/bNyJKk6PVZ)
-- **GitHub**：[https://github.com/kill136/claude-code-open](https://github.com/kill136/claude-code-open)
+- **GitHub**：[https://github.com/kill136/axon](https://github.com/kill136/axon)
 - **X (Twitter)**：[@wangbingjie1989](https://x.com/wangbingjie1989)
 
 *本文发布于 2025 年 2 月 13 日*

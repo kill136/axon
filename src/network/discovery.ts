@@ -133,8 +133,12 @@ export class AgentDiscovery extends EventEmitter {
     const agentId = txt.agentId;
     if (!agentId || agentId === selfIdentity.agentId) return; // 跳过自己
 
-    const address = service.addresses?.[0] || service.host;
-    const endpoint = `${address}:${service.port}`;
+    // 优先选择 IPv4 地址（IPv6 link-local 在 Windows 上跨机器不可靠）
+    const ipv4 = service.addresses?.find(a => /^\d+\.\d+\.\d+\.\d+$/.test(a));
+    const address = ipv4 || service.addresses?.[0] || service.host;
+    // IPv6 地址需要方括号包裹，否则 ws://addr:port 格式无法解析
+    const host = address.includes(':') ? `[${address}]` : address;
+    const endpoint = `${host}:${service.port}`;
     const ownerFingerprint = txt.ownerFp || '';
 
     const existing = this.agents.get(agentId);

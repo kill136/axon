@@ -346,7 +346,7 @@ def scene_closing(frame_idx, total_frames):
     center_text(draw, 280, "Get Started Today", FONT_HUGE, fill=tc)
 
     # GitHub URL
-    center_text(draw, 400, "github.com/kill136/claude-code-open", FONT_BIG, fill=ac)
+    center_text(draw, 400, "github.com/kill136/axon", FONT_BIG, fill=ac)
 
     # features summary
     center_text(draw, 500, "MIT License  |  Free & Open Source  |  Community Driven", FONT_MED, fill=gc)

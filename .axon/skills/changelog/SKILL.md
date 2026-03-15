@@ -52,7 +52,7 @@ git log $PREV_TAG..$CURRENT_TAG --oneline --no-merges
 - chore: bump dependencies
 - chore: rebuild frontend assets
 
-**Full Changelog**: https://github.com/kill136/claude-code-open/compare/vPREV...vCURRENT
+**Full Changelog**: https://github.com/kill136/axon/compare/vPREV...vCURRENT
 ```
 
 ### Step 5: 输出

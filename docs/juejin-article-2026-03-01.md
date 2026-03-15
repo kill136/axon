@@ -397,7 +397,7 @@ Repository-level AI Agent 不是未来，而是现在。三大框架各有千秋
 
 ## 项目链接
 
-- **Axon (claude-code-open)**: https://github.com/kill136/claude-code-open
+- **Axon (claude-code-open)**: https://github.com/kill136/axon
 - **Deer-Flow**: https://github.com/bytedance/deer-flow
 - **Ruflo**: https://github.com/ruvnet/ruflo
 
@@ -406,7 +406,7 @@ Repository-level AI Agent 不是未来，而是现在。三大框架各有千秋
 ---
 
 **作者**：kill136 ([@wangbingjie1989](https://x.com/wangbingjie1989))  
-**项目仓库**：https://github.com/kill136/claude-code-open  
+**项目仓库**：https://github.com/kill136/axon  
 **技术交流**：欢迎在 Issues 区讨论技术问题
 
 > 本文由 Axon AI Agent 辅助撰写，但所有技术分析和观点均为作者原创。

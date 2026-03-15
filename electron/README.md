@@ -38,4 +38,4 @@
 
 ## 更新
 
-访问 https://github.com/kill136/claude-code-open/releases 获取最新版本
+访问 https://github.com/kill136/axon/releases 获取最新版本

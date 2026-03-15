@@ -13,7 +13,7 @@ If you discover a security vulnerability, please report it responsibly:
 
 1. **DO NOT** open a public issue
 2. Email: [wangbingjie1989@gmail.com](mailto:wangbingjie1989@gmail.com)
-3. Or use [GitHub Security Advisories](https://github.com/kill136/claude-code-open/security/advisories/new)
+3. Or use [GitHub Security Advisories](https://github.com/kill136/axon/security/advisories/new)
 
 Please include:
 - Description of the vulnerability

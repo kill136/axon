@@ -7,7 +7,7 @@
 **任意模型。插件扩展。让 AI 帮你搭建整个项目。**
 
 [![npm](https://img.shields.io/npm/v/axon?style=flat-square&color=CB3837)](https://www.npmjs.com/package/axon)
-[![GitHub Stars](https://img.shields.io/github/stars/kill136/claude-code-open?style=flat-square)](https://github.com/kill136/claude-code-open)
+[![GitHub Stars](https://img.shields.io/github/stars/kill136/axon?style=flat-square)](https://github.com/kill136/axon)
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue?style=flat-square)](LICENSE)
 [![Node](https://img.shields.io/badge/Node.js-%3E%3D18.0.0-brightgreen?style=flat-square)](https://nodejs.org)
 [![Discord](https://img.shields.io/discord/1454020463486566432?style=flat-square&label=Discord&color=5865F2)](https://discord.gg/bNyJKk6PVZ)
@@ -18,7 +18,7 @@
 <img src="demo-screenshots/demo.gif" width="720" alt="Axon Demo">
 </a>
 
-<sub><a href="https://youtu.be/OQ29pIgp5AI">YouTube 观看</a> | <a href="https://github.com/kill136/claude-code-open/releases/download/v2.1.37/promo-video.mp4">下载视频</a> | <a href="https://voicegpt.site">在线体验</a></sub>
+<sub><a href="https://youtu.be/OQ29pIgp5AI">YouTube 观看</a> | <a href="https://github.com/kill136/axon/releases/download/v2.1.37/promo-video.mp4">下载视频</a> | <a href="https://voicegpt.site">在线体验</a></sub>
 
 </div>
 
@@ -47,18 +47,18 @@ axon-web
 <details>
 <summary>一键安装（无需 Node.js）</summary>
 
-**Windows：** 下载 [install.bat](https://github.com/kill136/claude-code-open/releases/latest/download/install.bat) 双击运行。
+**Windows：** 下载 [install.bat](https://github.com/kill136/axon/releases/latest/download/install.bat) 双击运行。
 
-[Gitee 国内镜像](https://gitee.com/lubanbbs/claude-code-open/raw/private_web_ui/install.bat)
+[Gitee 国内镜像](https://gitee.com/lubanbbs/axon/raw/private_web_ui/install.bat)
 
 **macOS / Linux：**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/kill136/claude-code-open/private_web_ui/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/kill136/axon/private_web_ui/install.sh | bash
 ```
 
 **国内镜像：**
 ```bash
-curl -fsSL https://gitee.com/lubanbbs/claude-code-open/raw/private_web_ui/install.sh | bash
+curl -fsSL https://gitee.com/lubanbbs/axon/raw/private_web_ui/install.sh | bash
 ```
 </details>
 
@@ -87,8 +87,8 @@ docker run -it \
 <summary>从源码构建</summary>
 
 ```bash
-git clone https://github.com/kill136/claude-code-open.git
-cd claude-code-open
+git clone https://github.com/kill136/axon.git
+cd axon
 npm install && npm run build
 node dist/cli.js        # 终端
 node dist/web-cli.js    # Web IDE
@@ -100,22 +100,22 @@ node dist/web-cli.js    # Web IDE
 
 **macOS / Linux：**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/kill136/claude-code-open/private_web_ui/uninstall.sh | bash
+curl -fsSL https://raw.githubusercontent.com/kill136/axon/private_web_ui/uninstall.sh | bash
 ```
 
 **国内镜像：**
 ```bash
-curl -fsSL https://gitee.com/lubanbbs/claude-code-open/raw/private_web_ui/uninstall.sh | bash
+curl -fsSL https://gitee.com/lubanbbs/axon/raw/private_web_ui/uninstall.sh | bash
 ```
 
 **Windows（PowerShell）：**
 ```powershell
-irm https://raw.githubusercontent.com/kill136/claude-code-open/private_web_ui/uninstall.ps1 | iex
+irm https://raw.githubusercontent.com/kill136/axon/private_web_ui/uninstall.ps1 | iex
 ```
 
 **Windows（cmd）：**
 ```cmd
-curl -fsSL https://raw.githubusercontent.com/kill136/claude-code-open/private_web_ui/uninstall.bat -o uninstall.bat && uninstall.bat
+curl -fsSL https://raw.githubusercontent.com/kill136/axon/private_web_ui/uninstall.bat -o uninstall.bat && uninstall.bat
 ```
 </details>
 

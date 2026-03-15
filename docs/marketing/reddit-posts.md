@@ -24,7 +24,7 @@ Technically, we handle agent context passing through detailed "brief" documents.
 
 We use dynamic task injection, so LeadAgent can discover new required tasks as it explores the codebase. It's similar to test-driven development but applied to agent orchestration.
 
-The whole system is open source (MIT license) and currently available at https://github.com/kill136/claude-code-open. We support any LLM through standard endpoints - Claude, GPT-4, Llama 2, whatever.
+The whole system is open source (MIT license) and currently available at https://github.com/kill136/axon. We support any LLM through standard endpoints - Claude, GPT-4, Llama 2, whatever.
 
 The code is fully typed (TypeScript) and relatively modular. The agent coordination logic is in `src/agents/`, the worker system is in `src/workers/`, and the planning engine is in `src/blueprint/`.
 
@@ -74,7 +74,7 @@ We wanted something different: a tool that works in your existing editor, adapts
 
 **Current state:**
 
-We have a stable release ready for beta testing. The online demo is at https://voicegpt.site - you can try it in your browser immediately without installing anything. Source code is at https://github.com/kill136/claude-code-open.
+We have a stable release ready for beta testing. The online demo is at https://voicegpt.site - you can try it in your browser immediately without installing anything. Source code is at https://github.com/kill136/axon.
 
 **What we need from the community:**
 
@@ -85,7 +85,7 @@ We have a stable release ready for beta testing. The online demo is at https://v
 
 This is a genuine community project. We're not trying to "capture the market" or eventually sell it. We built something we wanted to exist, and we're sharing it because we think it's genuinely useful and we believe in open tools.
 
-GitHub: https://github.com/kill136/claude-code-open
+GitHub: https://github.com/kill136/axon
 Try online: https://voicegpt.site
 Discord community: https://discord.gg/bNyJKk6PVZ
 
@@ -148,7 +148,7 @@ Cursor is still incredibly polished, and the inline edits are unmatched. But Axo
 
 **Where to try it:**
 - Online demo (no installation): https://voicegpt.site
-- GitHub (run locally): https://github.com/kill136/claude-code-open
+- GitHub (run locally): https://github.com/kill136/axon
 - Discord community: https://discord.gg/bNyJKk6PVZ
 
 I'm not affiliated with the Axon team - just a user sharing an honest review. If you're curious about open-source alternatives to paid tools, or you want an AI assistant that works with whatever LLM you prefer, give it a shot.
@@ -205,7 +205,7 @@ Each pass was only 4-5k tokens, so the model stayed within its comfort zone. End
 - **Enterprise:** Code Llama 34B - trained on code, naturally better for programming
 - **Budget:** Zephyr 7B - good middle ground
 
-All work fine with Axon. We test regularly with different model sizes and have logged benchmark data at https://github.com/kill136/claude-code-open.
+All work fine with Axon. We test regularly with different model sizes and have logged benchmark data at https://github.com/kill136/axon.
 
 **How it compares to cloud:**
 
@@ -223,7 +223,7 @@ For complex tasks, cloud is still better. But for incremental work, local models
 
 1. Set up a local LLM: `ollama pull mistral` (or use vLLM, LM Studio)
 2. Try Axon: https://voicegpt.site (it has local endpoint configuration in settings)
-3. Or run locally: https://github.com/kill136/claude-code-open
+3. Or run locally: https://github.com/kill136/axon
 
 The whole project is MIT licensed and designed for this exact use case. We actively test with different local models and welcome feedback on endpoint compatibility.
 
@@ -324,7 +324,7 @@ If you use Claude through Anthropic's API, that's $20 for 1M input tokens (~100 
 **Where to try it:**
 
 - **Online (no install needed):** https://voicegpt.site
-- **Local setup:** https://github.com/kill136/claude-code-open
+- **Local setup:** https://github.com/kill136/axon
 - **Community:** https://discord.gg/bNyJKk6PVZ
 
 The web dev-specific features are stable. File handling, git integration, and the Blueprint multi-agent system work well for typical front-end and full-stack workflows. We actively test with common frameworks and love feedback.

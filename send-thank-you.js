@@ -33,7 +33,7 @@ I've added you to the Sponsors section in the README as a thank-you. If you have
 
 Cheers,
 Will
-https://github.com/kill136/claude-code-open`,
+https://github.com/kill136/axon`,
 };
 
 transporter.sendMail(mailOptions).then(info => {
