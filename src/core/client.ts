@@ -920,12 +920,8 @@ function buildBetas(model: string, isOAuth: boolean, fastMode?: boolean): string
     betas.push(CONTEXT_1M_BETA);
   }
 
-  // 4. Thinking beta: adaptive-thinking (opus-4-6) 优先于 interleaved-thinking（官方 tl8/al8 逻辑）
-  // 官方: if(!$6(CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING)&&h76(A)) q.push(tl8)
-  //       else if(!$6(DISABLE_INTERLEAVED_THINKING)&&G15(A)) q.push(al8)
-  if (!isEnvEnabled(process.env.CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING) && supportsAdaptiveThinking(model)) {
-    betas.push(ADAPTIVE_THINKING_BETA);
-  } else if (!isEnvEnabled(process.env.DISABLE_INTERLEAVED_THINKING) && supportsInterleavedThinking(model)) {
+  // 4. Thinking beta（官方只使用 interleaved-thinking）
+  if (!isEnvEnabled(process.env.DISABLE_INTERLEAVED_THINKING) && supportsInterleavedThinking(model)) {
     betas.push(THINKING_BETA);
   }
 
@@ -2292,7 +2288,6 @@ export function getDefaultClient(): ClaudeClient {
           const scopes = auth.scope || auth.scopes;
           if (hasInferenceScope(scopes)) {
             // 直接使用 OAuth access token 作为 authToken
-            // 对齐原始参考实现的做法
             config.authToken = oauthToken;
           } else {
             // 没有 inference scope，需要使用创建的 API Key

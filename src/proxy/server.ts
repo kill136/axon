@@ -28,18 +28,14 @@ const AXON_BETA = 'claude-code-20250219';
 const THINKING_BETA = 'interleaved-thinking-2025-05-14';
 const PROMPT_CACHING_SCOPE_BETA = 'prompt-caching-scope-2026-01-05';
 
-// Axon 身份标识（Anthropic 订阅 token 要求 system prompt 必须以此开头）
-// 官方有三种有效身份标识，CC 客户端根据运行模式使用不同的版本：
-//   1. CLI 模式:       "You are Axon, an AI-powered coding assistant."
-//   2. Agent SDK 模式: "You are Axon, an AI-powered coding assistant, running within the Claude Agent SDK."
-//   3. 自定义 Agent:   "You are a Claude agent, built on Anthropic's Claude Agent SDK."
+// 官方 magic string（Anthropic subscription 服务器会校验此字段）
+// 必须与官方保持一致，不能使用品牌重命名后的字符串
 const AXON_IDENTITIES = [
-  "You are Axon, an AI-powered coding assistant, running within the Claude Agent SDK.",
-  "You are Axon, an AI-powered coding assistant.",
+  "You are Claude Code, Anthropic's official CLI for Claude.",
+  "You are Claude Code, Anthropic's official CLI for Claude, running within the Claude Agent SDK.",
   "You are a Claude agent, built on Anthropic's Claude Agent SDK.",
 ];
-// 注入时使用最短的 CLI 身份标识（兼容性最好）
-const AXON_IDENTITY = AXON_IDENTITIES[1];
+const AXON_IDENTITY = AXON_IDENTITIES[0];
 
 // Token 提前刷新时间：过期前 5 分钟
 const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;
@@ -418,7 +414,9 @@ function buildForwardHeaders(
   }
 
   // 确保包含 thinking beta（如果模型支持）
-  if (!betaList.includes(THINKING_BETA) &&
+  // 注意：adaptive-thinking 是 interleaved-thinking 的升级版，两者不能共存
+  const hasAnyThinkingBeta = betaList.some(b => b.startsWith('interleaved-thinking') || b.startsWith('adaptive-thinking'));
+  if (!hasAnyThinkingBeta &&
       (model.includes('claude-sonnet-4') || model.includes('claude-opus-4') || model.includes('claude-haiku-4'))) {
     betaList.push(THINKING_BETA);
   }

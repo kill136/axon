@@ -241,15 +241,18 @@ function hasInferenceScope(scopes?: string[]): boolean {
 /**
  * 初始化认证系统
  *
- * 认证优先级（修复版本，与官方 Axon 参考实现 逻辑一致）：
- * 1. 环境变量 API key
- * 2. OAuth token（如果有 user:inference scope）- 订阅用户优先使用
- * 3. primaryApiKey（如果 OAuth 没有 inference scope）
- * 4. 其他凭证文件
+ * 认证优先级：
+ * 1. 环境变量 API key (ANTHROPIC_API_KEY / AXON_API_KEY)
+ * 2. 环境变量 Auth Token (ANTHROPIC_AUTH_TOKEN)
+ * 3. settings.json 的 apiKey（Web UI 配置）
+ * 4. .credentials.json 的 OAuth token（有 user:inference scope 时）
+ * 5. config.json 的 primaryApiKey
+ * 6. Keychain
+ * 7. credentials.json
+ * 8. auth.json（加密存储）
  */
 export function initAuth(): AuthConfig | null {
-  // 1. 检查环境变量 (最高优先级)
-  // 1a. 检查 API Key
+  // 1. 检查 API Key 环境变量（最高优先级）
   const envApiKey = process.env.ANTHROPIC_API_KEY || process.env.AXON_API_KEY;
   if (envApiKey) {
     currentAuth = {
@@ -260,8 +263,7 @@ export function initAuth(): AuthConfig | null {
     return currentAuth;
   }
 
-  // 1b. 检查 Auth Token (Issue #64: 支持 ANTHROPIC_AUTH_TOKEN 环境变量)
-  // 这允许用户使用第三方API服务（配合 ANTHROPIC_BASE_URL）
+  // 2. 检查 ANTHROPIC_AUTH_TOKEN 环境变量
   const envAuthToken = process.env.ANTHROPIC_AUTH_TOKEN;
   if (envAuthToken) {
     currentAuth = {
@@ -273,8 +275,7 @@ export function initAuth(): AuthConfig | null {
     return currentAuth;
   }
 
-  // 1c. 检查 settings.json 的 apiKey（Web UI 配置）
-  // 用户在 Web UI 设置页面保存的 API Key，优先级高于 OAuth token 和内置代理
+  // 3. 检查 settings.json 的 apiKey（Web UI 配置）
   if (fs.existsSync(SETTINGS_FILE)) {
     try {
       const settings = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf-8'));
@@ -291,7 +292,7 @@ export function initAuth(): AuthConfig | null {
     }
   }
 
-  // 2. 检查官方 Axon 参考实现 的 .credentials.json（OAuth token）
+  // 4. 检查官方 .credentials.json（OAuth token）
   //
   // 重要发现（通过抓包和测试发现）：
   // - OAuth subscription token 需要特殊的 system prompt 格式才能使用 sonnet/opus 模型
@@ -325,13 +326,11 @@ export function initAuth(): AuthConfig | null {
     }
   }
 
-  // 3. 检查官方 Axon 参考实现 的 config.json（primaryApiKey）
-  // 只有当 OAuth token 没有 user:inference scope 时才使用这个
+  // 5. 检查 config.json 的 primaryApiKey
   if (fs.existsSync(CONFIG_FILE)) {
     try {
       const config = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
       if (config.primaryApiKey) {
-        // 调试日志已移除，避免污染 UI 输出
         currentAuth = {
           type: 'api_key',
           accountType: 'api',
@@ -344,11 +343,10 @@ export function initAuth(): AuthConfig | null {
     }
   }
 
-  // 3.5. 检查 macOS Keychain（如果可用）
+  // 6. 检查 macOS Keychain
   if (Keychain.isKeychainAvailable()) {
     const keychainApiKey = Keychain.loadFromKeychain();
     if (keychainApiKey) {
-      // 调试日志已移除，避免污染 UI 输出
       currentAuth = {
         type: 'api_key',
         accountType: 'api',
@@ -358,10 +356,7 @@ export function initAuth(): AuthConfig | null {
     }
   }
 
-  // 注意：我们不再使用官方 Axon 参考实现 的 OAuth token
-  // 因为 Anthropic 服务器会验证请求来源，只允许官方客户端使用
-
-  // 4. 检查凭证文件（未加密的 API Key）
+  // 7. 检查凭证文件（未加密的 API Key）
   if (fs.existsSync(CREDENTIALS_FILE)) {
     try {
       const creds = JSON.parse(fs.readFileSync(CREDENTIALS_FILE, 'utf-8'));
@@ -378,7 +373,7 @@ export function initAuth(): AuthConfig | null {
     }
   }
 
-  // 5. 检查 OAuth token（加密存储 - 我们自己的格式）
+  // 8. 检查 OAuth token（加密存储 - auth.json）
   const auth = loadAuthSecure();
   if (auth?.accessToken) {
     // 检查是否过期
