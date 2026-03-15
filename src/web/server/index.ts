@@ -244,6 +244,40 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
   const portForwardRouter = await import('./routes/port-forward.js');
   app.use('/proxy', portForwardRouter.default);
 
+  // ====== 官网（Landing Page）路由 ======
+  // 根据域名区分：chatbi.site → 官网，其他 → Web UI
+  // 官网域名列表（可通过环境变量扩展）
+  const LANDING_HOSTS = (process.env.LANDING_HOSTS || 'chatbi.site,www.chatbi.site').split(',').map(h => h.trim().toLowerCase());
+
+  // 下载代理路由（官网域名 + 所有域名都可用）
+  const downloadProxyRouter = await import('./routes/download-proxy.js');
+  app.use(downloadProxyRouter.default);
+
+  // Landing page 静态文件
+  const landingPagePath = path.join(__dirname, '../../../landing-page');
+  const landingPageExists = fs.existsSync(landingPagePath);
+  if (landingPageExists) {
+    console.log(`   Landing page: ${landingPagePath}`);
+
+    // 官网域名拦截：匹配到官网域名时，serve landing-page 静态文件
+    app.use((req, res, next) => {
+      const hostname = (req.hostname || req.headers.host || '').split(':')[0].toLowerCase();
+      if (!LANDING_HOSTS.includes(hostname)) {
+        return next(); // 非官网域名，跳过，交给 Web UI
+      }
+
+      // 官网请求，serve landing-page 静态文件
+      express.static(landingPagePath, {
+        index: ['index.html'],
+        extensions: ['html'],
+      })(req, res, () => {
+        // 静态文件未找到时，返回 index.html（SPA fallback 不需要，官网是多页面）
+        res.status(404).sendFile(path.join(landingPagePath, 'index.html'));
+      });
+    });
+  }
+
+  // ====== Web UI 静态文件 ======
   // 前端静态文件路径
   // 在生产环境下，代码在 dist/web/server，需要找到 src/web/client/dist
   // 在开发环境下，代码在 src/web/server，需要找到 src/web/client
