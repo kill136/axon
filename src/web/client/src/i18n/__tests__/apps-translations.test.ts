@@ -33,6 +33,23 @@ describe('apps translations', () => {
     'apps.loading',
     'apps.loadError',
     'apps.noResults',
+    // CreateAppDialog keys
+    'apps.createTitle',
+    'apps.workingDir',
+    'apps.workingDirHint',
+    'apps.workingDirPlaceholder',
+    'apps.dirRequired',
+    'apps.dirMustBeAbsolute',
+    'apps.browse',
+    'apps.descLabel',
+    'apps.createPlaceholder',
+    'apps.descPlaceholderShort',
+    'apps.startCreate',
+    // DirectoryBrowser keys
+    'apps.selectDirectory',
+    'apps.enterPathPlaceholder',
+    'apps.noSubDirs',
+    'apps.selectThisDir',
   ] as const;
 
   it('EN has all required keys', () => {
@@ -79,7 +96,7 @@ describe('apps translations', () => {
   });
 
   it('no old app factory keys remain', () => {
-    const oldKeys = ['apps.create', 'apps.createFirst', 'apps.createTitle', 'apps.publish', 'apps.delete'];
+    const oldKeys = ['apps.create', 'apps.createFirst', 'apps.publish', 'apps.delete'];
     for (const key of oldKeys) {
       expect(key in enApps).toBe(false);
       expect(key in zhApps).toBe(false);

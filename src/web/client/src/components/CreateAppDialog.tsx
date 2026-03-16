@@ -5,8 +5,9 @@
  * 工作目录必填，AI 会在该目录下工作，不会污染当前项目。
  */
 
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { useLanguage } from '../i18n';
+import { DirectoryBrowser } from './DirectoryBrowser';
 
 interface CreateAppDialogProps {
   isOpen: boolean;
@@ -19,7 +20,7 @@ export function CreateAppDialog({ isOpen, onClose, onSubmit }: CreateAppDialogPr
   const [desc, setDesc] = useState('');
   const [workDir, setWorkDir] = useState('');
   const [dirError, setDirError] = useState('');
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showDirBrowser, setShowDirBrowser] = useState(false);
 
   if (!isOpen) return null;
 
@@ -58,33 +59,13 @@ export function CreateAppDialog({ isOpen, onClose, onSubmit }: CreateAppDialogPr
     }
   };
 
-  const handleBrowse = async () => {
-    // 尝试使用 File System Access API (现代浏览器)
-    if ('showDirectoryPicker' in window) {
-      try {
-        const dirHandle = await (window as any).showDirectoryPicker({ mode: 'readwrite' });
-        // showDirectoryPicker 只返回目录名，不返回完整路径
-        // 我们需要让用户手动输入或通过后端 API 选择
-        // 暂时用目录名提示用户
-        setWorkDir(dirHandle.name);
-      } catch {
-        // 用户取消了选择
-      }
-      return;
-    }
+  const handleBrowse = () => {
+    setShowDirBrowser(true);
+  };
 
-    // 通过后端 API 打开文件夹选择器
-    try {
-      const res = await fetch('/api/browse-folder', { method: 'POST' });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.path) {
-          setWorkDir(data.path);
-        }
-      }
-    } catch {
-      // 后端不支持，用户需要手动输入
-    }
+  const handleDirSelected = (fullPath: string) => {
+    setWorkDir(fullPath);
+    setDirError('');
   };
 
   return (
@@ -301,6 +282,13 @@ export function CreateAppDialog({ isOpen, onClose, onSubmit }: CreateAppDialogPr
           to { transform: translateY(0); opacity: 1; }
         }
       `}</style>
+
+      <DirectoryBrowser
+        isOpen={showDirBrowser}
+        onClose={() => setShowDirBrowser(false)}
+        onSelect={handleDirSelected}
+        initialPath={workDir || undefined}
+      />
     </div>
   );
 }
