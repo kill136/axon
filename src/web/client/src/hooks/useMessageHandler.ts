@@ -34,9 +34,11 @@ export interface RateLimitInfo {
  */
 export interface CrossSessionNotification {
   sessionId: string;
-  type: 'permission_request' | 'user_question';
+  type: 'permission_request' | 'user_question' | 'delegated_task';
   toolName?: string;     // permission_request 时的工具名
   questionHeader?: string; // user_question 时的标题
+  fromAgent?: string;    // delegated_task 时的来源 Agent 名
+  taskDescription?: string; // delegated_task 时的任务描述
   timestamp: number;
 }
 
@@ -502,16 +504,42 @@ export function useMessageHandler({
           }
           break;
 
-        case 'session_created':
+        case 'session_created': {
           if (payload.sessionId) {
-            sessionIdRef.current = payload.sessionId as string;
-            // 不在此处调用 refreshSessions()：
-            // 让 useSessionManager 的乐观插入先展示，避免刷新时数据不一致。
-            // 列表刷新由 message_complete 事件负责。
-            setCompactState({ phase: 'idle' });
-            setContextUsage(null);
+            const tags = payload.tags as string[] | undefined;
+            const isDelegatedTask = tags?.includes('delegated-task');
+
+            if (isDelegatedTask) {
+              // 后台委派任务创建的会话：不切换当前会话，弹通知让用户自己决定是否去看
+              setCrossSessionNotification({
+                sessionId: payload.sessionId as string,
+                type: 'delegated_task',
+                fromAgent: payload.fromAgent as string || 'Unknown Agent',
+                taskDescription: payload.taskDescription as string || '',
+                timestamp: Date.now(),
+              });
+
+              // 浏览器原生通知
+              if ('Notification' in window && Notification.permission === 'granted') {
+                const fromName = payload.fromAgent as string || 'Agent';
+                const desc = (payload.taskDescription as string || '').slice(0, 80);
+                new Notification(`Delegated Task from ${fromName}`, {
+                  body: `${desc}\n(click to view in new session)`,
+                  icon: '/favicon.ico',
+                });
+              }
+            } else {
+              // 用户主动创建的会话：正常切换
+              sessionIdRef.current = payload.sessionId as string;
+              // 不在此处调用 refreshSessions()：
+              // 让 useSessionManager 的乐观插入先展示，避免刷新时数据不一致。
+              // 列表刷新由 message_complete 事件负责。
+              setCompactState({ phase: 'idle' });
+              setContextUsage(null);
+            }
           }
           break;
+        }
 
         case 'session_new_ready':
           console.log('[App] Temporary session ready:', payload.sessionId);

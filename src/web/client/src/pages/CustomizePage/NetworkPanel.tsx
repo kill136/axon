@@ -180,7 +180,12 @@ const InfoIcon = () => (
 
 // ===== Main Component =====
 
-export default function NetworkPanel() {
+interface NetworkPanelProps {
+  onSendMessage?: (message: any) => void;
+  addMessageHandler?: (handler: (msg: any) => void) => () => void;
+}
+
+export default function NetworkPanel({ addMessageHandler }: NetworkPanelProps) {
   const { t } = useLanguage();
   const [status, setStatus] = useState<NetworkStatus | null>(null);
   const [auditLog, setAuditLog] = useState<AuditLogEntry[]>([]);
@@ -228,9 +233,70 @@ export default function NetworkPanel() {
       setLoading(false);
     };
     fetchAll();
-    const interval = setInterval(fetchAll, 3000);
+    const interval = setInterval(fetchAll, 5000); // 有 WebSocket 实时推送后降低轮询频率
     return () => clearInterval(interval);
   }, []);
+
+  // 通过 WebSocket 实时接收 network 事件（消息、Agent 变化、任务执行状态）
+  useEffect(() => {
+    if (!addMessageHandler) return;
+    const unsub = addMessageHandler((msg: any) => {
+      const { type, payload } = msg;
+      switch (type) {
+        case 'network:message': {
+          // 新审计日志条目 → 追加到列表
+          setAuditLog(prev => [...prev, payload]);
+          break;
+        }
+        case 'network:agent_found':
+        case 'network:agent_updated': {
+          // Agent 上线/更新 → 更新 status.agents
+          setStatus(prev => {
+            if (!prev) return prev;
+            const agents = prev.agents.filter(a => a.agentId !== payload.agentId);
+            agents.push(payload);
+            return { ...prev, agents };
+          });
+          break;
+        }
+        case 'network:agent_lost': {
+          // Agent 离线 → 标记为 offline
+          setStatus(prev => {
+            if (!prev) return prev;
+            const agents = prev.agents.map(a =>
+              a.agentId === payload.agentId ? { ...a, online: false } : a
+            );
+            return { ...prev, agents };
+          });
+          break;
+        }
+        case 'network:task_executing': {
+          // 本地委派任务执行状态变化 → 构造虚拟审计日志条目展示
+          const taskEntry: AuditLogEntry = {
+            id: `task-${payload.taskId}-${payload.status}`,
+            timestamp: Date.now(),
+            direction: 'inbound',
+            fromAgentId: '',
+            fromName: payload.fromName || 'Agent',
+            toAgentId: '',
+            toName: 'self',
+            messageType: 'task',
+            method: `task.${payload.status}`,
+            summary: payload.status === 'failed'
+              ? `Task failed: ${payload.error || payload.description}`
+              : payload.status === 'completed'
+              ? `Task completed: ${(payload.result || '').slice(0, 80)}`
+              : `Task ${payload.status}: ${payload.description}`,
+            success: payload.status !== 'failed',
+            taskId: payload.taskId,
+          };
+          setAuditLog(prev => [...prev, taskEntry]);
+          break;
+        }
+      }
+    });
+    return unsub;
+  }, [addMessageHandler]);
 
   // Scan timeout: after 15s without finding agents, show stable "no agents" state
   const isEnabled = status?.enabled ?? false;
@@ -404,7 +470,7 @@ export default function NetworkPanel() {
 
   const handleSendMessage = () => {
     if (!messageText.trim()) return;
-    doSend('agent.notify', { message: messageText.trim() });
+    doSend('agent.chat', { message: messageText.trim() });
     setMessageText('');
   };
 
@@ -625,7 +691,9 @@ export default function NetworkPanel() {
             const isOnline = contact.type === 'agent' ? contact.agent.online : true;
             const isActive = selectedContact === id;
             const preview = contact.lastMessage
-              ? `${contact.lastMessage.method}: ${contact.lastMessage.summary}`.slice(0, 50)
+              ? (contact.lastMessage.messageType === 'chat'
+                ? contact.lastMessage.summary.slice(0, 50)
+                : `${contact.lastMessage.method}: ${contact.lastMessage.summary}`.slice(0, 50))
               : contact.type === 'agent'
                 ? contact.agent.endpoint
                 : t('network.group.memberCount', { count: contact.group.members.length });
@@ -867,6 +935,29 @@ function TrustBadge({ level, t }: { level: string; t: (key: string) => string })
   return <span className={`${styles.trustBadge} ${cls}`}>{label}</span>;
 }
 
+/**
+ * Truncate a string for display, adding ellipsis if needed
+ */
+function truncateStr(s: string, maxLen: number): string {
+  if (!s) return '';
+  if (s.length <= maxLen) return s;
+  return s.slice(0, maxLen) + '...';
+}
+
+/**
+ * Render a JSON-like value as a compact preview
+ */
+function compactJson(value: unknown, maxLen = 200): string {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string') return truncateStr(value, maxLen);
+  try {
+    const s = JSON.stringify(value);
+    return truncateStr(s, maxLen);
+  } catch {
+    return String(value);
+  }
+}
+
 function MessageBubble({ entry, myId, agents, t }: {
   entry: AuditLogEntry;
   myId: string;
@@ -882,14 +973,20 @@ function MessageBubble({ entry, myId, agents, t }: {
   const isTask = entry.method.includes('delegateTask') || entry.method.includes('task.');
   const isPing = entry.method === 'agent.ping';
   const isCallTool = entry.method === 'agent.callTool';
+  const isProgress = entry.method === 'agent.progress';
   const isNotify = entry.messageType === 'notify';
   const isResponse = entry.messageType === 'response';
+  const isChat = entry.messageType === 'chat';
 
   // Parse payload for rich display
   let parsedPayload: any = null;
   if (entry.payload) {
     try { parsedPayload = JSON.parse(entry.payload); } catch { /* ignore */ }
   }
+
+  // Extract useful fields from payload
+  const params = parsedPayload?.params;
+  const result = parsedPayload?.result;
 
   return (
     <div className={`${styles.bubble} ${isOutbound ? styles.bubbleOut : styles.bubbleIn}`}>
@@ -900,52 +997,181 @@ function MessageBubble({ entry, myId, agents, t }: {
       )}
       <div className={styles.bubbleContent}>
         {!isOutbound && <div className={styles.bubbleSender}>{otherName}</div>}
-        <div
-          className={`${styles.bubbleCard} ${!entry.success ? styles.bubbleError : ''} ${isTask ? styles.bubbleTask : ''}`}
-          onClick={() => setExpanded(!expanded)}
-        >
-          {/* Method tag */}
-          <div className={styles.bubbleMethod}>
-            <span className={styles.methodTag}>{entry.method}</span>
-            {!entry.success && <span className={styles.errorDot} />}
+        {isChat ? (
+          /* Chat message — clean text bubble, no method tags */
+          <div className={`${styles.bubbleCard} ${styles.chatBubble}`}>
+            <div className={styles.chatText}>{entry.summary || params?.message || parsedPayload?.params?.message || ''}</div>
           </div>
-
-          {/* Smart content based on type */}
-          {isPing && entry.summary.includes('pong') && (
-            <div className={styles.bubbleText}>Pong! {parsedPayload?.result?.timestamp && `(${Date.now() - parsedPayload.result.timestamp}ms)`}</div>
-          )}
-
-          {isCallTool && parsedPayload?.params && (
-            <div className={styles.bubbleText}>
-              Tool: <code>{parsedPayload.params.toolName}</code>
+        ) : (
+          <div
+            className={`${styles.bubbleCard} ${!entry.success ? styles.bubbleError : ''} ${isTask || isProgress ? styles.bubbleTask : ''}`}
+            onClick={() => setExpanded(!expanded)}
+          >
+            {/* Method tag */}
+            <div className={styles.bubbleMethod}>
+              <span className={styles.methodTag}>{entry.method}</span>
+              {isResponse && <span className={styles.methodTag} style={{ opacity: 0.5 }}>response</span>}
+              {!entry.success && <span className={styles.errorDot} />}
             </div>
-          )}
 
-          {isTask && (
-            <div className={styles.taskCard}>
-              <div className={styles.taskTitle}>{entry.summary}</div>
-              {entry.taskId && <div className={styles.taskIdLabel}>Task: {entry.taskId.slice(0, 8)}</div>}
-            </div>
-          )}
+            {/* ===== Rich content by type ===== */}
 
-          {isNotify && parsedPayload?.params?.message && (
-            <div className={styles.bubbleText}>{parsedPayload.params.message}</div>
-          )}
+            {/* Ping */}
+            {isPing && !isResponse && (
+              <div className={styles.bubbleText}>Ping</div>
+            )}
+            {isPing && isResponse && result?.pong && (
+              <div className={styles.bubbleText}>Pong! {result?.timestamp && `(${Date.now() - result.timestamp}ms)`}</div>
+            )}
+            {/* Response to ping from audit log that has result */}
+            {isResponse && parsedPayload?.result?.pong && !isPing && (
+              <div className={styles.bubbleText}>Pong! {parsedPayload.result?.timestamp && `(${Date.now() - parsedPayload.result.timestamp}ms)`}</div>
+            )}
 
-          {/* Fallback: show summary */}
-          {!isPing && !isCallTool && !isTask && !(isNotify && parsedPayload?.params?.message) && (
-            <div className={styles.bubbleText}>{entry.summary}</div>
-          )}
+            {/* CallTool — outbound request */}
+            {isCallTool && params?.toolName && (
+              <div className={styles.richContent}>
+                <div className={styles.bubbleText}>
+                  Tool: <code>{params.toolName}</code>
+                </div>
+                {params.toolInput && (
+                  <div className={styles.paramBlock}>
+                    <div className={styles.paramLabel}>Input</div>
+                    <pre className={styles.paramValue}>{compactJson(params.toolInput, 300)}</pre>
+                  </div>
+                )}
+              </div>
+            )}
 
-          {entry.error && (
-            <div className={styles.bubbleErrorText}>{entry.error}</div>
-          )}
+            {/* CallTool — inbound request (someone calls our tool) */}
+            {isCallTool && !params?.toolName && parsedPayload?.method === 'agent.callTool' && parsedPayload?.params && (
+              <div className={styles.richContent}>
+                <div className={styles.bubbleText}>
+                  Tool: <code>{parsedPayload.params.toolName}</code>
+                </div>
+                {parsedPayload.params.toolInput && (
+                  <div className={styles.paramBlock}>
+                    <div className={styles.paramLabel}>Input</div>
+                    <pre className={styles.paramValue}>{compactJson(parsedPayload.params.toolInput, 300)}</pre>
+                  </div>
+                )}
+              </div>
+            )}
 
-          {/* Expanded: show raw payload */}
-          {expanded && entry.payload && (
-            <pre className={styles.bubblePayload}>{JSON.stringify(parsedPayload, null, 2)}</pre>
-          )}
-        </div>
+            {/* Response with tool result */}
+            {isResponse && result?.toolName && (
+              <div className={styles.richContent}>
+                <div className={styles.bubbleText}>
+                  Tool: <code>{result.toolName}</code> — result
+                </div>
+                {result.result && (
+                  <div className={styles.paramBlock}>
+                    <div className={styles.paramLabel}>Output</div>
+                    <pre className={styles.paramValue}>{compactJson(result.result, 500)}</pre>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Response with generic result (not tool, not ping, not bare ack) */}
+            {isResponse && result && !result?.toolName && !result?.pong
+              && !(Object.keys(result).length === 1 && result?.received === true) && (
+              <div className={styles.richContent}>
+                <div className={styles.paramBlock}>
+                  <div className={styles.paramLabel}>Result</div>
+                  <pre className={styles.paramValue}>{compactJson(result, 500)}</pre>
+                </div>
+              </div>
+            )}
+
+            {/* DelegateTask */}
+            {isTask && !isProgress && (
+              <div className={styles.richContent}>
+                <div className={styles.taskCard}>
+                  <div className={styles.taskTitle}>
+                    {params?.description || parsedPayload?.params?.description || entry.summary}
+                  </div>
+                  {entry.taskId && <div className={styles.taskIdLabel}>Task: {entry.taskId.slice(0, 8)}</div>}
+                </div>
+                {(params?.context || parsedPayload?.params?.context) && (
+                  <div className={styles.paramBlock}>
+                    <div className={styles.paramLabel}>Context</div>
+                    <pre className={styles.paramValue}>{truncateStr(params?.context || parsedPayload?.params?.context, 300)}</pre>
+                  </div>
+                )}
+                {/* If this is a response to delegate, show the accepted status */}
+                {isResponse && result?.status && (
+                  <div className={styles.progressStatus} data-status={result.status}>
+                    {result.status === 'accepted' ? 'Accepted' : result.status}
+                    {result.message && ` — ${truncateStr(result.message, 100)}`}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Progress notification */}
+            {isProgress && (
+              <div className={styles.richContent}>
+                <div className={styles.progressInfo}>
+                  {entry.taskId && <div className={styles.taskIdLabel}>Task: {entry.taskId.slice(0, 8)}</div>}
+                  {params?.status && (
+                    <div className={styles.progressStatus} data-status={params.status}>
+                      {params.status}
+                    </div>
+                  )}
+                  {params?.description && (
+                    <div className={styles.bubbleText}>{params.description}</div>
+                  )}
+                  {params?.message && (
+                    <div className={styles.bubbleText} style={{ opacity: 0.8 }}>{params.message}</div>
+                  )}
+                  {typeof params?.progress === 'number' && (
+                    <div className={styles.progressBarContainer}>
+                      <div className={styles.progressBar} style={{ width: `${Math.min(100, params.progress)}%` }} />
+                      <span className={styles.progressPercent}>{params.progress}%</span>
+                    </div>
+                  )}
+                  {params?.result && (
+                    <div className={styles.paramBlock}>
+                      <div className={styles.paramLabel}>Result</div>
+                      <pre className={styles.paramValue}>{truncateStr(params.result, 500)}</pre>
+                    </div>
+                  )}
+                  {params?.error && (
+                    <div className={styles.bubbleErrorText}>{params.error}</div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Notify with message */}
+            {isNotify && !isProgress && !isTask && params?.message && (
+              <div className={styles.bubbleText}>{params.message}</div>
+            )}
+
+            {/* Fallback: nothing rendered above → show summary */}
+            {!isPing && !isCallTool && !isTask && !isProgress && !isResponse
+              && !(isNotify && params?.message) && (
+              <div className={styles.bubbleText}>{entry.summary}</div>
+            )}
+
+            {entry.error && (
+              <div className={styles.bubbleErrorText}>{entry.error}</div>
+            )}
+
+            {/* Expand hint */}
+            {entry.payload && (
+              <div className={styles.expandHint}>
+                {expanded ? '▲ collapse' : '▼ details'}
+              </div>
+            )}
+
+            {/* Expanded: show raw payload */}
+            {expanded && entry.payload && (
+              <pre className={styles.bubblePayload}>{JSON.stringify(parsedPayload, null, 2)}</pre>
+            )}
+          </div>
+        )}
         <div className={styles.bubbleTime}>{formatFullTime(entry.timestamp)}</div>
       </div>
     </div>

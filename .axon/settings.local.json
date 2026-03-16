@@ -141,16 +141,6 @@
     ]
   },
   "disabledMcpServers": [
-    "server1",
-    "server2",
-    "update-test",
-    "api-server",
-    "web-api",
-    "claude-in-chrome",
-    "connector-github",
-    "connector-notion",
-    "connector-slack",
-    "email",
-    "connector-google"
+    "claude-in-chrome"
   ]
 }

@@ -21,11 +21,5 @@
     ],
     "deny": []
   },
-  "mcpServers": {
-    "reddit": {
-      "type": "stdio",
-      "command": "uvx",
-      "args": ["--from", "git+https://github.com/adhikasp/mcp-reddit.git", "mcp-reddit"]
-    }
-  }
+  "mcpServers": {}
 }

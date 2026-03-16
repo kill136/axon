@@ -11,7 +11,6 @@ docs
 .env
 *.tgz
 src/web/client/node_modules
-landing-page
 web-frontend
 *.log
 .DS_Store

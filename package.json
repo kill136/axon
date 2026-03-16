@@ -1,6 +1,6 @@
 {
   "name": "axon",
-  "version": "2.3.0",
+  "version": "2.3.1",
   "description": "Free & open source AI coding assistant with Web IDE, multi-agent system, and self-evolution",
   "type": "module",
   "main": "electron/main.cjs",
@@ -201,7 +201,7 @@
     "tree-sitter-wasms": "^0.1.13"
   },
   "devDependencies": {
-    "@anthropic-ai/claude-code": "^2.1.70",
+    "@anthropic-ai/claude-code": "^2.1.76",
     "@types/better-sqlite3": "^7.6.13",
     "@types/chokidar": "^1.7.5",
     "@types/eventsource": "^1.1.15",

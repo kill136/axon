@@ -160,9 +160,11 @@ export function useWebSocket(url: string): UseWebSocketReturn {
 
         // 处理会话创建（持久化会话） - 更新 sessionId 状态和存储
         // 当临时 sessionId 变为持久化 sessionId 时，必须更新 React state
+        // 注意：委派任务（delegated-task）和 Agent Chat（agent-chat）创建的会话不应切换当前 sessionId
         if (message.type === 'session_created') {
-          const payload = message.payload as { sessionId: string };
-          if (payload.sessionId) {
+          const payload = message.payload as { sessionId: string; tags?: string[] };
+          const isBackgroundSession = payload.tags?.includes('delegated-task') || payload.tags?.includes('agent-chat');
+          if (payload.sessionId && !isBackgroundSession) {
             setSessionId(payload.sessionId);
             sessionStorage.setItem(SESSION_ID_STORAGE_KEY, payload.sessionId);
             console.log('[WebSocket] Persistent session created and saved:', payload.sessionId);

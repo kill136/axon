@@ -103,15 +103,21 @@ interface StoredKeys {
 
 /**
  * 加载或生成密钥
+ *
+ * instanceId 用于区分同一台机器上的多个实例。
+ * 默认实例（instanceId 为空）使用 agent.key/agent.pub，
+ * 额外实例使用 agent-{instanceId}.key/agent-{instanceId}.pub。
+ * Owner 密钥始终共享（保证 isSameOwner 检查有效）。
  */
-function loadOrCreateKeys(ownerName: string): StoredKeys {
+function loadOrCreateKeys(ownerName: string, instanceId?: string): StoredKeys {
   ensureDir(NETWORK_DIR);
 
+  const suffix = instanceId ? `-${instanceId}` : '';
   const ownerKeyPath = path.join(NETWORK_DIR, 'owner.key');
   const ownerPubPath = path.join(NETWORK_DIR, 'owner.pub');
-  const agentKeyPath = path.join(NETWORK_DIR, 'agent.key');
-  const agentPubPath = path.join(NETWORK_DIR, 'agent.pub');
-  const certPath = path.join(NETWORK_DIR, 'agent-cert.sig');
+  const agentKeyPath = path.join(NETWORK_DIR, `agent${suffix}.key`);
+  const agentPubPath = path.join(NETWORK_DIR, `agent${suffix}.pub`);
+  const certPath = path.join(NETWORK_DIR, `agent-cert${suffix}.sig`);
   const ownerNamePath = path.join(NETWORK_DIR, 'owner-name.txt');
 
   let ownerPublicKey: string;
@@ -192,10 +198,15 @@ export class IdentityManager {
 
   /**
    * 初始化身份系统
+   * @param config 网络配置
+   * @param cwd 工作目录
+   * @param actualPort 实际绑定的端口号（用于区分同机器多实例的身份）
    */
-  async initialize(config: NetworkConfig, cwd: string): Promise<void> {
+  async initialize(config: NetworkConfig, cwd: string, actualPort?: number): Promise<void> {
     const ownerName = ''; // 从已存储文件读取或使用系统用户名
-    this.keys = loadOrCreateKeys(ownerName);
+    // 默认端口 7860 不加后缀（向后兼容已有密钥），其他端口用端口号区分
+    const instanceId = (actualPort && actualPort !== 7860) ? String(actualPort) : undefined;
+    this.keys = loadOrCreateKeys(ownerName, instanceId);
 
     const agentId = computeAgentId(this.keys.agentPublicKey);
     const agentPubBase64 = pemToBase64(this.keys.agentPublicKey);

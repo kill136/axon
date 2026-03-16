@@ -46,6 +46,11 @@ export class AgentConnection extends EventEmitter {
   ) {
     super();
 
+    // 默认 error 处理：防止无监听器时 EventEmitter 抛未捕获异常崩溃进程
+    // 调用方（connect/handleInbound）已在 ws 层面处理错误逻辑，
+    // 这里只是兜底，避免连接拒绝等常见网络错误导致进程退出
+    this.on('error', () => {});
+
     ws.on('message', (data: Buffer) => {
       try {
         const msg = JSON.parse(data.toString()) as TransportMessage;
@@ -129,49 +134,84 @@ export class AgentTransport extends EventEmitter {
 
   /**
    * 启动 WebSocket 服务端
+   *
+   * Windows 上 Node.js server.listen() 复用同一 server 对象重试时，
+   * 之前失败的 listen 回调也会被触发（Node.js bug/行为）。
+   * 因此每次重试都创建新的 server + WebSocketServer 实例。
    */
   async listen(preferredPort: number): Promise<number> {
-    return new Promise((resolve, reject) => {
+    const maxAttempts = 10;
+
+    for (let attempt = 0; attempt <= maxAttempts; attempt++) {
+      const port = preferredPort + attempt;
+      try {
+        await this.tryListenOnPort(port);
+        return port;
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === 'EADDRINUSE' && attempt < maxAttempts) {
+          // 端口被占用，清理后重试下一个端口
+          this.cleanupServer();
+          continue;
+        }
+        throw err;
+      }
+    }
+
+    throw new Error(`Could not find available port after ${maxAttempts} attempts starting from ${preferredPort}`);
+  }
+
+  /**
+   * 尝试在指定端口启动服务
+   */
+  private tryListenOnPort(port: number): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
       this.server = createServer();
       this.wss = new WebSocketServer({ server: this.server });
+
+      this.wss.on('error', (err: Error) => {
+        if ((err as NodeJS.ErrnoException).code === 'EADDRINUSE') return;
+        console.error('[AgentTransport] WebSocketServer error:', err.message);
+      });
 
       this.wss.on('connection', (ws: WebSocket) => {
         const conn = new AgentConnection(ws, 'inbound');
         this.handleInboundConnection(conn);
       });
 
-      // 尝试端口，如果被占用则递增
-      const tryListen = (port: number, attempts: number = 0): void => {
-        if (attempts > 10) {
-          reject(new Error(`Could not find available port after 10 attempts starting from ${preferredPort}`));
-          return;
-        }
+      let settled = false;
 
-        // 绑定 0.0.0.0 以允许局域网内其他 Agent 连接
-        // 安全性通过握手时的 Ed25519 签名验证 + 信任分级保障，TLS 待 Phase 3
-        this.server!.listen(port, '0.0.0.0', () => {
-          this.actualPort = port;
+      this.server.listen({ port, host: '0.0.0.0', exclusive: true }, () => {
+        if (settled) return;
+        settled = true;
+        this.actualPort = port;
 
-          // 端口绑定成功后，注册 permanent error handler 防止 error 事件未处理导致 crash
-          this.server!.on('error', (err: Error) => {
-            console.error(`[AgentTransport] Server error on port ${port}:`, err.message);
-          });
-
-          resolve(port);
+        this.server!.on('error', (err: Error) => {
+          console.error(`[AgentTransport] Server error on port ${port}:`, err.message);
         });
 
-        this.server!.once('error', (err: NodeJS.ErrnoException) => {
-          if (err.code === 'EADDRINUSE') {
-            this.server!.removeAllListeners('error');
-            tryListen(port + 1, attempts + 1);
-          } else {
-            reject(err);
-          }
-        });
-      };
+        resolve();
+      });
 
-      tryListen(preferredPort);
+      this.server.once('error', (err: NodeJS.ErrnoException) => {
+        if (settled) return;
+        settled = true;
+        reject(err);
+      });
     });
+  }
+
+  /**
+   * 清理当前 server/wss 实例（重试前调用）
+   */
+  private cleanupServer(): void {
+    if (this.wss) {
+      try { this.wss.close(); } catch { /* ignore */ }
+      this.wss = null;
+    }
+    if (this.server) {
+      try { this.server.close(); } catch { /* ignore */ }
+      this.server = null;
+    }
   }
 
   /**

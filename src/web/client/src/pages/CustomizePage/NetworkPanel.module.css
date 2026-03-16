@@ -779,6 +779,152 @@
   text-align: right;
 }
 
+/* Rich content in bubble */
+.richContent {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.paramBlock {
+  margin-top: 2px;
+}
+
+.paramLabel {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  margin-bottom: 2px;
+}
+
+.paramValue {
+  font-size: 11px;
+  font-family: 'SF Mono', 'Cascadia Code', monospace;
+  color: var(--text-secondary);
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.15);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 120px;
+  overflow-y: auto;
+  line-height: 1.4;
+}
+
+.expandHint {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-align: center;
+  margin-top: 4px;
+  opacity: 0.6;
+  cursor: pointer;
+}
+
+.expandHint:hover {
+  opacity: 1;
+}
+
+/* Chat bubble — clean text style for agent conversations */
+.chatBubble {
+  cursor: default;
+  padding: 8px 12px !important;
+}
+
+.chatBubble:hover {
+  filter: none !important;
+}
+
+.chatText {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.bubbleOut .chatBubble {
+  background: var(--accent-primary);
+}
+
+.bubbleOut .chatText {
+  color: #fff;
+}
+
+/* Progress bar */
+.progressBarContainer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.progressBar {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--accent-primary);
+  transition: width 0.3s ease;
+  position: relative;
+}
+
+.progressBarContainer::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.progressPercent {
+  font-size: 10px;
+  font-family: 'SF Mono', 'Cascadia Code', monospace;
+  color: var(--text-muted);
+  min-width: 30px;
+  text-align: right;
+}
+
+.progressInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.progressStatus {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-self: flex-start;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.progressStatus[data-status="accepted"] {
+  background: rgba(14, 165, 233, 0.12);
+  color: var(--accent-info, #0ea5e9);
+}
+
+.progressStatus[data-status="running"] {
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+}
+
+.progressStatus[data-status="completed"] {
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--accent-success, #10b981);
+}
+
+.progressStatus[data-status="failed"] {
+  background: rgba(239, 68, 68, 0.12);
+  color: var(--accent-error, #ef4444);
+}
+
 /* Task card in bubble */
 .taskCard {
   display: flex;
