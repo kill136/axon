@@ -17,11 +17,28 @@ interface CrossSessionToastProps {
 
 export function CrossSessionToast({ notification, sessionName, onSwitch, onDismiss }: CrossSessionToastProps) {
   const { t } = useLanguage();
+  const isDelegated = notification.type === 'delegated_task';
   const isPermission = notification.type === 'permission_request';
-  const title = isPermission ? t('crossSession.permissionWaiting') : t('crossSession.questionWaiting');
-  const detail = isPermission
-    ? t('crossSession.toolRequestPermission', { tool: notification.toolName || t('crossSession.unknown') })
-    : notification.questionHeader || t('crossSession.hasQuestion');
+
+  let title: string;
+  let detail: string;
+  let icon: string;
+
+  if (isDelegated) {
+    title = t('crossSession.delegatedTaskRunning');
+    const from = notification.fromAgent || 'Agent';
+    const desc = notification.taskDescription || '';
+    detail = t('crossSession.delegatedTaskDetail', { agent: from, task: desc.slice(0, 60) });
+    icon = '\uD83E\uDD1D'; // handshake emoji
+  } else if (isPermission) {
+    title = t('crossSession.permissionWaiting');
+    detail = t('crossSession.toolRequestPermission', { tool: notification.toolName || t('crossSession.unknown') });
+    icon = '\u26A0';
+  } else {
+    title = t('crossSession.questionWaiting');
+    detail = notification.questionHeader || t('crossSession.hasQuestion');
+    icon = '\u2753';
+  }
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -37,7 +54,7 @@ export function CrossSessionToast({ notification, sessionName, onSwitch, onDismi
   return (
     <div className="cross-session-toast cross-session-toast-pulse" onClick={handleClick}>
       <div className="cross-session-toast-icon">
-        {isPermission ? '\u26A0' : '\u2753'}
+        {icon}
       </div>
       <div className="cross-session-toast-body">
         <div className="cross-session-toast-title">{title}</div>

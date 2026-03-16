@@ -208,4 +208,81 @@ describe('IdentityManager', () => {
       expect(result).toBe(true);
     });
   });
+
+  describe('multi-instance identity isolation', () => {
+    it('should generate different agentIds for different ports', async () => {
+      const config: NetworkConfig = {
+        enabled: true,
+        port: 7860,
+        advertise: true,
+        autoAcceptSameOwner: true,
+      };
+
+      // 默认端口 7860 — 无后缀
+      const m1 = new IdentityManager();
+      await m1.initialize(config, testDir, 7860);
+
+      // 非默认端口 7861 — 生成独立密钥
+      const m2 = new IdentityManager();
+      await m2.initialize(config, testDir, 7861);
+
+      expect(m1.agentId).not.toBe(m2.agentId);
+    });
+
+    it('should share the same owner across instances', async () => {
+      const config: NetworkConfig = {
+        enabled: true,
+        port: 7860,
+        advertise: true,
+        autoAcceptSameOwner: true,
+      };
+
+      const m1 = new IdentityManager();
+      await m1.initialize(config, testDir, 7860);
+
+      const m2 = new IdentityManager();
+      await m2.initialize(config, testDir, 7861);
+
+      // 两个实例应该互相认为是 same-owner
+      expect(m1.isSameOwner(m2.identity)).toBe(true);
+      expect(m2.isSameOwner(m1.identity)).toBe(true);
+    });
+
+    it('should verify cross-instance certificates', async () => {
+      const config: NetworkConfig = {
+        enabled: true,
+        port: 7860,
+        advertise: true,
+        autoAcceptSameOwner: true,
+      };
+
+      const m1 = new IdentityManager();
+      await m1.initialize(config, testDir, 7860);
+
+      const m2 = new IdentityManager();
+      await m2.initialize(config, testDir, 7861);
+
+      // 两个实例的证书都应该可验证（同一个 owner 签的）
+      expect(m1.verifyCertificate(m2.identity)).toBe(true);
+      expect(m2.verifyCertificate(m1.identity)).toBe(true);
+    });
+
+    it('should keep same agentId for default port 7860', async () => {
+      const config: NetworkConfig = {
+        enabled: true,
+        port: 7860,
+        advertise: true,
+        autoAcceptSameOwner: true,
+      };
+
+      // 不传 port 和传 7860 应该一样（向后兼容）
+      const m1 = new IdentityManager();
+      await m1.initialize(config, testDir);
+
+      const m2 = new IdentityManager();
+      await m2.initialize(config, testDir, 7860);
+
+      expect(m1.agentId).toBe(m2.agentId);
+    });
+  });
 });

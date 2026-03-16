@@ -770,7 +770,10 @@ export class ConversationManager {
    */
   private syncDisabledServersToSearchTool(): void {
     const disabledServers = this.getDisabledMcpServers();
-    MCPSearchTool.disabledServers = disabledServers;
+    // 过滤掉配置中不存在的 server 名（防止历史残留的幽灵 server 名显示给 AI）
+    const allServers = this.mcpConfigManager.getServers();
+    const validDisabled = disabledServers.filter(name => !!allServers[name] || getMcpServers().has(name));
+    MCPSearchTool.disabledServers = validDisabled;
   }
 
   /**
@@ -3261,7 +3264,7 @@ export class ConversationManager {
               callbacks.onToolResult?.(toolUse.id, true, output);
               return { success: true, output };
             } else {
-              const error = `Failed to ${input.action} MCP server "${input.name}".`;
+              const error = `Failed to ${input.action} MCP server "${input.name}". The server may not exist in the configuration. Use "list" action to see available servers.`;
               callbacks.onToolResult?.(toolUse.id, false, undefined, error);
               return { success: false, error };
             }
@@ -5121,6 +5124,15 @@ Guidelines:
    */
   async toggleMcpServer(name: string, enabled?: boolean): Promise<{ success: boolean; enabled: boolean }> {
     try {
+      // 校验 server 是否存在于配置中（防止幽灵 server 名被写入 disabledMcpServers）
+      this.mcpConfigManager.reloadSync();
+      const allServers = this.mcpConfigManager.getServers();
+      const existingServer = getMcpServers().get(name);
+      if (!allServers[name] && !existingServer) {
+        console.warn(`[ConversationManager] MCP server "${name}" not found in config, rejecting toggle`);
+        return { success: false, enabled: false };
+      }
+
       // 判断当前是否已禁用
       const disabledServers = this.getDisabledMcpServers();
       const isCurrentlyDisabled = disabledServers.includes(name);

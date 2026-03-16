@@ -57,6 +57,7 @@ export {
 
 import { EventEmitter } from 'events';
 import * as crypto from 'crypto';
+import * as os from 'os';
 import type {
   NetworkConfig,
   AgentIdentity,
@@ -126,6 +127,7 @@ export class AgentNetwork extends EventEmitter {
   // 委派任务的活跃追踪
   private activeTasks = new Map<string, DelegatedTask>();
 
+
   /**
    * 启动 Agent Network
    */
@@ -133,8 +135,14 @@ export class AgentNetwork extends EventEmitter {
     if (this.started) return;
     this.config = config;
 
-    // 1. 初始化身份
-    await this.identityManager.initialize(config, cwd);
+    // 1. 先绑定端口（得到 actualPort），再初始化身份
+    //    这样同机器多实例可以根据端口号生成独立的 agent 密钥
+    this.permissionManager = new PermissionManager(this.identityManager);
+    this.transport = new AgentTransport(this.identityManager, this.permissionManager);
+    const actualPort = await this.transport.listen(config.port);
+
+    // 2. 用实际端口初始化身份（非默认端口会生成独立的 agent 密钥）
+    await this.identityManager.initialize(config, cwd, actualPort);
 
     // 填充 exposedTools
     try {
@@ -144,15 +152,8 @@ export class AgentNetwork extends EventEmitter {
       // tools module may not be loaded yet
     }
 
-    // 2. 初始化权限
-    this.permissionManager = new PermissionManager(this.identityManager);
-
     // 3. 初始化审计日志
     await this.auditLog.initialize();
-
-    // 4. 初始化传输层
-    this.transport = new AgentTransport(this.identityManager, this.permissionManager);
-    const actualPort = await this.transport.listen(config.port);
 
     // 更新身份的 endpoint 和 version
     // 使用 LAN IP 地址而非 hostname，因为 hostname 在跨机器时无法 DNS 解析
@@ -161,17 +162,17 @@ export class AgentNetwork extends EventEmitter {
     identity.endpoint = `${lanIp}:${actualPort}`;
     identity.version = version;
 
-    // 5. 初始化路由
+    // 4. 初始化路由
     this.router = new AgentRouter(this.discovery);
 
-    // 6. 注册事件
+    // 5. 注册事件
     this.setupDiscoveryEvents();
     this.setupTransportEvents();
 
-    // 7. 启动发现
+    // 6. 启动发现
     await this.discovery.start(identity, actualPort, config.advertise);
 
-    // 8. 清理过期离线消息
+    // 7. 清理过期离线消息
     this.auditLog.cleanupExpired();
 
     this.started = true;
@@ -246,21 +247,24 @@ export class AgentNetwork extends EventEmitter {
 
     // 记录审计
     const agentInfo = this.discovery.getAgent(agentId);
-    this.auditLog.log({
+    const isChatMsg = method === AgentMethod.Chat;
+    const chatText = isChatMsg ? (params as any)?.message || '' : '';
+    const entry = this.auditLog.log({
       timestamp: Date.now(),
       direction: 'outbound',
       fromAgentId: this.identityManager.agentId,
       fromName: this.identityManager.identity.name,
       toAgentId: agentId,
       toName: agentInfo?.name || agentId.slice(0, 8),
-      messageType: 'query',
+      messageType: isChatMsg ? 'chat' : 'query',
       method,
-      summary: `Request: ${method}`,
+      summary: isChatMsg ? chatText.slice(0, 120) : `Request: ${method}`,
       success: true,
       taskId,
       payload: JSON.stringify(msg),
     });
     this.emit('message:sent', msg);
+    if (isChatMsg) this.emit('message', entry);
 
     // 发送并等待响应
     return new Promise((resolve, reject) => {
@@ -308,6 +312,7 @@ export class AgentNetwork extends EventEmitter {
       summary: `Notify: ${method}`,
       success: true,
       taskId,
+      payload: params ? JSON.stringify({ params }) : undefined,
     });
 
     const sent = this.transport.sendTo(agentId, msg);
@@ -594,7 +599,7 @@ export class AgentNetwork extends EventEmitter {
       return;
     }
 
-    // 审计
+    // 审计 — 保存完整 payload 以便前端展示结果
     this.auditLog.log({
       timestamp: Date.now(),
       direction: 'inbound',
@@ -608,6 +613,7 @@ export class AgentNetwork extends EventEmitter {
       success: !hasError,
       error: msg.error?.message,
       taskId: msg._meta.taskId,
+      payload: JSON.stringify(hasError ? { error: msg.error } : { result: msg.result }),
     });
 
     if (hasError) {
@@ -619,6 +625,8 @@ export class AgentNetwork extends EventEmitter {
 
   private handleRequest(msg: AgentMessage, conn: AgentConnection): void {
     const method = msg.method!;
+    const isChatRequest = method === AgentMethod.Chat;
+    const chatText = isChatRequest ? (msg.params as any)?.message || '' : '';
 
     // 权限检查
     const permResult = this.permissionManager.checkPermission(conn.agentId, conn.trustLevel, method);
@@ -631,9 +639,9 @@ export class AgentNetwork extends EventEmitter {
       fromName: conn.identity?.name || conn.agentId.slice(0, 8),
       toAgentId: this.identityManager.agentId,
       toName: this.identityManager.identity.name,
-      messageType: 'query',
+      messageType: isChatRequest ? 'chat' : 'query',
       method,
-      summary: `Request: ${method}`,
+      summary: isChatRequest ? chatText.slice(0, 120) : `Request: ${method}`,
       success: permResult.allowed,
       error: permResult.reason,
       taskId: msg._meta.taskId,
@@ -664,8 +672,22 @@ export class AgentNetwork extends EventEmitter {
       return;
     }
 
-    // 处理内置方法
-    this.processRequest(method, msg, conn);
+    // 处理内置方法（async 但不阻塞 handleRequest，错误自行处理）
+    this.processRequest(method, msg, conn).catch(err => {
+      console.error(`[AgentNetwork] processRequest error for ${method}:`, err.message || err);
+      // 尝试发送错误响应给请求方
+      try {
+        const errorResp = createErrorResponse(
+          msg.id!,
+          AgentErrorCode.InternalError,
+          `Internal error: ${err.message || String(err)}`,
+          this.identityManager.agentId,
+          conn.agentId,
+          this.identityManager.agentPrivateKey,
+        );
+        conn.send(errorResp);
+      } catch { /* ignore send failure */ }
+    });
   }
 
   private handleNotificationMessage(msg: AgentMessage, conn: AgentConnection): void {
@@ -681,6 +703,7 @@ export class AgentNetwork extends EventEmitter {
       summary: `Notification: ${msg.method}`,
       success: true,
       taskId: msg._meta.taskId,
+      payload: msg.params ? JSON.stringify({ params: msg.params }) : undefined,
     });
 
     this.emit('message', entry);
@@ -801,6 +824,8 @@ export class AgentNetwork extends EventEmitter {
 
         // 发射事件让上层（Web Server）创建对话来执行任务
         // 上层监听 'task:delegated' 事件，创建新会话执行任务，完成后调用 completeTask()
+        const listenerCount = this.listenerCount('task:delegated');
+        console.log(`[AgentNetwork] Emitting task:delegated event (${listenerCount} listener(s)) for task ${taskId}`);
         this.emit('task:delegated', {
           taskId,
           fromAgentId: conn.agentId,
@@ -814,6 +839,47 @@ export class AgentNetwork extends EventEmitter {
           taskId,
           status: 'accepted',
           message: 'Task accepted and queued for execution. Progress notifications will follow.',
+        };
+        break;
+      }
+
+      case AgentMethod.Chat: {
+        // Agent 间对话
+        const chatParams = msg.params as { message: string; isReply?: boolean } | undefined;
+        const chatMessage = chatParams?.message;
+        if (!chatMessage) {
+          result = { error: 'Missing message parameter' };
+          break;
+        }
+
+        // 防循环：如果这条消息本身是 AI 回复（isReply=true），不再自动回复
+        if (chatParams?.isReply) {
+          result = { received: true };
+          break;
+        }
+
+        // 立即返回 received 确认，不在 response 中携带 reply（避免重复渲染）
+        result = { received: true };
+
+        // 异步 emit 事件让上层（Web Server）用 conversationManager.chat() 执行
+        // 这样 AI 能使用全部工具（主 loop），而非裸 API 调用
+        const fromAgentId = conn.agentId;
+        const fromName = conn.identity?.name || conn.agentId.slice(0, 8);
+        this.emit('chat:received', {
+          fromAgentId,
+          fromName,
+          message: chatMessage,
+        });
+        break;
+      }
+
+      case AgentMethod.Notify: {
+        // 收到消息通知 → 回复确认
+        const message = (msg.params as any)?.message;
+        result = {
+          received: true,
+          message: message || '',
+          timestamp: Date.now(),
         };
         break;
       }
@@ -885,7 +951,6 @@ export class AgentNetwork extends EventEmitter {
   private getLanAddresses(): string[] {
     const addresses: string[] = [];
     try {
-      const os = require('os');
       const interfaces = os.networkInterfaces();
       for (const [, addrs] of Object.entries(interfaces)) {
         if (!addrs) continue;
@@ -909,7 +974,6 @@ export class AgentNetwork extends EventEmitter {
   private getLanIpAddress(): string {
     const addresses = this.getLanAddresses();
     if (addresses.length === 0) {
-      const os = require('os');
       return os.hostname();
     }
     // 优先选择常见私有网段
@@ -919,4 +983,57 @@ export class AgentNetwork extends EventEmitter {
     );
     return preferred || addresses[0];
   }
+
+  // ===== Agent Chat =====
+
+  /**
+   * 将 AI 回复作为 chat 消息发送给对方
+   * 标记 isReply=true 防止对方再自动回复（防循环）
+   */
+  async sendChatReply(agentId: string, reply: string): Promise<void> {
+    try {
+      const conn = await this.ensureConnection(agentId);
+
+      const msg = createRequest(
+        AgentMethod.Chat,
+        { message: reply, isReply: true },
+        this.identityManager.agentId,
+        agentId,
+        this.identityManager.agentPrivateKey,
+      );
+
+      // 审计日志
+      const agentInfo = this.discovery.getAgent(agentId);
+      const entry = this.auditLog.log({
+        timestamp: Date.now(),
+        direction: 'outbound',
+        fromAgentId: this.identityManager.agentId,
+        fromName: this.identityManager.identity.name,
+        toAgentId: agentId,
+        toName: agentInfo?.name || agentId.slice(0, 8),
+        messageType: 'chat',
+        method: AgentMethod.Chat,
+        summary: reply.slice(0, 120),
+        success: true,
+        payload: JSON.stringify({ params: { message: reply, isReply: true } }),
+      });
+      this.emit('message:sent', msg);
+      this.emit('message', entry);
+
+      // 注册 pending 等待对方确认（超时 30s，但不影响功能）
+      const timeout = setTimeout(() => {
+        this.pendingRequests.delete(msg.id!);
+      }, 30_000);
+      this.pendingRequests.set(msg.id!, {
+        resolve: () => { /* ignore ack */ },
+        reject: () => { /* ignore timeout */ },
+        timeout,
+      });
+
+      this.transport.sendTo(agentId, msg);
+    } catch {
+      // 发送失败不影响主流程
+    }
+  }
+
 }

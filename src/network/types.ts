@@ -152,6 +152,7 @@ export enum AgentMethod {
   DelegateTask = 'agent.delegateTask',
   Notify = 'agent.notify',
   Progress = 'agent.progress',
+  Chat = 'agent.chat',
 }
 
 // ============================================================================
@@ -166,7 +167,7 @@ export interface AuditLogEntry {
   fromName: string;
   toAgentId: string;
   toName: string;
-  messageType: 'query' | 'task' | 'notify' | 'response';
+  messageType: 'query' | 'task' | 'notify' | 'response' | 'chat';
   method: string;
   /** 人类可读摘要 */
   summary: string;

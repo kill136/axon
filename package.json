@@ -201,7 +201,7 @@
     "tree-sitter-wasms": "^0.1.13"
   },
   "devDependencies": {
-    "@anthropic-ai/claude-code": "^2.1.70",
+    "@anthropic-ai/claude-code": "^2.1.76",
     "@types/better-sqlite3": "^7.6.13",
     "@types/chokidar": "^1.7.5",
     "@types/eventsource": "^1.1.15",
