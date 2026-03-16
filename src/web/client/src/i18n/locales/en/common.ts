@@ -79,6 +79,7 @@ const common = {
   'time.justNow': 'Just now',
   'time.minutesAgo': '{{count}} minutes ago',
   'time.unknown': 'Unknown time',
+  'time.yesterday': 'Yesterday',
 } as const;
 
 export type CommonKeys = keyof typeof common;

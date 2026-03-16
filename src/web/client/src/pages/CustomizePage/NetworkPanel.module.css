@@ -93,6 +93,20 @@
   margin-top: 6px;
 }
 
+.projectItem {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 4px 0;
+}
+
+.projectDesc {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  padding-left: 2px;
+}
+
 .loadingState {
   display: flex;
   align-items: center;
@@ -827,6 +841,81 @@
   opacity: 1;
 }
 
+/* Collapsed system messages — Feishu "read receipt" style divider */
+.collapsedGroup {
+  align-self: center;
+  width: 100%;
+  padding: 4px 0;
+}
+
+.collapsedDivider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 2px 16px;
+}
+
+.collapsedDivider:hover .collapsedLabel {
+  opacity: 1;
+}
+
+.collapsedLine {
+  flex: 1;
+  height: 1px;
+  background: var(--border-color);
+  opacity: 0.4;
+}
+
+.collapsedLabel {
+  font-size: 10px;
+  color: var(--text-muted);
+  opacity: 0.7;
+  white-space: nowrap;
+  font-family: 'SF Mono', 'Cascadia Code', monospace;
+  user-select: none;
+  transition: opacity 0.15s ease;
+}
+
+.collapsedExpanded {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 32px;
+}
+
+.collapsedEntry {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
+.collapsedEntryDir {
+  font-family: 'SF Mono', 'Cascadia Code', monospace;
+  width: 14px;
+  text-align: center;
+}
+
+.collapsedEntryMethod {
+  font-family: 'SF Mono', 'Cascadia Code', monospace;
+  color: var(--accent-primary);
+  opacity: 0.7;
+}
+
+.collapsedEntryAck {
+  color: var(--accent-success, #10b981);
+  font-size: 11px;
+}
+
+.collapsedEntryTime {
+  margin-left: auto;
+  font-family: 'SF Mono', 'Cascadia Code', monospace;
+  opacity: 0.5;
+}
+
 /* Chat bubble — clean text style for agent conversations */
 .chatBubble {
   cursor: default;
@@ -1359,6 +1448,241 @@
     display: none;
   }
 }
+
+/* ========================================
+   More Menu (dropdown)
+   ======================================== */
+
+.moreMenuWrapper {
+  position: relative;
+}
+
+.moreMenu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 100;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 4px;
+  min-width: 160px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.moreMenuItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+
+.moreMenuItem:hover {
+  background: var(--bg-tertiary);
+}
+
+/* ========================================
+   Chat Search Bar
+   ======================================== */
+
+.chatSearchBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+}
+
+.chatSearchInput {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.chatSearchCount {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: monospace;
+  white-space: nowrap;
+}
+
+/* ========================================
+   Reply Preview (above input)
+   ======================================== */
+
+.replyPreview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--bg-tertiary);
+  border-radius: 6px;
+  margin: 0 8px;
+}
+
+.replyPreviewBar {
+  width: 3px;
+  height: 28px;
+  background: var(--accent-primary);
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.replyPreviewContent {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.replyPreviewName {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent-primary);
+}
+
+.replyPreviewText {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ========================================
+   Reply Quote (inside bubble)
+   ======================================== */
+
+.replyQuote {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  padding: 4px 8px;
+  margin-bottom: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.replyQuoteBar {
+  width: 2px;
+  background: var(--accent-primary);
+  border-radius: 1px;
+  flex-shrink: 0;
+}
+
+.replyQuoteText {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ========================================
+   Bubble Footer (time + status + reply)
+   ======================================== */
+
+.bubbleFooter {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.deliveryStatus {
+  display: inline-flex;
+  align-items: center;
+  color: var(--accent-primary);
+  opacity: 0.7;
+}
+
+.deliveryFailed {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent-error, #ef4444);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.replyBtn {
+  display: none;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+  margin-left: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.bubble:hover .replyBtn {
+  display: inline-flex;
+  opacity: 0.6;
+}
+
+.bubble:hover .replyBtn:hover {
+  opacity: 1;
+  color: var(--accent-primary);
+}
+
+/* ========================================
+   Context Menu
+   ======================================== */
+
+.contextMenu {
+  position: fixed;
+  z-index: 200;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 4px;
+  min-width: 140px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.contextMenuItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+
+.contextMenuItem:hover {
+  background: var(--bg-tertiary);
+}
+
+/* ========================================
+   Responsive
+   ======================================== */
 
 @media (max-width: 640px) {
   .contactPanel {

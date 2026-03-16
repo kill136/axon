@@ -24,7 +24,7 @@ interface AgentIdentity {
   name: string;
   owner: { name: string; publicKey: string };
   ownerCertificate: string;
-  projects: Array<{ name: string; gitRemote?: string; role?: string }>;
+  projects: Array<{ name: string; description?: string; gitRemote?: string; role?: string }>;
   capabilities: string[];
   exposedTools: string[];
   endpoint: string;
@@ -54,7 +54,7 @@ interface AuditLogEntry {
   fromName: string;
   toAgentId: string;
   toName: string;
-  messageType: 'query' | 'task' | 'notify' | 'response';
+  messageType: 'query' | 'task' | 'notify' | 'response' | 'chat';
   method: string;
   summary: string;
   success: boolean;
@@ -70,6 +70,25 @@ interface AgentGroup {
   members: string[];
   createdAt: number;
   lastActivity: number;
+}
+
+/** 聊天消息（来自 chat_messages 表） */
+interface ChatMessage {
+  id: string;
+  conversationId: string;
+  fromAgentId: string;
+  fromName: string;
+  text: string;
+  replyTo?: { id: string; text: string };
+  timestamp: number;
+  status: 'sending' | 'sent' | 'delivered' | 'failed';
+}
+
+/** 会话摘要 */
+interface ConversationSummary {
+  id: string;
+  lastMessage?: ChatMessage;
+  unreadCount: number;
 }
 
 interface NetworkStatus {
@@ -178,6 +197,46 @@ const InfoIcon = () => (
   </svg>
 );
 
+const MoreIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+    <circle cx="3" cy="8" r="1.5" fill="currentColor" />
+    <circle cx="8" cy="8" r="1.5" fill="currentColor" />
+    <circle cx="13" cy="8" r="1.5" fill="currentColor" />
+  </svg>
+);
+
+const TrashIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+    <path d="M2 4h10M5 4V3a1 1 0 011-1h2a1 1 0 011 1v1M4 4v7a1 1 0 001 1h4a1 1 0 001-1V4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+  </svg>
+);
+
+const ReplyIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+    <path d="M5 4L2 7l3 3M2 7h7a3 3 0 013 3v1" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const SearchMsgIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+    <circle cx="6" cy="6" r="4" stroke="currentColor" strokeWidth="1.2" />
+    <path d="M9.5 9.5L12.5 12.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+  </svg>
+);
+
+const CheckIcon = () => (
+  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+    <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const DoubleCheckIcon = () => (
+  <svg width="16" height="12" viewBox="0 0 16 12" fill="none">
+    <path d="M1 6l3 3 5-5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M5 6l3 3 5-5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
 // ===== Main Component =====
 
 interface NetworkPanelProps {
@@ -189,6 +248,8 @@ export default function NetworkPanel({ addMessageHandler }: NetworkPanelProps) {
   const { t } = useLanguage();
   const [status, setStatus] = useState<NetworkStatus | null>(null);
   const [auditLog, setAuditLog] = useState<AuditLogEntry[]>([]);
+  const [chatMessages, setChatMessages] = useState<Map<string, ChatMessage[]>>(new Map());
+  const [conversationSummaries, setConversationSummaries] = useState<ConversationSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState(false);
   const [selectedContact, setSelectedContact] = useState<string | null>(null); // agentId or group:groupId
@@ -208,6 +269,15 @@ export default function NetworkPanel({ addMessageHandler }: NetworkPanelProps) {
   const [delegateDesc, setDelegateDesc] = useState('');
   const [delegateContext, setDelegateContext] = useState('');
   const [groupName, setGroupName] = useState('');
+  // More menu
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  // Reply quote
+  const [replyTo, setReplyTo] = useState<AuditLogEntry | null>(null);
+  // Message search within conversation
+  const [chatSearch, setChatSearch] = useState('');
+  const [showChatSearch, setShowChatSearch] = useState(false);
+  // Context menu
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; entry: AuditLogEntry } | null>(null);
   const [groupMembers, setGroupMembers] = useState<string[]>([]);
   // Manual connect
   const [manualEndpoint, setManualEndpoint] = useState('');
@@ -221,19 +291,22 @@ export default function NetworkPanel({ addMessageHandler }: NetworkPanelProps) {
   useEffect(() => {
     const fetchAll = async () => {
       try {
-        const [statusRes, auditRes] = await Promise.all([
+        const [statusRes, auditRes, convRes] = await Promise.all([
           fetch('/api/network/status'),
           fetch('/api/network/audit?limit=500'),
+          fetch('/api/network/conversations'),
         ]);
         const s = await statusRes.json();
         const a = await auditRes.json();
+        const c = await convRes.json();
         setStatus(s);
         setAuditLog(a);
+        setConversationSummaries(Array.isArray(c) ? c : []);
       } catch { /* ignore */ }
       setLoading(false);
     };
     fetchAll();
-    const interval = setInterval(fetchAll, 5000); // 有 WebSocket 实时推送后降低轮询频率
+    const interval = setInterval(fetchAll, 5000);
     return () => clearInterval(interval);
   }, []);
 
@@ -293,6 +366,35 @@ export default function NetworkPanel({ addMessageHandler }: NetworkPanelProps) {
           setAuditLog(prev => [...prev, taskEntry]);
           break;
         }
+        case 'network:chat_message': {
+          // 实时聊天消息 → 追加到对应会话
+          const chatMsg = payload as ChatMessage;
+          setChatMessages(prev => {
+            const newMap = new Map(prev);
+            const convMsgs = newMap.get(chatMsg.conversationId) || [];
+            // 去重
+            if (!convMsgs.some(m => m.id === chatMsg.id)) {
+              newMap.set(chatMsg.conversationId, [...convMsgs, chatMsg]);
+            }
+            return newMap;
+          });
+          // 同时更新会话摘要
+          setConversationSummaries(prev => {
+            const idx = prev.findIndex(c => c.id === chatMsg.conversationId);
+            const updated: ConversationSummary = {
+              id: chatMsg.conversationId,
+              lastMessage: chatMsg,
+              unreadCount: 0,
+            };
+            if (idx >= 0) {
+              const next = [...prev];
+              next[idx] = updated;
+              return next;
+            }
+            return [updated, ...prev];
+          });
+          break;
+        }
       }
     });
     return unsub;
@@ -316,13 +418,35 @@ export default function NetworkPanel({ addMessageHandler }: NetworkPanelProps) {
   // Auto-scroll to bottom
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [auditLog, selectedContact]);
+  }, [auditLog, chatMessages, selectedContact]);
 
   // Mark as read when selecting a contact
   useEffect(() => {
     if (selectedContact && auditLog.length > 0) {
       setReadMap(prev => ({ ...prev, [selectedContact]: Date.now() }));
     }
+  }, [selectedContact]);
+
+  // 按需加载选中会话的聊天消息
+  useEffect(() => {
+    if (!selectedContact) return;
+    const conversationId = selectedContact.startsWith('group:')
+      ? selectedContact  // 已经是 group:xxx 格式
+      : `dm:${selectedContact}`; // 私聊用 dm:agentId
+    // 如果已有缓存消息则不重复拉取
+    if (chatMessages.has(conversationId) && chatMessages.get(conversationId)!.length > 0) return;
+    fetch(`/api/network/messages?conversationId=${encodeURIComponent(conversationId)}&limit=200`)
+      .then(r => r.json())
+      .then((msgs: ChatMessage[]) => {
+        if (Array.isArray(msgs) && msgs.length > 0) {
+          setChatMessages(prev => {
+            const newMap = new Map(prev);
+            newMap.set(conversationId, msgs);
+            return newMap;
+          });
+        }
+      })
+      .catch(() => {});
   }, [selectedContact]);
 
   const myId = status?.identity?.agentId || '';
@@ -345,33 +469,55 @@ export default function NetworkPanel({ addMessageHandler }: NetworkPanelProps) {
     return map;
   }, [auditLog, myId]);
 
+  // 构建 conversationSummary 索引（conversationId → summary）
+  const summaryMap = useMemo(() => {
+    const map = new Map<string, ConversationSummary>();
+    for (const s of conversationSummaries) {
+      map.set(s.id, s);
+    }
+    return map;
+  }, [conversationSummaries]);
+
+  // 工具函数：从 ChatMessage 转为 AuditLogEntry（用于联系人列表的 lastMessage 兼容）
+  const chatMsgToAuditEntry = useCallback((msg: ChatMessage): AuditLogEntry => ({
+    id: msg.id,
+    timestamp: msg.timestamp,
+    direction: msg.fromAgentId === myId ? 'outbound' : 'inbound',
+    fromAgentId: msg.fromAgentId,
+    fromName: msg.fromName,
+    toAgentId: '',
+    toName: '',
+    messageType: 'chat',
+    method: 'agent.chat',
+    summary: msg.text.slice(0, 120),
+    success: true,
+  }), [myId]);
+
   // Build contacts list
   const contacts: ContactItem[] = useMemo(() => {
     const items: ContactItem[] = [];
 
-    // Agents
+    // Agents (private chat)
     for (const agent of agents) {
-      if (agent.agentId === myId) continue; // skip self
-      const msgs = conversationMap.get(agent.agentId) || [];
-      const lastMsg = msgs[msgs.length - 1];
+      if (agent.agentId === myId) continue;
+      const convId = `dm:${agent.agentId}`;
+      const summary = summaryMap.get(convId);
+      const lastMsg = summary?.lastMessage ? chatMsgToAuditEntry(summary.lastMessage) : undefined;
+      // 从 chatMessages 计算未读（简单方式：lastRead 之后的入站消息数）
       const lastRead = readMap[agent.agentId] || 0;
-      const unread = msgs.filter(m => m.timestamp > lastRead && m.direction === 'inbound').length;
+      const cachedMsgs = chatMessages.get(convId) || [];
+      const unread = cachedMsgs.filter(m => m.timestamp > lastRead && m.fromAgentId !== myId).length;
       items.push({ type: 'agent', agent, lastMessage: lastMsg, unread });
     }
 
     // Groups
     for (const group of groups) {
       const key = `group:${group.id}`;
+      const summary = summaryMap.get(key);
+      const lastMsg = summary?.lastMessage ? chatMsgToAuditEntry(summary.lastMessage) : undefined;
       const lastRead = readMap[key] || 0;
-      // Group messages = messages from any member
-      const memberMsgs: AuditLogEntry[] = [];
-      for (const memberId of group.members) {
-        const msgs = conversationMap.get(memberId) || [];
-        memberMsgs.push(...msgs);
-      }
-      memberMsgs.sort((a, b) => a.timestamp - b.timestamp);
-      const lastMsg = memberMsgs[memberMsgs.length - 1];
-      const unread = memberMsgs.filter(m => m.timestamp > lastRead && m.direction === 'inbound').length;
+      const cachedMsgs = chatMessages.get(key) || [];
+      const unread = cachedMsgs.filter(m => m.timestamp > lastRead && m.fromAgentId !== myId).length;
       items.push({ type: 'group', group, lastMessage: lastMsg, unread });
     }
 
@@ -383,7 +529,7 @@ export default function NetworkPanel({ addMessageHandler }: NetworkPanelProps) {
     });
 
     return items;
-  }, [agents, groups, conversationMap, readMap, myId]);
+  }, [agents, groups, summaryMap, chatMessages, readMap, myId, chatMsgToAuditEntry]);
 
   // Filter contacts
   const filteredContacts = useMemo(() => {
@@ -395,7 +541,16 @@ export default function NetworkPanel({ addMessageHandler }: NetworkPanelProps) {
     });
   }, [contacts, searchQuery]);
 
-  // Get messages for current chat
+  // Get chat messages for current conversation
+  const currentChatMessages = useMemo((): ChatMessage[] => {
+    if (!selectedContact) return [];
+    const conversationId = selectedContact.startsWith('group:')
+      ? selectedContact
+      : `dm:${selectedContact}`;
+    return chatMessages.get(conversationId) || [];
+  }, [selectedContact, chatMessages]);
+
+  // Get audit log messages for current chat (for non-chat entries like tool calls, tasks)
   const currentMessages = useMemo(() => {
     if (!selectedContact) return [];
     if (selectedContact.startsWith('group:')) {
@@ -405,13 +560,32 @@ export default function NetworkPanel({ addMessageHandler }: NetworkPanelProps) {
       const msgs: AuditLogEntry[] = [];
       for (const memberId of group.members) {
         const m = conversationMap.get(memberId) || [];
-        msgs.push(...m);
+        msgs.push(...m.filter(msg => getGroupIdFromPayload(msg) === groupId));
       }
       msgs.sort((a, b) => a.timestamp - b.timestamp);
       return msgs;
     }
-    return conversationMap.get(selectedContact) || [];
+    return (conversationMap.get(selectedContact) || []).filter(msg => !getGroupIdFromPayload(msg));
   }, [selectedContact, conversationMap, groups]);
+
+  // 合并显示：优先使用 chatMessages，如果没有则 fallback 到 auditLog
+  const displayMessages = useMemo(() => {
+    // 如果有 chatMessages，直接用（更干净的数据源）
+    if (currentChatMessages.length > 0) {
+      let msgs = currentChatMessages.map(chatMsgToAuditEntry);
+      if (chatSearch.trim()) {
+        const q = chatSearch.toLowerCase();
+        msgs = msgs.filter(m => m.summary?.toLowerCase().includes(q));
+      }
+      return msgs;
+    }
+    // Fallback 到审计日志
+    if (!chatSearch.trim()) return currentMessages;
+    const q = chatSearch.toLowerCase();
+    return currentMessages.filter(m =>
+      m.summary?.toLowerCase().includes(q) || m.method?.toLowerCase().includes(q)
+    );
+  }, [currentChatMessages, currentMessages, chatSearch, chatMsgToAuditEntry]);
 
   // Current selected agent/group info
   const selectedAgent = agents.find(a => a.agentId === selectedContact);
@@ -440,17 +614,24 @@ export default function NetworkPanel({ addMessageHandler }: NetworkPanelProps) {
     setToggling(false);
   };
 
-  // Send message
+  // Send message — supports both agent and group
   const doSend = async (method: string, params?: unknown) => {
-    if (!selectedContact || selectedContact.startsWith('group:')) return;
+    if (!selectedContact) return;
     setSending(true);
     setSendError(null);
     try {
-      const res = await fetch('/api/network/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ agentId: selectedContact, method, params }),
-      });
+      const isGroup = selectedContact.startsWith('group:');
+      const res = isGroup
+        ? await fetch('/api/network/group-send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ groupId: selectedContact.slice(6), method, params }),
+          })
+        : await fetch('/api/network/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ agentId: selectedContact, method, params }),
+          });
       const data = await res.json();
       if (!res.ok || data.success === false) {
         setSendError(data.error || `Failed (${res.status})`);
@@ -470,8 +651,46 @@ export default function NetworkPanel({ addMessageHandler }: NetworkPanelProps) {
 
   const handleSendMessage = () => {
     if (!messageText.trim()) return;
-    doSend('agent.chat', { message: messageText.trim() });
+    const params: Record<string, unknown> = { message: messageText.trim() };
+    if (replyTo) {
+      params.replyTo = { id: replyTo.id, summary: replyTo.summary?.slice(0, 100) || '' };
+    }
+    doSend('agent.chat', params);
     setMessageText('');
+    setReplyTo(null);
+  };
+
+  const handleClearChat = async () => {
+    if (!selectedContact) return;
+    const isGroup = selectedContact.startsWith('group:');
+
+    // 清除 chat_messages
+    const conversationId = isGroup ? selectedContact : `dm:${selectedContact}`;
+    await fetch(`/api/network/messages?conversationId=${encodeURIComponent(conversationId)}`, { method: 'DELETE' }).catch(() => {});
+
+    // 也清除审计日志（兼容旧数据）
+    if (isGroup) {
+      const groupId = selectedContact.slice(6);
+      const group = groups.find(g => g.id === groupId);
+      if (group) {
+        for (const memberId of group.members) {
+          await fetch(`/api/network/audit?agentId=${memberId}`, { method: 'DELETE' });
+        }
+      }
+    } else {
+      await fetch(`/api/network/audit?agentId=${selectedContact}`, { method: 'DELETE' });
+    }
+
+    // 清除前端缓存
+    setChatMessages(prev => {
+      const newMap = new Map(prev);
+      newMap.delete(conversationId);
+      return newMap;
+    });
+
+    const auditRes = await fetch('/api/network/audit?limit=500');
+    setAuditLog(await auditRes.json());
+    setShowMoreMenu(false);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -690,13 +909,22 @@ export default function NetworkPanel({ addMessageHandler }: NetworkPanelProps) {
             const name = contact.type === 'agent' ? contact.agent.name : contact.group.name;
             const isOnline = contact.type === 'agent' ? contact.agent.online : true;
             const isActive = selectedContact === id;
-            const preview = contact.lastMessage
-              ? (contact.lastMessage.messageType === 'chat'
-                ? contact.lastMessage.summary.slice(0, 50)
-                : `${contact.lastMessage.method}: ${contact.lastMessage.summary}`.slice(0, 50))
-              : contact.type === 'agent'
+            let preview: string;
+            if (contact.lastMessage) {
+              // Try extracting chat text from payload first
+              let parsed: any = null;
+              try { parsed = contact.lastMessage.payload ? JSON.parse(contact.lastMessage.payload) : null; } catch { /* */ }
+              const chatText = extractChatText(contact.lastMessage, parsed);
+              preview = chatText ? chatText.slice(0, 60) : (
+                contact.lastMessage.summary && contact.lastMessage.summary !== `Request: ${contact.lastMessage.method}`
+                  ? contact.lastMessage.summary.slice(0, 60)
+                  : contact.lastMessage.method.slice(0, 60)
+              );
+            } else {
+              preview = contact.type === 'agent'
                 ? contact.agent.endpoint
                 : t('network.group.memberCount', { count: contact.group.members.length });
+            }
 
             return (
               <button
@@ -746,6 +974,7 @@ export default function NetworkPanel({ addMessageHandler }: NetworkPanelProps) {
       <div className={styles.chatPanel}>
         {selectedContact ? (
           <>
+            {/* Chat Header */}
             <div className={styles.chatHeader}>
               <div className={styles.chatHeaderLeft}>
                 {selectedAgent && (
@@ -762,75 +991,172 @@ export default function NetworkPanel({ addMessageHandler }: NetworkPanelProps) {
                 )}
               </div>
               <div className={styles.chatHeaderRight}>
-                {selectedGroup && (
-                  <button className={styles.iconBtn} onClick={() => handleDeleteGroup(selectedGroup.id)} title={t('network.group.delete')}>
-                    <CloseIcon />
-                  </button>
-                )}
+                <button className={styles.iconBtn} onClick={() => { setShowChatSearch(!showChatSearch); setChatSearch(''); }} title={t('network.searchMessages')}>
+                  <SearchMsgIcon />
+                </button>
                 {selectedAgent && (
                   <button className={styles.iconBtn} onClick={() => setShowProfile(!showProfile)} title={t('network.agentProfile')}>
                     <InfoIcon />
                   </button>
                 )}
+                <div className={styles.moreMenuWrapper}>
+                  <button className={styles.iconBtn} onClick={() => setShowMoreMenu(!showMoreMenu)} title={t('network.more')}>
+                    <MoreIcon />
+                  </button>
+                  {showMoreMenu && (
+                    <div className={styles.moreMenu} onMouseLeave={() => setShowMoreMenu(false)}>
+                      <button className={styles.moreMenuItem} onClick={handleClearChat}>
+                        <TrashIcon /> {t('network.clearChat')}
+                      </button>
+                      {selectedGroup && (
+                        <button className={styles.moreMenuItem} onClick={() => { handleDeleteGroup(selectedGroup.id); setShowMoreMenu(false); }}>
+                          <CloseIcon /> {t('network.group.delete')}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
-            <div className={styles.chatMessages}>
-              {currentMessages.length === 0 ? (
+            {/* Chat search bar (toggled) */}
+            {showChatSearch && (
+              <div className={styles.chatSearchBar}>
+                <SearchMsgIcon />
+                <input
+                  className={styles.chatSearchInput}
+                  placeholder={t('network.searchMessages')}
+                  value={chatSearch}
+                  onChange={e => setChatSearch(e.target.value)}
+                  autoFocus
+                />
+                {chatSearch && (
+                  <span className={styles.chatSearchCount}>
+                    {displayMessages.length} / {currentMessages.length}
+                  </span>
+                )}
+                <button className={styles.iconBtn} onClick={() => { setShowChatSearch(false); setChatSearch(''); }}>
+                  <CloseIcon />
+                </button>
+              </div>
+            )}
+
+            {/* Messages */}
+            <div className={styles.chatMessages} onClick={() => { setShowMoreMenu(false); setContextMenu(null); }}>
+              {displayMessages.length === 0 ? (
                 <div className={styles.emptyChatState}>
                   <div className={styles.emptyChatIcon}>
                     <NetworkIcon />
                   </div>
-                  <p>{t('network.noMessages')}</p>
-                  <p className={styles.emptyChatHint}>{t('network.noMessagesHint')}</p>
+                  <p>{chatSearch ? t('network.noSearchResults') : t('network.noMessages')}</p>
+                  <p className={styles.emptyChatHint}>{chatSearch ? '' : t('network.noMessagesHint')}</p>
                 </div>
               ) : (
                 <div className={styles.messageList}>
-                  {currentMessages.map(entry => (
-                    <MessageBubble key={entry.id} entry={entry} myId={myId} agents={agents} t={t} />
-                  ))}
+                  {groupCollapsibleMessages(displayMessages).map((item, idx) =>
+                    item.type === 'collapsed' ? (
+                      <CollapsedMessages key={`collapsed-${idx}`} entries={item.entries} t={t} />
+                    ) : (
+                      <MessageBubble
+                        key={item.entry.id}
+                        entry={item.entry}
+                        myId={myId}
+                        agents={agents}
+                        t={t}
+                        isGroupChat={!!selectedGroup}
+                        onReply={(entry) => { setReplyTo(entry); inputRef.current?.focus(); }}
+                        onContextMenu={(e, entry) => {
+                          e.preventDefault();
+                          setContextMenu({ x: e.clientX, y: e.clientY, entry });
+                        }}
+                      />
+                    )
+                  )}
                   <div ref={chatEndRef} />
                 </div>
               )}
             </div>
 
-            {/* Input area — only for agent (not group broadcast for now) */}
-            {selectedAgent && (
-              <div className={styles.inputArea}>
-                <div className={styles.quickActions}>
-                  <button className={styles.quickBtn} onClick={handlePing} disabled={sending}>
-                    {t('network.quickPing')}
-                  </button>
-                  <button className={styles.quickBtn} onClick={() => setShowToolDialog(true)} disabled={sending}>
-                    {t('network.quickCallTool')}
-                  </button>
-                  <button className={styles.quickBtn} onClick={() => setShowDelegateDialog(true)} disabled={sending}>
-                    {t('network.quickDelegate')}
-                  </button>
-                </div>
-                {sendError && (
-                  <div className={styles.sendError}>{sendError}</div>
-                )}
-                <div className={styles.inputRow}>
-                  <textarea
-                    ref={inputRef}
-                    className={styles.messageInput}
-                    placeholder={t('network.messageInput')}
-                    value={messageText}
-                    onChange={e => setMessageText(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    rows={1}
-                  />
-                  <button
-                    className={styles.sendBtn}
-                    onClick={handleSendMessage}
-                    disabled={!messageText.trim() || sending}
-                  >
-                    <SendIcon />
-                  </button>
-                </div>
+            {/* Context menu */}
+            {contextMenu && (
+              <div
+                className={styles.contextMenu}
+                style={{ left: contextMenu.x, top: contextMenu.y }}
+                onMouseLeave={() => setContextMenu(null)}
+              >
+                <button className={styles.contextMenuItem} onClick={() => {
+                  setReplyTo(contextMenu.entry);
+                  setContextMenu(null);
+                  inputRef.current?.focus();
+                }}>
+                  <ReplyIcon /> {t('network.reply')}
+                </button>
+                <button className={styles.contextMenuItem} onClick={() => {
+                  const text = contextMenu.entry.summary || '';
+                  navigator.clipboard.writeText(text);
+                  setContextMenu(null);
+                }}>
+                  {t('network.copy')}
+                </button>
               </div>
             )}
+
+            {/* Input area — works for both agent and group */}
+            <div className={styles.inputArea}>
+              <div className={styles.quickActions}>
+                <button className={styles.quickBtn} onClick={handlePing} disabled={sending} title="Ping">
+                  Ping
+                </button>
+                <button className={styles.quickBtn} onClick={() => setShowToolDialog(true)} disabled={sending} title={t('network.quickCallTool')}>
+                  {t('network.quickCallTool')}
+                </button>
+                <button className={styles.quickBtn} onClick={() => setShowDelegateDialog(true)} disabled={sending} title={t('network.quickDelegate')}>
+                  {t('network.quickDelegate')}
+                </button>
+              </div>
+              {sendError && (
+                <div className={styles.sendError}>{sendError}</div>
+              )}
+              {/* Reply preview */}
+              {replyTo && (
+                <div className={styles.replyPreview}>
+                  <div className={styles.replyPreviewBar} />
+                  <div className={styles.replyPreviewContent}>
+                    <span className={styles.replyPreviewName}>
+                      {replyTo.direction === 'outbound' ? t('network.you') : replyTo.fromName}
+                    </span>
+                    <span className={styles.replyPreviewText}>{replyTo.summary?.slice(0, 80)}</span>
+                  </div>
+                  <button className={styles.iconBtn} onClick={() => setReplyTo(null)}>
+                    <CloseIcon />
+                  </button>
+                </div>
+              )}
+              <div className={styles.inputRow}>
+                <textarea
+                  ref={inputRef}
+                  className={styles.messageInput}
+                  placeholder={t('network.messageInput')}
+                  value={messageText}
+                  onChange={e => {
+                    setMessageText(e.target.value);
+                    // Auto-resize textarea
+                    const el = e.target;
+                    el.style.height = 'auto';
+                    el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+                  }}
+                  onKeyDown={handleKeyDown}
+                  rows={1}
+                />
+                <button
+                  className={styles.sendBtn}
+                  onClick={handleSendMessage}
+                  disabled={!messageText.trim() || sending}
+                >
+                  <SendIcon />
+                </button>
+              </div>
+            </div>
           </>
         ) : (
           <div className={styles.emptyChatState}>
@@ -936,6 +1262,120 @@ function TrustBadge({ level, t }: { level: string; t: (key: string) => string })
 }
 
 /**
+ * Check if a message is a "system/protocol" message that can be collapsed.
+ * These are simple ack responses, ping/pong pairs, and bare response confirmations
+ * that add noise to the chat without meaningful content.
+ */
+export function isCollapsibleSystemMessage(entry: AuditLogEntry): boolean {
+  // ALL response messages are collapsible — they are protocol-level ack,
+  // not user-facing content. The meaningful content is in the original request.
+  if (entry.messageType === 'response') {
+    return true;
+  }
+  // Outbound ping request
+  if (entry.method === 'agent.ping' && entry.messageType !== 'response') {
+    return true;
+  }
+  // agent.getIdentity, agent.listTools — protocol handshake
+  if (entry.method === 'agent.getIdentity' || entry.method === 'agent.listTools') {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Find the last non-system message for contact preview.
+ * Falls back to the last message if all are system messages.
+ */
+function findLastMeaningfulMessage(msgs: AuditLogEntry[]): AuditLogEntry | undefined {
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    if (!isCollapsibleSystemMessage(msgs[i])) return msgs[i];
+  }
+  return msgs[msgs.length - 1]; // fallback
+}
+
+/**
+ * Summarize a group of collapsed system messages into a short label.
+ */
+export function summarizeCollapsedMessages(entries: AuditLogEntry[]): string {
+  const pings = entries.filter(e => e.method === 'agent.ping').length;
+  const acks = entries.filter(e => e.messageType === 'response').length;
+  const parts: string[] = [];
+  if (pings > 0) parts.push(`${pings} ping`);
+  if (acks > 0) parts.push(`${acks > 1 ? acks + ' ' : ''}ack`);
+  if (parts.length === 0) parts.push(`${entries.length} system`);
+  return parts.join(' · ');
+}
+
+/**
+ * Group consecutive collapsible messages in a message list.
+ * Returns an array of { type: 'message', entry } | { type: 'collapsed', entries }.
+ */
+export type RenderItem =
+  | { type: 'message'; entry: AuditLogEntry }
+  | { type: 'collapsed'; entries: AuditLogEntry[] };
+
+export function groupCollapsibleMessages(messages: AuditLogEntry[]): RenderItem[] {
+  const result: RenderItem[] = [];
+  let collapsibleBuf: AuditLogEntry[] = [];
+
+  const flushBuf = () => {
+    if (collapsibleBuf.length === 0) return;
+    if (collapsibleBuf.length === 1) {
+      // Single collapsible message — still show it collapsed for consistency
+      result.push({ type: 'collapsed', entries: [...collapsibleBuf] });
+    } else {
+      result.push({ type: 'collapsed', entries: [...collapsibleBuf] });
+    }
+    collapsibleBuf = [];
+  };
+
+  for (const entry of messages) {
+    if (isCollapsibleSystemMessage(entry)) {
+      collapsibleBuf.push(entry);
+    } else {
+      flushBuf();
+      result.push({ type: 'message', entry });
+    }
+  }
+  flushBuf();
+  return result;
+}
+
+/**
+ * Collapsed system messages indicator — like Feishu "read receipt" style divider.
+ */
+function CollapsedMessages({ entries, t }: { entries: AuditLogEntry[]; t: (key: string) => string }) {
+  const [expanded, setExpanded] = useState(false);
+  const summary = summarizeCollapsedMessages(entries);
+  const time = formatFullTime(entries[entries.length - 1].timestamp);
+
+  return (
+    <div className={styles.collapsedGroup}>
+      <div className={styles.collapsedDivider} onClick={() => setExpanded(!expanded)}>
+        <span className={styles.collapsedLine} />
+        <span className={styles.collapsedLabel}>
+          {summary} · {time} {expanded ? '▲' : '▼'}
+        </span>
+        <span className={styles.collapsedLine} />
+      </div>
+      {expanded && (
+        <div className={styles.collapsedExpanded}>
+          {entries.map(e => (
+            <div key={e.id} className={styles.collapsedEntry}>
+              <span className={styles.collapsedEntryDir}>{e.direction === 'outbound' ? '→' : '←'}</span>
+              <span className={styles.collapsedEntryMethod}>{e.method}</span>
+              {e.messageType === 'response' && <span className={styles.collapsedEntryAck}>✓</span>}
+              <span className={styles.collapsedEntryTime}>{formatFullTime(e.timestamp)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
  * Truncate a string for display, adding ellipsis if needed
  */
 function truncateStr(s: string, maxLen: number): string {
@@ -958,49 +1398,121 @@ function compactJson(value: unknown, maxLen = 200): string {
   }
 }
 
-function MessageBubble({ entry, myId, agents, t }: {
+/**
+ * Extract _groupId from a message payload.
+ * Returns the groupId string if present, or null if this is a private message.
+ */
+function getGroupIdFromPayload(entry: AuditLogEntry): string | null {
+  if (!entry.payload) return null;
+  try {
+    const parsed = JSON.parse(entry.payload);
+    return parsed?.params?._groupId || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Extract human-readable chat text from an audit log entry.
+ * Returns the text if this is a conversational message, null otherwise.
+ *
+ * Handles multiple payload structures:
+ * - messageType === 'chat' with summary
+ * - Full AgentMessage: { jsonrpc, method, params: { message/content }, _meta }
+ * - Simplified: { params: { message/content } }
+ */
+export function extractChatText(entry: AuditLogEntry, parsedPayload: any): string | null {
+  // 1. messageType === 'chat' — backend already classified it
+  if (entry.messageType === 'chat') {
+    if (entry.summary && entry.summary !== `Request: ${entry.method}`) {
+      return entry.summary;
+    }
+  }
+  // 2. params.message or params.content — check parsedPayload.params (AgentMessage format)
+  //    Payload structure: { jsonrpc, id, method, params: { message/content }, _meta }
+  const params = parsedPayload?.params;
+  if (params && typeof params === 'object') {
+    if (typeof params.message === 'string' && params.message.trim()) return params.message;
+    if (typeof params.content === 'string' && params.content.trim()) return params.content;
+  }
+  // 3. Top-level message/content (simplified payloads or result objects)
+  if (parsedPayload && typeof parsedPayload === 'object') {
+    if (typeof parsedPayload.message === 'string' && parsedPayload.message.trim()) return parsedPayload.message;
+    if (typeof parsedPayload.content === 'string' && parsedPayload.content.trim()) return parsedPayload.content;
+    // 4. result.message or result.content (response payloads: { result: { message: "..." } })
+    const result = parsedPayload.result;
+    if (result && typeof result === 'object') {
+      if (typeof result.message === 'string' && result.message.trim()) return result.message;
+      if (typeof result.content === 'string' && result.content.trim()) return result.content;
+    }
+  }
+  // 5. For methods that look like chat (agent.message, agent.chat, etc), try summary as last resort
+  if (entry.method?.includes('message') || entry.method?.includes('chat')) {
+    if (entry.summary && entry.summary !== `Request: ${entry.method}`) {
+      return entry.summary;
+    }
+  }
+  return null;
+}
+
+function MessageBubble({ entry, myId, agents, t, isGroupChat, onReply, onContextMenu }: {
   entry: AuditLogEntry;
   myId: string;
   agents: DiscoveredAgent[];
   t: (key: string) => string;
+  isGroupChat?: boolean;
+  onReply?: (entry: AuditLogEntry) => void;
+  onContextMenu?: (e: React.MouseEvent, entry: AuditLogEntry) => void;
 }) {
   const isOutbound = entry.direction === 'outbound';
   const otherId = isOutbound ? entry.toAgentId : entry.fromAgentId;
   const otherName = isOutbound ? entry.toName : entry.fromName;
+  // 群聊中所有入站消息显示发送者名字
+  const senderName = isGroupChat ? entry.fromName : otherName;
   const [expanded, setExpanded] = useState(false);
-
-  // Determine card type
-  const isTask = entry.method.includes('delegateTask') || entry.method.includes('task.');
-  const isPing = entry.method === 'agent.ping';
-  const isCallTool = entry.method === 'agent.callTool';
-  const isProgress = entry.method === 'agent.progress';
-  const isNotify = entry.messageType === 'notify';
-  const isResponse = entry.messageType === 'response';
-  const isChat = entry.messageType === 'chat';
 
   // Parse payload for rich display
   let parsedPayload: any = null;
   if (entry.payload) {
     try { parsedPayload = JSON.parse(entry.payload); } catch { /* ignore */ }
   }
-
-  // Extract useful fields from payload
   const params = parsedPayload?.params;
-  const result = parsedPayload?.result;
+
+  // Try to extract chat text — if found, render as clean chat bubble
+  const chatText = extractChatText(entry, parsedPayload);
+
+  // Check for replyTo in params
+  const replyToData = parsedPayload?.params?.replyTo as { id?: string; summary?: string } | undefined;
+
+  // Determine card type (only matters for non-chat messages)
+  const isTask = entry.method.includes('delegateTask') || entry.method.includes('task.');
+  const isCallTool = entry.method === 'agent.callTool';
+  const isProgress = entry.method === 'agent.progress';
+  const isNotify = entry.messageType === 'notify';
 
   return (
-    <div className={`${styles.bubble} ${isOutbound ? styles.bubbleOut : styles.bubbleIn}`}>
+    <div
+      className={`${styles.bubble} ${isOutbound ? styles.bubbleOut : styles.bubbleIn}`}
+      onContextMenu={onContextMenu ? (e) => onContextMenu(e, entry) : undefined}
+    >
       {!isOutbound && (
-        <div className={styles.bubbleAvatar} style={{ background: getAvatarColor(otherId) }}>
-          {getInitials(otherName)}
+        <div className={styles.bubbleAvatar} style={{ background: getAvatarColor(isGroupChat ? entry.fromAgentId || otherId : otherId) }}>
+          {getInitials(senderName)}
         </div>
       )}
       <div className={styles.bubbleContent}>
-        {!isOutbound && <div className={styles.bubbleSender}>{otherName}</div>}
-        {isChat ? (
+        {!isOutbound && <div className={styles.bubbleSender}>{senderName}</div>}
+        {chatText ? (
           /* Chat message — clean text bubble, no method tags */
           <div className={`${styles.bubbleCard} ${styles.chatBubble}`}>
-            <div className={styles.chatText}>{entry.summary || params?.message || parsedPayload?.params?.message || ''}</div>
+            {/* Reply quote */}
+            {replyToData?.summary && (
+              <div className={styles.replyQuote}>
+                <div className={styles.replyQuoteBar} />
+                <span className={styles.replyQuoteText}>{replyToData.summary}</span>
+              </div>
+            )}
+            <div className={styles.chatText}>{chatText}</div>
           </div>
         ) : (
           <div
@@ -1010,77 +1522,23 @@ function MessageBubble({ entry, myId, agents, t }: {
             {/* Method tag */}
             <div className={styles.bubbleMethod}>
               <span className={styles.methodTag}>{entry.method}</span>
-              {isResponse && <span className={styles.methodTag} style={{ opacity: 0.5 }}>response</span>}
               {!entry.success && <span className={styles.errorDot} />}
             </div>
 
             {/* ===== Rich content by type ===== */}
 
-            {/* Ping */}
-            {isPing && !isResponse && (
-              <div className={styles.bubbleText}>Ping</div>
-            )}
-            {isPing && isResponse && result?.pong && (
-              <div className={styles.bubbleText}>Pong! {result?.timestamp && `(${Date.now() - result.timestamp}ms)`}</div>
-            )}
-            {/* Response to ping from audit log that has result */}
-            {isResponse && parsedPayload?.result?.pong && !isPing && (
-              <div className={styles.bubbleText}>Pong! {parsedPayload.result?.timestamp && `(${Date.now() - parsedPayload.result.timestamp}ms)`}</div>
-            )}
-
-            {/* CallTool — outbound request */}
-            {isCallTool && params?.toolName && (
+            {/* CallTool */}
+            {isCallTool && (params?.toolName || parsedPayload?.params?.toolName) && (
               <div className={styles.richContent}>
                 <div className={styles.bubbleText}>
-                  Tool: <code>{params.toolName}</code>
+                  Tool: <code>{params?.toolName || parsedPayload?.params?.toolName}</code>
                 </div>
-                {params.toolInput && (
+                {(params?.toolInput || parsedPayload?.params?.toolInput) && (
                   <div className={styles.paramBlock}>
                     <div className={styles.paramLabel}>Input</div>
-                    <pre className={styles.paramValue}>{compactJson(params.toolInput, 300)}</pre>
+                    <pre className={styles.paramValue}>{compactJson(params?.toolInput || parsedPayload?.params?.toolInput, 300)}</pre>
                   </div>
                 )}
-              </div>
-            )}
-
-            {/* CallTool — inbound request (someone calls our tool) */}
-            {isCallTool && !params?.toolName && parsedPayload?.method === 'agent.callTool' && parsedPayload?.params && (
-              <div className={styles.richContent}>
-                <div className={styles.bubbleText}>
-                  Tool: <code>{parsedPayload.params.toolName}</code>
-                </div>
-                {parsedPayload.params.toolInput && (
-                  <div className={styles.paramBlock}>
-                    <div className={styles.paramLabel}>Input</div>
-                    <pre className={styles.paramValue}>{compactJson(parsedPayload.params.toolInput, 300)}</pre>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Response with tool result */}
-            {isResponse && result?.toolName && (
-              <div className={styles.richContent}>
-                <div className={styles.bubbleText}>
-                  Tool: <code>{result.toolName}</code> — result
-                </div>
-                {result.result && (
-                  <div className={styles.paramBlock}>
-                    <div className={styles.paramLabel}>Output</div>
-                    <pre className={styles.paramValue}>{compactJson(result.result, 500)}</pre>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Response with generic result (not tool, not ping, not bare ack) */}
-            {isResponse && result && !result?.toolName && !result?.pong
-              && !(Object.keys(result).length === 1 && result?.received === true) && (
-              <div className={styles.richContent}>
-                <div className={styles.paramBlock}>
-                  <div className={styles.paramLabel}>Result</div>
-                  <pre className={styles.paramValue}>{compactJson(result, 500)}</pre>
-                </div>
               </div>
             )}
 
@@ -1097,13 +1555,6 @@ function MessageBubble({ entry, myId, agents, t }: {
                   <div className={styles.paramBlock}>
                     <div className={styles.paramLabel}>Context</div>
                     <pre className={styles.paramValue}>{truncateStr(params?.context || parsedPayload?.params?.context, 300)}</pre>
-                  </div>
-                )}
-                {/* If this is a response to delegate, show the accepted status */}
-                {isResponse && result?.status && (
-                  <div className={styles.progressStatus} data-status={result.status}>
-                    {result.status === 'accepted' ? 'Accepted' : result.status}
-                    {result.message && ` — ${truncateStr(result.message, 100)}`}
                   </div>
                 )}
               </div>
@@ -1131,12 +1582,6 @@ function MessageBubble({ entry, myId, agents, t }: {
                       <span className={styles.progressPercent}>{params.progress}%</span>
                     </div>
                   )}
-                  {params?.result && (
-                    <div className={styles.paramBlock}>
-                      <div className={styles.paramLabel}>Result</div>
-                      <pre className={styles.paramValue}>{truncateStr(params.result, 500)}</pre>
-                    </div>
-                  )}
                   {params?.error && (
                     <div className={styles.bubbleErrorText}>{params.error}</div>
                   )}
@@ -1150,7 +1595,7 @@ function MessageBubble({ entry, myId, agents, t }: {
             )}
 
             {/* Fallback: nothing rendered above → show summary */}
-            {!isPing && !isCallTool && !isTask && !isProgress && !isResponse
+            {!isCallTool && !isTask && !isProgress
               && !(isNotify && params?.message) && (
               <div className={styles.bubbleText}>{entry.summary}</div>
             )}
@@ -1172,7 +1617,25 @@ function MessageBubble({ entry, myId, agents, t }: {
             )}
           </div>
         )}
-        <div className={styles.bubbleTime}>{formatFullTime(entry.timestamp)}</div>
+        <div className={styles.bubbleFooter}>
+          <span className={styles.bubbleTime}>{formatFullTime(entry.timestamp)}</span>
+          {isOutbound && (
+            <span className={styles.deliveryStatus}>
+              {!entry.success ? (
+                <span className={styles.deliveryFailed}>!</span>
+              ) : entry.messageType === 'chat' ? (
+                <DoubleCheckIcon />
+              ) : (
+                <CheckIcon />
+              )}
+            </span>
+          )}
+          {onReply && chatText && (
+            <button className={styles.replyBtn} onClick={() => onReply(entry)} title="Reply">
+              <ReplyIcon />
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -1220,11 +1683,14 @@ function AgentProfilePanel({ agent, t, onClose, onTrust, onKick }: {
           <>
             <div className={styles.profileDivider} />
             <div className={styles.profileSectionTitle}>{t('network.projects')}</div>
-            <div className={styles.tagGroup}>
-              {identity.projects.map(p => (
-                <span key={p.name} className={styles.tag}>{p.name}</span>
-              ))}
-            </div>
+            {identity.projects.map(p => (
+              <div key={p.name} className={styles.projectItem}>
+                <span className={styles.tag}>{p.name}</span>
+                {p.description && (
+                  <div className={styles.projectDesc}>{p.description}</div>
+                )}
+              </div>
+            ))}
           </>
         )}
 

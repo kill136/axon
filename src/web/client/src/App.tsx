@@ -36,6 +36,26 @@ function getWebSocketUrl(): string {
   return `${protocol}//${host}/ws`;
 }
 
+// 时间分隔线格式化：今天只显示时间，昨天显示"昨天 HH:MM"，更早显示完整日期+时间
+function formatTimeSeparator(ts: number, t: (key: string) => string): string {
+  const d = new Date(ts);
+  const now = new Date();
+  const time = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+
+  if (d.toDateString() === now.toDateString()) {
+    return time;
+  }
+
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) {
+    return `${t('time.yesterday')} ${time}`;
+  }
+
+  const date = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return `${date} ${time}`;
+}
+
 interface AppProps {
   onNavigateToBlueprint?: (blueprintId: string) => void;
   onNavigateToSwarm?: (blueprintId?: string) => void;
@@ -51,6 +71,10 @@ interface AppProps {
   onConnectedChange?: (connected: boolean) => void;
   registerSessionActions?: (actions: SessionActions) => void;
   registerMessaging?: (messaging: { send: (msg: any) => void; addMessageHandler: (handler: (msg: any) => void) => () => void }) => void;
+  // 应用相关（透传给 WelcomeScreen）
+  apps?: Array<{ id: string; name: string; icon: string; status: 'creating' | 'ready' | 'error'; sessionId: string }>;
+  onAppSelect?: (app: any) => void;
+  onCreateApp?: () => void;
 }
 
 function AppContent({
@@ -62,6 +86,7 @@ function AppContent({
   onSessionsChange, onSessionIdChange, onConnectedChange,
   registerSessionActions,
   registerMessaging,
+  apps, onAppSelect, onCreateApp,
 }: AppProps) {
   const { t } = useLanguage();
   const { state: projectState, openFolder } = useProject();
@@ -582,24 +607,47 @@ function AppContent({
                     setTimeout(() => chatInput.inputRef.current?.focus(), 50);
                   }}
                   onOpenFolder={openFolder}
+                  apps={apps}
+                  onAppSelect={onAppSelect}
+                  onCreateApp={onCreateApp}
                 />
               ) : (
                 <>
-                {visibleMessages.map(msg => (
-                  <Message
-                    key={msg.id}
-                    message={msg}
-                    onNavigateToBlueprint={onNavigateToBlueprint}
-                    onNavigateToSwarm={onNavigateToSwarm}
-                    onNavigateToCode={handleNavigateToCode}
-                    onDevAction={chatInput.handleDevAction}
-                    isStreaming={currentMessageRef.current?.id === msg.id && status !== 'idle'}
-                    isTranscriptMode={isTranscriptMode}
-                    onRewind={handleRewind}
-                    getRewindPreview={getRewindPreview}
-                    canRewind={canRewind}
-                  />
-                ))}
+                {visibleMessages.flatMap((msg, idx) => {
+                  const elements: React.ReactNode[] = [];
+                  // 4 分钟时间分隔线
+                  if (idx > 0) {
+                    const prev = visibleMessages[idx - 1];
+                    const gap = msg.timestamp - prev.timestamp;
+                    if (gap >= 4 * 60 * 1000) {
+                      elements.push(
+                        <div key={`time-sep-${msg.id}`} className="time-separator">
+                          <div className="time-separator__line" />
+                          <span className="time-separator__label">
+                            {formatTimeSeparator(msg.timestamp, t)}
+                          </span>
+                          <div className="time-separator__line" />
+                        </div>
+                      );
+                    }
+                  }
+                  elements.push(
+                    <Message
+                      key={msg.id}
+                      message={msg}
+                      onNavigateToBlueprint={onNavigateToBlueprint}
+                      onNavigateToSwarm={onNavigateToSwarm}
+                      onNavigateToCode={handleNavigateToCode}
+                      onDevAction={chatInput.handleDevAction}
+                      isStreaming={currentMessageRef.current?.id === msg.id && status !== 'idle'}
+                      isTranscriptMode={isTranscriptMode}
+                      onRewind={handleRewind}
+                      getRewindPreview={getRewindPreview}
+                      canRewind={canRewind}
+                    />
+                  );
+                  return elements;
+                })}
                 {/* 上下文压缩进度指示器 — 在聊天区域底部显示醒目的压缩状态 */}
                 {compactState.phase === 'compacting' && (
                   <div className="compact-progress-indicator">

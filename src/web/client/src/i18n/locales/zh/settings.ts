@@ -628,6 +628,13 @@ const settings = {
   'network.rescan': '重新扫描',
   'network.manualConnect': '或通过 IP 地址手动连接：',
   'network.connect': '连接',
+  'network.more': '更多',
+  'network.clearChat': '清除聊天记录',
+  'network.searchMessages': '搜索消息',
+  'network.noSearchResults': '未找到消息',
+  'network.reply': '回复',
+  'network.copy': '复制',
+  'network.you': '你',
 } as const;
 
 export default settings;

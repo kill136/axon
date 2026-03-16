@@ -1261,7 +1261,16 @@ Assistant: Found several options including mcp__slack__read_channel.
 User: Read my slack messages
 Assistant: [Directly calls mcp__slack__read_channel without loading it first]
 WRONG - You must load the tool FIRST using this tool
-</bad-example>`;
+</bad-example>
+
+**MCP Server Management:**
+
+Use the \`action\` parameter to manage MCP server lifecycle:
+- \`action: "list"\` - Show all configured MCP servers with their status (enabled/disabled), type, and tool count
+- \`action: "enable", name: "server-name"\` - Enable a disabled MCP server to access its tools
+- \`action: "disable", name: "server-name"\` - Disable an enabled MCP server
+
+IMPORTANT: After you finish using an MCP server's tools, you MUST disable it to prevent polluting other parallel sessions. Follow the pattern: enable -> use tools -> disable.`;
 
   /**
    * 获取动态描述（包含可用工具列表）
@@ -1277,7 +1286,7 @@ WRONG - You must load the tool FIRST using this tool
 
     const disabled = MCPSearchTool.disabledServers;
     const disabledHint = disabled.length > 0
-      ? `\n\nDisabled MCP servers (use McpManage to enable):\n${disabled.map(name => {
+      ? `\n\nDisabled MCP servers (use action="enable" to enable):\n${disabled.map(name => {
           const summary = MCPSearchTool.serverCapabilitySummaries.get(name);
           return summary ? `${name} — ${summary}` : name;
         }).join('\n')}`
@@ -1309,8 +1318,17 @@ ${tools.join('\n')}${disabledHint}`;
           type: 'number',
           description: 'Maximum number of results to return (default: 5)',
         },
+        action: {
+          type: 'string',
+          enum: ['list', 'enable', 'disable'],
+          description: 'Action to perform: list all servers, enable a server, or disable a server. When set, query is not required.',
+        },
+        name: {
+          type: 'string',
+          description: 'MCP server name (required for enable/disable actions).',
+        },
       },
-      required: ['query'],
+      required: [],
     };
   }
 
@@ -1329,12 +1347,12 @@ ${tools.join('\n')}${disabledHint}`;
 
   /**
    * 获取禁用服务器的提示信息
-   * 当搜索无结果且有禁用服务器时，提示用户可以用 McpManage 启用
+   * 当搜索无结果且有禁用服务器时，提示用户可以用 action=enable 启用
    */
   private getDisabledServersHint(): string {
     const disabled = MCPSearchTool.disabledServers;
     if (disabled.length === 0) return '';
-    return `\n\nNote: The following MCP servers are installed but DISABLED. Use the McpManage tool with action="enable" to activate them:\n${disabled.map(name => {
+    return `\n\nNote: The following MCP servers are installed but DISABLED. Use the Mcp tool with action="enable" and name="server-name" to activate them:\n${disabled.map(name => {
       const summary = MCPSearchTool.serverCapabilitySummaries.get(name);
       return summary ? `- ${name} — ${summary}` : `- ${name}`;
     }).join('\n')}`;
@@ -1419,7 +1437,22 @@ ${tools.join('\n')}${disabledHint}`;
   }
 
   async execute(input: MCPSearchInput): Promise<MCPSearchToolResult> {
+    // Handle MCP server management actions (merged from McpManage)
+    if (input.action) {
+      return this.handleManageAction(input.action, input.name);
+    }
+
     const { query, max_results = 5 } = input;
+
+    if (!query) {
+      return {
+        success: false,
+        output: 'Either "query" (for tool search) or "action" (for server management) is required.',
+        matches: [],
+        query: '',
+        total_mcp_tools: 0,
+      };
+    }
 
     // 获取所有MCP工具数量
     let totalMcpTools = 0;
@@ -1498,6 +1531,23 @@ ${tools.join('\n')}${disabledHint}`;
       matches,
       query,
       total_mcp_tools: totalMcpTools,
+    };
+  }
+
+  /**
+   * Handle MCP server management actions (merged from McpManage tool).
+   * The actual execution is intercepted by ConversationManager.executeTool() in web mode.
+   * This fallback handles CLI mode or unintercepted calls.
+   */
+  private async handleManageAction(action: string, name?: string): Promise<MCPSearchToolResult> {
+    // In web mode, this is intercepted by ConversationManager before reaching here.
+    // This is a fallback for CLI mode.
+    return {
+      success: false,
+      output: `MCP server management (action="${action}") requires Web server mode. It is intercepted by ConversationManager.executeTool().`,
+      matches: [],
+      query: '',
+      total_mcp_tools: 0,
     };
   }
 }

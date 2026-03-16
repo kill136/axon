@@ -79,6 +79,7 @@ const common = {
   'time.justNow': '刚刚',
   'time.minutesAgo': '{{count}}分钟前',
   'time.unknown': '未知时间',
+  'time.yesterday': '昨天',
 } as const;
 
 export default common;

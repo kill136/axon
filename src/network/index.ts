@@ -100,6 +100,8 @@ export type {
   DelegatedTask,
   DelegatedTaskStatus,
   AgentGroup,
+  ChatMessage,
+  ConversationSummary,
 } from './types.js';
 export { DEFAULT_NETWORK_CONFIG, PROTOCOL_VERSION } from './types.js';
 export { AgentMethod } from './types.js';
@@ -230,6 +232,28 @@ export class AgentNetwork extends EventEmitter {
     return this.auditLog.query(filter);
   }
 
+  clearAuditLog(agentId?: string): number {
+    return agentId ? this.auditLog.clearByAgent(agentId) : this.auditLog.clearAll();
+  }
+
+  // ===== 聊天消息 API =====
+
+  saveMessage(msg: Omit<import('./types.js').ChatMessage, 'id'>): import('./types.js').ChatMessage {
+    return this.auditLog.saveMessage(msg);
+  }
+
+  getMessages(conversationId: string, limit?: number, before?: number): import('./types.js').ChatMessage[] {
+    return this.auditLog.getMessages(conversationId, limit, before);
+  }
+
+  getConversations(): import('./types.js').ConversationSummary[] {
+    return this.auditLog.getConversations();
+  }
+
+  clearConversation(conversationId: string): number {
+    return this.auditLog.clearConversation(conversationId);
+  }
+
   /**
    * 发送请求并等待响应
    */
@@ -247,8 +271,13 @@ export class AgentNetwork extends EventEmitter {
 
     // 记录审计
     const agentInfo = this.discovery.getAgent(agentId);
-    const isChatMsg = method === AgentMethod.Chat;
-    const chatText = isChatMsg ? (params as any)?.message || '' : '';
+    const p = params as Record<string, unknown> | undefined;
+    const isChatMsg = method === AgentMethod.Chat
+      || (typeof p?.message === 'string' && p.message.trim() !== '')
+      || (typeof p?.content === 'string' && p.content.trim() !== '');
+    const chatText = isChatMsg
+      ? ((p?.message as string) || (p?.content as string) || '').trim()
+      : '';
     const entry = this.auditLog.log({
       timestamp: Date.now(),
       direction: 'outbound',
@@ -265,6 +294,22 @@ export class AgentNetwork extends EventEmitter {
     });
     this.emit('message:sent', msg);
     if (isChatMsg) this.emit('message', entry);
+
+    // 同时存储到 chat_messages（如果是聊天消息）
+    if (isChatMsg && chatText) {
+      const groupId = (p as Record<string, unknown>)?._groupId as string | undefined;
+      const conversationId = groupId ? `group:${groupId}` : `dm:${agentId}`;
+      const chatMsg = this.auditLog.saveMessage({
+        conversationId,
+        fromAgentId: this.identityManager.agentId,
+        fromName: this.identityManager.identity.name,
+        text: chatText,
+        replyTo: (p?.replyTo as { id: string; text: string }) || undefined,
+        timestamp: Date.now(),
+        status: 'sent',
+      });
+      this.emit('chat:message', chatMsg);
+    }
 
     // 发送并等待响应
     return new Promise((resolve, reject) => {
@@ -625,8 +670,15 @@ export class AgentNetwork extends EventEmitter {
 
   private handleRequest(msg: AgentMessage, conn: AgentConnection): void {
     const method = msg.method!;
-    const isChatRequest = method === AgentMethod.Chat;
-    const chatText = isChatRequest ? (msg.params as any)?.message || '' : '';
+    const params = msg.params as Record<string, unknown> | undefined;
+
+    // 识别聊天消息：agent.chat 或任何含 message/content 文本参数的请求
+    const isChatRequest = method === AgentMethod.Chat
+      || (typeof params?.message === 'string' && params.message.trim() !== '')
+      || (typeof params?.content === 'string' && params.content.trim() !== '');
+    const chatText = isChatRequest
+      ? ((params?.message as string) || (params?.content as string) || '').trim()
+      : '';
 
     // 权限检查
     const permResult = this.permissionManager.checkPermission(conn.agentId, conn.trustLevel, method);
@@ -845,12 +897,34 @@ export class AgentNetwork extends EventEmitter {
 
       case AgentMethod.Chat: {
         // Agent 间对话
-        const chatParams = msg.params as { message: string; isReply?: boolean } | undefined;
+        const chatParams = msg.params as {
+          message: string;
+          isReply?: boolean;
+          _groupId?: string;
+          _groupName?: string;
+          _groupMembers?: string[];
+        } | undefined;
         const chatMessage = chatParams?.message;
         if (!chatMessage) {
           result = { error: 'Missing message parameter' };
           break;
         }
+
+        const chatFromAgentId = conn.agentId;
+        const chatFromName = conn.identity?.name || conn.agentId.slice(0, 8);
+        const chatGroupId = chatParams?._groupId;
+
+        // 存储到 chat_messages
+        const chatConvId = chatGroupId ? `group:${chatGroupId}` : `dm:${chatFromAgentId}`;
+        const savedChatMsg = this.auditLog.saveMessage({
+          conversationId: chatConvId,
+          fromAgentId: chatFromAgentId,
+          fromName: chatFromName,
+          text: chatMessage,
+          timestamp: Date.now(),
+          status: 'delivered',
+        });
+        this.emit('chat:message', savedChatMsg);
 
         // 防循环：如果这条消息本身是 AI 回复（isReply=true），不再自动回复
         if (chatParams?.isReply) {
@@ -862,13 +936,13 @@ export class AgentNetwork extends EventEmitter {
         result = { received: true };
 
         // 异步 emit 事件让上层（Web Server）用 conversationManager.chat() 执行
-        // 这样 AI 能使用全部工具（主 loop），而非裸 API 调用
-        const fromAgentId = conn.agentId;
-        const fromName = conn.identity?.name || conn.agentId.slice(0, 8);
         this.emit('chat:received', {
-          fromAgentId,
-          fromName,
+          fromAgentId: chatFromAgentId,
+          fromName: chatFromName,
           message: chatMessage,
+          groupId: chatGroupId,
+          groupName: chatParams?._groupName,
+          groupMembers: chatParams?._groupMembers,
         });
         break;
       }
@@ -884,10 +958,31 @@ export class AgentNetwork extends EventEmitter {
         break;
       }
 
-      default:
-        // 未知方法 → 转发给事件监听器
+      default: {
+        // 检查是否是聊天类消息（params 中含 message 或 content 文本）
+        const defaultParams = msg.params as Record<string, unknown> | undefined;
+        const msgText = (defaultParams?.message as string) || (defaultParams?.content as string) || '';
+        if (typeof msgText === 'string' && msgText.trim()) {
+          // 当作聊天消息处理——同 agent.chat 逻辑
+          const isReply = !!(defaultParams?.isReply);
+          if (isReply) {
+            result = { received: true };
+            break;
+          }
+          result = { received: true };
+          const fromAgentId = conn.agentId;
+          const fromName = conn.identity?.name || conn.agentId.slice(0, 8);
+          this.emit('chat:received', {
+            fromAgentId,
+            fromName,
+            message: msgText.trim(),
+          });
+          break;
+        }
+        // 真正的未知方法 → 转发给事件监听器
         this.emit('request', { method, params: msg.params, msg, conn });
         return;
+      }
     }
 
     const resp = createResponse(
@@ -987,16 +1082,48 @@ export class AgentNetwork extends EventEmitter {
   // ===== Agent Chat =====
 
   /**
-   * 将 AI 回复作为 chat 消息发送给对方
+   * 将 AI 回复作为 chat 消息发送给对方（或群组所有成员）
    * 标记 isReply=true 防止对方再自动回复（防循环）
    */
-  async sendChatReply(agentId: string, reply: string): Promise<void> {
+  async sendChatReply(agentId: string, reply: string, groupId?: string): Promise<void> {
+    // 存储自己的回复到 chat_messages
+    const conversationId = groupId ? `group:${groupId}` : `dm:${agentId}`;
+    const savedMsg = this.auditLog.saveMessage({
+      conversationId,
+      fromAgentId: this.identityManager.agentId,
+      fromName: this.identityManager.identity.name,
+      text: reply,
+      timestamp: Date.now(),
+      status: 'sent',
+    });
+    this.emit('chat:message', savedMsg);
+
+    if (groupId) {
+      // 群回复：发送给所有群成员（除了自己）
+      const group = this.auditLog.getGroups().find(g => g.id === groupId);
+      if (group) {
+        for (const memberId of group.members) {
+          if (memberId === this.identityManager.agentId) continue;
+          this.sendChatToAgent(memberId, reply, { _groupId: groupId }).catch(() => {});
+        }
+      }
+    } else {
+      // 私聊回复：只发给对方
+      this.sendChatToAgent(agentId, reply).catch(() => {});
+    }
+  }
+
+  /**
+   * 底层发送 chat 消息给单个 Agent（含审计日志 + 传输）
+   */
+  private async sendChatToAgent(agentId: string, message: string, extra?: Record<string, unknown>): Promise<void> {
     try {
       const conn = await this.ensureConnection(agentId);
 
+      const params: Record<string, unknown> = { message, isReply: true, ...extra };
       const msg = createRequest(
         AgentMethod.Chat,
-        { message: reply, isReply: true },
+        params,
         this.identityManager.agentId,
         agentId,
         this.identityManager.agentPrivateKey,
@@ -1013,14 +1140,14 @@ export class AgentNetwork extends EventEmitter {
         toName: agentInfo?.name || agentId.slice(0, 8),
         messageType: 'chat',
         method: AgentMethod.Chat,
-        summary: reply.slice(0, 120),
+        summary: message.slice(0, 120),
         success: true,
-        payload: JSON.stringify({ params: { message: reply, isReply: true } }),
+        payload: JSON.stringify({ params }),
       });
       this.emit('message:sent', msg);
       this.emit('message', entry);
 
-      // 注册 pending 等待对方确认（超时 30s，但不影响功能）
+      // 注册 pending 等待对方确认
       const timeout = setTimeout(() => {
         this.pendingRequests.delete(msg.id!);
       }, 30_000);

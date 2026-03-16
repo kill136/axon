@@ -1,277 +1,190 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useLanguage } from '../../../i18n';
+import { useProject, type Project } from '../../../contexts/ProjectContext';
 import styles from './ProjectSelector.module.css';
 
+// Re-export Project for other modules
+export type { Project } from '../../../contexts/ProjectContext';
+
 /**
- * 项目信息接口
+ * AI 作品信息（精简版，由父组件传入）
  */
-export interface Project {
-  /** 项目唯一标识 */
+export interface AppItem {
   id: string;
-  /** 项目名称 */
   name: string;
-  /** 项目路径 */
-  path: string;
-  /** 最后打开时间 */
-  lastOpenedAt?: string;
-  /** 项目是否为空（无源代码文件）*/
-  isEmpty?: boolean;
-  /** 是否已有蓝图文件 */
-  hasBlueprint?: boolean;
+  icon: string;
+  status: 'creating' | 'ready' | 'error';
+  sessionId: string;
 }
 
 /**
  * ProjectSelector 组件属性
  */
 export interface ProjectSelectorProps {
-  /** 当前选中的项目 */
-  currentProject?: Project | null;
-  /** 项目切换回调 */
-  onProjectChange?: (project: Project) => void;
   /** 请求打开文件夹回调 */
   onOpenFolder?: () => void;
-  /** 项目移除回调 */
-  onProjectRemove?: (project: Project) => void;
   /** 自定义类名 */
   className?: string;
+  /** AI 作品列表 */
+  apps?: AppItem[];
+  /** 点击作品回调 */
+  onAppSelect?: (app: AppItem) => void;
+  /** 创建新作品回调 */
+  onCreateApp?: () => void;
 }
 
 /**
- * 项目选择器组件
+ * 项目/作品选择器
  *
- * 功能：
- * 1. 显示当前项目名称
- * 2. 下拉显示最近打开的项目列表
- * 3. "打开文件夹..."按钮，触发目录选择
- * 4. 支持从列表中移除项目
+ * 从 ProjectContext 获取数据，不自己 fetch。
  */
 export default function ProjectSelector({
-  currentProject,
-  onProjectChange,
   onOpenFolder,
-  onProjectRemove,
   className = '',
+  apps = [],
+  onAppSelect,
+  onCreateApp,
 }: ProjectSelectorProps) {
   const { t } = useLanguage();
-  // 下拉菜单开关状态
+  const { state: { currentProject, recentProjects, loading }, switchProject, removeProject } = useProject();
   const [isOpen, setIsOpen] = useState(false);
-  // 项目列表
-  const [projects, setProjects] = useState<Project[]>([]);
-  // 加载状态
-  const [loading, setLoading] = useState(false);
-  // 错误信息
-  const [error, setError] = useState<string | null>(null);
-  // 容器引用（用于点击外部关闭）
-  const containerRef = useRef<HTMLDivElement>(null);
+  const selectorRef = useRef<HTMLDivElement>(null);
 
-  /**
-   * 获取项目列表
-   */
-  const fetchProjects = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await fetch('/api/blueprint/projects');
-      const result = await response.json();
-      if (result.success) {
-        setProjects(result.data || []);
-      } else {
-        setError(result.error || t('projectSelector.fetchFailed'));
-      }
-    } catch (err) {
-      setError(t('projectSelector.networkError'));
-      console.error('获取项目列表失败:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const activeApps = apps.filter(a => a.status === 'ready');
 
-  /**
-   * 打开项目
-   */
-  const handleOpenProject = async (project: Project) => {
-    try {
-      const response = await fetch('/api/blueprint/projects/open', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: project.path }),
-      });
-      const result = await response.json();
-      if (result.success) {
-        // 使用 API 返回的完整数据（包含 isEmpty 和 hasBlueprint）
-        const updatedProject = result.data || project;
-        onProjectChange?.(updatedProject);
-        setIsOpen(false);
-      } else {
-        console.error('打开项目失败:', result.error);
-      }
-    } catch (err) {
-      console.error('打开项目失败:', err);
-    }
-  };
+  const displayName = currentProject?.name || t('projectSelector.noProject');
+  const displayIcon = currentProject?.icon || (currentProject ? '📁' : '✨');
 
-  /**
-   * 移除项目
-   */
-  const handleRemoveProject = async (e: React.MouseEvent, project: Project) => {
-    e.stopPropagation(); // 阻止冒泡，避免触发选择
-    try {
-      const response = await fetch(`/api/blueprint/projects/${encodeURIComponent(project.id)}`, {
-        method: 'DELETE',
-      });
-      const result = await response.json();
-      if (result.success) {
-        // 从本地列表中移除
-        setProjects(prev => prev.filter(p => p.id !== project.id));
-        onProjectRemove?.(project);
-      } else {
-        console.error('移除项目失败:', result.error);
-      }
-    } catch (err) {
-      console.error('移除项目失败:', err);
-    }
-  };
-
-  /**
-   * 切换下拉菜单
-   */
-  const toggleDropdown = () => {
-    if (!isOpen) {
-      fetchProjects(); // 打开时刷新列表
-    }
-    setIsOpen(!isOpen);
-  };
-
-  /**
-   * 处理打开文件夹
-   */
-  const handleOpenFolder = () => {
-    setIsOpen(false);
-    onOpenFolder?.();
-  };
-
-  /**
-   * 点击外部关闭下拉菜单
-   */
+  // 点击外部关闭
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+    if (!isOpen) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (selectorRef.current && !selectorRef.current.contains(e.target as Node)) {
         setIsOpen(false);
       }
-    };
-
-    if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
     }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen]);
 
-  /**
-   * 键盘事件处理
-   */
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && isOpen) {
-        setIsOpen(false);
-      }
-    };
+  const close = () => setIsOpen(false);
 
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen]);
+  const handleOpenProject = (project: Project) => {
+    switchProject(project);
+    close();
+  };
+
+  const handleRemoveProject = (e: React.MouseEvent, project: Project) => {
+    e.stopPropagation();
+    removeProject(project.id);
+  };
 
   return (
-    <div className={`${styles.selector} ${className}`} ref={containerRef}>
-      {/* 当前选中项按钮 */}
+    <div className={`${styles.selector} ${className}`} ref={selectorRef}>
+      {/* 当前选中 */}
       <button
         className={`${styles.currentProject} ${isOpen ? styles.open : ''}`}
-        onClick={toggleDropdown}
-        aria-expanded={isOpen}
+        onClick={() => setIsOpen(prev => !prev)}
         aria-haspopup="listbox"
+        aria-expanded={isOpen}
       >
         <div className={styles.projectInfo}>
-          <span className={styles.projectIcon}>📁</span>
+          <span className={styles.projectIcon}>{displayIcon}</span>
           <span className={`${styles.projectName} ${!currentProject ? styles.noProject : ''}`}>
-            {currentProject?.name || t('projectSelector.noProject')}
+            {displayName}
           </span>
         </div>
-        <span className={`${styles.arrow} ${isOpen ? styles.open : ''}`}>▼</span>
+        <span className={`${styles.arrow} ${isOpen ? styles.open : ''}`}>▲</span>
       </button>
 
       {/* 下拉菜单 */}
       {isOpen && (
         <div className={styles.dropdown} role="listbox">
-          {/* 打开文件夹按钮 */}
-          <button className={styles.openFolderButton} onClick={handleOpenFolder}>
-            <span className={styles.openFolderIcon}>📂</span>
-            <span>{t('projectSelector.openFolder')}</span>
-          </button>
+
+          {/* 两个入口平级并排 */}
+          <div className={styles.actionRow}>
+            <button className={styles.actionButton} onClick={() => { onCreateApp?.(); close(); }}>
+              <span className={styles.actionIcon}>✨</span>
+              <span>{t('projectSelector.createApp')}</span>
+            </button>
+            <button className={styles.actionButton} onClick={() => { onOpenFolder?.(); close(); }}>
+              <span className={styles.actionIcon}>📂</span>
+              <span>{t('projectSelector.openFolder')}</span>
+            </button>
+          </div>
 
           <div className={styles.divider} />
 
-          {/* 最近项目标题 */}
-          <div className={styles.dropdownHeader}>{t('projectSelector.recentProjects')}</div>
-
-          {/* 加载状态 */}
-          {loading && (
-            <div className={styles.loading}>
-              <div className={styles.spinner} />
-              <span>{t('projectSelector.loading')}</span>
-            </div>
-          )}
-
-          {/* 错误状态 */}
-          {error && !loading && (
-            <div className={styles.emptyState}>
-              <div className={styles.emptyIcon}>⚠️</div>
-              <div>{error}</div>
-            </div>
-          )}
-
-          {/* 项目列表 */}
-          {!loading && !error && (
-            <div className={styles.projectList}>
-              {projects.length === 0 ? (
-                <div className={styles.emptyState}>
-                  <div className={styles.emptyIcon}>📭</div>
-                  <div>{t('projectSelector.noRecentProjects')}</div>
-                </div>
-              ) : (
-                projects.map(project => (
+          {/* 进行中（活跃作品） */}
+          {activeApps.length > 0 && (
+            <>
+              <div className={styles.dropdownHeader}>{t('projectSelector.activeApps')}</div>
+              <div className={styles.appList}>
+                {activeApps.map(app => (
                   <div
-                    key={project.id}
-                    className={`${styles.projectItem} ${
-                      currentProject?.id === project.id ? styles.active : ''
-                    }`}
-                    onClick={() => handleOpenProject(project)}
-                    role="option"
-                    aria-selected={currentProject?.id === project.id}
+                    key={app.id}
+                    className={styles.appItem}
+                    onClick={() => { onAppSelect?.(app); close(); }}
                   >
-                    <div className={styles.projectItemInfo}>
-                      <div className={styles.projectItemNameRow}>
-                        <span className={styles.projectItemName}>{project.name}</span>
-                        {project.hasBlueprint && (
-                          <span className={styles.blueprintTag}>{t('projectSelector.blueprint')}</span>
-                        )}
-                      </div>
-                      <span className={styles.projectItemPath}>{project.path}</span>
-                    </div>
-                    <button
-                      className={styles.removeButton}
-                      onClick={(e) => handleRemoveProject(e, project)}
-                      title={t('projectSelector.removeFromList')}
-                      aria-label={t('projectSelector.removeProject', { name: project.name })}
-                    >
-                      ✕
-                    </button>
+                    <span className={styles.appIcon}>{app.icon}</span>
+                    <span className={styles.appName}>{app.name}</span>
+                    <span className={styles.appStatus}>
+                      <span className={styles.statusDot} />
+                      {t('projectSelector.online')}
+                    </span>
                   </div>
-                ))
-              )}
-            </div>
+                ))}
+              </div>
+              <div className={styles.divider} />
+            </>
           )}
+
+          {/* 最近打开 */}
+          <div className={styles.dropdownHeader}>{t('projectSelector.recentProjects')}</div>
+          <div className={styles.projectList}>
+            {loading ? (
+              <div className={styles.loading}>
+                <div className={styles.spinner} />
+                <span>{t('projectSelector.loading')}</span>
+              </div>
+            ) : recentProjects.length === 0 ? (
+              <div className={styles.emptyState}>
+                <div className={styles.emptyIcon}>📂</div>
+                <p>{t('projectSelector.noRecentProjects')}</p>
+              </div>
+            ) : (
+              recentProjects.map((project) => (
+                <div
+                  key={project.id}
+                  className={`${styles.projectItem} ${
+                    currentProject?.id === project.id ? styles.active : ''
+                  }`}
+                  onClick={() => handleOpenProject(project)}
+                  role="option"
+                  aria-selected={currentProject?.id === project.id}
+                >
+                  <span className={styles.projectItemIcon}>{project.icon || '📁'}</span>
+                  <div className={styles.projectItemInfo}>
+                    <div className={styles.projectItemNameRow}>
+                      <span className={styles.projectItemName}>{project.name}</span>
+                      {project.hasBlueprint && (
+                        <span className={styles.blueprintTag}>{t('projectSelector.blueprint')}</span>
+                      )}
+                    </div>
+                    <span className={styles.projectItemPath}>{project.path}</span>
+                  </div>
+                  <button
+                    className={styles.removeButton}
+                    onClick={(e) => handleRemoveProject(e, project)}
+                    title={t('projectSelector.removeFromList')}
+                    aria-label={t('projectSelector.removeProject', { name: project.name })}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
         </div>
       )}
     </div>

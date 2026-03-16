@@ -10,7 +10,7 @@ import { v4 as uuidv4 } from 'uuid';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { getBackgroundShell, isShellId, loadTaskMeta, getTaskOutputPath } from './bash.js';
+import { getBackgroundShell, isShellId, loadTaskMeta, getTaskOutputPath, killBackgroundTask } from './bash.js';
 import { getCurrentCwd } from '../core/cwd-context.js';
 // 使用动态导入避免循环依赖：agent.ts -> loop.ts -> tools/index.ts -> agent.ts
 import type { LoopOptions } from '../core/loop.js';
@@ -1334,8 +1334,7 @@ Usage notes:
       // 防止递归嵌套、子代理与用户交互、子代理进入 plan 模式
       const SUBAGENT_DISALLOWED_TOOLS = [
         'Task',         // Agent/Task — 防止递归嵌套
-        'TaskOutput',   // 子代理不需要查其他代理输出
-        'TaskStop',     // 子代理不需要停其他代理
+        'TaskOutput',   // 子代理不需要查其他代理输出（也包含 stop 功能）
         'AskUserQuestion',  // 子代理不应与用户交互
         'EnterPlanMode',    // 子代理不需要 plan 模式
         'ExitPlanMode',     // 子代理不需要 plan 模式
@@ -1512,17 +1511,18 @@ Usage notes:
   }
 }
 
-export class TaskOutputTool extends BaseTool<{ task_id: string; block?: boolean; timeout?: number; show_history?: boolean }, ToolResult> {
+export class TaskOutputTool extends BaseTool<{ task_id: string; block?: boolean; timeout?: number; show_history?: boolean; action?: 'stop' }, ToolResult> {
   name = 'TaskOutput';
   shouldDefer = true;
-  searchHint = 'check background task result, wait for agent, get task output';
-  description = `Get output and status from a background task (Agent or Bash).
+  searchHint = 'check background task result, wait for agent, get task output, stop process, kill background task, terminate shell';
+  description = `Get output and status from a background task (Agent or Bash), or stop a running task.
 
 Usage notes:
 - Supports both Agent tasks and Bash background shells
 - Use block parameter to wait for task completion
 - Use show_history to see detailed execution history (Agent only)
-- Agent state is automatically persisted and can be resumed`;
+- Agent state is automatically persisted and can be resumed
+- Use action="stop" to kill a running background task by its ID`;
 
   getInputSchema(): ToolDefinition['inputSchema'] {
     return {
@@ -1530,7 +1530,7 @@ Usage notes:
       properties: {
         task_id: {
           type: 'string',
-          description: 'The task ID to get output from',
+          description: 'The task ID to get output from, or the shell ID to stop',
         },
         block: {
           type: 'boolean',
@@ -1542,14 +1542,24 @@ Usage notes:
         },
         show_history: {
           type: 'boolean',
-          description: 'Show detailed execution history (extension: not in official SDK)',
+          description: 'Show detailed execution history (Agent only)',
+        },
+        action: {
+          type: 'string',
+          enum: ['stop'],
+          description: 'Set to "stop" to kill a running background task. When set, task_id is used as the shell ID to terminate.',
         },
       },
       required: ['task_id'],
     };
   }
 
-  async execute(input: { task_id: string; block?: boolean; timeout?: number; show_history?: boolean }): Promise<ToolResult> {
+  async execute(input: { task_id: string; block?: boolean; timeout?: number; show_history?: boolean; action?: 'stop' }): Promise<ToolResult> {
+    // Handle stop action (merged from TaskStop/KillShellTool)
+    if (input.action === 'stop') {
+      return killBackgroundTask(input.task_id);
+    }
+
     // 检查是否是 Bash shell ID
     if (isShellId(input.task_id)) {
       const shell = getBackgroundShell(input.task_id);

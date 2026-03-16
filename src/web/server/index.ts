@@ -245,6 +245,21 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
   const portForwardRouter = await import('./routes/port-forward.js');
   app.use('/proxy', portForwardRouter.default);
 
+  // ====== AI 应用工厂路由 ======
+  const { AppFactory } = await import('./app-factory.js');
+  const appFactory = new AppFactory();
+  app.locals.appFactory = appFactory;
+
+  // Apps API 路由
+  const appsApiRouter = await import('./routes/apps-api.js');
+  app.use('/api/apps', appsApiRouter.default);
+
+  // Apps 静态文件服务（serve 用户生成的应用）
+  app.use('/apps', express.static(appFactory.getAppsDir(), {
+    index: ['index.html'],
+    extensions: ['html'],
+  }));
+
   // ====== 官网（Landing Page）路由 ======
   // 根据域名区分：chatbi.site → 官网，其他 → Web UI
   // 官网域名列表（可通过环境变量扩展）
@@ -382,6 +397,7 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
         agentNetwork.on('agent:updated', (agent: any) => broadcastMessage({ type: 'network:agent_updated', payload: agent }));
         agentNetwork.on('message', (entry: any) => broadcastMessage({ type: 'network:message', payload: entry }));
         agentNetwork.on('trust_request', (agent: any) => broadcastMessage({ type: 'network:trust_request', payload: agent }));
+        agentNetwork.on('chat:message', (msg: any) => broadcastMessage({ type: 'network:chat_message', payload: msg }));
 
         // 监听委派任务事件：创建新会话执行任务，完成后回调通知委派方
         agentNetwork.on('task:delegated', async (taskData: {
@@ -515,47 +531,56 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
           }
         });
 
-        // ====== Agent Chat: 收到对方消息 → 创建/复用 session → 走主 loop 回复 ======
-        // 每个 agent 维护一个持久 chat session，AI 拥有完整工具调用能力
-        const chatSessions = new Map<string, string>(); // agentId → sessionId
+        // ====== Agent Chat: 收到对方消息 → 创建/复用 session → 走正常会话 loop ======
+        // 私聊：每个 agentId 一个 session；群聊：每个 groupId 共享一个 session
+        const chatSessions = new Map<string, string>(); // agentId|group:{groupId} → sessionId
 
         agentNetwork.on('chat:received', async (chatData: {
           fromAgentId: string;
           fromName: string;
           message: string;
+          groupId?: string;
+          groupName?: string;
+          groupMembers?: string[];
         }) => {
           const chatLog = (msg: string) => console.log(`[AgentNetwork:Chat:${chatData.fromName}] ${msg}`);
           const chatErr = (msg: string, err?: any) => console.error(`[AgentNetwork:Chat:${chatData.fromName}] ${msg}`, err?.message || err || '');
-          chatLog(`Received message: ${chatData.message.slice(0, 80)}`);
+          chatLog(`Received message: ${chatData.message.slice(0, 80)}${chatData.groupId ? ` (group: ${chatData.groupName || chatData.groupId})` : ''}`);
 
           try {
-            // 获取或创建该 agent 的 chat session
-            let sessionId = chatSessions.get(chatData.fromAgentId);
+            // session key：群聊用 groupId，私聊用 agentId
+            const sessionKey = chatData.groupId
+              ? `group:${chatData.groupId}`
+              : chatData.fromAgentId;
+
+            let sessionId = chatSessions.get(sessionKey);
             const sessionMgr = conversationManager.getSessionManager();
+            let isNewSession = false;
 
             if (sessionId) {
-              // 验证 session 是否仍然存在
               const meta = sessionMgr.getMetadata(sessionId);
               if (!meta) {
                 chatLog(`Session ${sessionId} expired, creating new one`);
                 sessionId = undefined;
-                chatSessions.delete(chatData.fromAgentId);
+                chatSessions.delete(sessionKey);
               }
             }
 
             if (!sessionId) {
-              const title = `Chat: ${chatData.fromName}`;
+              const title = chatData.groupId
+                ? `Group: ${chatData.groupName || chatData.groupId.slice(0, 8)}`
+                : `Chat: ${chatData.fromName}`;
               const newSession = sessionMgr.createSession({
                 name: title,
                 model: model,
-                tags: ['webui', 'agent-chat'],
+                tags: chatData.groupId ? ['webui', 'agent-group-chat'] : ['webui', 'agent-chat'],
                 projectPath: cwd,
               });
               sessionId = newSession.metadata.id;
-              chatSessions.set(chatData.fromAgentId, sessionId);
+              chatSessions.set(sessionKey, sessionId);
+              isNewSession = true;
               chatLog(`Created new chat session ${sessionId}`);
 
-              // 通知前端（不切换当前会话）
               broadcastMessage({
                 type: 'session_created',
                 payload: {
@@ -563,59 +588,49 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
                   name: title,
                   model: model,
                   createdAt: newSession.metadata.createdAt,
-                  tags: ['agent-chat'],
+                  tags: chatData.groupId ? ['agent-group-chat'] : ['agent-chat'],
                   fromAgent: chatData.fromName,
                 },
               });
             }
 
-            // 构建 prompt
-            const prompt = `[Agent Chat] Message from AI agent "${chatData.fromName}":\n\n${chatData.message}\n\nPlease respond to this message. You can use any available tools to help. Reply in the same language as the message. Keep responses concise unless more detail is needed.`;
-            chatLog(`Starting AI conversation in session ${sessionId}...`);
+            // 构建消息内容
+            let messageContent = chatData.message;
+            if (chatData.groupId) {
+              // 群聊：标注发言者，首条消息附带群信息
+              if (isNewSession) {
+                const memberCount = chatData.groupMembers?.length || 0;
+                messageContent = `<system-reminder>This is a group chat "${chatData.groupName || 'unnamed'}" with ${memberCount} members. Messages will be prefixed with [SenderName]. Respond to the group.</system-reminder>\n\n[${chatData.fromName}]: ${chatData.message}`;
+              } else {
+                messageContent = `[${chatData.fromName}]: ${chatData.message}`;
+              }
+            } else {
+              // 私聊：首条消息附带来源标注
+              if (isNewSession) {
+                messageContent = `<system-reminder>This conversation is with AI agent "${chatData.fromName}" (${chatData.fromAgentId.slice(0, 8)}). Messages are from this agent. Respond naturally.</system-reminder>\n\n${chatData.message}`;
+              }
+            }
 
-            // 构建广播回调
+            chatLog(`Starting conversation in session ${sessionId}...`);
+
             const messageId = randomUUID();
-            const callbacks = buildDelegatedTaskCallbacks(broadcastMessage, conversationManager, sessionId, messageId, agentNetwork!, '');
+            const callbacks = buildAgentChatCallbacks(
+              broadcastMessage, conversationManager, sessionId, messageId,
+              agentNetwork!, chatData.fromAgentId, chatLog, chatErr,
+              chatData.groupId,
+            );
 
             broadcastMessage({ type: 'message_start', payload: { messageId, sessionId } });
             broadcastMessage({ type: 'status', payload: { status: 'thinking', sessionId } });
 
-            // 执行 AI 对话（bypassPermissions 模式）
             await conversationManager.chat(
               sessionId,
-              prompt,
+              messageContent,
               undefined,
               model,
               callbacks,
               cwd,
-              undefined,
-              'bypassPermissions',
             );
-
-            chatLog('AI conversation completed, extracting reply...');
-
-            // 提取最后一条 AI 回复
-            const history = conversationManager.getHistory(sessionId);
-            let replyText = '';
-            for (let i = history.length - 1; i >= 0; i--) {
-              if (history[i].role === 'assistant') {
-                const textParts = history[i].content
-                  .filter((c: any) => c.type === 'text')
-                  .map((c: any) => c.text);
-                if (textParts.length > 0) {
-                  replyText = textParts.join('\n');
-                  break;
-                }
-              }
-            }
-
-            // 发送回复给对方
-            if (replyText) {
-              chatLog(`Sending reply (${replyText.length} chars)`);
-              agentNetwork!.sendChatReply(chatData.fromAgentId, replyText).catch(err => {
-                chatErr('Failed to send reply', err);
-              });
-            }
           } catch (err: any) {
             chatErr('Failed to handle chat message', err);
           }
@@ -939,6 +954,89 @@ export function buildDelegatedTaskCallbacks(
       await cm.persistSession(sessionId);
       broadcastFn({ type: 'message_complete', payload: { messageId, stopReason: (stopReason || 'end_turn') as any, usage, sessionId } });
       broadcastFn({ type: 'status', payload: { status: 'idle', sessionId } });
+    },
+    onError: (error: Error) => {
+      broadcastFn({ type: 'error', payload: { error: error.message, sessionId } });
+      broadcastFn({ type: 'status', payload: { status: 'idle', sessionId } });
+    },
+    onContextCompact: (phase: 'start' | 'end' | 'error', info?: Record<string, any>) => {
+      broadcastFn({ type: 'context_compact', payload: { phase, info, sessionId } });
+    },
+    onContextUpdate: (usage: { usedTokens: number; maxTokens: number; percentage: number; model: string }) => {
+      broadcastFn({ type: 'context_update', payload: { ...usage, sessionId } });
+    },
+  };
+}
+
+/**
+ * 构建 Agent Chat 的广播回调（IM 通道风格）
+ * 与 buildDelegatedTaskCallbacks 的区别：
+ * - 不上报 task progress（不是委派任务）
+ * - onComplete 时自动提取 AI 回复并转发给对方 agent
+ */
+export function buildAgentChatCallbacks(
+  broadcastFn: (msg: any) => void,
+  cm: ConversationManager,
+  sessionId: string,
+  messageId: string,
+  network: import('../../network/index.js').AgentNetwork,
+  targetAgentId: string,
+  chatLog: (msg: string) => void,
+  chatErr: (msg: string, err?: any) => void,
+  groupId?: string,
+): import('./conversation.js').StreamCallbacks {
+  return {
+    onThinkingStart: () => {
+      broadcastFn({ type: 'thinking_start', payload: { messageId, sessionId } });
+    },
+    onThinkingDelta: (text: string) => {
+      broadcastFn({ type: 'thinking_delta', payload: { messageId, text, sessionId } });
+    },
+    onThinkingComplete: () => {
+      broadcastFn({ type: 'thinking_complete', payload: { messageId, sessionId } });
+    },
+    onTextDelta: (text: string) => {
+      broadcastFn({ type: 'text_delta', payload: { messageId, text, sessionId } });
+    },
+    onToolUseStart: (toolUseId: string, toolName: string, input: unknown) => {
+      broadcastFn({ type: 'tool_use_start', payload: { messageId, toolUseId, toolName, input, sessionId } });
+      broadcastFn({ type: 'status', payload: { status: 'tool_executing', message: `Executing ${toolName}...`, sessionId } });
+    },
+    onToolUseDelta: (toolUseId: string, partialJson: string) => {
+      broadcastFn({ type: 'tool_use_delta', payload: { toolUseId, partialJson, sessionId } });
+    },
+    onToolResult: (toolUseId: string, success: boolean, output?: string, error?: string, data?: unknown) => {
+      broadcastFn({
+        type: 'tool_result',
+        payload: { toolUseId, success, output, error, data: data as any, defaultCollapsed: true, sessionId },
+      });
+    },
+    onComplete: async (stopReason: string | null, usage?: { inputTokens: number; outputTokens: number }) => {
+      await cm.persistSession(sessionId);
+      broadcastFn({ type: 'message_complete', payload: { messageId, stopReason: (stopReason || 'end_turn') as any, usage, sessionId } });
+      broadcastFn({ type: 'status', payload: { status: 'idle', sessionId } });
+
+      // 提取最后一条 AI 回复，自动转发给对方 agent
+      const history = cm.getHistory(sessionId);
+      let replyText = '';
+      for (let i = history.length - 1; i >= 0; i--) {
+        if (history[i].role === 'assistant') {
+          const textParts = history[i].content
+            .filter((c: any) => c.type === 'text')
+            .map((c: any) => c.text);
+          if (textParts.length > 0) {
+            replyText = textParts.join('\n');
+            break;
+          }
+        }
+      }
+
+      if (replyText) {
+        chatLog(`Sending reply (${replyText.length} chars)${groupId ? ` to group ${groupId}` : ''}`);
+        network.sendChatReply(targetAgentId, replyText, groupId).catch(err => {
+          chatErr('Failed to send reply', err);
+        });
+      }
     },
     onError: (error: Error) => {
       broadcastFn({ type: 'error', payload: { error: error.message, sessionId } });

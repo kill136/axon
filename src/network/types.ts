@@ -48,6 +48,8 @@ export interface AgentIdentity {
 export interface ProjectInfo {
   /** 项目名 */
   name: string;
+  /** 项目简介（来自 package.json description 等） */
+  description?: string;
   /** git remote URL（可选） */
   gitRemote?: string;
   /** 角色描述 */
@@ -254,6 +256,35 @@ export interface AgentGroup {
   createdAt: number;
   /** 最后活跃时间 */
   lastActivity: number;
+}
+
+// ============================================================================
+// 聊天消息（独立于审计日志）
+// ============================================================================
+
+/** 聊天消息 */
+export interface ChatMessage {
+  id: string;
+  /** 会话标识：私聊用 `dm:{agentId}`, 群聊用 `group:{groupId}` */
+  conversationId: string;
+  /** 发送方 agentId */
+  fromAgentId: string;
+  fromName: string;
+  /** 消息文本 */
+  text: string;
+  /** 回复引用 */
+  replyTo?: { id: string; text: string };
+  /** 时间戳 */
+  timestamp: number;
+  /** 发送状态 */
+  status: 'sending' | 'sent' | 'delivered' | 'failed';
+}
+
+/** 会话摘要（用于左侧列表） */
+export interface ConversationSummary {
+  id: string;
+  lastMessage?: ChatMessage;
+  unreadCount: number;
 }
 
 // ============================================================================

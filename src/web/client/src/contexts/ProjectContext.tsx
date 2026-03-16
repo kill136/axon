@@ -26,6 +26,8 @@ export interface Project {
   name: string;
   /** 项目路径 */
   path: string;
+  /** 自动推断的 emoji icon */
+  icon?: string;
   /** 最后打开时间 */
   lastOpenedAt?: string;
   /** 项目是否为空（无源代码文件）*/

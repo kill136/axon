@@ -8,7 +8,7 @@ import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs';
 import * as crypto from 'crypto';
-import type { AuditLogEntry, PendingMessage, AgentMessage, AgentGroup } from './types.js';
+import type { AuditLogEntry, PendingMessage, AgentMessage, AgentGroup, ChatMessage, ConversationSummary } from './types.js';
 
 const DB_DIR = path.join(os.homedir(), '.axon', 'network');
 const DB_PATH = path.join(DB_DIR, 'network.db');
@@ -70,6 +70,20 @@ export class AuditLog {
         created_at INTEGER NOT NULL,
         last_activity INTEGER NOT NULL
       );
+
+      CREATE TABLE IF NOT EXISTS chat_messages (
+        id TEXT PRIMARY KEY,
+        conversation_id TEXT NOT NULL,
+        from_agent_id TEXT NOT NULL,
+        from_name TEXT NOT NULL,
+        text TEXT NOT NULL,
+        reply_to TEXT,
+        timestamp INTEGER NOT NULL,
+        status TEXT NOT NULL DEFAULT 'sent'
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_chat_conv ON chat_messages(conversation_id, timestamp);
+      CREATE INDEX IF NOT EXISTS idx_chat_from ON chat_messages(from_agent_id);
     `);
   }
 
@@ -200,6 +214,119 @@ export class AuditLog {
   cleanupExpired(): void {
     const cutoff = Date.now() - 24 * 60 * 60 * 1000;
     this.db.prepare('DELETE FROM pending_messages WHERE created_at < ?').run(cutoff);
+  }
+
+  // ===== 聊天记录清除 =====
+
+  /**
+   * 清除与指定 Agent 的所有聊天记录（审计日志 + 聊天消息）
+   */
+  clearByAgent(agentId: string): number {
+    const r1 = this.db.prepare(
+      'DELETE FROM network_audit WHERE from_agent_id = ? OR to_agent_id = ?'
+    ).run(agentId, agentId);
+    // 同时清除 chat_messages 中该 agent 的私聊记录
+    const convId = `dm:${agentId}`;
+    const r2 = this.db.prepare(
+      'DELETE FROM chat_messages WHERE conversation_id = ? OR from_agent_id = ?'
+    ).run(convId, agentId);
+    return r1.changes + r2.changes;
+  }
+
+  /**
+   * 清除所有聊天记录（审计日志 + 聊天消息）
+   */
+  clearAll(): number {
+    const r1 = this.db.prepare('DELETE FROM network_audit').run();
+    const r2 = this.db.prepare('DELETE FROM chat_messages').run();
+    return r1.changes + r2.changes;
+  }
+
+  // ===== 聊天消息（chat_messages 表） =====
+
+  /**
+   * 保存聊天消息
+   */
+  saveMessage(msg: Omit<ChatMessage, 'id'>): ChatMessage {
+    const id = crypto.randomUUID();
+    const full: ChatMessage = { id, ...msg };
+    this.db.prepare(`
+      INSERT INTO chat_messages (id, conversation_id, from_agent_id, from_name, text, reply_to, timestamp, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      full.id,
+      full.conversationId,
+      full.fromAgentId,
+      full.fromName,
+      full.text,
+      full.replyTo ? JSON.stringify(full.replyTo) : null,
+      full.timestamp,
+      full.status,
+    );
+    return full;
+  }
+
+  /**
+   * 查询某个会话的消息（按时间升序，支持分页）
+   */
+  getMessages(conversationId: string, limit = 100, before?: number): ChatMessage[] {
+    let sql = 'SELECT * FROM chat_messages WHERE conversation_id = ?';
+    const params: unknown[] = [conversationId];
+
+    if (before) {
+      sql += ' AND timestamp < ?';
+      params.push(before);
+    }
+
+    sql += ' ORDER BY timestamp DESC LIMIT ?';
+    params.push(limit);
+
+    const rows = this.db.prepare(sql).all(...params) as Array<Record<string, unknown>>;
+    // 返回时按时间升序
+    return rows.map(row => this.rowToChatMessage(row)).reverse();
+  }
+
+  /**
+   * 获取所有会话摘要（用于左侧列表）
+   */
+  getConversations(): ConversationSummary[] {
+    // 每个 conversation_id 的最后一条消息
+    const rows = this.db.prepare(`
+      SELECT cm.* FROM chat_messages cm
+      INNER JOIN (
+        SELECT conversation_id, MAX(timestamp) as max_ts
+        FROM chat_messages
+        GROUP BY conversation_id
+      ) latest ON cm.conversation_id = latest.conversation_id AND cm.timestamp = latest.max_ts
+      ORDER BY cm.timestamp DESC
+    `).all() as Array<Record<string, unknown>>;
+
+    return rows.map(row => ({
+      id: row.conversation_id as string,
+      lastMessage: this.rowToChatMessage(row),
+      unreadCount: 0, // 未读计数由前端管理
+    }));
+  }
+
+  /**
+   * 清除某个会话的聊天消息
+   */
+  clearConversation(conversationId: string): number {
+    const result = this.db.prepare('DELETE FROM chat_messages WHERE conversation_id = ?').run(conversationId);
+    return result.changes;
+  }
+
+  private rowToChatMessage(row: Record<string, unknown>): ChatMessage {
+    return {
+      id: row.id as string,
+      conversationId: row.conversation_id as string,
+      fromAgentId: row.from_agent_id as string,
+      fromName: row.from_name as string,
+      text: row.text as string,
+      replyTo: row.reply_to ? JSON.parse(row.reply_to as string) : undefined,
+      timestamp: row.timestamp as number,
+      status: row.status as ChatMessage['status'],
+    };
   }
 
   // ===== 群组管理 =====

@@ -129,7 +129,7 @@ export type {
   BashInput as BashToolInput,
   BashOutputInput as BashOutputToolInput,
   TaskOutputInput as TaskOutputToolInput,
-  KillShellInput as KillShellToolInput,
+  KillShellInput as KillShellToolInput, // kept for backward compat, TaskStop merged into TaskOutput
 } from './tools.js';
 
 // --- 文件操作工具 ---

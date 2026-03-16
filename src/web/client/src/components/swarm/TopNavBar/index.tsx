@@ -29,8 +29,8 @@ interface ProjectItem {
 }
 
 export interface TopNavBarProps {
-  currentPage: 'chat' | 'code' | 'swarm' | 'blueprint' | 'customize';
-  onPageChange: (page: 'chat' | 'code' | 'swarm' | 'blueprint' | 'customize') => void;
+  currentPage: 'chat' | 'code' | 'swarm' | 'blueprint' | 'customize' | 'apps';
+  onPageChange: (page: 'chat' | 'code' | 'swarm' | 'blueprint' | 'customize' | 'apps') => void;
   onSettingsClick?: () => void;
   /** 连接状态 */
   connected?: boolean;
@@ -39,10 +39,11 @@ export interface TopNavBarProps {
   /** 认证刷新键（变化时触发刷新） */
   authRefreshKey?: number;
   // 项目相关
-  currentProject?: ProjectItem | null;
-  onProjectChange?: (project: ProjectItem) => void;
   onOpenFolder?: () => void;
-  onProjectRemove?: (project: ProjectItem) => void;
+  // 应用相关
+  apps?: Array<{ id: string; name: string; icon: string; status: 'creating' | 'ready' | 'error'; sessionId: string }>;
+  onAppSelect?: (app: any) => void;
+  onCreateApp?: () => void;
   // 会话相关
   sessions?: SessionItem[];
   currentSessionId?: string | null;
@@ -89,6 +90,15 @@ const ToolboxIcon = () => (
     <path d="M5 6V4a3 3 0 016 0v2" />
     <path d="M1 9h14" />
     <rect x="6" y="8" width="4" height="2" rx="0.5" />
+  </svg>
+);
+
+const AppsIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="2" y="2" width="5" height="5" rx="1" />
+    <rect x="9" y="2" width="5" height="5" rx="1" />
+    <rect x="2" y="9" width="5" height="5" rx="1" />
+    <rect x="9" y="9" width="5" height="5" rx="1" />
   </svg>
 );
 
@@ -141,7 +151,8 @@ const SearchIcon = () => (
 export default function TopNavBar({
   currentPage, onPageChange, onSettingsClick,
   connected, onLoginClick, authRefreshKey,
-  currentProject, onProjectChange, onOpenFolder, onProjectRemove,
+  onOpenFolder,
+  apps, onAppSelect, onCreateApp,
   sessions = [], currentSessionId, onSessionSelect, onNewSession,
   onSessionDelete, onSessionRename,
   onOpenSessionSearch,
@@ -205,10 +216,10 @@ export default function TopNavBar({
         {/* 左侧：项目选择器 */}
         <div className={styles.contextLeft}>
           <ProjectSelector
-            currentProject={currentProject}
-            onProjectChange={onProjectChange}
             onOpenFolder={onOpenFolder}
-            onProjectRemove={onProjectRemove}
+            apps={apps}
+            onAppSelect={onAppSelect}
+            onCreateApp={onCreateApp}
             className={styles.navProjectSelector}
           />
         </div>
@@ -384,6 +395,15 @@ export default function TopNavBar({
               <ToolboxIcon />
             </span>
             <span>{t('nav.customize')}</span>
+          </button>
+          <button
+            className={`${styles.navTab} ${currentPage === 'apps' ? styles.active : ''}`}
+            onClick={() => onPageChange('apps')}
+          >
+            <span className={styles.icon}>
+              <AppsIcon />
+            </span>
+            <span>{t('nav.apps')}</span>
           </button>
         </div>
       </div>

@@ -2320,6 +2320,15 @@ async function handleClientMessage(
       await handleModePresetMessage(client, message as any, conversationManager);
       break;
 
+    // ======================== AI 应用工厂 ========================
+    case 'app_create':
+      await handleAppCreate(client, message.payload, conversationManager);
+      break;
+
+    case 'app_modify':
+      await handleAppModify(client, message.payload, conversationManager);
+      break;
+
     default:
       console.warn('[WebSocket] Unknown message type:', (message as any).type);
   }
@@ -7278,6 +7287,147 @@ async function handleModePresetMessage(
       payload: {
         message: error instanceof Error ? error.message : String(error),
       },
+    });
+  }
+}
+
+// ======================== AI 应用工厂 ========================
+
+/**
+ * 处理应用创建请求
+ * 1. 创建 App 记录
+ * 2. 创建专用会话（注入应用生成器 system prompt）
+ * 3. 将用户描述作为第一条消息发送
+ */
+async function handleAppCreate(
+  client: ClientConnection,
+  payload: { name: string; description: string; workingDirectory: string; icon?: string },
+  conversationManager: ConversationManager
+): Promise<void> {
+  const { ws } = client;
+
+  try {
+    const { name, description, workingDirectory, icon } = payload;
+    if (!name || !description) {
+      sendMessage(ws, { type: 'error', payload: { message: 'name and description are required' } });
+      return;
+    }
+    if (!workingDirectory) {
+      sendMessage(ws, { type: 'error', payload: { message: 'workingDirectory is required' } });
+      return;
+    }
+
+    // 确保工作目录存在
+    const fs = await import('fs');
+    const path = await import('path');
+    const resolvedDir = path.resolve(workingDirectory);
+    if (!fs.existsSync(resolvedDir)) {
+      fs.mkdirSync(resolvedDir, { recursive: true });
+    }
+
+    // 1. 获取 AppFactory
+    const { AppFactory, getAppGeneratorSystemPrompt } = await import('./app-factory.js');
+    // 复用 app.locals 中的实例，但 websocket 没有直接访问 app.locals
+    // 所以创建一个新的（它们共享同一个 manifest.json 文件）
+    const factory = new AppFactory();
+
+    // 2. 创建一个新的会话，使用用户指定的工作目录
+    const sessionManager = conversationManager.getSessionManager();
+    const session = sessionManager.createSession({
+      name: `[App] ${name}`,
+      model: client.model,
+      tags: ['app-factory'],
+      projectPath: resolvedDir,
+    });
+    const sessionId = session.metadata.id;
+
+    // 3. 创建 App 记录，关联工作目录
+    const app = factory.createApp(name, description, sessionId, icon, resolvedDir);
+
+    // 4. 配置专用 system prompt，使用用户指定的目录
+    const appSystemPrompt = getAppGeneratorSystemPrompt(resolvedDir, name);
+    conversationManager.updateSystemPrompt(sessionId, {
+      customPrompt: appSystemPrompt,
+      useDefault: false,
+    });
+
+    // 5. 通知前端 app 已创建
+    sendMessage(ws, {
+      type: 'app_created',
+      payload: { app, sessionId },
+    });
+
+    // 6. 切换到新会话并发送用户描述作为第一条消息
+    client.sessionId = sessionId;
+    // 设置 client 的 projectPath 为用户指定的目录，这样 handleChatMessage 中
+    // 调用 getOrCreateSession 时会使用正确的工作目录
+    client.projectPath = resolvedDir;
+    conversationManager.setWebSocket(sessionId, ws);
+
+    // 通知前端新会话（传 tags 让前端知道这是 app-factory 创建的独立会话，需要清空旧消息）
+    sendMessage(ws, {
+      type: 'session_created',
+      payload: {
+        sessionId,
+        name: `[App] ${name}`,
+        model: session.metadata.model,
+        createdAt: session.metadata.createdAt,
+        tags: ['app-factory'],
+      },
+    });
+
+    // 发送用户描述作为第一条消息
+    await handleChatMessage(client, description, undefined, conversationManager);
+
+  } catch (error: any) {
+    console.error('[WebSocket] App create error:', error);
+    sendMessage(ws, {
+      type: 'error',
+      payload: { message: `App creation failed: ${error.message}` },
+    });
+  }
+}
+
+/**
+ * 处理应用修改请求（用户在应用详情页继续对话修改应用）
+ */
+async function handleAppModify(
+  client: ClientConnection,
+  payload: { appId: string; content: string },
+  conversationManager: ConversationManager
+): Promise<void> {
+  const { ws } = client;
+
+  try {
+    const { appId, content } = payload;
+    if (!appId || !content) {
+      sendMessage(ws, { type: 'error', payload: { message: 'appId and content are required' } });
+      return;
+    }
+
+    // 查找 app 对应的 sessionId
+    const { AppFactory } = await import('./app-factory.js');
+    const factory = new AppFactory();
+    const app = factory.getApp(appId);
+    if (!app) {
+      sendMessage(ws, { type: 'error', payload: { message: 'App not found' } });
+      return;
+    }
+
+    // 切换到 app 关联的会话
+    if (app.sessionId && app.sessionId !== client.sessionId) {
+      client.sessionId = app.sessionId;
+      conversationManager.setWebSocket(app.sessionId, ws);
+    }
+
+    // 发送修改请求
+    await handleChatMessage(client, content, undefined, conversationManager);
+
+  } catch (error: any) {
+    console.error('[WebSocket] App modify error:', error);
+    sendMessage(ws, {
+      type: 'error',
+      payload: { message: `App modification failed: ${error.message}` },
     });
   }
 }

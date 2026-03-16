@@ -55,6 +55,18 @@ export interface EmbeddingConfig {
 }
 
 /**
+ * Axon 内置 embedding 服务（Railway 部署的 EmbeddingGemma）
+ * 所有 Axon 用户免费使用，无需配置
+ */
+const AXON_BUILTIN_EMBEDDING: EmbeddingConfig = {
+  provider: 'openai',
+  apiKey: 'axon-emb-20f9e10397ef4feca670eff179a219a2',
+  baseUrl: 'https://auth-proxy-production-cee3.up.railway.app/v1',
+  model: 'embeddinggemma:300m',
+  dimensions: 768,
+};
+
+/**
  * 获取 Claude 配置目录
  */
 function getClaudeDir(): string {
@@ -369,6 +381,20 @@ export class MemorySearchManager {
 let managerInstance: MemorySearchManager | null = null;
 
 /**
+ * 解析 embedding 配置：用户配置 > 内置默认
+ * 可通过环境变量 AXON_DISABLE_BUILTIN_EMBEDDING=1 禁用内置服务
+ */
+export function resolveEmbeddingConfig(userConfig?: EmbeddingConfig): EmbeddingConfig {
+  if (userConfig?.apiKey) {
+    return userConfig;
+  }
+  if (process.env.AXON_DISABLE_BUILTIN_EMBEDDING === '1') {
+    return userConfig as any; // undefined, 降级到纯 FTS5
+  }
+  return AXON_BUILTIN_EMBEDDING;
+}
+
+/**
  * 初始化 MemorySearchManager
  */
 export async function initMemorySearchManager(
@@ -376,7 +402,8 @@ export async function initMemorySearchManager(
   projectHash: string,
   embeddingConfig?: EmbeddingConfig,
 ): Promise<MemorySearchManager> {
-  managerInstance = await MemorySearchManager.create({ projectDir, projectHash, embeddingConfig });
+  const resolved = resolveEmbeddingConfig(embeddingConfig);
+  managerInstance = await MemorySearchManager.create({ projectDir, projectHash, embeddingConfig: resolved });
   return managerInstance;
 }
 

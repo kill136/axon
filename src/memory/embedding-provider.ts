@@ -31,6 +31,12 @@ const MODEL_DIMENSIONS: Record<string, number> = {
   'text-embedding-3-small': 1536,
   'text-embedding-3-large': 3072,
   'text-embedding-ada-002': 1536,
+  // Ollama models
+  'embeddinggemma:300m': 768,
+  'nomic-embed-text': 768,
+  'mxbai-embed-large': 1024,
+  'all-minilm': 384,
+  'snowflake-arctic-embed': 1024,
 };
 
 const DEFAULT_MODEL = 'text-embedding-3-small';

@@ -178,6 +178,119 @@ router.post('/connect', async (req: Request, res: Response) => {
   }
 });
 
+// ===== 清除聊天记录 =====
+
+/**
+ * DELETE /api/network/audit
+ * 清除所有聊天记录
+ * Query: ?agentId=xxx (可选，只清除与指定 Agent 的记录)
+ */
+router.delete('/audit', (req: Request, res: Response) => {
+  const network = getNetwork(req);
+  if (!network) return res.status(503).json({ error: 'Agent Network not enabled' });
+
+  const agentId = req.query.agentId as string | undefined;
+  const deleted = network.clearAuditLog(agentId);
+  res.json({ success: true, deleted });
+});
+
+// ===== 聊天消息 API =====
+
+/**
+ * GET /api/network/conversations
+ * 获取所有会话摘要列表
+ */
+router.get('/conversations', (req: Request, res: Response) => {
+  const network = getNetwork(req);
+  if (!network) return res.json([]);
+  res.json(network.getConversations());
+});
+
+/**
+ * GET /api/network/messages
+ * 获取某个会话的消息列表
+ * Query: conversationId (required), limit?, before? (timestamp)
+ */
+router.get('/messages', (req: Request, res: Response) => {
+  const network = getNetwork(req);
+  if (!network) return res.json([]);
+
+  const conversationId = req.query.conversationId as string;
+  if (!conversationId) {
+    return res.status(400).json({ error: 'conversationId is required' });
+  }
+
+  const limit = req.query.limit ? parseInt(req.query.limit as string) : 100;
+  const before = req.query.before ? parseInt(req.query.before as string) : undefined;
+
+  res.json(network.getMessages(conversationId, limit, before));
+});
+
+/**
+ * DELETE /api/network/messages
+ * 清除某个会话的聊天消息
+ * Query: conversationId (required)
+ */
+router.delete('/messages', (req: Request, res: Response) => {
+  const network = getNetwork(req);
+  if (!network) return res.status(503).json({ error: 'Agent Network not enabled' });
+
+  const conversationId = req.query.conversationId as string;
+  if (!conversationId) {
+    return res.status(400).json({ error: 'conversationId is required' });
+  }
+
+  const deleted = network.clearConversation(conversationId);
+  res.json({ success: true, deleted });
+});
+
+// ===== 群组发送 =====
+
+/**
+ * POST /api/network/group-send
+ * 向群组所有成员广播消息
+ * Body: { groupId, method, params? }
+ */
+router.post('/group-send', async (req: Request, res: Response) => {
+  const network = getNetwork(req);
+  if (!network) return res.status(503).json({ error: 'Agent Network not enabled' });
+
+  const { groupId, method, params } = req.body;
+  if (!groupId || !method) {
+    return res.status(400).json({ error: 'groupId and method are required' });
+  }
+
+  const groups = network.getGroups();
+  const group = groups.find(g => g.id === groupId);
+  if (!group) {
+    return res.status(404).json({ error: 'Group not found' });
+  }
+
+  // Tag params with group info so receivers know they're in a group
+  const taggedParams = {
+    ...params,
+    _groupId: groupId,
+    _groupName: group.name,
+    _groupMembers: group.members,
+  };
+
+  const results: Array<{ agentId: string; success: boolean; error?: string }> = [];
+  for (const memberId of group.members) {
+    try {
+      await network.sendRequest(memberId, method, taggedParams);
+      results.push({ agentId: memberId, success: true });
+    } catch (error) {
+      results.push({
+        agentId: memberId,
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  res.json({ success: true, results });
+});
+
 // ===== 群组 CRUD =====
 
 /**
@@ -270,6 +383,7 @@ router.post('/toggle', async (req: Request, res: Response) => {
       network.on('agent:updated', (agent: any) => broadcastMessage({ type: 'network:agent_updated', payload: agent }));
       network.on('message', (entry: any) => broadcastMessage({ type: 'network:message', payload: entry }));
       network.on('trust_request', (agent: any) => broadcastMessage({ type: 'network:trust_request', payload: agent }));
+      network.on('chat:message', (msg: any) => broadcastMessage({ type: 'network:chat_message', payload: msg }));
 
       req.app.locals.agentNetwork = network;
 
