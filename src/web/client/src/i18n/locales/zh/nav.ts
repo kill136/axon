@@ -125,7 +125,7 @@ const nav = {
   'terminal.newTerminal': '新建终端',
   'terminal.restartTerminal': '重启终端',
   'customize.network': 'Agent 网络',
-  'nav.apps': '作品',
+  'nav.apps': '活动',
 } as const;
 
 export default nav;

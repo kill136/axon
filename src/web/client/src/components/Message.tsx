@@ -19,6 +19,32 @@ const USER_MESSAGE_COLLAPSE_LINES = 10;
 /** 折叠时显示的最大高度（px） */
 const USER_MESSAGE_COLLAPSE_HEIGHT = 200;
 
+/** 标签名到显示标签的映射 */
+const CONTEXT_TAG_LABELS: Record<string, string> = {
+  'intent-context': 'Context',
+  'user-prompt-submit-hook': 'Hook Output',
+};
+
+/** 用户消息中附加上下文的折叠组件 */
+function UserContextAttachment({ tag, content }: { tag: string; content: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const label = CONTEXT_TAG_LABELS[tag] || tag;
+  return (
+    <div className="user-context-attachment">
+      <button
+        className="user-context-attachment-toggle"
+        onClick={() => setExpanded(!expanded)}
+      >
+        <span className="user-context-attachment-icon">{expanded ? '▼' : '▶'}</span>
+        <span className="user-context-attachment-label">{label}</span>
+      </button>
+      {expanded && (
+        <pre className="user-context-attachment-content">{content}</pre>
+      )}
+    </div>
+  );
+}
+
 interface MessageProps {
   message: ChatMessage;
   onNavigateToBlueprint?: (blueprintId: string) => void;
@@ -67,13 +93,15 @@ export function Message({
   // 获取内容数组
   const contentArray = Array.isArray(content) ? content : [];
 
-  // 判断用户消息是否需要折叠
+  // 判断用户消息是否需要折叠（剥离附加上下文标签后再计算）
   const shouldCollapseUserMessage = useMemo(() => {
     if (role !== 'user') return false;
-    const textContent = contentArray
+    let textContent = contentArray
       .filter(c => c.type === 'text')
       .map(c => c.text)
       .join('\n');
+    // 剥离 <intent-context> 和 <user-prompt-submit-hook> 附加标签
+    textContent = textContent.replace(/<(?:intent-context|user-prompt-submit-hook)[^>]*>[\s\S]*?<\/(?:intent-context|user-prompt-submit-hook)>/gi, '').trim();
     const lineCount = textContent.split('\n').length;
     return lineCount > USER_MESSAGE_COLLAPSE_LINES || textContent.length > 600;
   }, [role, contentArray]);
@@ -198,6 +226,33 @@ export function Message({
       // 检查是否是 Skill 消息
       if (isSkillMessage(item.text)) {
         return <SkillMessage key={index} text={item.text} />;
+      }
+      // 用户消息：剥离 <intent-context> 和 <user-prompt-submit-hook> 附加上下文
+      if (role === 'user') {
+        const contextTags = ['intent-context', 'user-prompt-submit-hook'];
+        let mainText = item.text;
+        const contexts: { tag: string; content: string }[] = [];
+        for (const tag of contextTags) {
+          const regex = new RegExp(`\\s*<${tag}[^>]*>[\\s\\S]*?<\\/${tag}>\\s*`, 'gi');
+          const match = mainText.match(regex);
+          if (match) {
+            for (const m of match) {
+              const innerMatch = m.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i'));
+              if (innerMatch) contexts.push({ tag, content: innerMatch[1].trim() });
+            }
+            mainText = mainText.replace(regex, '').trim();
+          }
+        }
+        if (contexts.length > 0) {
+          return (
+            <div key={index}>
+              {mainText && <MarkdownContent content={mainText} isUserMessage onCodeRefClick={handleCodeRefClick} />}
+              {contexts.map((ctx, i) => (
+                <UserContextAttachment key={i} tag={ctx.tag} content={ctx.content} />
+              ))}
+            </div>
+          );
+        }
       }
       return <MarkdownContent key={index} content={item.text} isUserMessage={role === 'user'} onCodeRefClick={handleCodeRefClick} />;
     }

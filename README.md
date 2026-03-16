@@ -2,13 +2,12 @@
 
 # Axon
 
-### The open-source AI coding assistant that runs everywhere
+### The AI coding assistant that runs everywhere
 
 **Use any model. Extend with plugins. Let AI agents build your project.**
 
 [![npm](https://img.shields.io/npm/v/axon?style=flat-square&color=CB3837)](https://www.npmjs.com/package/axon)
-[![GitHub Stars](https://img.shields.io/github/stars/kill136/axon?style=flat-square)](https://github.com/kill136/axon)
-[![License](https://img.shields.io/badge/License-AGPL--3.0-blue?style=flat-square)](LICENSE)
+[![License](https://img.shields.io/badge/License-Proprietary-blue?style=flat-square)](LICENSE)
 [![Node](https://img.shields.io/badge/Node.js-%3E%3D18.0.0-brightgreen?style=flat-square)](https://nodejs.org)
 [![Discord](https://img.shields.io/discord/1454020463486566432?style=flat-square&label=Discord&color=5865F2)](https://discord.gg/bNyJKk6PVZ)
 
@@ -24,7 +23,7 @@
 
 ---
 
-Axon is a free, open-source AI coding assistant with a built-in Web IDE, multi-agent task system, and self-evolution capabilities. It gives you full control — choose your AI provider, extend functionality through plugins and MCP servers, and even let the AI modify its own source code.
+Axon is a free AI coding assistant with a built-in Web IDE, multi-agent task system, and self-evolution capabilities. It gives you full control — choose your AI provider, extend functionality through plugins and MCP servers, and even let the AI modify its own source code.
 
 ## Quick Start
 
@@ -82,17 +81,6 @@ docker run -it \
 ```
 </details>
 
-<details>
-<summary>Build from source</summary>
-
-```bash
-git clone https://github.com/kill136/axon.git
-cd axon
-npm install && npm run build
-node dist/cli.js        # Terminal
-node dist/web-cli.js    # Web IDE
-```
-</details>
 
 <details>
 <summary>Uninstall</summary>
@@ -276,7 +264,7 @@ The fastest way to extend Axon is to write a **Skill** (a prompt file with struc
 
 ## Sponsors
 
-Axon is free and open-source. Sponsorships keep development going. [See sponsor tiers →](SPONSORS.md)
+Axon is free to use. Sponsorships keep development going. [See sponsor tiers →](SPONSORS.md)
 
 ### Founding Sponsors
 
@@ -284,7 +272,6 @@ Axon is free and open-source. Sponsorships keep development going. [See sponsor 
 
 *Your name/logo here — [become a sponsor](SPONSORS.md)*
 
-<a href="https://github.com/sponsors/kill136"><img src="https://img.shields.io/badge/GitHub-Sponsors-EA4AAA?style=for-the-badge&logo=githubsponsors" alt="GitHub Sponsors"></a>
 <a href="https://paypal.me/wangbingjie20"><img src="https://img.shields.io/badge/PayPal-Sponsor-00457C?style=for-the-badge&logo=paypal" alt="PayPal"></a>
 
 <p>
@@ -294,9 +281,6 @@ Axon is free and open-source. Sponsorships keep development going. [See sponsor 
 
 ## License
 
-Axon is dual-licensed:
-
-- **Open Source** — [AGPL-3.0](LICENSE). Free for personal use, academic research, and open-source projects. If you modify Axon or use it to provide a network service, you must release your complete source code under AGPL-3.0.
-- **Commercial** — For proprietary/closed-source usage, SaaS deployment, or any scenario where AGPL compliance is not feasible, a commercial license is required. See [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md) for details, or contact **kill.136@163.com**.
+Axon is proprietary software. Free for personal use. For commercial or enterprise use, please contact **kill.136@163.com**.
 
 [中文版 README](README.zh-CN.md)

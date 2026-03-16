@@ -13,6 +13,59 @@ export interface AxonCloudAuthProps {
 
 type AuthTab = 'login' | 'register';
 
+/**
+ * 将后端返回的英文错误信息翻译为本地化文本
+ */
+function translateServerError(error: string, t: (key: string) => string): string {
+  const msg = error.toLowerCase();
+
+  // Go validator 格式: "Field validation for 'X' failed on the 'Y' tag"
+  if (msg.includes('field validation') && msg.includes("failed on the")) {
+    if (msg.includes('password') && msg.includes("'min'")) {
+      return t('axonCloud.error.passwordTooShort');
+    }
+    if (msg.includes('username') && msg.includes("'min'")) {
+      return t('axonCloud.error.usernameTooShort');
+    }
+    if (msg.includes('email')) {
+      return t('axonCloud.error.emailInvalid');
+    }
+    // 其他 validator 错误，使用通用文案
+    return t('axonCloud.error.serverValidation');
+  }
+
+  // 常见业务错误
+  if (msg.includes('already exist') && msg.includes('user')) {
+    return t('axonCloud.error.usernameExists');
+  }
+  if (msg.includes('already exist') && msg.includes('email')) {
+    return t('axonCloud.error.emailExists');
+  }
+  if (msg.includes('already') && (msg.includes('registered') || msg.includes('taken'))) {
+    if (msg.includes('email')) return t('axonCloud.error.emailExists');
+    return t('axonCloud.error.usernameExists');
+  }
+  if (msg.includes('invalid') && (msg.includes('credential') || msg.includes('password'))) {
+    return t('axonCloud.error.invalidCredentials');
+  }
+  if (msg.includes('not found') && msg.includes('user')) {
+    return t('axonCloud.error.invalidCredentials');
+  }
+
+  // 网络类错误
+  if (msg.includes('fetch') || msg.includes('network') || msg.includes('econnrefused') || msg.includes('timeout')) {
+    return t('axonCloud.error.networkError');
+  }
+
+  // "Invalid input" 前缀的通用验证错误
+  if (msg.includes('invalid input')) {
+    return t('axonCloud.error.serverValidation');
+  }
+
+  // 无法识别，返回原文
+  return error;
+}
+
 export function AxonCloudAuth({ onSuccess, onError }: AxonCloudAuthProps) {
   const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState<AuthTab>('login');
@@ -88,7 +141,8 @@ export function AxonCloudAuth({ onSuccess, onError }: AxonCloudAuthProps) {
     } catch (error) {
       setLoading(false);
       setStatusType('error');
-      const errorMsg = error instanceof Error ? error.message : String(error);
+      const rawMsg = error instanceof Error ? error.message : String(error);
+      const errorMsg = translateServerError(rawMsg, t);
       setStatus(errorMsg);
       onError?.(errorMsg);
     }
@@ -117,6 +171,11 @@ export function AxonCloudAuth({ onSuccess, onError }: AxonCloudAuthProps) {
     if (!registerPassword.trim()) {
       setStatusType('error');
       setStatus(t('axonCloud.error.passwordRequired'));
+      return;
+    }
+    if (registerPassword.length < 6) {
+      setStatusType('error');
+      setStatus(t('axonCloud.error.passwordTooShort'));
       return;
     }
     if (registerPassword !== registerConfirmPassword) {
@@ -160,7 +219,8 @@ export function AxonCloudAuth({ onSuccess, onError }: AxonCloudAuthProps) {
     } catch (error) {
       setLoading(false);
       setStatusType('error');
-      const errorMsg = error instanceof Error ? error.message : String(error);
+      const rawMsg = error instanceof Error ? error.message : String(error);
+      const errorMsg = translateServerError(rawMsg, t);
       setStatus(errorMsg);
       onError?.(errorMsg);
     }

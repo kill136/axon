@@ -71,10 +71,6 @@ interface AppProps {
   onConnectedChange?: (connected: boolean) => void;
   registerSessionActions?: (actions: SessionActions) => void;
   registerMessaging?: (messaging: { send: (msg: any) => void; addMessageHandler: (handler: (msg: any) => void) => () => void }) => void;
-  // 应用相关（透传给 WelcomeScreen）
-  apps?: Array<{ id: string; name: string; icon: string; status: 'creating' | 'ready' | 'error'; sessionId: string }>;
-  onAppSelect?: (app: any) => void;
-  onCreateApp?: () => void;
 }
 
 function AppContent({
@@ -86,7 +82,6 @@ function AppContent({
   onSessionsChange, onSessionIdChange, onConnectedChange,
   registerSessionActions,
   registerMessaging,
-  apps, onAppSelect, onCreateApp,
 }: AppProps) {
   const { t } = useLanguage();
   const { state: projectState, openFolder } = useProject();
@@ -607,9 +602,6 @@ function AppContent({
                     setTimeout(() => chatInput.inputRef.current?.focus(), 50);
                   }}
                   onOpenFolder={openFolder}
-                  apps={apps}
-                  onAppSelect={onAppSelect}
-                  onCreateApp={onCreateApp}
                 />
               ) : (
                 <>

@@ -196,6 +196,7 @@ const swarm = {
   'projectSelector.noProject': 'New',
   'projectSelector.noRecentProjects': 'No recent projects',
   'projectSelector.online': 'Online',
+  'projectSelector.importWorks': 'Import Works',
   'projectSelector.openFolder': 'Open Folder...',
   'projectSelector.recentProjects': 'Recent',
   'projectSelector.removeFromList': 'Remove from list',

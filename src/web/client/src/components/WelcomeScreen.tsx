@@ -2,24 +2,10 @@ import { useState, useRef, useEffect } from 'react';
 import { useProject } from '../contexts/ProjectContext';
 import { useLanguage } from '../i18n';
 
-interface AppItem {
-  id: string;
-  name: string;
-  icon: string;
-  status: 'creating' | 'ready' | 'error';
-  sessionId: string;
-}
-
 interface WelcomeScreenProps {
   onBlueprintCreated?: (blueprintId: string) => void;
   onQuickPrompt?: (prompt: string) => void;
   onOpenFolder?: () => void;
-  /** AI 应用列表 */
-  apps?: AppItem[];
-  /** 选择应用回调 */
-  onAppSelect?: (app: AppItem) => void;
-  /** 创建新应用回调 */
-  onCreateApp?: () => void;
 }
 
 interface QuickTemplate {
@@ -248,7 +234,7 @@ const EMPTY_TEMPLATES: QuickTemplate[] = [
 
 const COMMAND_WALL_DISMISSED_KEY = 'axon-command-wall-dismissed';
 
-export function WelcomeScreen({ onBlueprintCreated: _onBlueprintCreated, onQuickPrompt, onOpenFolder, apps = [], onAppSelect, onCreateApp }: WelcomeScreenProps) {
+export function WelcomeScreen({ onBlueprintCreated: _onBlueprintCreated, onQuickPrompt, onOpenFolder }: WelcomeScreenProps) {
   const { state: projectState } = useProject();
   const { t, locale } = useLanguage();
   const isZh = locale === 'zh';
@@ -259,8 +245,6 @@ export function WelcomeScreen({ onBlueprintCreated: _onBlueprintCreated, onQuick
   const hasProject = !!projectState.currentProject;
   const isEmptyProject = hasProject && projectState.currentProject?.isEmpty === true;
   const hasBlueprint = projectState.currentProject?.hasBlueprint === true;
-  const activeApps = apps.filter(a => a.status === 'ready');
-  const hasApps = activeApps.length > 0;
 
   const handlePromptClick = (prompt: string) => {
     onQuickPrompt?.(prompt);
@@ -277,44 +261,14 @@ export function WelcomeScreen({ onBlueprintCreated: _onBlueprintCreated, onQuick
       <h2 className="welcome-title">Axon</h2>
       <span className="welcome-version">v{__APP_VERSION__}</span>
 
-      {/* 有应用时：显示应用卡片横向滚动 */}
-      {hasApps && (
-        <div className="welcome-apps-section">
-          <h3 className="welcome-apps-title">{t('welcome.apps.myApps')}</h3>
-          <div className="welcome-apps-scroll">
-            {activeApps.map(app => (
-              <button
-                key={app.id}
-                className="welcome-app-card"
-                onClick={() => onAppSelect?.(app)}
-              >
-                <span className="welcome-app-icon">{app.icon}</span>
-                <span className="welcome-app-name">{app.name}</span>
-                <span className="welcome-app-open">{t('welcome.apps.open')}</span>
-              </button>
-            ))}
-            {/* 末尾：创建新应用卡片 */}
-            <button className="welcome-app-card welcome-app-card-create" onClick={onCreateApp}>
-              <span className="welcome-app-icon">✨</span>
-              <span className="welcome-app-name">{t('projectSelector.createApp')}</span>
-            </button>
-          </div>
-        </div>
-      )}
-
       {!hasProject ? (
         <>
           <p className="welcome-subtitle">
             {t('welcome.noProject.subtitle')}
           </p>
 
-          {/* 两个入口并排：创建应用 + 打开文件夹 */}
+          {/* 打开文件夹 */}
           <div className="welcome-dual-actions">
-            <button className="welcome-action-btn welcome-action-create" onClick={onCreateApp}>
-              <span className="welcome-action-icon">✨</span>
-              <span className="welcome-action-text">{t('welcome.apps.createFirst')}</span>
-              <span className="welcome-action-desc">{t('welcome.apps.createFirstDesc')}</span>
-            </button>
             <button className="welcome-action-btn welcome-action-folder" onClick={onOpenFolder}>
               <span className="welcome-action-icon">
                 <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">

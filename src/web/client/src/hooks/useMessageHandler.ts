@@ -530,15 +530,7 @@ export function useMessageHandler({
               }
             } else {
               // 用户主动创建的会话：正常切换
-              const isNewIndependentSession = tags?.includes('app-factory');
               sessionIdRef.current = payload.sessionId as string;
-              if (isNewIndependentSession) {
-                // app-factory 等场景创建的全新独立会话：清空旧消息
-                // 如果不清空，旧会话的消息会残留在界面上，新消息追加在后面
-                // 造成"在旧会话下对话了"的视觉错误
-                setMessages([]);
-                currentMessageRef.current = null;
-              }
               // 不在此处调用 refreshSessions()：
               // 让 useSessionManager 的乐观插入先展示，避免刷新时数据不一致。
               // 列表刷新由 message_complete 事件负责。

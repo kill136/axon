@@ -219,16 +219,17 @@ export class MemorySearchManager {
   /**
    * 自动回忆（autoRecall）
    * 根据查询从长期记忆中检索相关片段，格式化为可注入 system prompt 的文本
+   * 使用混合搜索（向量 + FTS5），无 embedding 时自动降级到纯 FTS5
    * @param query 查询文本（通常是用户的最新消息）
    * @param maxResults 最大结果数（默认 5，避免占用太多 prompt 空间）
    */
-  recall(query: string, maxResults: number = 5): string | null {
+  async recall(query: string, maxResults: number = 5): Promise<string | null> {
     if (!query || query.trim().length < 3) return null;
 
-    const results = this.search(query, { maxResults });
+    const results = await this.hybridSearch(query, { maxResults });
     if (results.length === 0) return null;
 
-    // 过滤低分结果（BM25 + 时间衰减后 score < 0.1 的没有参考价值）
+    // 过滤低分结果（混合搜索 + 时间衰减后 score < 0.1 的没有参考价值）
     const relevant = results.filter(r => r.score > 0.1);
     if (relevant.length === 0) return null;
 

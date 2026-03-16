@@ -1685,4 +1685,104 @@ router.get('/download', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * POST /api/files/browse - 浏览目录（用于目录选择器）
+ * Body: { path?: string }
+ * - 不传 path 或传空：Windows 返回磁盘驱动器列表，Unix 返回 / 下的目录
+ * - 传 path：返回该目录下的子目录列表
+ * 
+ * Response: { current: string, parent: string | null, dirs: Array<{ name: string, path: string }> }
+ */
+router.post('/browse', async (req: Request, res: Response) => {
+  try {
+    const requestedPath = (req.body?.path as string)?.trim() || '';
+
+    // 没有传路径 → 返回根级别
+    if (!requestedPath) {
+      if (process.platform === 'win32') {
+        // Windows: 列出可用磁盘驱动器
+        try {
+          const { stdout } = await execPromise('wmic logicaldisk get name', { timeout: 5000 });
+          const drives = stdout
+            .split('\n')
+            .map(line => line.trim())
+            .filter(line => /^[A-Z]:$/.test(line))
+            .map(drive => ({
+              name: drive + '\\',
+              path: drive + '\\',
+            }));
+          res.json({ current: '', parent: null, dirs: drives });
+        } catch {
+          // wmic 不可用时的备用方案
+          const drives = [];
+          for (const letter of 'CDEFGHIJKLMNOPQRSTUVWXYZ') {
+            try {
+              await fs.access(`${letter}:\\`);
+              drives.push({ name: `${letter}:\\`, path: `${letter}:\\` });
+            } catch { /* drive not available */ }
+          }
+          res.json({ current: '', parent: null, dirs: drives });
+        }
+      } else {
+        // Unix: 从 / 开始
+        const entries = await fs.readdir('/', { withFileTypes: true });
+        const dirs = entries
+          .filter(e => e.isDirectory())
+          .map(e => ({ name: e.name, path: '/' + e.name }))
+          .sort((a, b) => a.name.localeCompare(b.name));
+        res.json({ current: '/', parent: null, dirs });
+      }
+      return;
+    }
+
+    // 有路径 → 读取子目录
+    const normalized = path.resolve(requestedPath);
+
+    // 安全检查
+    if (normalized.includes('..')) {
+      res.status(400).json({ error: 'Invalid path' });
+      return;
+    }
+
+    // 确认路径存在且是目录
+    try {
+      const stat = await fs.stat(normalized);
+      if (!stat.isDirectory()) {
+        res.status(400).json({ error: 'Not a directory' });
+        return;
+      }
+    } catch {
+      res.status(404).json({ error: 'Directory not found' });
+      return;
+    }
+
+    // 计算父目录
+    const parentDir = path.dirname(normalized);
+    const hasParent = parentDir !== normalized; // 根目录的 dirname === 自己
+
+    // 读取子目录
+    const entries = await fs.readdir(normalized, { withFileTypes: true });
+    const dirs = entries
+      .filter(e => {
+        try {
+          return e.isDirectory() && !e.name.startsWith('.');
+        } catch { return false; }
+      })
+      .map(e => ({
+        name: e.name,
+        path: path.join(normalized, e.name),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    res.json({
+      current: normalized,
+      parent: hasParent ? parentDir : null,
+      dirs,
+    });
+  } catch (error: any) {
+    console.error('[File API] Browse directory error:', error);
+    res.status(500).json({ error: error.message || 'Failed to browse directory' });
+  }
+});
+
 export default router;
