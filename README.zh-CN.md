@@ -2,13 +2,12 @@
 
 # Axon
 
-### 开源 AI 编程助手，支持 Web IDE、多智能体协作、自我进化
+### AI 编程助手，支持 Web IDE、多智能体协作、自我进化
 
 **任意模型。插件扩展。让 AI 帮你搭建整个项目。**
 
 [![npm](https://img.shields.io/npm/v/axon?style=flat-square&color=CB3837)](https://www.npmjs.com/package/axon)
-[![GitHub Stars](https://img.shields.io/github/stars/kill136/axon?style=flat-square)](https://github.com/kill136/axon)
-[![License](https://img.shields.io/badge/License-AGPL--3.0-blue?style=flat-square)](LICENSE)
+[![License](https://img.shields.io/badge/License-Proprietary-blue?style=flat-square)](LICENSE)
 [![Node](https://img.shields.io/badge/Node.js-%3E%3D18.0.0-brightgreen?style=flat-square)](https://nodejs.org)
 [![Discord](https://img.shields.io/discord/1454020463486566432?style=flat-square&label=Discord&color=5865F2)](https://discord.gg/bNyJKk6PVZ)
 
@@ -24,7 +23,7 @@
 
 ---
 
-Axon 是一个免费、开源的 AI 编程助手，内置 Web IDE、多智能体任务系统和自我进化能力。你拥有完全的控制权 —— 自由选择 AI 服务商，通过插件和 MCP 服务器扩展功能，甚至可以让 AI 修改它自己的源代码。
+Axon 是一个免费的 AI 编程助手，内置 Web IDE、多智能体任务系统和自我进化能力。你拥有完全的控制权 —— 自由选择 AI 服务商，通过插件和 MCP 服务器扩展功能，甚至可以让 AI 修改它自己的源代码。
 
 ## 快速开始
 
@@ -80,18 +79,6 @@ docker run -it \
   -v $(pwd):/workspace \
   -v ~/.axon:/root/.axon \
   wbj66/axon
-```
-</details>
-
-<details>
-<summary>从源码构建</summary>
-
-```bash
-git clone https://github.com/kill136/axon.git
-cd axon
-npm install && npm run build
-node dist/cli.js        # 终端
-node dist/web-cli.js    # Web IDE
 ```
 </details>
 
@@ -278,7 +265,7 @@ axon-web --evolve             # 自我进化模式
 
 ## 赞助
 
-Axon 免费开源，赞助帮助我们持续开发。[查看赞助层级 →](SPONSORS.md)
+Axon 免费使用，赞助帮助我们持续开发。[查看赞助层级 →](SPONSORS.md)
 
 ### 创始赞助者
 
@@ -286,7 +273,6 @@ Axon 免费开源，赞助帮助我们持续开发。[查看赞助层级 →](SP
 
 *你的名字/Logo 也可以出现在这里 — [成为赞助者](SPONSORS.md)*
 
-<a href="https://github.com/sponsors/kill136"><img src="https://img.shields.io/badge/GitHub-Sponsors-EA4AAA?style=for-the-badge&logo=githubsponsors" alt="GitHub Sponsors"></a>
 <a href="https://paypal.me/wangbingjie20"><img src="https://img.shields.io/badge/PayPal-赞助-00457C?style=for-the-badge&logo=paypal" alt="PayPal"></a>
 
 <p>
@@ -296,9 +282,6 @@ Axon 免费开源，赞助帮助我们持续开发。[查看赞助层级 →](SP
 
 ## 许可证
 
-Axon 采用双授权模式：
-
-- **开源版** — [AGPL-3.0](LICENSE)。个人使用、学术研究、开源项目免费。如果你修改了 Axon 或基于 Axon 提供网络服务，必须以 AGPL-3.0 开源你的完整代码。
-- **商业版** — 闭源使用、SaaS 部署、或任何无法遵守 AGPL 条款的场景，需要购买商业授权。详见 [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md)，或联系 **kill.136@163.com**。
+Axon 为专有软件，个人使用免费。商业或企业用途请联系 **kill.136@163.com**。
 
 [English README](README.md)

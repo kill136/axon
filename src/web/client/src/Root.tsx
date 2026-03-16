@@ -3,15 +3,15 @@ import App from './App';
 import SwarmConsole from './pages/SwarmConsole/index.tsx';
 import BlueprintPage from './pages/BlueprintPage';
 import CustomizePage from './pages/CustomizePage';
-import AppsPage, { type UserApp } from './pages/AppsPage';
+import AppsPage from './pages/AppsPage';
 import TopNavBar from './components/swarm/TopNavBar';
 import { SessionSearchModal } from './components/SessionSearchModal/SessionSearchModal';
 import { AuthDialog } from './components/AuthDialog';
+import { CreateAppDialog } from './components/CreateAppDialog';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { SetupWizard, useSetupWizard } from './components/SetupWizard';
 import { ProjectProvider, useProject } from './contexts/ProjectContext';
 import { LanguageProvider } from './i18n';
-import { CreateAppDialog } from './components/CreateAppDialog';
 import type { Session, SessionActions } from './types';
 
 type Page = 'chat' | 'code' | 'swarm' | 'blueprint' | 'customize' | 'apps';
@@ -61,82 +61,6 @@ function RootContent() {
 
   // 项目上下文
   const { state: projectState, switchProject, openFolder, removeProject } = useProject();
-  // ===== AI 应用管理 =====
-  const [apps, setApps] = useState<UserApp[]>([]);
-  const [showCreateApp, setShowCreateApp] = useState(false);
-
-  const fetchApps = useCallback(async () => {
-    try {
-      const res = await fetch('/api/apps');
-      if (res.ok) {
-        const data = await res.json();
-        if (data.apps) setApps(data.apps);
-      }
-    } catch { /* 忽略 */ }
-  }, []);
-
-  // 初始化加载 + 定时刷新
-  useEffect(() => {
-    fetchApps();
-    const interval = setInterval(fetchApps, 10000);
-    return () => clearInterval(interval);
-  }, [fetchApps]);
-
-  // 监听 ws 消息中的 app_created 事件来刷新，并自动切换项目
-  useEffect(() => {
-    const unsub = messagingRef.current.addMessageHandler((msg: any) => {
-      if (msg.type === 'app_created') {
-        fetchApps();
-        // 自动切换 ProjectContext 到新应用的工作目录
-        const appData = msg.payload?.app;
-        if (appData?.workingDirectory) {
-          const newProject = {
-            id: appData.workingDirectory,
-            name: appData.name || 'New App',
-            path: appData.workingDirectory,
-            icon: appData.icon || '✨',
-          };
-          switchProject(newProject).catch(() => {
-            // 切换失败不阻塞流程
-          });
-        }
-      }
-    });
-    return unsub;
-  }, [fetchApps, switchProject]);
-
-  // 创建应用回调
-  const handleCreateApp = useCallback(() => {
-    setShowCreateApp(true);
-  }, []);
-
-  // 创建应用提交
-  const handleCreateAppSubmit = useCallback((description: string, workingDirectory: string) => {
-    setShowCreateApp(false);
-    messagingRef.current.send({
-      type: 'app_create',
-      payload: { name: description.slice(0, 30), description, workingDirectory },
-    });
-    // 切换到 chat 页面看创建过程
-    setCurrentPage('chat');
-  }, []);
-
-  // 选择应用 — 切换到该应用的 session
-  const handleAppSelect = useCallback((app: any) => {
-    if (app.sessionId) {
-      sessionActionsRef.current.selectSession(app.sessionId);
-    }
-    setCurrentPage('chat');
-  }, []);
-
-  // 简化的 AppItem 类型给 ProjectSelector 用
-  const appItems = apps.map(a => ({
-    id: a.id,
-    name: a.name,
-    icon: a.icon,
-    status: a.status,
-    sessionId: a.sessionId,
-  }));
 
   const handlePageChange = (page: Page) => {
     setCurrentPage(page);
@@ -199,6 +123,26 @@ function RootContent() {
     }
   }, [openFolder]);
 
+  // AI 帮我做
+  const [showCreateApp, setShowCreateApp] = useState(false);
+
+  const handleCreateAppSubmit = useCallback((description: string, workingDirectory: string) => {
+    setShowCreateApp(false);
+    // 1. 切换项目目录
+    messagingRef.current.send({ type: 'set_project_path', payload: { projectPath: workingDirectory } });
+    // 2. 新建会话
+    messagingRef.current.send({ type: 'session_new', payload: { projectPath: workingDirectory } });
+    // 3. 切换到聊天页
+    setCurrentPage('chat');
+    // 4. 稍等一下让会话创建完成，再发送消息
+    setTimeout(() => {
+      messagingRef.current.send({
+        type: 'chat',
+        payload: { content: description, projectPath: workingDirectory },
+      });
+    }, 500);
+  }, []);
+
   const handleProjectRemove = useCallback(async (project: any) => {
     try {
       await removeProject(project.id);
@@ -232,10 +176,7 @@ function RootContent() {
         authRefreshKey={authRefreshKey}
         // 项目
         onOpenFolder={handleOpenFolder}
-        // 应用
-        apps={appItems}
-        onAppSelect={handleAppSelect}
-        onCreateApp={handleCreateApp}
+        onCreateApp={() => setShowCreateApp(true)}
         // 会话
         sessions={sessions}
         currentSessionId={currentSessionId}
@@ -265,9 +206,6 @@ function RootContent() {
               onConnectedChange={setConnected}
               registerSessionActions={handleRegisterSessionActions}
               registerMessaging={handleRegisterMessaging}
-              apps={appItems}
-              onAppSelect={handleAppSelect}
-              onCreateApp={handleCreateApp}
             />
           </ErrorBoundary>
         </div>
@@ -297,10 +235,10 @@ function RootContent() {
         <div style={pageStyle('apps')}>
           <ErrorBoundary name="Apps">
             <AppsPage
-              apps={apps}
-              onRefresh={fetchApps}
-              onAppSelect={handleAppSelect}
-              onCreateApp={handleCreateApp}
+              onNavigateToSession={(sessionId) => {
+                sessionActionsRef.current.selectSession(sessionId);
+                setCurrentPage('chat');
+              }}
             />
           </ErrorBoundary>
         </div>
@@ -323,12 +261,12 @@ function RootContent() {
         onClose={() => setShowAuthDialog(false)}
         onSuccess={() => setAuthRefreshKey(prev => prev + 1)}
       />
-      {needSetup && <SetupWizard onComplete={completeSetup} />}
       <CreateAppDialog
         isOpen={showCreateApp}
         onClose={() => setShowCreateApp(false)}
         onSubmit={handleCreateAppSubmit}
       />
+      {needSetup && <SetupWizard onComplete={completeSetup} />}
     </div>
   );
 }

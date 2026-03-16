@@ -1,280 +1,301 @@
 /**
- * AI 应用工厂 — 运行中应用仪表盘
+ * 活动页 — Activity Page
  *
- * 展示所有应用的运行状态、预览入口、发布链接。
- * 创建入口在 ProjectSelector 和 WelcomeScreen 中。
+ * 按会话分段展示的文件操作活动日志
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLanguage } from '../../i18n';
 import './AppsPage.css';
 
-// ============ 类型 ============
+// ============ 类型（对应后端响应） ============
 
-export interface UserApp {
-  id: string;
-  name: string;
-  description: string;
-  createdAt: string;
-  updatedAt: string;
-  icon: string;
-  status: 'creating' | 'ready' | 'error';
-  errorMessage?: string;
+interface ArtifactFile {
+  filePath: string;
+  ops: number;
+  toolNames: string[];
+  added: number;
+  removed: number;
+  latestTimestamp: number;
+  contentPreview?: string;
+}
+
+interface ArtifactSession {
   sessionId: string;
-  workingDirectory: string;
-  previewUrl: string;
-  publish?: {
-    surgeUrl?: string;
-    tunnelUrl?: string;
-    publishedAt: string;
+  sessionName: string;
+  latestTimestamp: number;
+  files: ArtifactFile[];
+}
+
+interface ArtifactsResponse {
+  sessions: ArtifactSession[];
+  stats: {
+    totalFiles: number;
+    totalEdits: number;
+    totalWrites: number;
+    sessionCount: number;
   };
 }
 
+type FilterType = 'all' | 'edit' | 'write';
+
 interface AppsPageProps {
-  /** 当前 WebSocket 连接的 send 方法 */
-  wsSend?: (msg: any) => void;
-  /** 注册 WebSocket 消息处理器，返回取消注册函数 */
-  addMessageHandler?: (handler: (msg: any) => void) => () => void;
-  /** 应用列表（由父组件管理） */
-  apps?: UserApp[];
-  /** 刷新应用列表回调 */
-  onRefresh?: () => void;
-  /** 选中应用回调（跳转到对应 session） */
-  onAppSelect?: (app: UserApp) => void;
-  /** 创建应用回调 */
-  onCreateApp?: () => void;
+  onNavigateToSession?: (sessionId: string) => void;
 }
 
 // ============ 工具函数 ============
 
-function timeAgo(dateStr: string, t: (key: string, params?: Record<string, string | number>) => string): string {
-  const now = Date.now();
-  const then = new Date(dateStr).getTime();
-  const diff = now - then;
-
-  const minute = 60 * 1000;
-  const hour = 60 * minute;
-  const day = 24 * hour;
-
-  if (diff < minute) return t('time.justNow');
-  if (diff < hour) return t('time.minutesAgo', { count: Math.floor(diff / minute) });
-  if (diff < day) return t('time.hoursAgo', { count: Math.floor(diff / hour) });
-  return t('time.daysAgo', { count: Math.floor(diff / day) });
+function formatTime(ts: number): string {
+  return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-// ============ 组件 ============
+function formatDate(ts: number): string {
+  const d = new Date(ts);
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) return 'Today';
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
 
-export default function AppsPage({ apps: propApps, onRefresh, onAppSelect, onCreateApp }: AppsPageProps) {
-  const { t } = useLanguage();
-  const [apps, setApps] = useState<UserApp[]>(propApps || []);
-  const [selectedApp, setSelectedApp] = useState<UserApp | null>(null);
-  const [publishing, setPublishing] = useState(false);
-  const [publishResult, setPublishResult] = useState<string | null>(null);
+function splitPath(filePath: string): { dir: string; name: string } {
+  const normalized = filePath.replace(/\\/g, '/');
+  const lastSlash = normalized.lastIndexOf('/');
+  if (lastSlash === -1) return { dir: '', name: normalized };
+  return { dir: normalized.slice(0, lastSlash + 1), name: normalized.slice(lastSlash + 1) };
+}
 
-  // 从 prop 同步
-  useEffect(() => {
-    if (propApps) setApps(propApps);
-  }, [propApps]);
+function toolBadgeClass(toolNames: string[]): string {
+  if (toolNames.includes('Write') && toolNames.length === 1) return 'write';
+  if (toolNames.every(t => t === 'Edit' || t === 'MultiEdit')) return 'edit';
+  return 'mixed';
+}
 
-  // 如果没有传 apps prop，自己 fetch
-  const fetchApps = useCallback(async () => {
-    try {
-      const res = await fetch('/api/apps');
-      if (res.ok) {
-        const data = await res.json();
-        if (data.apps) setApps(data.apps);
-      }
-    } catch { /* 忽略 */ }
-  }, []);
-
-  useEffect(() => {
-    if (!propApps) fetchApps();
-  }, [propApps, fetchApps]);
-
-  const handleRefresh = () => {
-    if (onRefresh) onRefresh();
-    else fetchApps();
-  };
-
-  const handlePublish = async (appId: string, method: 'surge' | 'tunnel') => {
-    setPublishing(true);
-    setPublishResult(null);
-    try {
-      const res = await fetch(`/api/apps/${appId}/publish`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ method }),
-      });
-      const data = await res.json();
-      if (data.url) {
-        setPublishResult(data.url);
-        handleRefresh();
-      }
-    } catch { /* 忽略 */ } finally {
-      setPublishing(false);
+function toolBadgeLabel(toolNames: string[]): string {
+  if (toolNames.length === 1) {
+    switch (toolNames[0]) {
+      case 'Write': return 'W';
+      case 'Edit': return 'E';
+      case 'MultiEdit': return 'M';
     }
-  };
+  }
+  return 'M';
+}
 
-  const handleDelete = async (appId: string) => {
+function groupSessionsByDate(sessions: ArtifactSession[]): Map<string, ArtifactSession[]> {
+  const groups = new Map<string, ArtifactSession[]>();
+  for (const s of sessions) {
+    const key = formatDate(s.latestTimestamp);
+    const list = groups.get(key) || [];
+    list.push(s);
+    groups.set(key, list);
+  }
+  return groups;
+}
+
+// ============ 主组件 ============
+
+export default function AppsPage({ onNavigateToSession }: AppsPageProps) {
+  const { t } = useLanguage();
+  const [data, setData] = useState<ArtifactsResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [filterType, setFilterType] = useState<FilterType>('all');
+  const [expandedSessions, setExpandedSessions] = useState<Set<string>>(new Set());
+
+  const fetchArtifacts = useCallback(async () => {
     try {
-      await fetch(`/api/apps/${appId}`, { method: 'DELETE' });
-      setSelectedApp(null);
-      handleRefresh();
-    } catch { /* 忽略 */ }
+      setLoading(true);
+      setError(null);
+      const params = new URLSearchParams();
+      if (search) params.set('search', search);
+      if (filterType !== 'all') params.set('type', filterType);
+      params.set('sessionLimit', '20');
+
+      const res = await fetch(`/api/artifacts?${params}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json: ArtifactsResponse = await res.json();
+      setData(json);
+
+      if (json.sessions.length > 0) {
+        setExpandedSessions(new Set(json.sessions.slice(0, 3).map(s => s.sessionId)));
+      }
+    } catch (e: any) {
+      setError(e.message || 'Failed to load');
+    } finally {
+      setLoading(false);
+    }
+  }, [search, filterType]);
+
+  useEffect(() => {
+    fetchArtifacts();
+  }, [fetchArtifacts]);
+
+  const [searchInput, setSearchInput] = useState('');
+  useEffect(() => {
+    const timer = setTimeout(() => setSearch(searchInput), 300);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
+  const toggleSession = (sessionId: string) => {
+    setExpandedSessions(prev => {
+      const next = new Set(prev);
+      if (next.has(sessionId)) next.delete(sessionId);
+      else next.add(sessionId);
+      return next;
+    });
   };
 
-  // 统计
-  const readyCount = apps.filter(a => a.status === 'ready').length;
-  const creatingCount = apps.filter(a => a.status === 'creating').length;
-  const errorCount = apps.filter(a => a.status === 'error').length;
+  const stats = data?.stats;
+  const sessions = data?.sessions || [];
+  const dateGroups = useMemo(() => groupSessionsByDate(sessions), [sessions]);
 
   return (
-    <div className="apps-page">
-      {/* 头部统计 */}
-      <div className="apps-header">
-        <h1>
-          <span>📱</span> {t('apps.title') || '我的作品'}
-        </h1>
-        <div className="apps-stats">
-          {readyCount > 0 && <span className="apps-stat apps-stat-ready">🟢 {readyCount}</span>}
-          {creatingCount > 0 && <span className="apps-stat apps-stat-creating">🟡 {creatingCount}</span>}
-          {errorCount > 0 && <span className="apps-stat apps-stat-error">🔴 {errorCount}</span>}
+    <div className="artifacts-gallery">
+      {/* 活动日志头部 */}
+      <div className="ag-header">
+        <div className="ag-title-section">
+          <h3 className="ag-title">{t('apps.activityTitle')}</h3>
+          {stats && (stats.totalFiles > 0 || stats.totalEdits > 0) && (
+            <div className="ag-subtitle">
+              {t('apps.subtitle', {
+                files: stats.totalFiles,
+                edits: stats.totalEdits + stats.totalWrites,
+                sessions: stats.sessionCount,
+              })}
+            </div>
+          )}
+        </div>
+
+        <input
+          className="ag-search"
+          type="text"
+          placeholder={t('apps.search')}
+          value={searchInput}
+          onChange={e => setSearchInput(e.target.value)}
+        />
+
+        <div className="ag-filters">
+          {(['all', 'edit', 'write'] as FilterType[]).map(f => (
+            <button
+              key={f}
+              className={`ag-filter-btn ${filterType === f ? 'active' : ''}`}
+              onClick={() => setFilterType(f)}
+            >
+              {f === 'all' ? t('apps.filterAll') : f === 'edit' ? t('apps.filterEdit') : t('apps.filterWrite')}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* 详情视图 */}
-      {selectedApp ? (
-        <div className="apps-detail">
-          <div className="apps-detail-header">
-            <button className="apps-back-btn" onClick={() => { setSelectedApp(null); setPublishResult(null); }}>
-              ← {t('apps.back') || '返回'}
-            </button>
-            <div className="apps-detail-title">
-              <span className="apps-detail-icon">{selectedApp.icon}</span>
-              <span>{selectedApp.name}</span>
-            </div>
-            <div className="apps-detail-actions">
-              {selectedApp.status === 'ready' && (
-                <button className="apps-chat-btn" onClick={() => onAppSelect?.(selectedApp)}>
-                  💬 {t('apps.chat') || '对话'}
-                </button>
-              )}
-              <button className="apps-delete-btn" onClick={() => handleDelete(selectedApp.id)}>
-                {t('apps.delete') || '删除'}
-              </button>
-            </div>
+      {/* 活动日志内容 */}
+      <div className="ag-body">
+        {loading && (
+          <div className="ag-loading">
+            <div className="ag-loading-spinner" />
+            <span>{t('apps.loading')}</span>
           </div>
+        )}
 
-          <div className="apps-detail-body">
-            {/* 预览 */}
-            <div className="apps-detail-preview">
-              {selectedApp.status === 'ready' ? (
-                <iframe
-                  src={selectedApp.previewUrl}
-                  title={selectedApp.name}
-                  className="apps-preview-iframe"
-                  sandbox="allow-scripts allow-forms allow-same-origin allow-popups"
-                />
-              ) : selectedApp.status === 'creating' ? (
-                <div className="apps-preview-placeholder">
-                  <span className="apps-preview-spinner">⏳</span>
-                  <p>{t('apps.creating') || '创建中...'}</p>
-                </div>
-              ) : (
-                <div className="apps-preview-placeholder apps-preview-error">
-                  <span>❌</span>
-                  <p>{selectedApp.errorMessage || (t('apps.statusError') || '异常')}</p>
-                </div>
-              )}
-            </div>
-
-            {/* 发布面板 */}
-            {selectedApp.status === 'ready' && (
-              <div className="apps-detail-publish">
-                <h3>{t('apps.publish') || '发布到公网'}</h3>
-
-                {selectedApp.publish?.surgeUrl && (
-                  <div className="publish-result">
-                    <p>🌐 Surge: <a href={selectedApp.publish.surgeUrl} target="_blank" rel="noreferrer">{selectedApp.publish.surgeUrl}</a></p>
-                  </div>
-                )}
-                {selectedApp.publish?.tunnelUrl && (
-                  <div className="publish-result">
-                    <p>🔗 Tunnel: <a href={selectedApp.publish.tunnelUrl} target="_blank" rel="noreferrer">{selectedApp.publish.tunnelUrl}</a></p>
-                  </div>
-                )}
-
-                {publishResult && (
-                  <div className="publish-result">
-                    <p>✅ <a href={publishResult} target="_blank" rel="noreferrer">{publishResult}</a></p>
-                  </div>
-                )}
-
-                {!publishing && (
-                  <div className="publish-options">
-                    <button className="publish-option" onClick={() => handlePublish(selectedApp.id, 'surge')}>
-                      <div className="publish-option-title">🚀 Surge.sh</div>
-                      <div className="publish-option-desc">{t('apps.publishSurgeDesc') || '永久链接，需要 surge CLI'}</div>
-                    </button>
-                    <button className="publish-option" onClick={() => handlePublish(selectedApp.id, 'tunnel')}>
-                      <div className="publish-option-title">🔗 Cloudflare Tunnel</div>
-                      <div className="publish-option-desc">{t('apps.publishTunnelDesc') || '临时链接，无需安装'}</div>
-                    </button>
-                  </div>
-                )}
-                {publishing && <p className="apps-publishing">{t('apps.publishing') || '发布中...'}</p>}
-              </div>
-            )}
+        {error && !loading && (
+          <div className="ag-empty">
+            <div className="ag-empty-icon">{'\u26A0'}</div>
+            <p>{error}</p>
           </div>
-        </div>
-      ) : (
-        /* 应用网格 */
-        <>
-          {apps.length === 0 ? (
-            <div className="apps-empty">
-              <div className="apps-empty-icon">📱</div>
-              <h2>{t('apps.emptyTitle') || 'AI 帮你做'}</h2>
-              <p>{t('apps.emptyDesc') || '描述你想做的东西，AI 帮你生成'}</p>
-              <button className="apps-create-btn" onClick={onCreateApp}>
-                ✨ {t('projectSelector.createApp') || 'AI 帮我做'}
-              </button>
-            </div>
-          ) : (
-            <div className="apps-grid">
-              {apps.map(app => (
-                <div
-                  key={app.id}
-                  className={`app-card app-card-${app.status}`}
-                  onClick={() => setSelectedApp(app)}
-                >
-                  <div className="app-card-icon">{app.icon}</div>
-                  <div className="app-card-info">
-                    <div className="app-card-name">{app.name}</div>
-                    <div className="app-card-desc">{app.description}</div>
-                  </div>
-                  <div className="app-card-footer">
-                    <span className={`app-card-status status-${app.status}`}>
-                      {app.status === 'ready' ? '🟢' : app.status === 'creating' ? '🟡' : '🔴'}
-                      {' '}
-                      {app.status === 'ready'
-                        ? (t('apps.statusReady') || '可用')
-                        : app.status === 'creating'
-                          ? (t('apps.statusCreating') || '创建中')
-                          : (t('apps.statusError') || '异常')}
-                    </span>
-                    <span className="app-card-time">{timeAgo(app.updatedAt, t)}</span>
-                  </div>
-                  {app.publish?.surgeUrl && (
-                    <div className="app-card-published">
-                      🌐 {t('apps.published') || '已发布'}
+        )}
+
+        {!loading && !error && sessions.length === 0 && (
+          <div className="ag-empty">
+            <div className="ag-empty-icon">{'\uD83D\uDCC4'}</div>
+            <h2>{search ? t('apps.noResults') : t('apps.empty')}</h2>
+            <p>{search ? '' : t('apps.emptyDesc')}</p>
+          </div>
+        )}
+
+        {!loading && !error && sessions.length > 0 && (
+          <div className="ag-timeline">
+            {Array.from(dateGroups.entries()).map(([date, dateSessions]) => (
+              <div key={date}>
+                <div className="ag-date-sep">
+                  <div className="ag-date-sep-line" />
+                  <span className="ag-date-sep-label">{date}</span>
+                  <div className="ag-date-sep-line" />
+                </div>
+
+                {dateSessions.map(session => {
+                  const isExpanded = expandedSessions.has(session.sessionId);
+                  const totalOps = session.files.reduce((sum, f) => sum + f.ops, 0);
+
+                  return (
+                    <div key={session.sessionId} className="ag-session-block">
+                      <div
+                        className="ag-session-header"
+                        onClick={() => toggleSession(session.sessionId)}
+                      >
+                        <span className="ag-expand-icon">{isExpanded ? '\u25BE' : '\u25B8'}</span>
+                        <span className="ag-session-name" title={session.sessionName}>
+                          {session.sessionName.length > 40
+                            ? session.sessionName.slice(0, 40) + '...'
+                            : session.sessionName}
+                        </span>
+                        <span className="ag-session-meta">
+                          {session.files.length} {t('apps.filesCount')} · {totalOps} {t('apps.opsCount')}
+                        </span>
+                        <span className="ag-session-time">{formatTime(session.latestTimestamp)}</span>
+                        <button
+                          className="ag-session-link"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onNavigateToSession?.(session.sessionId);
+                          }}
+                          title={t('apps.jumpToSession')}
+                        >
+                          {t('apps.jumpToSession')}
+                        </button>
+                      </div>
+
+                      {isExpanded && (
+                        <div className="ag-session-files">
+                          {session.files.map(file => {
+                            const { dir, name } = splitPath(file.filePath);
+                            return (
+                              <div key={file.filePath} className="ag-file-row">
+                                <span className={`ag-tool-badge ${toolBadgeClass(file.toolNames)}`}>
+                                  {toolBadgeLabel(file.toolNames)}
+                                </span>
+                                <span className="ag-file-path">
+                                  {dir && <span className="ag-dir">{dir}</span>}
+                                  <span className="ag-filename">{name}</span>
+                                </span>
+                                {file.ops > 1 && (
+                                  <span className="ag-ops-count">
+                                    {t('apps.opsDetail', { count: file.ops })}
+                                  </span>
+                                )}
+                                {(file.added > 0 || file.removed > 0) && (
+                                  <span className="ag-change-stats">
+                                    {file.added > 0 && <span className="ag-change-added">+{file.added}</span>}
+                                    {file.removed > 0 && <span className="ag-change-removed">-{file.removed}</span>}
+                                  </span>
+                                )}
+                                {file.ops === 1 && file.toolNames[0] === 'Write' && (
+                                  <span className="ag-action-label">{t('apps.wrote')}</span>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </>
-      )}
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

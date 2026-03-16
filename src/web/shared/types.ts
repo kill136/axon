@@ -286,10 +286,7 @@ export type ClientMessage =
   | { type: 'mode_presets_get' }
   | { type: 'mode_preset_save'; payload: { preset: ModePreset } }
   | { type: 'mode_preset_delete'; payload: { id: string } }
-  | { type: 'mode_preset_apply'; payload: { id: string } }
-  // 应用工厂
-  | { type: 'app_create'; payload: { name: string; description: string; workingDirectory: string } }
-  | { type: 'app_modify'; payload: { appId: string; content: string } };
+  | { type: 'mode_preset_apply'; payload: { id: string } };
 
 /**
  * 服务端发送的消息类型
@@ -483,9 +480,7 @@ export type ServerMessage =
   | { type: 'proxy:error'; payload: { error: string } }
   // 模式预设
   | { type: 'mode_presets_list'; payload: { presets: ModePreset[]; activeId: string } }
-  | { type: 'mode_preset_applied'; payload: { id: string; preset: ModePreset } }
-  // 应用工厂
-  | { type: 'app_created'; payload: { app: any; sessionId?: string } };
+  | { type: 'mode_preset_applied'; payload: { id: string; preset: ModePreset } };
 
 // ============ IM 通道状态类型 ============
 

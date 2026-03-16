@@ -125,7 +125,7 @@ const nav = {
   'terminal.newTerminal': 'New Terminal',
   'terminal.restartTerminal': 'Restart Terminal',
   'customize.network': 'Agent Network',
-  'nav.apps': 'Creations',
+  'nav.apps': 'Activity',
 } as const;
 
 export type NavKeys = keyof typeof nav;

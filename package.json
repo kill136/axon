@@ -126,7 +126,7 @@
     "url": "https://github.com/kill136/axon"
   },
   "author": "",
-  "license": "AGPL-3.0-only",
+  "license": "SEE LICENSE IN LICENSE",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.70.0",
     "@google/genai": "^1.38.0",

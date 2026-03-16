@@ -7,30 +7,15 @@ import styles from './ProjectSelector.module.css';
 export type { Project } from '../../../contexts/ProjectContext';
 
 /**
- * AI 作品信息（精简版，由父组件传入）
- */
-export interface AppItem {
-  id: string;
-  name: string;
-  icon: string;
-  status: 'creating' | 'ready' | 'error';
-  sessionId: string;
-}
-
-/**
  * ProjectSelector 组件属性
  */
 export interface ProjectSelectorProps {
-  /** 请求打开文件夹回调 */
+  /** 请求打开文件夹回调（现为"导入历史作品"） */
   onOpenFolder?: () => void;
+  /** 创建作品回调（AI 帮我做） */
+  onCreateApp?: () => void;
   /** 自定义类名 */
   className?: string;
-  /** AI 作品列表 */
-  apps?: AppItem[];
-  /** 点击作品回调 */
-  onAppSelect?: (app: AppItem) => void;
-  /** 创建新作品回调 */
-  onCreateApp?: () => void;
 }
 
 /**
@@ -40,17 +25,13 @@ export interface ProjectSelectorProps {
  */
 export default function ProjectSelector({
   onOpenFolder,
-  className = '',
-  apps = [],
-  onAppSelect,
   onCreateApp,
+  className = '',
 }: ProjectSelectorProps) {
   const { t } = useLanguage();
   const { state: { currentProject, recentProjects, loading }, switchProject, removeProject } = useProject();
   const [isOpen, setIsOpen] = useState(false);
   const selectorRef = useRef<HTMLDivElement>(null);
-
-  const activeApps = apps.filter(a => a.status === 'ready');
 
   const displayName = currentProject?.name || t('projectSelector.noProject');
   const displayIcon = currentProject?.icon || (currentProject ? '📁' : '✨');
@@ -101,7 +82,7 @@ export default function ProjectSelector({
       {isOpen && (
         <div className={styles.dropdown} role="listbox">
 
-          {/* 两个入口平级并排 */}
+          {/* AI 帮我做 + 导入历史作品 */}
           <div className={styles.actionRow}>
             <button className={styles.actionButton} onClick={() => { onCreateApp?.(); close(); }}>
               <span className={styles.actionIcon}>✨</span>
@@ -109,35 +90,11 @@ export default function ProjectSelector({
             </button>
             <button className={styles.actionButton} onClick={() => { onOpenFolder?.(); close(); }}>
               <span className={styles.actionIcon}>📂</span>
-              <span>{t('projectSelector.openFolder')}</span>
+              <span>{t('projectSelector.importWorks')}</span>
             </button>
           </div>
 
           <div className={styles.divider} />
-
-          {/* 进行中（活跃作品） */}
-          {activeApps.length > 0 && (
-            <>
-              <div className={styles.dropdownHeader}>{t('projectSelector.activeApps')}</div>
-              <div className={styles.appList}>
-                {activeApps.map(app => (
-                  <div
-                    key={app.id}
-                    className={styles.appItem}
-                    onClick={() => { onAppSelect?.(app); close(); }}
-                  >
-                    <span className={styles.appIcon}>{app.icon}</span>
-                    <span className={styles.appName}>{app.name}</span>
-                    <span className={styles.appStatus}>
-                      <span className={styles.statusDot} />
-                      {t('projectSelector.online')}
-                    </span>
-                  </div>
-                ))}
-              </div>
-              <div className={styles.divider} />
-            </>
-          )}
 
           {/* 最近打开 */}
           <div className={styles.dropdownHeader}>{t('projectSelector.recentProjects')}</div>

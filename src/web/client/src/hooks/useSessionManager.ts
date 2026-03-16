@@ -184,8 +184,12 @@ export function useSessionManager({
   useProjectChangeListener(
     useCallback(
       (project: Project | null, _blueprint: BlueprintInfo | null) => {
-        console.log('[App] Project switched, refreshing session list:', project?.path);
+        console.log('[App] Project switched, creating new session for:', project?.path);
         if (connected) {
+          // 切换项目时自动创建新会话，确保当前会话关联到新目录
+          setMessages([]);
+          send({ type: 'session_new', payload: { model, projectPath: project?.path } });
+          // 刷新会话列表（按新项目过滤）
           send({
             type: 'session_list',
             payload: {
@@ -197,7 +201,7 @@ export function useSessionManager({
           });
         }
       },
-      [connected, send]
+      [connected, send, model, setMessages]
     )
   );
 

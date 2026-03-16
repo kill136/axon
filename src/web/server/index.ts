@@ -245,20 +245,9 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
   const portForwardRouter = await import('./routes/port-forward.js');
   app.use('/proxy', portForwardRouter.default);
 
-  // ====== AI 应用工厂路由 ======
-  const { AppFactory } = await import('./app-factory.js');
-  const appFactory = new AppFactory();
-  app.locals.appFactory = appFactory;
-
-  // Apps API 路由
-  const appsApiRouter = await import('./routes/apps-api.js');
-  app.use('/api/apps', appsApiRouter.default);
-
-  // Apps 静态文件服务（serve 用户生成的应用）
-  app.use('/apps', express.static(appFactory.getAppsDir(), {
-    index: ['index.html'],
-    extensions: ['html'],
-  }));
+  // ====== Artifacts API 路由（产物画廊） ======
+  const artifactsApiRouter = await import('./routes/artifacts-api.js');
+  app.use('/api/artifacts', artifactsApiRouter.default);
 
   // ====== 官网（Landing Page）路由 ======
   // 根据域名区分：chatbi.site → 官网，其他 → Web UI

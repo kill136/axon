@@ -855,6 +855,53 @@ body {
   color: var(--accent-primary, #6366f1);
 }
 
+/* 用户消息附加上下文（intent-context / hook output）折叠区域 */
+.user-context-attachment {
+  margin-top: 6px;
+  border-top: 1px solid var(--border-color, #334155);
+  padding-top: 4px;
+}
+
+.user-context-attachment-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  color: var(--text-muted, #64748b);
+  cursor: pointer;
+  padding: 2px 0;
+  font-size: 11px;
+  font-family: inherit;
+}
+
+.user-context-attachment-toggle:hover {
+  color: var(--text-secondary, #94a3b8);
+}
+
+.user-context-attachment-icon {
+  font-size: 9px;
+  width: 12px;
+}
+
+.user-context-attachment-label {
+  opacity: 0.8;
+}
+
+.user-context-attachment-content {
+  margin: 4px 0 0;
+  padding: 8px 10px;
+  background: var(--bg-secondary, #1e293b);
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-muted, #64748b);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
 .message-header {
   display: flex;
   align-items: center;

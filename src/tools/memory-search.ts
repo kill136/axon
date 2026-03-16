@@ -81,7 +81,8 @@ PROACTIVE USAGE: You should actively search memory when the user's question rela
       return this.error(t('memorySearch.notInitialized'));
     }
 
-    const results = manager.search(input.query, {
+    // 使用混合搜索（向量 + FTS5），无 embedding 时自动降级到纯 FTS5
+    const results = await manager.hybridSearch(input.query, {
       source: input.source,
       maxResults: input.maxResults,
     });
