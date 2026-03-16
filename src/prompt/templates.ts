@@ -72,7 +72,7 @@ export function getToolGuidelines(
     hasSkillTool ? `/<skill-name> is shorthand for invoking skills. Use ${skill} tool to execute them. Only use for skills listed in the skills section.` : null,
     'Call multiple tools in a single response when there are no dependencies between them. If calls depend on previous results, run them sequentially.',
     toolNames.has('Browser') ? 'Browser is a LAST RESORT. Use CLI tools (Bash, WebFetch, gh, curl) first. Only use Browser when the task requires visual rendering or interactive UI testing.' : null,
-    toolNames.has('Mcp') ? `MCP-First Rule: For tasks beyond code editing, FIRST search for MCP tools: (1) Mcp tool search, (2) McpManage list + enable, (3) tool-discovery skill for community registries. Only after all MCP options exhausted, consider alternatives.` : null,
+    toolNames.has('Mcp') ? `MCP-First Rule: For tasks beyond code editing, FIRST search for MCP tools: (1) Mcp tool search, (2) Mcp action=list + action=enable, (3) tool-discovery skill for community registries. Only after all MCP options exhausted, consider alternatives.` : null,
   ];
 
   return ['# Using your tools', ...items.filter(item => item !== null).flatMap(item =>
@@ -132,7 +132,7 @@ export function getCodingGuidelines(toolNames: Set<string>, todoToolName: string
     'Research Before Asking: When the user mentions a name, term, or concept you don\'t recognize, ALWAYS search for it first (using WebSearch, WebFetch, or other search tools) before asking the user what it is. Never ask "What is X?" without searching first.',
     'Do not propose changes to code you haven\'t read. Read the file first, understand existing code before suggesting modifications.',
     `If your approach is blocked, do not brute force — consider alternative approaches or use ${askToolName} to align with the user.`,
-    'MANDATORY TOOL DISCOVERY RULE: You are FORBIDDEN from telling the user "I cannot do this" without FIRST: (1) Check available Skills (tool-discovery/skill-hub), (2) Search for MCP servers (Mcp tool, McpManage, community registries), (3) Web search for alternatives. Only after all three steps fail may you say the task cannot be completed.',
+    'MANDATORY TOOL DISCOVERY RULE: You are FORBIDDEN from telling the user "I cannot do this" without FIRST: (1) Check available Skills (tool-discovery/skill-hub), (2) Search for MCP servers (Mcp tool with query or action=list, community registries), (3) Web search for alternatives. Only after all three steps fail may you say the task cannot be completed.',
     'Be careful not to introduce security vulnerabilities (command injection, XSS, SQL injection, OWASP top 10). Prioritize writing safe, secure code.',
     'Avoid over-engineering. Only make changes that are directly requested or clearly necessary.',
     [

@@ -28,7 +28,7 @@ export * from './schedule.js';
 export * from './self-evolve.js';
 export * from './browser.js';
 export * from './create-tool.js';
-export * from './mcp-manage.js';
+// mcp-manage.ts removed: McpManage merged into Mcp tool (action parameter)
 export * from './eye.js';
 export * from './ear.js';
 export * from './goal.js';
@@ -40,7 +40,7 @@ export * from './network-agent.js';
 import { toolRegistry } from './base.js';
 
 // ============ 核心工具 imports ============
-import { BashTool, KillShellTool, cleanupStaleTasks } from './bash.js';
+import { BashTool, cleanupStaleTasks } from './bash.js';
 import { ReadTool, WriteTool, EditTool } from './file.js';
 import { GlobTool, GrepTool } from './search.js';
 import { WebFetchTool } from './web.js';
@@ -62,7 +62,7 @@ import { CreateToolTool } from './create-tool.js';
 import { DatabaseTool } from './database.js';
 import { EyeTool } from './eye.js';
 import { EarTool } from './ear.js';
-import { McpManageTool } from './mcp-manage.js';
+// McpManageTool removed: merged into MCPSearchTool (Mcp) via action parameter
 import { GoalManageTool } from './goal.js';
 import { NetworkTool } from './network-agent.js';
 
@@ -96,9 +96,8 @@ export function registerCoreTools(): void {
     // 清理失败不影响启动
   }
 
-  // 1. Bash 工具 (2个) - Bash + KillShell(对标官方 TaskStop)
+  // 1. Bash 工具 (1个) - KillShell(TaskStop) 已合并到 TaskOutput action=stop
   toolRegistry.register(new BashTool());
-  toolRegistry.register(new KillShellTool());
 
   // 2. 文件工具 (3个)
   toolRegistry.register(new ReadTool());
@@ -142,10 +141,9 @@ export function registerCoreTools(): void {
   // 9. Skill 系统 (1个)
   toolRegistry.register(new SkillTool());
 
-  // 10. MCP 工具 (3个) - MCPSearch + McpResource + McpManage
+  // 10. MCP 工具 (2个) - MCPSearch (含 server management) + McpResource
   toolRegistry.register(new MCPSearchTool());
   toolRegistry.register(new McpResourceTool());
-  toolRegistry.register(new McpManageTool());
 
   // 12. NotebookWrite 已移除 — Notebook 系统通过附件自动注入，AI 无需手动管理
 

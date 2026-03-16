@@ -4277,6 +4277,7 @@ interface RecentProject {
   id: string;           // 唯一ID（用路径hash）
   path: string;         // 绝对路径
   name: string;         // 项目名（目录名）
+  icon: string;         // 自动推断的 emoji icon
   lastOpenedAt: string; // 最后打开时间
 }
 
@@ -4360,6 +4361,96 @@ function isProjectEmpty(projectPath: string): boolean {
   }
 
   return !hasSourceFiles(projectPath);
+}
+
+/**
+ * 根据目录内容自动推断项目 icon (emoji)
+ * 
+ * 扫描根目录下的标志文件来判断项目类型，不递归（快速）。
+ */
+function pickProjectIcon(projectPath: string): string {
+  try {
+    const entries = new Set<string>();
+    for (const entry of fs.readdirSync(projectPath)) {
+      entries.add(entry.toLowerCase());
+    }
+
+    const has = (name: string) => entries.has(name);
+    const hasAny = (...names: string[]) => names.some(n => entries.has(n));
+    const hasExt = (ext: string) => {
+      for (const e of entries) {
+        if (e.endsWith(ext)) return true;
+      }
+      return false;
+    };
+
+    // 游戏引擎
+    if (hasAny('project.godot', 'projectsettings.asset')) return '🎮';
+    // Unity
+    if (has('assets') && has('projectsettings')) return '🎮';
+
+    // 移动端 — Android 需要有 app/ 目录或 AndroidManifest.xml 才算
+    if (has('androidmanifest.xml') || (hasAny('build.gradle', 'build.gradle.kts') && has('app') && !has('package.json'))) return '📱';
+    if (hasAny('podfile', 'info.plist', '.xcodeproj', '.xcworkspace')) return '🍎';
+    if (has('pubspec.yaml')) return '📱'; // Flutter
+
+    // Python 项目
+    if (hasAny('requirements.txt', 'setup.py', 'pyproject.toml', 'pipfile')) {
+      if (hasAny('manage.py')) return '🌐'; // Django
+      if (hasAny('app.py', 'main.py') && hasAny('templates', 'static')) return '🌐'; // Flask
+      if (hasExt('.ipynb')) return '🔬'; // Jupyter = 科学计算
+      return '🐍';
+    }
+
+    // Rust
+    if (has('cargo.toml')) return '🦀';
+    // Go
+    if (has('go.mod')) return '🐹';
+    // Java/Kotlin
+    if (has('pom.xml') || (has('build.gradle') && !has('package.json'))) return '☕';
+    // C/C++
+    if (hasAny('cmakelists.txt', 'makefile', 'meson.build')) return '⚙️';
+    // .NET
+    if (hasExt('.csproj') || hasExt('.sln') || hasExt('.fsproj')) return '🟣';
+
+    // 前端框架（必须在通用 Node 之前检测）
+    if (has('package.json')) {
+      // 检查 package.json 中的依赖来细分
+      try {
+        const pkg = JSON.parse(fs.readFileSync(path.join(projectPath, 'package.json'), 'utf-8'));
+        const allDeps = { ...pkg.dependencies, ...pkg.devDependencies };
+        if (allDeps['next']) return '▲'; // Next.js
+        if (allDeps['nuxt'] || allDeps['nuxt3']) return '💚'; // Nuxt
+        if (allDeps['react'] || allDeps['react-dom']) return '⚛️'; // React
+        if (allDeps['vue']) return '💚'; // Vue
+        if (allDeps['svelte'] || allDeps['@sveltejs/kit']) return '🔥'; // Svelte
+        if (allDeps['angular'] || allDeps['@angular/core']) return '🅰️'; // Angular
+        if (allDeps['electron']) return '🖥️'; // Electron
+        if (allDeps['express'] || allDeps['fastify'] || allDeps['koa']) return '🌐'; // Node server
+      } catch { /* ignore */ }
+      return '📦'; // 通用 Node.js
+    }
+
+    // 文档/写作
+    if (hasAny('mkdocs.yml', 'docusaurus.config.js', 'book.toml')) return '📖';
+    if (hasExt('.tex') || has('main.tex')) return '📄'; // LaTeX
+    if (hasAny('readme.md', 'index.md') && !has('package.json') && !has('cargo.toml')) return '📝';
+
+    // Docker/DevOps
+    if (hasAny('dockerfile', 'docker-compose.yml', 'docker-compose.yaml')) return '🐳';
+    if (hasAny('.terraform', 'terraform.tf', 'main.tf')) return '☁️';
+    if (hasAny('ansible.cfg', 'playbook.yml')) return '🔧';
+
+    // 数据
+    if (hasExt('.csv') || hasExt('.parquet') || hasExt('.sqlite') || hasExt('.db')) return '🗄️';
+
+    // 空目录
+    if (entries.size === 0) return '✨';
+
+    return '📁';
+  } catch {
+    return '📁';
+  }
 }
 
 /**
@@ -4505,6 +4596,7 @@ router.get('/projects', (req: Request, res: Response) => {
     projects.sort((a, b) => new Date(b.lastOpenedAt).getTime() - new Date(a.lastOpenedAt).getTime());
     const projectsWithStatus = projects.map(project => ({
       ...project,
+      icon: project.icon || pickProjectIcon(project.path),
       isEmpty: isProjectEmpty(project.path),
       hasBlueprint: projectHasBlueprint(project.path),
     }));
@@ -4566,10 +4658,12 @@ router.post('/projects/open', (req: Request, res: Response) => {
     const projectId = generateProjectId(projectPath);
 
     const existingIndex = projects.findIndex(p => p.id === projectId);
+    const existingProject = existingIndex >= 0 ? projects[existingIndex] : null;
     const newProject: RecentProject = {
       id: projectId,
       path: projectPath,
       name: path.basename(projectPath),
+      icon: existingProject?.icon || pickProjectIcon(projectPath),
       lastOpenedAt: new Date().toISOString(),
     };
 
@@ -4927,6 +5021,7 @@ router.get('/projects/current', (req: Request, res: Response) => {
         data: {
           id: projectId,
           name: path.basename(currentPath),
+          icon: pickProjectIcon(currentPath),
           path: currentPath,
           lastOpenedAt: new Date().toISOString(),
         },

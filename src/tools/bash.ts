@@ -1904,6 +1904,35 @@ export class KillShellTool extends BaseTool<{ shell_id: string }, BashResult> {
 }
 
 /**
+ * Kill a background task by ID (extracted from KillShellTool for reuse by TaskOutputTool)
+ */
+export async function killBackgroundTask(taskId: string): Promise<{ success: boolean; output?: string; error?: string }> {
+  const task = backgroundTasks.get(taskId);
+  if (!task) {
+    return { success: false, error: t('bash.shellNotFound', { id: taskId }) };
+  }
+
+  try {
+    task.process.kill('SIGTERM');
+    task.outputStream?.end();
+
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    if (task.status === 'running') {
+      task.process.kill('SIGKILL');
+    }
+
+    backgroundTasks.delete(taskId);
+
+    return {
+      success: true,
+      output: t('bash.taskStopped', { id: taskId, command: task.command }),
+    };
+  } catch (err) {
+    return { success: false, error: t('bash.taskStopFailed', { error: err }) };
+  }
+}
+
+/**
  * 获取所有后台任务的状态
  */
 export function getBackgroundTasks(): Array<{

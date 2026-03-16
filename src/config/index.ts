@@ -277,7 +277,7 @@ const UserConfigSchema = z.object({
   // Embedding 配置（向量搜索 + 混合检索）
   embedding: z.object({
     provider: z.enum(['openai']).default('openai'),
-    apiKey: z.string(),
+    apiKey: z.string().optional(),
     baseUrl: z.string().optional(),
     model: z.string().default('text-embedding-3-small'),
     dimensions: z.number().int().positive().default(1536),

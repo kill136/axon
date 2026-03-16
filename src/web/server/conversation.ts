@@ -496,7 +496,7 @@ export class ConversationManager {
   private webScheduler?: import('./web-scheduler.js').WebScheduler;
   /** 广播回调（由 index.ts 注入，用于 ErrorWatcher 通知等） */
   private broadcastFn?: (msg: any) => void;
-  /** AI 通过 McpManage enable 的临时 MCP 服务器，工具调用完毕后自动 disable */
+  /** AI 通过 Mcp action=enable 的临时 MCP 服务器，工具调用完毕后自动 disable */
   private temporarilyEnabledMcpServers = new Set<string>();
 
   constructor(cwd: string, defaultModel: string = 'opus', options?: { verbose?: boolean }) {
@@ -3229,56 +3229,60 @@ export class ConversationManager {
         }
       }
 
-      // 拦截 McpManage 工具 - AI Agent 管理 MCP 服务器生命周期
-      if (toolUse.name === 'McpManage') {
-        const input = toolUse.input as { action: string; name?: string };
-        try {
-          if (input.action === 'list') {
-            const servers = this.listMcpServers();
-            const lines = servers.map((s: any) =>
-              `- ${s.name}: ${s.enabled ? 'ENABLED' : 'DISABLED'} (type: ${s.type}, tools: ${s.toolsCount})`
-            );
-            const output = servers.length > 0
-              ? `MCP Servers (${servers.length}):\n${lines.join('\n')}`
-              : 'No MCP servers configured.';
-            callbacks.onToolResult?.(toolUse.id, true, output);
-            return { success: true, output };
-          }
-
-          if (input.action === 'enable' || input.action === 'disable') {
-            if (!input.name) {
-              const error = `"name" parameter is required for ${input.action} action.`;
-              callbacks.onToolResult?.(toolUse.id, false, undefined, error);
-              return { success: false, error };
-            }
-            const enabled = input.action === 'enable';
-            const result = await this.toggleMcpServer(input.name, enabled);
-            if (result.success) {
-              // 记录 AI 临时启用的 MCP 服务器，用完后自动 disable
-              if (enabled) {
-                this.temporarilyEnabledMcpServers.add(input.name);
-              } else {
-                this.temporarilyEnabledMcpServers.delete(input.name);
-              }
-              const output = `MCP server "${input.name}" has been ${result.enabled ? 'enabled' : 'disabled'}.`;
+      // 拦截 Mcp 工具的 server management actions (action=list/enable/disable)
+      // 这些 action 需要访问 ConversationManager 的 toggleMcpServer/listMcpServers
+      if (toolUse.name === 'Mcp') {
+        const input = toolUse.input as { query?: string; action?: string; name?: string };
+        if (input.action) {
+          try {
+            if (input.action === 'list') {
+              const servers = this.listMcpServers();
+              const lines = servers.map((s: any) =>
+                `- ${s.name}: ${s.enabled ? 'ENABLED' : 'DISABLED'} (type: ${s.type}, tools: ${s.toolsCount})`
+              );
+              const output = servers.length > 0
+                ? `MCP Servers (${servers.length}):\n${lines.join('\n')}`
+                : 'No MCP servers configured.';
               callbacks.onToolResult?.(toolUse.id, true, output);
               return { success: true, output };
-            } else {
-              const error = `Failed to ${input.action} MCP server "${input.name}". The server may not exist in the configuration. Use "list" action to see available servers.`;
-              callbacks.onToolResult?.(toolUse.id, false, undefined, error);
-              return { success: false, error };
             }
-          }
 
-          const error = `Unknown McpManage action: ${input.action}. Use "list", "enable", or "disable".`;
-          callbacks.onToolResult?.(toolUse.id, false, undefined, error);
-          return { success: false, error };
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : String(error);
-          console.error(`[Tool] McpManage execution failed:`, errorMessage);
-          callbacks.onToolResult?.(toolUse.id, false, undefined, errorMessage);
-          return { success: false, error: errorMessage };
+            if (input.action === 'enable' || input.action === 'disable') {
+              if (!input.name) {
+                const error = `"name" parameter is required for ${input.action} action.`;
+                callbacks.onToolResult?.(toolUse.id, false, undefined, error);
+                return { success: false, error };
+              }
+              const enabled = input.action === 'enable';
+              const result = await this.toggleMcpServer(input.name, enabled);
+              if (result.success) {
+                // 记录 AI 临时启用的 MCP 服务器，用完后自动 disable
+                if (enabled) {
+                  this.temporarilyEnabledMcpServers.add(input.name);
+                } else {
+                  this.temporarilyEnabledMcpServers.delete(input.name);
+                }
+                const output = `MCP server "${input.name}" has been ${result.enabled ? 'enabled' : 'disabled'}.`;
+                callbacks.onToolResult?.(toolUse.id, true, output);
+                return { success: true, output };
+              } else {
+                const error = `Failed to ${input.action} MCP server "${input.name}". The server may not exist in the configuration. Use action="list" to see available servers.`;
+                callbacks.onToolResult?.(toolUse.id, false, undefined, error);
+                return { success: false, error };
+              }
+            }
+
+            const error = `Unknown Mcp action: ${input.action}. Use "list", "enable", or "disable".`;
+            callbacks.onToolResult?.(toolUse.id, false, undefined, error);
+            return { success: false, error };
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            console.error(`[Tool] Mcp server management failed:`, errorMessage);
+            callbacks.onToolResult?.(toolUse.id, false, undefined, errorMessage);
+            return { success: false, error: errorMessage };
+          }
         }
+        // If no action, fall through to normal tool execution (search mode)
       }
 
       // MCP 工具执行：解析 mcp__{serverName}__{toolName} 格式，调用 callMcpTool()

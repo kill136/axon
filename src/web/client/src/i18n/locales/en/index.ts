@@ -1,3 +1,4 @@
+import apps, { type AppsKeys } from './apps';
 import auth, { type AuthKeys } from './auth';
 import chat, { type ChatKeys } from './chat';
 import cli, { type CliKeys } from './cli';
@@ -9,6 +10,7 @@ import settings, { type SettingsKeys } from './settings';
 import swarm, { type SwarmKeys } from './swarm';
 
 const en = {
+  ...apps,
   ...auth,
   ...chat,
   ...cli,
@@ -20,5 +22,5 @@ const en = {
   ...swarm,
 } as const;
 
-export type WebLocaleKeys = AuthKeys | ChatKeys | CliKeys | CodeKeys | CommonKeys | GitKeys | NavKeys | SettingsKeys | SwarmKeys;
+export type WebLocaleKeys = AppsKeys | AuthKeys | ChatKeys | CliKeys | CodeKeys | CommonKeys | GitKeys | NavKeys | SettingsKeys | SwarmKeys;
 export default en;

@@ -212,7 +212,7 @@ export class IdentityManager {
     const agentPubBase64 = pemToBase64(this.keys.agentPublicKey);
     const ownerPubBase64 = pemToBase64(this.keys.ownerPublicKey);
     const hostname = os.hostname();
-    const name = config.name || `${hostname}-${config.port}`;
+    const name = config.name || `${hostname}-${actualPort || config.port}`;
 
     // 探测项目
     const projects = probeProjects(cwd);

@@ -628,6 +628,13 @@ const settings = {
   'network.rescan': 'Scan Again',
   'network.manualConnect': 'Or connect manually by IP address:',
   'network.connect': 'Connect',
+  'network.more': 'More',
+  'network.clearChat': 'Clear Chat History',
+  'network.searchMessages': 'Search Messages',
+  'network.noSearchResults': 'No messages found',
+  'network.reply': 'Reply',
+  'network.copy': 'Copy',
+  'network.you': 'You',
 } as const;
 
 export type SettingsKeys = keyof typeof settings;

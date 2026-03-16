@@ -31,12 +31,16 @@ export function probeProjects(cwd: string): ProjectInfo[] {
 
   // 尝试方法1：package.json
   let name: string | undefined;
+  let description: string | undefined;
   try {
     const pkgPath = path.join(cwd, 'package.json');
     if (fs.existsSync(pkgPath)) {
       const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
       if (pkg.name && typeof pkg.name === 'string') {
         name = pkg.name;
+      }
+      if (pkg.description && typeof pkg.description === 'string') {
+        description = pkg.description;
       }
     }
   } catch {
@@ -68,6 +72,7 @@ export function probeProjects(cwd: string): ProjectInfo[] {
   if (name) {
     projects.push({
       name,
+      description,
       gitRemote,
     });
   }

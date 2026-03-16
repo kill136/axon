@@ -300,6 +300,7 @@
   flex-direction: column;
   gap: 4px;
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
 }
 
@@ -308,6 +309,7 @@
   border-radius: 8px;
   overflow: hidden;
   transition: border-color 0.2s;
+  flex-shrink: 0;
 }
 
 .debug-message-item:hover {

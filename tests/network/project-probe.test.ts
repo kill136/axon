@@ -71,4 +71,32 @@ describe('probeProjects', () => {
     expect(projects).toHaveLength(1);
     expect(projects[0].name).toBe('my-project');
   });
+
+  it('should extract description from package.json', () => {
+    fs.writeFileSync(
+      path.join(testDir, 'package.json'),
+      JSON.stringify({
+        name: 'my-project',
+        description: 'An awesome AI coding assistant',
+        version: '1.0.0',
+      }),
+    );
+
+    const projects = probeProjects(testDir);
+    expect(projects).toHaveLength(1);
+    expect(projects[0].name).toBe('my-project');
+    expect(projects[0].description).toBe('An awesome AI coding assistant');
+  });
+
+  it('should have no description when package.json lacks it', () => {
+    fs.writeFileSync(
+      path.join(testDir, 'package.json'),
+      JSON.stringify({ name: 'no-desc-project', version: '1.0.0' }),
+    );
+
+    const projects = probeProjects(testDir);
+    expect(projects).toHaveLength(1);
+    expect(projects[0].name).toBe('no-desc-project');
+    expect(projects[0].description).toBeUndefined();
+  });
 });

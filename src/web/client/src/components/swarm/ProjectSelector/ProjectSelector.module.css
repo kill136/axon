@@ -1,4 +1,4 @@
-/* ProjectSelector 样式 - 项目选择器下拉组件 */
+/* ProjectSelector 样式 - 项目/应用选择器下拉组件 */
 
 /* 选择器容器 */
 .selector {
@@ -77,13 +77,13 @@
   position: absolute;
   top: calc(100% + 4px);
   left: 0;
-  min-width: 280px;
+  min-width: 320px;
   background: var(--bg-secondary, #2d2d2d);
   border: 1px solid var(--border-color, #3d3d3d);
   border-radius: 6px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   z-index: 1000;
-  max-height: 320px;
+  max-height: 420px;
   overflow-y: auto;
   animation: slideDown 0.15s ease;
 }
@@ -117,6 +117,89 @@
   background: #5a5a5a;
 }
 
+/* ===== 操作按钮行 — 创建应用 + 打开文件夹 并排 ===== */
+.actionRow {
+  display: flex;
+  gap: 4px;
+  padding: 6px;
+}
+
+.actionButton {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 8px;
+  background: var(--bg-tertiary, #3d3d3d);
+  border: 1px solid var(--border-color, #3d3d3d);
+  border-radius: 6px;
+  color: var(--text-primary, #ffffff);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.15s ease;
+}
+
+.actionButton:hover {
+  background: rgba(124, 58, 237, 0.15);
+  border-color: rgba(124, 58, 237, 0.3);
+}
+
+.actionIcon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+/* ===== 应用列表 ===== */
+.appList {
+  padding: 2px 0;
+}
+
+.appItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.appItem:hover {
+  background: var(--bg-tertiary, #3d3d3d);
+}
+
+.appIcon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.appName {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary, #ffffff);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.appStatus {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: #3fb950;
+  flex-shrink: 0;
+}
+
+.statusDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #3fb950;
+}
+
 /* 菜单头部 */
 .dropdownHeader {
   padding: 8px 12px;
@@ -125,7 +208,6 @@
   color: var(--text-muted, #808080);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  border-bottom: 1px solid var(--border-color, #3d3d3d);
 }
 
 /* 项目列表 */
@@ -149,6 +231,13 @@
 
 .projectItem.active {
   background: rgba(33, 150, 243, 0.15);
+}
+
+.projectItemIcon {
+  font-size: 18px;
+  flex-shrink: 0;
+  margin-right: 10px;
+  line-height: 1;
 }
 
 .projectItemInfo {
@@ -227,30 +316,6 @@
   margin: 4px 0;
 }
 
-/* 打开文件夹按钮 */
-.openFolderButton {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 10px 12px;
-  background: transparent;
-  border: none;
-  color: var(--accent-primary, #2196f3);
-  cursor: pointer;
-  font-size: 14px;
-  transition: background 0.15s ease;
-  text-align: left;
-}
-
-.openFolderButton:hover {
-  background: var(--bg-tertiary, #3d3d3d);
-}
-
-.openFolderIcon {
-  font-size: 16px;
-}
-
 /* 空状态 */
 .emptyState {
   padding: 20px 12px;
@@ -302,6 +367,12 @@
   }
 
   .dropdown {
-    max-height: 280px;
+    max-height: 320px;
+    min-width: 260px;
+  }
+
+  .actionButton {
+    font-size: 12px;
+    padding: 8px 6px;
   }
 }

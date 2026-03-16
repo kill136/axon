@@ -673,6 +673,19 @@ export interface MCPSearchInput {
    * Maximum number of results to return (default: 5)
    */
   max_results?: number;
+
+  /**
+   * Action to perform. Defaults to "search" (tool search).
+   * - "list": List all configured MCP servers and their status
+   * - "enable": Enable a disabled MCP server
+   * - "disable": Disable an enabled MCP server
+   */
+  action?: 'list' | 'enable' | 'disable';
+
+  /**
+   * MCP server name (required for enable/disable actions)
+   */
+  name?: string;
 }
 
 // ============================================================================

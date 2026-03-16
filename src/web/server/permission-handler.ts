@@ -81,7 +81,7 @@ export class PermissionHandler {
     'MultiEdit',
     'Bash',
     'NotebookEdit',
-    'TaskStop',
+    // TaskStop merged into TaskOutput action=stop — checked dynamically below
   ]);
 
   // 危险的 Bash 命令模式
@@ -141,6 +141,12 @@ export class PermissionHandler {
       if (['Write', 'Edit', 'MultiEdit'].includes(tool)) {
         return false;
       }
+    }
+
+    // TaskOutput action=stop needs permission (merged from TaskStop)
+    if (tool === 'TaskOutput') {
+      const taskArgs = args as Record<string, unknown>;
+      return taskArgs?.action === 'stop';
     }
 
     // 检查工具是否在敏感列表中
@@ -229,8 +235,11 @@ export class PermissionHandler {
       case 'NotebookEdit':
         return `Edit Notebook: ${args.notebook_path}`;
 
-      case 'TaskStop':
-        return `Kill process: ${args.bash_id}`;
+      case 'TaskOutput':
+        if (args.action === 'stop') {
+          return `Kill process: ${args.task_id}`;
+        }
+        return `Get task output: ${args.task_id}`;
 
       default:
         return `Execute ${tool}`;
@@ -259,9 +268,11 @@ export class PermissionHandler {
       return 'low';
     }
 
-    // 文件删除类操作
-    if (tool === 'TaskStop') {
-      return 'medium';
+    // TaskOutput action=stop
+    if (tool === 'TaskOutput') {
+      const taskArgs = args as Record<string, unknown>;
+      if (taskArgs?.action === 'stop') return 'medium';
+      return 'low';
     }
 
     // 批量编辑
@@ -579,8 +590,8 @@ export class PermissionHandler {
         return `MultiEdit(*)`;
       }
 
-      case 'TaskStop': {
-        return `TaskStop(*)`;
+      case 'TaskOutput': {
+        return `TaskOutput(*)`;
       }
 
       default:
