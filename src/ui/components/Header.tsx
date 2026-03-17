@@ -286,7 +286,7 @@ export const Header: React.FC<HeaderProps> = React.memo(({
           <Text color="green">
             🎉 {t('header.newVersionAvailable')}
           </Text>
-          <Text color="green" bold> npm install -g axon</Text>
+          <Text color="green" bold> npm install -g axon-code</Text>
         </Box>
       )}
     </Box>

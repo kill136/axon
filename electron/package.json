@@ -1,6 +1,6 @@
 {
   "name": "axon",
-  "version": "2.3.1",
+  "version": "2.4.0",
   "type": "module",
   "description": "Axon Desktop - AI Coding Assistant",
   "main": "electron/main.cjs",

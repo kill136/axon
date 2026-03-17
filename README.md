@@ -6,7 +6,7 @@
 
 **Use any model. Extend with plugins. Let AI agents build your project.**
 
-[![npm](https://img.shields.io/npm/v/axon?style=flat-square&color=CB3837)](https://www.npmjs.com/package/axon)
+[![npm](https://img.shields.io/npm/v/axon-code?style=flat-square&color=CB3837)](https://www.npmjs.com/package/axon-code)
 [![License](https://img.shields.io/badge/License-Proprietary-blue?style=flat-square)](LICENSE)
 [![Node](https://img.shields.io/badge/Node.js-%3E%3D18.0.0-brightgreen?style=flat-square)](https://nodejs.org)
 [![Discord](https://img.shields.io/discord/1454020463486566432?style=flat-square&label=Discord&color=5865F2)](https://discord.gg/bNyJKk6PVZ)
@@ -23,13 +23,13 @@
 
 ---
 
-Axon is a free AI coding assistant with a built-in Web IDE, multi-agent task system, and self-evolution capabilities. It gives you full control — choose your AI provider, extend functionality through plugins and MCP servers, and even let the AI modify its own source code.
+Axon is a powerful AI coding assistant with a built-in Web IDE, multi-agent task system, and self-evolution capabilities. It gives you full control — choose your AI provider, extend functionality through plugins and MCP servers, and even let the AI modify its own source code.
 
 ## Quick Start
 
 ```bash
 # Install
-npm install -g axon
+npm install -g axon-code
 
 # Set your API key (Anthropic, OpenRouter, DeepSeek, or any OpenAI-compatible provider)
 # No API key? Get one at https://api.chatbi.site (Claude Sonnet & Opus, OpenAI-compatible)
@@ -43,22 +43,6 @@ axon-web
 ```
 
 ### Other install methods
-
-<details>
-<summary>One-click installer (no Node.js required)</summary>
-
-**Windows:** Download [install.bat](https://github.com/kill136/axon/releases/latest/download/install.bat) and double-click.
-
-**macOS / Linux:**
-```bash
-curl -fsSL https://raw.githubusercontent.com/kill136/axon/private_web_ui/install.sh | bash
-```
-
-**China mirror:**
-```bash
-curl -fsSL https://gitee.com/lubanbbs/axon/raw/private_web_ui/install.sh | bash
-```
-</details>
 
 <details>
 <summary>Docker</summary>
@@ -81,28 +65,21 @@ docker run -it \
 ```
 </details>
 
+<details>
+<summary>Desktop App (Windows / macOS / Linux)</summary>
+
+Download the latest installer from [chatbi.site](https://www.chatbi.site):
+
+- **Windows:** `Axon-Setup.exe` or Portable `.zip`
+- **macOS:** `Axon-Setup.dmg`
+- **Linux:** `Axon-Setup.AppImage`
+</details>
 
 <details>
 <summary>Uninstall</summary>
 
-**macOS / Linux:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/kill136/axon/private_web_ui/uninstall.sh | bash
-```
-
-**China mirror:**
-```bash
-curl -fsSL https://gitee.com/lubanbbs/axon/raw/private_web_ui/uninstall.sh | bash
-```
-
-**Windows (PowerShell):**
-```powershell
-irm https://raw.githubusercontent.com/kill136/axon/private_web_ui/uninstall.ps1 | iex
-```
-
-**Windows (cmd):**
-```cmd
-curl -fsSL https://raw.githubusercontent.com/kill136/axon/private_web_ui/uninstall.bat -o uninstall.bat && uninstall.bat
+npm uninstall -g axon-code
 ```
 </details>
 
@@ -254,13 +231,11 @@ axon-web --evolve             # Self-evolution mode
 - **Discord:** [Join us](https://discord.gg/bNyJKk6PVZ)
 - **X (Twitter):** [@wangbingjie1989](https://x.com/wangbingjie1989)
 
-## Contributing
-
-PRs and issues are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-### Building a Skill or Plugin
+## Extending Axon
 
 The fastest way to extend Axon is to write a **Skill** (a prompt file with structured instructions) or a **Plugin** (a JS/TS module with lifecycle hooks). Both are auto-loaded from `~/.axon/skills/` and `~/.axon/plugins/`.
+
+For bug reports and feature requests, please open an [issue](https://github.com/kill136/axon/issues).
 
 ## Sponsors
 
