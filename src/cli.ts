@@ -1907,12 +1907,12 @@ program
         console.log(chalk.gray('Please restart Axon to use the new version.\n'));
       } else {
         console.log(chalk.red('\n✗ Update failed'));
-        console.log(chalk.gray('Try running: npm install -g axon\n'));
+        console.log(chalk.gray('Try running: npm install -g axon-code\n'));
       }
     } catch (error) {
       console.error(chalk.red('Error during update:'), error);
       console.log(chalk.gray('\nManual update:'));
-      console.log(chalk.gray('  npm install -g axon\n'));
+      console.log(chalk.gray('  npm install -g axon-code\n'));
     }
   });
 

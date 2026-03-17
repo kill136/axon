@@ -179,7 +179,7 @@ const swarm = {
   'projectSelector.noProject': '新建',
   'projectSelector.noRecentProjects': '没有最近打开的项目',
   'projectSelector.online': '在线',
-  'projectSelector.importWorks': '导入历史作品',
+  'projectSelector.importWorks': '导入历史项目',
   'projectSelector.openFolder': '打开文件夹...',
   'projectSelector.recentProjects': '最近打开',
   'projectSelector.removeFromList': '从列表移除',

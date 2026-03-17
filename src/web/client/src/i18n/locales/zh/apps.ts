@@ -16,6 +16,23 @@ const apps = {
   'apps.loading': '加载中...',
   'apps.loadError': '加载失败',
   'apps.noResults': '无匹配文件',
+  // CreateAppDialog
+  'apps.createTitle': '告诉 AI 你想做什么',
+  'apps.workingDir': '工作目录',
+  'apps.workingDirHint': 'AI 会在这个目录下创建项目文件，请指定一个新的空目录',
+  'apps.workingDirPlaceholder': '例如：D:\\Projects\\my-app 或 ~/projects/my-app',
+  'apps.dirRequired': '请指定工作目录',
+  'apps.dirMustBeAbsolute': '请输入完整的绝对路径，如 D:\\Projects\\my-app',
+  'apps.browse': '浏览...',
+  'apps.descLabel': '需求描述',
+  'apps.createPlaceholder': '描述你想做的东西，比如：一个征信报告解读工具、一个记账本、一个贪吃蛇游戏',
+  'apps.descPlaceholderShort': '描述你想做的东西...',
+  'apps.startCreate': '开始创建',
+  // DirectoryBrowser
+  'apps.selectDirectory': '选择目录',
+  'apps.enterPathPlaceholder': '输入路径后按回车...',
+  'apps.noSubDirs': '没有子目录',
+  'apps.selectThisDir': '选择此目录',
 } as const;
 
 export default apps;
