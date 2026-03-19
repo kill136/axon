@@ -74,9 +74,8 @@ describe('配置优先级系统', () => {
       maxTokens: 16384,
     }));
 
-    // 4. 环境变量（覆盖 maxTokens）
+    // 4. 环境变量
     process.env.AXON_CONFIG_DIR = TEST_CONFIG_DIR;
-    process.env.AXON_MAX_OUTPUT_TOKENS = '32768';
 
     // 5. 标志配置（覆盖 temperature）
     fs.writeFileSync(FLAG_SETTINGS, JSON.stringify({
@@ -92,7 +91,7 @@ describe('配置优先级系统', () => {
 
     // 验证优先级
     expect(config.model).toBe('opus'); // 项目配置覆盖用户配置
-    expect(config.maxTokens).toBe(32768); // 环境变量覆盖本地配置
+    expect(config.maxTokens).toBe(16384); // 本地配置覆盖用户配置
     expect(config.temperature).toBe(1); // 标志配置覆盖项目配置
     expect(config.verbose).toBe(true); // 本地配置覆盖用户配置
   });
@@ -179,8 +178,8 @@ describe('环境变量解析', () => {
 
   it('应该正确解析布尔类型环境变量', () => {
     process.env.AXON_CONFIG_DIR = TEST_CONFIG_DIR;
-    process.env.AXON_ENABLE_TELEMETRY = 'true';
-    process.env.AXON_DISABLE_FILE_CHECKPOINTING = '1';
+    process.env.AXON_ENABLE_PROMPT_SUGGESTION = 'true';
+    process.env.AXON_RESPECT_GITIGNORE = '1';
 
     const manager = new ConfigManager({
       workingDirectory: TEST_PROJECT_DIR,
@@ -188,14 +187,13 @@ describe('环境变量解析', () => {
 
     const config = manager.getAll();
 
-    expect(config.enableTelemetry).toBe(true);
-    expect(config.disableFileCheckpointing).toBe(true);
+    expect(config.promptSuggestionEnabled).toBe(true);
+    expect(config.respectGitignore).toBe(true);
   });
 
   it('应该正确解析数字类型环境变量', () => {
     process.env.AXON_CONFIG_DIR = TEST_CONFIG_DIR;
-    process.env.AXON_MAX_OUTPUT_TOKENS = '16384';
-    process.env.AXON_MAX_RETRIES = '5';
+    process.env.MAX_THINKING_TOKENS = '20000';
 
     const manager = new ConfigManager({
       workingDirectory: TEST_PROJECT_DIR,
@@ -203,31 +201,18 @@ describe('环境变量解析', () => {
 
     const config = manager.getAll();
 
-    expect(config.maxTokens).toBe(16384);
-    expect(config.maxRetries).toBe(5);
+    expect(config.thinking?.budgetTokens).toBe(20000);
   });
 
-  it('应该支持 Bedrock 和 Vertex 环境变量', () => {
+  it('应该支持 Foundry 环境变量', () => {
     process.env.AXON_CONFIG_DIR = TEST_CONFIG_DIR;
-    process.env.AXON_USE_BEDROCK = 'true';
+    process.env.AXON_USE_FOUNDRY = 'true';
 
     const manager1 = new ConfigManager({
       workingDirectory: TEST_PROJECT_DIR,
     });
 
-    expect(manager1.getAll().useBedrock).toBe(true);
-    expect(manager1.getAll().apiProvider).toBe('bedrock');
-
-    // 重置环境
-    delete process.env.AXON_USE_BEDROCK;
-    process.env.AXON_USE_VERTEX = 'true';
-
-    const manager2 = new ConfigManager({
-      workingDirectory: TEST_PROJECT_DIR,
-    });
-
-    expect(manager2.getAll().useVertex).toBe(true);
-    expect(manager2.getAll().apiProvider).toBe('vertex');
+    expect(manager1.getAll().apiProvider).toBe('anthropic');
   });
 
   it('应该支持调试和日志环境变量', () => {
@@ -275,8 +260,7 @@ describe('环境变量解析', () => {
 
   it('应该正确处理无效的环境变量值', () => {
     process.env.AXON_CONFIG_DIR = TEST_CONFIG_DIR;
-    process.env.AXON_MAX_OUTPUT_TOKENS = 'invalid-number';
-    process.env.AXON_ENABLE_TELEMETRY = 'invalid-bool';
+    process.env.AXON_AUTO_CONNECT_IDE = 'invalid-bool';
 
     const manager = new ConfigManager({
       workingDirectory: TEST_PROJECT_DIR,
@@ -286,7 +270,7 @@ describe('环境变量解析', () => {
 
     // 无效值应该被忽略，使用默认值
     expect(config.maxTokens).toBe(32000); // 默认值
-    expect(config.enableTelemetry).toBe(false); // 默认值
+    expect(config.autoConnectIde).toBe(false); // 无效布尔值被忽略，使用默认值
   });
 });
 
@@ -342,20 +326,20 @@ This is a test project.
     const parser1 = new AxonMdParser(TEST_PROJECT_DIR);
     const result1 = parser1.validate();
     expect(result1.valid).toBe(true);
-    expect(result1.warnings).toContain('AXON.md 文件为空');
+    expect(result1.warnings).toContain('AXON.md file is empty');
 
     // 无标题
     fs.writeFileSync(CLAUDE_MD, 'No headings here');
     const parser2 = new AxonMdParser(TEST_PROJECT_DIR);
     const result2 = parser2.validate();
-    expect(result2.warnings).toContain('建议使用 Markdown 标题组织内容');
+    expect(result2.warnings).toContain('Recommend using Markdown headings to organize content');
 
     // 过大文件
     const largeContent = 'x'.repeat(60000);
     fs.writeFileSync(CLAUDE_MD, largeContent);
     const parser3 = new AxonMdParser(TEST_PROJECT_DIR);
     const result3 = parser3.validate();
-    expect(result3.warnings.some(w => w.includes('过大'))).toBe(true);
+    expect(result3.warnings.some(w => w.includes('too large'))).toBe(true);
   });
 
   it('应该获取 AXON.md 统计信息', () => {
@@ -409,7 +393,6 @@ describe('配置来源追踪', () => {
     }));
 
     process.env.AXON_CONFIG_DIR = TEST_CONFIG_DIR;
-    process.env.AXON_MAX_OUTPUT_TOKENS = '16384';
 
     const manager = new ConfigManager({
       workingDirectory: TEST_PROJECT_DIR,
@@ -417,7 +400,7 @@ describe('配置来源追踪', () => {
 
     // 检查配置来源
     expect(manager.getConfigSource('model')).toBe('projectSettings');
-    expect(manager.getConfigSource('maxTokens')).toBe('envSettings');
+    expect(manager.getConfigSource('maxTokens')).toBe('userSettings');
     expect(manager.getConfigSource('verbose')).toBe('projectSettings');
     expect(manager.getConfigSource('temperature')).toBe('default');
   });
@@ -707,7 +690,6 @@ describe('本地配置 (settings.local.json)', () => {
     }));
 
     process.env.AXON_CONFIG_DIR = TEST_CONFIG_DIR;
-    process.env.AXON_MAX_OUTPUT_TOKENS = '32768';
 
     const manager = new ConfigManager({
       workingDirectory: TEST_PROJECT_DIR,
@@ -717,7 +699,7 @@ describe('本地配置 (settings.local.json)', () => {
 
     expect(config.model).toBe('opus'); // 本地配置覆盖项目配置
     expect(config.verbose).toBe(true); // 本地配置覆盖项目配置
-    expect(config.maxTokens).toBe(32768); // 环境变量覆盖所有文件配置
+    expect(config.maxTokens).toBe(32000); // 默认值（AXON_MAX_OUTPUT_TOKENS 不再映射到 maxTokens）
   });
 });
 
@@ -828,7 +810,7 @@ describe('配置导出和导入', () => {
     });
 
     const configToImport = JSON.stringify({
-      version: '2.1.4',
+      version: '2.1.18',
       model: 'opus',
       maxTokens: 16384,
       verbose: true,
@@ -937,7 +919,7 @@ describe('MCP 服务器配置', () => {
         type: 'stdio',
         // 缺少 command
       } as any);
-    }).toThrow(/无效的 MCP 服务器配置/);
+    }).toThrow(/Invalid MCP server configuration/);
   });
 
   it('应该更新和删除 MCP 服务器', () => {
@@ -987,7 +969,7 @@ describe('配置迁移', () => {
 
     const config = manager.getAll();
     expect(config.model).toBe('opus');
-    expect(config.version).toBe('2.1.4');
+    expect(config.version).toBe('2.1.40');
   });
 
   it('应该迁移 autoSave 到 enableAutoSave', () => {

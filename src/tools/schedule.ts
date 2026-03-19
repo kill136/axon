@@ -18,7 +18,7 @@ import { fromMsysPath } from '../utils/platform.js';
 import { TaskStore, type ScheduledTask } from '../daemon/store.js';
 import { parseTimeExpression } from '../daemon/time-parser.js';
 import { appendRunLog, readRunLogEntries } from '../daemon/run-log.js';
-import { getAuth, initAuth } from '../auth/index.js';
+import { snapshotAuthCredentials } from '../auth/snapshot.js';
 
 /** once 类型任务自动在会话内执行的最大等待时间（10 分钟） */
 const INLINE_WAIT_THRESHOLD_MS = 10 * 60 * 1000;
@@ -586,30 +586,6 @@ export class ScheduleTaskTool extends BaseTool<ScheduleTaskInput> {
    * 存入任务记录，daemon 执行时恢复
    */
   private snapshotAuth(): ScheduledTask['authSnapshot'] {
-    try {
-      initAuth();
-      const auth = getAuth();
-      if (!auth) return undefined;
-
-      if (auth.type === 'api_key' && auth.apiKey) {
-        return {
-          apiKey: auth.apiKey,
-          baseUrl: process.env.ANTHROPIC_BASE_URL,
-        };
-      }
-
-      if (auth.type === 'oauth') {
-        const token = auth.authToken || auth.accessToken;
-        if (token) {
-          return {
-            authToken: token,
-            baseUrl: process.env.ANTHROPIC_BASE_URL,
-          };
-        }
-      }
-    } catch {
-      // 快照失败不影响任务创建
-    }
-    return undefined;
+    return snapshotAuthCredentials();
   }
 }

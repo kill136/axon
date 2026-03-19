@@ -5,6 +5,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { ReadTool, WriteTool, EditTool } from '../../src/tools/file.js';
+import { runWithCwd } from '../../src/core/cwd-context.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -42,7 +43,7 @@ describe('ReadTool', () => {
       const content = 'Hello World\nLine 2\nLine 3';
       fs.writeFileSync(testFile, content);
 
-      const result = await readTool.execute({ file_path: testFile });
+      const result = await runWithCwd(testDir, () => readTool.execute({ file_path: testFile }));
       expect(result.success).toBe(true);
       expect(result.output).toContain('Hello World');
       expect(result.lineCount).toBe(3);
@@ -51,7 +52,7 @@ describe('ReadTool', () => {
     it('should include line numbers in output', async () => {
       fs.writeFileSync(testFile, 'Line 1\nLine 2\nLine 3');
 
-      const result = await readTool.execute({ file_path: testFile });
+      const result = await runWithCwd(testDir, () => readTool.execute({ file_path: testFile }));
       expect(result.success).toBe(true);
       expect(result.output).toMatch(/\d+\t/); // Should have line numbers
     });
@@ -59,7 +60,7 @@ describe('ReadTool', () => {
     it('should handle empty files', async () => {
       fs.writeFileSync(testFile, '');
 
-      const result = await readTool.execute({ file_path: testFile });
+      const result = await runWithCwd(testDir, () => readTool.execute({ file_path: testFile }));
       expect(result.success).toBe(true);
       expect(result.lineCount).toBe(1);
     });
@@ -72,10 +73,10 @@ describe('ReadTool', () => {
     });
 
     it('should read with offset', async () => {
-      const result = await readTool.execute({
+      const result = await runWithCwd(testDir, () => readTool.execute({
         file_path: testFile,
         offset: 10
-      });
+      }));
 
       expect(result.success).toBe(true);
       expect(result.output).toContain('Line 11'); // offset is 0-indexed
@@ -83,10 +84,10 @@ describe('ReadTool', () => {
     });
 
     it('should read with limit', async () => {
-      const result = await readTool.execute({
+      const result = await runWithCwd(testDir, () => readTool.execute({
         file_path: testFile,
         limit: 5
-      });
+      }));
 
       expect(result.success).toBe(true);
       const lines = result.output!.split('\n');
@@ -94,11 +95,11 @@ describe('ReadTool', () => {
     });
 
     it('should read with both offset and limit', async () => {
-      const result = await readTool.execute({
+      const result = await runWithCwd(testDir, () => readTool.execute({
         file_path: testFile,
         offset: 50,
         limit: 10
-      });
+      }));
 
       expect(result.success).toBe(true);
       expect(result.output).toContain('Line 51');
@@ -109,16 +110,16 @@ describe('ReadTool', () => {
 
   describe('Error Handling', () => {
     it('should fail on non-existent file', async () => {
-      const result = await readTool.execute({
+      const result = await runWithCwd(testDir, () => readTool.execute({
         file_path: path.join(testDir, 'nonexistent.txt')
-      });
+      }));
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('not found');
     });
 
     it('should fail when trying to read directory', async () => {
-      const result = await readTool.execute({ file_path: testDir });
+      const result = await runWithCwd(testDir, () => readTool.execute({ file_path: testDir }));
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('directory');
@@ -130,7 +131,7 @@ describe('ReadTool', () => {
       const longLine = 'x'.repeat(3000);
       fs.writeFileSync(testFile, longLine);
 
-      const result = await readTool.execute({ file_path: testFile });
+      const result = await runWithCwd(testDir, () => readTool.execute({ file_path: testFile }));
       expect(result.success).toBe(true);
       expect(result.output!.length).toBeLessThan(longLine.length + 100);
     });
@@ -168,10 +169,10 @@ describe('WriteTool', () => {
   describe('Basic File Writing', () => {
     it('should write simple text file', async () => {
       const content = 'Hello World';
-      const result = await writeTool.execute({
+      const result = await runWithCwd(testDir, () => writeTool.execute({
         file_path: testFile,
         content
-      });
+      }));
 
       expect(result.success).toBe(true);
       expect(fs.existsSync(testFile)).toBe(true);
@@ -182,10 +183,10 @@ describe('WriteTool', () => {
       fs.writeFileSync(testFile, 'Original content');
 
       const newContent = 'New content';
-      const result = await writeTool.execute({
+      const result = await runWithCwd(testDir, () => writeTool.execute({
         file_path: testFile,
         content: newContent
-      });
+      }));
 
       expect(result.success).toBe(true);
       expect(fs.readFileSync(testFile, 'utf-8')).toBe(newContent);
@@ -193,10 +194,10 @@ describe('WriteTool', () => {
 
     it('should create directory if not exists', async () => {
       const nestedFile = path.join(testDir, 'nested', 'dir', 'file.txt');
-      const result = await writeTool.execute({
+      const result = await runWithCwd(testDir, () => writeTool.execute({
         file_path: nestedFile,
         content: 'test'
-      });
+      }));
 
       expect(result.success).toBe(true);
       expect(fs.existsSync(nestedFile)).toBe(true);
@@ -204,10 +205,10 @@ describe('WriteTool', () => {
 
     it('should handle multiline content', async () => {
       const content = 'Line 1\nLine 2\nLine 3';
-      const result = await writeTool.execute({
+      const result = await runWithCwd(testDir, () => writeTool.execute({
         file_path: testFile,
         content
-      });
+      }));
 
       expect(result.success).toBe(true);
       expect(result.lineCount).toBe(3);
@@ -215,10 +216,10 @@ describe('WriteTool', () => {
     });
 
     it('should handle empty content', async () => {
-      const result = await writeTool.execute({
+      const result = await runWithCwd(testDir, () => writeTool.execute({
         file_path: testFile,
         content: ''
-      });
+      }));
 
       expect(result.success).toBe(true);
       expect(fs.readFileSync(testFile, 'utf-8')).toBe('');
@@ -272,12 +273,12 @@ describe('EditTool', () => {
       const original = 'Hello World\nHello Universe';
       fs.writeFileSync(testFile, original);
 
-      const result = await editTool.execute({
+      const result = await runWithCwd(testDir, () => editTool.execute({
         file_path: testFile,
         old_string: 'Hello World',
         new_string: 'Goodbye World',
         show_diff: false
-      });
+      }));
 
       expect(result.success).toBe(true);
       const content = fs.readFileSync(testFile, 'utf-8');
@@ -288,11 +289,11 @@ describe('EditTool', () => {
     it('should fail when old_string not found', async () => {
       fs.writeFileSync(testFile, 'Hello World');
 
-      const result = await editTool.execute({
+      const result = await runWithCwd(testDir, () => editTool.execute({
         file_path: testFile,
         old_string: 'Nonexistent',
         new_string: 'New',
-      });
+      }));
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('not found');
@@ -301,11 +302,11 @@ describe('EditTool', () => {
     it('should fail when old_string appears multiple times without replace_all', async () => {
       fs.writeFileSync(testFile, 'Hello\nHello\nHello');
 
-      const result = await editTool.execute({
+      const result = await runWithCwd(testDir, () => editTool.execute({
         file_path: testFile,
         old_string: 'Hello',
         new_string: 'Hi',
-      });
+      }));
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('matches');
@@ -317,13 +318,13 @@ describe('EditTool', () => {
     it('should replace all occurrences with replace_all=true', async () => {
       fs.writeFileSync(testFile, 'foo bar foo baz foo');
 
-      const result = await editTool.execute({
+      const result = await runWithCwd(testDir, () => editTool.execute({
         file_path: testFile,
         old_string: 'foo',
         new_string: 'qux',
         replace_all: true,
         show_diff: false
-      });
+      }));
 
       expect(result.success).toBe(true);
       const content = fs.readFileSync(testFile, 'utf-8');
@@ -337,7 +338,7 @@ describe('EditTool', () => {
       const original = 'Line 1\nLine 2\nLine 3';
       fs.writeFileSync(testFile, original);
 
-      const result = await editTool.execute({
+      const result = await runWithCwd(testDir, () => editTool.execute({
         file_path: testFile,
         batch_edits: [
           { old_string: 'Line 1', new_string: 'First Line' },
@@ -345,7 +346,7 @@ describe('EditTool', () => {
           { old_string: 'Line 3', new_string: 'Third Line' },
         ],
         show_diff: false
-      });
+      }));
 
       expect(result.success).toBe(true);
       const content = fs.readFileSync(testFile, 'utf-8');
@@ -356,13 +357,13 @@ describe('EditTool', () => {
       const original = 'Line 1\nLine 2';
       fs.writeFileSync(testFile, original);
 
-      const result = await editTool.execute({
+      const result = await runWithCwd(testDir, () => editTool.execute({
         file_path: testFile,
         batch_edits: [
           { old_string: 'Line 1', new_string: 'First' },
           { old_string: 'Nonexistent', new_string: 'Fail' },
         ],
-      });
+      }));
 
       expect(result.success).toBe(false);
       const content = fs.readFileSync(testFile, 'utf-8');
@@ -374,12 +375,12 @@ describe('EditTool', () => {
     it('should generate diff preview when show_diff=true', async () => {
       fs.writeFileSync(testFile, 'Hello World');
 
-      const result = await editTool.execute({
+      const result = await runWithCwd(testDir, () => editTool.execute({
         file_path: testFile,
         old_string: 'Hello',
         new_string: 'Goodbye',
         show_diff: true
-      });
+      }));
 
       expect(result.success).toBe(true);
       expect(result.output).toContain('+'); // Additions
@@ -389,12 +390,12 @@ describe('EditTool', () => {
     it('should show changes count in diff', async () => {
       fs.writeFileSync(testFile, 'Hello World');
 
-      const result = await editTool.execute({
+      const result = await runWithCwd(testDir, () => editTool.execute({
         file_path: testFile,
         old_string: 'Hello',
         new_string: 'Goodbye',
         show_diff: true
-      });
+      }));
 
       expect(result.success).toBe(true);
       expect(result.output).toMatch(/Changes: /);
@@ -403,25 +404,75 @@ describe('EditTool', () => {
 
   describe('Error Handling', () => {
     it('should fail on non-existent file', async () => {
-      const result = await editTool.execute({
+      const result = await runWithCwd(testDir, () => editTool.execute({
         file_path: path.join(testDir, 'nonexistent.txt'),
         old_string: 'old',
         new_string: 'new',
-      });
+      }));
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('not found');
     });
 
     it('should fail when trying to edit directory', async () => {
-      const result = await editTool.execute({
+      const result = await runWithCwd(testDir, () => editTool.execute({
         file_path: testDir,
         old_string: 'old',
         new_string: 'new',
-      });
+      }));
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('directory');
     });
+  });
+
+  describe('Large File Diff Performance', () => {
+    it('should handle large file edits without hanging', async () => {
+      // 生成一个 3000 行的文件
+      const lines = Array.from({ length: 3000 }, (_, i) => `line ${i}: content here`);
+      const originalContent = lines.join('\n');
+      fs.writeFileSync(testFile, originalContent);
+
+      // 先 read 文件（Edit 需要 fileReadTracker）
+      const readTool = new ReadTool();
+      await runWithCwd(testDir, () => readTool.execute({ file_path: testFile }));
+
+      const start = Date.now();
+      const result = await runWithCwd(testDir, () => editTool.execute({
+        file_path: testFile,
+        old_string: 'line 1500: content here',
+        new_string: 'line 1500: MODIFIED content here',
+        show_diff: true
+      }));
+      const elapsed = Date.now() - start;
+
+      expect(result.success).toBe(true);
+      expect(result.output).toContain('MODIFIED');
+      // 应该在 5 秒内完成（之前的 O(n^2) 实现会卡死）
+      expect(elapsed).toBeLessThan(5000);
+    }, 10000);
+
+    it('should handle complete file rewrite with diff', async () => {
+      // 写一个文件然后完全重写为不同内容
+      const oldContent = Array.from({ length: 1000 }, (_, i) => `old line ${i}`).join('\n');
+      const newContent = Array.from({ length: 1000 }, (_, i) => `new line ${i}`).join('\n');
+      fs.writeFileSync(testFile, oldContent);
+
+      // 先 read 文件
+      const readTool = new ReadTool();
+      await runWithCwd(testDir, () => readTool.execute({ file_path: testFile }));
+
+      const start = Date.now();
+      const result = await runWithCwd(testDir, () => editTool.execute({
+        file_path: testFile,
+        old_string: oldContent,
+        new_string: newContent,
+        show_diff: true
+      }));
+      const elapsed = Date.now() - start;
+
+      expect(result.success).toBe(true);
+      expect(elapsed).toBeLessThan(5000);
+    }, 10000);
   });
 });

@@ -464,15 +464,23 @@
     <a href="#blueprint" class="indent">蓝图系统</a>
     <a href="#swarm" class="indent">蜂群协作</a>
     <a href="#schedule" class="indent">定时任务</a>
+    <a href="#goals" class="indent">目标管理</a>
+    <a href="#apps" class="indent">创建作品</a>
     <a href="#slash-commands" class="indent">斜杠命令</a>
     <a href="#extensions">八、扩展功能</a>
     <a href="#skills" class="indent">技能与插件</a>
     <a href="#mcp" class="indent">MCP 工具扩展</a>
+    <a href="#office" class="indent">Office 文档</a>
+    <a href="#database" class="indent">数据库工具</a>
+    <a href="#imagegen" class="indent">图片生成</a>
     <a href="#channels" class="indent">消息通道</a>
     <a href="#connectors" class="indent">连接器</a>
     <a href="#perception" class="indent">感知系统</a>
+    <a href="#agent-network" class="indent">Agent 网络</a>
+    <a href="#memory" class="indent">记忆系统</a>
     <a href="#proxy" class="indent">API 代理</a>
     <a href="#tts" class="indent">语音朗读</a>
+    <a href="#self-evolve" class="indent">自我进化</a>
     <a href="#settings">九、设置面板</a>
     <a href="#faq">十、常见问题</a>
     <a href="#help">十一、获取帮助</a>
@@ -496,18 +504,24 @@
     <li><strong>运行命令</strong> — 你说"帮我跑一下测试"，它就执行</li>
     <li><strong>搜索你的项目</strong> — 你说"找到所有包含 TODO 的地方"，它就搜</li>
     <li><strong>操作浏览器</strong> — 你说"打开这个网页截个图"，它就做</li>
-    <li><strong>连接各种服务</strong> — GitHub、Slack、飞书、Telegram 等</li>
+    <li><strong>处理 Office 文档</strong> — 读取和编辑 Word、Excel、PPT、PDF</li>
+    <li><strong>连接数据库</strong> — MySQL、PostgreSQL、MongoDB、Redis、SQLite</li>
+    <li><strong>生成图片</strong> — 用自然语言描述，AI 帮你生成或修改图片</li>
+    <li><strong>连接各种服务</strong> — GitHub、Slack、飞书、Telegram、Discord 等</li>
     <li><strong>多个 AI 一起干活</strong> — 大任务自动拆分给多个 AI 并行处理</li>
+    <li><strong>自主完成持续目标</strong> — 设定长期目标，AI 在后台持续推进</li>
+    <li><strong>记忆与学习</strong> — AI 记住你的偏好和项目知识，越用越懂你</li>
 </ul>
 
 <h4>谁适合用？</h4>
 <table>
     <tr><th>你是</th><th>Axon 能帮你</th></tr>
     <tr><td>程序员</td><td>写代码、改 Bug、代码审查、项目分析</td></tr>
-    <tr><td>产品经理</td><td>理解技术方案、生成项目文档</td></tr>
-    <tr><td>设计师</td><td>生成网页原型、修改前端样式</td></tr>
+    <tr><td>产品经理</td><td>理解技术方案、生成项目文档、处理 Excel 数据</td></tr>
+    <tr><td>设计师</td><td>生成网页原型、修改前端样式、生成图片素材</td></tr>
+    <tr><td>数据分析师</td><td>连接数据库查询、处理 Excel/CSV、生成报表</td></tr>
     <tr><td>学生</td><td>学编程、做作业、理解项目代码</td></tr>
-    <tr><td>任何人</td><td>自动化日常任务、数据处理、文件整理</td></tr>
+    <tr><td>任何人</td><td>自动化日常任务、处理文档、制作 PPT、整理文件</td></tr>
 </table>
 
 <hr>
@@ -703,7 +717,7 @@ export ANTHROPIC_API_KEY=你的中转服务密钥</code></pre>
 <div class="diagram">┌──────────────────────────────────────────────────────┐
 │  项目选择 ▾   会话选择 ▾   ＋  🔍   ⚙️              │  ← 顶部导航栏
 ├──────────────────────────────────────────────────────┤
-│  💬 聊天   📋 蓝图   🐝 蜂群   ⏰ 定时任务           │  ← 功能标签页
+│  💬 聊天  📋 蓝图  🐝 蜂群  ⏰ 定时  📂 作品  ⚙ 自定义│  ← 功能标签页
 ├──────────────────────────────────────────────────────┤
 │                                                      │
 │                   对话内容区域                         │
@@ -731,6 +745,8 @@ export ANTHROPIC_API_KEY=你的中转服务密钥</code></pre>
     <tr><td><strong>蓝图</strong></td><td>查看项目分析结果</td><td>想了解一个项目的整体结构</td></tr>
     <tr><td><strong>蜂群</strong></td><td>查看多 AI 协作进度</td><td>让多个 AI 一起完成大任务时</td></tr>
     <tr><td><strong>定时任务</strong></td><td>管理定时自动任务</td><td>需要定期自动执行某些操作</td></tr>
+    <tr><td><strong>作品</strong></td><td>查看 AI 帮你创建的项目和文件</td><td>回顾之前让 AI 做过的东西</td></tr>
+    <tr><td><strong>自定义</strong></td><td>技能、MCP、通道、感知等扩展配置</td><td>配置扩展功能（技能、IM 通道等）</td></tr>
 </table>
 
 <h4>底部工具栏</h4>
@@ -763,6 +779,8 @@ export ANTHROPIC_API_KEY=你的中转服务密钥</code></pre>
     <tr><td>"帮我把这个 Bug 修了"</td><td>分析代码、定位问题、修复代码</td></tr>
     <tr><td>"帮我生成一张产品介绍的海报"</td><td>调用图片生成工具</td></tr>
     <tr><td>"打开 baidu.com 截个图"</td><td>操作浏览器并截图</td></tr>
+    <tr><td>"帮我读取 report.xlsx 的内容"</td><td>读取并展示 Excel 表格数据</td></tr>
+    <tr><td>"连接 PostgreSQL 数据库，查询用户表"</td><td>连接数据库执行 SQL 查询</td></tr>
 </table>
 
 <p>当 AI 需要操作你的电脑时，你会看到类似这样的提示：</p>
@@ -888,7 +906,38 @@ export ANTHROPIC_API_KEY=你的中转服务密钥</code></pre>
 <p>方式一：直接在聊天中说 <code>帮我创建一个定时任务，每天上午10点检查 Git 仓库状态</code></p>
 <p>方式二：点击 <strong>"定时任务"</strong> 标签页，手动创建。</p>
 
-<h3 id="slash-commands">7.5 斜杠命令</h3>
+<h3 id="goals">7.5 目标管理 — AI 帮你持续推进长期目标</h3>
+
+<p><strong>什么是目标管理？</strong></p>
+<p>定时任务适合简单的重复操作，但如果你有一个复杂的长期目标（比如"让我的开源项目获得 500 个 Star"），就需要目标管理。</p>
+
+<p>AI 会：</p>
+<ol>
+    <li>帮你把大目标拆解为具体的<strong>策略</strong>和<strong>步骤</strong></li>
+    <li>定义可衡量的<strong>指标</strong>来跟踪进度</li>
+    <li>在后台<strong>持续自动推进</strong>各个步骤</li>
+    <li>需要你操作的时候发<strong>通知</strong>提醒你</li>
+</ol>
+
+<p><strong>怎么用？</strong></p>
+<p>在聊天中说 <code>帮我创建一个目标：让项目获得 500 个 GitHub Star</code>，AI 会自动规划策略、设置指标并开始执行。</p>
+
+<div class="tip">目标管理需要 Daemon 后台进程运行。首次使用时 AI 会自动提示你启动。</div>
+
+<h3 id="apps">7.6 创建作品 — 让 AI 帮你从零搭建项目</h3>
+
+<p>点击 <strong>"作品"</strong> 标签页，可以让 AI 帮你创建全新的应用程序：</p>
+
+<div class="steps">
+    <div class="step"><div class="step-content">点击 <strong>"创建新作品"</strong> 按钮</div></div>
+    <div class="step"><div class="step-content">指定<strong>工作目录</strong>（AI 会在这个目录下创建文件，不会污染你的其他项目）</div></div>
+    <div class="step"><div class="step-content">用自然语言<strong>描述你想做什么</strong>，比如："一个贪吃蛇游戏"、"一个记账本应用"</div></div>
+    <div class="step"><div class="step-content">AI 会自动创建项目结构、写代码、运行测试</div></div>
+</div>
+
+<p>创建完成后，你可以在作品列表中看到之前所有的项目和文件操作历史。</p>
+
+<h3 id="slash-commands">7.7 斜杠命令</h3>
 
 <p>在输入框输入 <code>/</code> 会弹出命令列表，这些是快捷操作：</p>
 
@@ -946,7 +995,47 @@ export ANTHROPIC_API_KEY=你的中转服务密钥</code></pre>
     <li><strong>数据库</strong> — 连接 PostgreSQL、SQLite 等数据库</li>
 </ul>
 
-<h3 id="channels">8.3 消息通道 — 连接 IM 软件</h3>
+<h3 id="office">8.3 Office 文档处理</h3>
+
+<p>Axon 可以直接读取和编辑多种办公文档，无需安装 Office 软件：</p>
+
+<table>
+    <tr><th>格式</th><th>读取</th><th>编辑</th><th>搜索</th></tr>
+    <tr><td><strong>PDF</strong></td><td>提取文字和表格</td><td>不支持</td><td>全文搜索</td></tr>
+    <tr><td><strong>Word (.docx)</strong></td><td>读取全文</td><td>替换文本内容</td><td>全文搜索</td></tr>
+    <tr><td><strong>Excel (.xlsx)</strong></td><td>读取所有工作表</td><td>替换单元格内容</td><td>全文搜索</td></tr>
+    <tr><td><strong>PPT (.pptx)</strong></td><td>提取幻灯片文本</td><td>替换文本内容</td><td>全文搜索</td></tr>
+</table>
+
+<p><strong>使用方式：</strong>直接在聊天中说 <code>帮我读取 report.pdf</code> 或 <code>把 presentation.pptx 第 3 页的标题改成 xxx</code>，也可以使用技能 <code>/pdf</code>、<code>/xlsx</code>、<code>/pptx</code>、<code>/docx</code>。</p>
+
+<h3 id="database">8.4 数据库工具</h3>
+
+<p>AI 可以直接连接你的数据库进行查询和管理：</p>
+
+<table>
+    <tr><th>数据库</th><th>说明</th></tr>
+    <tr><td><strong>MySQL</strong></td><td>关系型数据库查询</td></tr>
+    <tr><td><strong>PostgreSQL</strong></td><td>关系型数据库查询</td></tr>
+    <tr><td><strong>SQLite</strong></td><td>本地文件数据库</td></tr>
+    <tr><td><strong>MongoDB</strong></td><td>文档型数据库查询</td></tr>
+    <tr><td><strong>Redis</strong></td><td>键值存储操作</td></tr>
+</table>
+
+<p><strong>使用方式：</strong>在聊天中说 <code>连接我的 PostgreSQL 数据库 postgresql://user:pass@localhost:5432/mydb</code>，AI 会自动连接并可以执行查询、查看表结构等操作。支持只读模式保护数据安全。</p>
+
+<h3 id="imagegen">8.5 图片生成</h3>
+
+<p>AI 可以帮你生成或修改图片：</p>
+
+<ul>
+    <li><strong>文生图</strong> — 用文字描述生成全新图片，例如 <code>帮我生成一个现代简约风格的 Logo</code></li>
+    <li><strong>图生图</strong> — 上传一张图片并描述修改需求，例如 <code>把这张图片的背景改成蓝色</code></li>
+</ul>
+
+<div class="tip">图片生成使用 Google Gemini API，需要在设置中配置 Gemini API Key。</div>
+
+<h3 id="channels">8.6 消息通道 — 连接 IM 软件</h3>
 
 <p>你可以把 Axon 连接到你常用的聊天软件，随时随地给 AI 发消息：</p>
 
@@ -961,7 +1050,7 @@ export ANTHROPIC_API_KEY=你的中转服务密钥</code></pre>
 
 <p><strong>配置方法：</strong>打开自定义页面 > <strong>"消息通道"</strong> 面板，按照提示配置对应平台的 Bot Token。</p>
 
-<h3 id="connectors">8.4 连接器 — 对接第三方服务</h3>
+<h3 id="connectors">8.7 连接器 — 对接第三方服务</h3>
 
 <p>连接器让 AI 能直接操作你的第三方服务：</p>
 
@@ -975,7 +1064,7 @@ export ANTHROPIC_API_KEY=你的中转服务密钥</code></pre>
 
 <p><strong>配置方法：</strong>打开自定义页面 > <strong>"连接器"</strong> 面板，点击对应服务进行授权。</p>
 
-<h3 id="perception">8.5 感知系统 — 让 AI 看到和听到</h3>
+<h3 id="perception">8.8 感知系统 — 让 AI 看到和听到</h3>
 
 <p>Axon 有三个感知能力：</p>
 
@@ -994,7 +1083,7 @@ export ANTHROPIC_API_KEY=你的中转服务密钥</code></pre>
     <div class="card-desc">AI 回复时自动朗读内容。代码块会自动跳过不读，说话时自动暂停麦克风防回声。见下方"语音朗读"。</div>
 </div>
 
-<h3 id="proxy">8.6 API 代理 — 多设备共享密钥</h3>
+<h3 id="proxy">8.9 API 代理 — 多设备共享密钥</h3>
 
 <p>如果你想在多台设备上使用同一个 API 密钥（比如手机上也想用），可以开启 API 代理服务器。</p>
 
@@ -1014,7 +1103,7 @@ export ANTHROPIC_API_KEY=你的中转服务密钥</code></pre>
     <li>支持每日调用限制</li>
 </ul>
 
-<h3 id="tts">8.7 语音朗读</h3>
+<h3 id="tts">8.10 语音朗读</h3>
 
 <p>AI 回复时可以自动朗读内容。在自定义页面 > <strong>"感知"</strong> 面板中开启。</p>
 
@@ -1024,6 +1113,53 @@ export ANTHROPIC_API_KEY=你的中转服务密钥</code></pre>
     <li>说话时自动暂停麦克风（防回声）</li>
     <li>朗读结束后自动恢复麦克风</li>
 </ul>
+
+<h3 id="agent-network">8.11 Agent 网络 — 多个 AI 实例协作</h3>
+
+<p>如果你同时运行了多个 Axon 实例（比如在不同项目或不同电脑上），它们可以互相发现和协作：</p>
+
+<ul>
+    <li><strong>自动发现</strong> — 局域网内的 Axon 实例通过 mDNS 自动发现彼此</li>
+    <li><strong>远程工具调用</strong> — 一个 AI 可以调用另一个 AI 的工具</li>
+    <li><strong>任务委派</strong> — 把任务分配给其他 Agent 执行</li>
+    <li><strong>信任管理</strong> — 控制哪些 Agent 可以访问你的工具</li>
+</ul>
+
+<p><strong>配置方法：</strong>打开自定义页面 > <strong>"Agent 网络"</strong> 面板，启用网络功能并配置端口。</p>
+
+<div class="tip">Agent 网络默认关闭，需要手动开启。同一用户的多个实例会自动互信。</div>
+
+<h3 id="memory">8.12 记忆系统 — AI 越用越懂你</h3>
+
+<p>Axon 拥有持久化记忆能力，不会像普通聊天机器人那样"忘记一切"：</p>
+
+<div class="card">
+    <div class="card-title">笔记本（Notebook）</div>
+    <div class="card-desc">AI 会自动维护三个笔记本：<strong>用户档案</strong>（记住你的偏好）、<strong>经验笔记</strong>（跨项目通用知识）、<strong>项目笔记</strong>（当前项目专属知识）。这些信息在每次对话开始时自动加载。</div>
+</div>
+
+<div class="card">
+    <div class="card-title">长期记忆搜索</div>
+    <div class="card-desc">AI 能搜索过去的对话历史，回忆之前讨论过的内容。支持关键词搜索和向量语义搜索（需配置 Embedding 模型）。</div>
+</div>
+
+<p>你不需要做任何配置，记忆系统默认启用。如果想要更精准的语义搜索，可以在设置中配置 Embedding API。</p>
+
+<h3 id="self-evolve">8.13 自我进化 — AI 改进自己</h3>
+
+<p>这是 Axon 最独特的功能之一：AI 可以修改自己的源代码来获得新能力。</p>
+
+<p><strong>工作原理：</strong></p>
+<ol>
+    <li>你描述一个 AI 目前做不到的事情</li>
+    <li>AI 分析自己的源代码，找到需要修改的地方</li>
+    <li>AI 修改代码并自动重启</li>
+    <li>重启后新能力立即生效</li>
+</ol>
+
+<div class="tip tip-warning">
+    <strong>注意：</strong>自我进化功能需要使用 <code>--evolve</code> 参数启动 Axon。普通模式下此功能不可用。
+</div>
 
 <hr>
 
@@ -1147,7 +1283,7 @@ export ANTHROPIC_API_KEY=你的中转服务密钥</code></pre>
 </div>
 
 <div class="footer">
-    <p>本手册最后更新：2026-03-08</p>
+    <p>本手册最后更新：2026-03-16</p>
     <p>Axon — 让 AI 不只是聊天，而是真正帮你干活</p>
 </div>
 

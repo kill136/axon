@@ -89,6 +89,8 @@ import {
   handleGitGetConflicts,
   handleGitResolveLock,
 } from './websocket-git-handlers.js';
+// cmux 终端集成（macOS 原生 AI 终端 https://github.com/manaflow-ai/cmux）
+import { getCmuxBridge } from '../../notifications/cmux.js';
 
 // ============================================================================
 // 工具分类函数 - 用于 Web UI 状态反馈
@@ -163,6 +165,20 @@ interface ClientConnection {
   swarmSubscriptions: Set<string>; // 订阅的 blueprint IDs
   projectPath?: string; // 当前选择的项目路径
   permissionMode?: string; // 客户端级别的权限模式（跨会话持久化）
+  // 会话操作互斥锁：防止 session_switch/session_new/chat(临时会话持久化) 并发修改 sessionId
+  // 使用 Promise 链实现简单的串行化
+  sessionMutex?: Promise<void>;
+}
+
+/**
+ * 会话操作互斥锁：确保修改 client.sessionId 的操作不会并发执行
+ * 使用 Promise 链模式：每个操作 await 上一个操作完成后才开始
+ */
+function withSessionMutex<T>(client: ClientConnection, fn: () => Promise<T>): Promise<T> {
+  const prev = client.sessionMutex || Promise.resolve();
+  let resolve: () => void;
+  client.sessionMutex = new Promise<void>(r => { resolve = r; });
+  return prev.then(() => fn()).finally(() => resolve!());
 }
 
 // 全局检查点管理器实例（惰性初始化，避免模块加载时的副作用日志）
@@ -1457,13 +1473,16 @@ async function handleClientMessage(
     }
 
     case 'chat':
-      // 确保会话关联 WebSocket
-      conversationManager.setWebSocket(client.sessionId, ws);
-      // 如果消息中包含 projectPath，更新 client.projectPath
-      if (message.payload.projectPath !== undefined) {
-        client.projectPath = message.payload.projectPath;
-      }
-      await handleChatMessage(client, message.payload.content, message.payload.attachments || message.payload.images, conversationManager, message.payload.messageId);
+      // 使用会话互斥锁，防止与 session_switch/session_new 并发修改 client.sessionId
+      await withSessionMutex(client, async () => {
+        // 确保会话关联 WebSocket
+        conversationManager.setWebSocket(client.sessionId, ws);
+        // 如果消息中包含 projectPath，更新 client.projectPath
+        if (message.payload.projectPath !== undefined) {
+          client.projectPath = message.payload.projectPath;
+        }
+        await handleChatMessage(client, message.payload.content, message.payload.attachments || message.payload.images, conversationManager, message.payload.messageId);
+      });
       break;
 
     case 'cancel':
@@ -1565,17 +1584,17 @@ async function handleClientMessage(
       break;
 
     case 'session_create':
-      await handleSessionCreate(client, message.payload, conversationManager);
+      await withSessionMutex(client, () => handleSessionCreate(client, message.payload, conversationManager));
       break;
 
     case 'session_new':
       // 官方规范：创建新的临时会话（不立即持久化）
       // 会话只有在发送第一条消息后才会真正创建
-      await handleSessionNew(client, message.payload, conversationManager);
+      await withSessionMutex(client, () => handleSessionNew(client, message.payload, conversationManager));
       break;
 
     case 'session_switch':
-      await handleSessionSwitch(client, message.payload.sessionId, conversationManager);
+      await withSessionMutex(client, () => handleSessionSwitch(client, message.payload.sessionId, conversationManager));
       break;
 
     case 'session_delete':
@@ -2503,6 +2522,10 @@ async function handleChatMessage(
     payload: { status: 'thinking', sessionId: chatSessionId },
   });
 
+  // cmux 集成：通知 cmux 终端 Agent 开始思考
+  const cmux = getCmuxBridge();
+  cmux.onThinking();
+
   try {
     // 调用对话管理器，传入流式回调（媒体附件包含 mimeType 和类型）
     // 所有回调使用 getActiveWs() 动态获取 WebSocket，确保刷新后消息仍能送达
@@ -2545,6 +2568,14 @@ async function handleChatMessage(
           type: 'status',
           payload: { status: 'tool_executing', message: `Executing ${toolName}...`, sessionId: chatSessionId },
         });
+        cmux.onToolStart(toolName);
+      },
+
+      onToolUseInputReady: (toolUseId: string, input: unknown) => {
+        sendMessage(getActiveWs(), {
+          type: 'tool_use_input_ready',
+          payload: { toolUseId, input, sessionId: chatSessionId },
+        });
       },
 
       onToolUseDelta: (toolUseId: string, partialJson: string) => {
@@ -2574,6 +2605,7 @@ async function handleChatMessage(
           type: 'permission_request',
           payload: { ...request, sessionId: chatSessionId },
         });
+        cmux.onPermissionRequest(request.toolName || 'Unknown', request.description || 'execute');
       },
 
       onComplete: async (stopReason: string | null, usage?: { inputTokens: number; outputTokens: number }) => {
@@ -2604,6 +2636,7 @@ async function handleChatMessage(
           type: 'status',
           payload: { status: 'idle', sessionId: chatSessionId },
         });
+        cmux.onComplete();
       },
 
       onError: (error: Error) => {
@@ -2623,6 +2656,7 @@ async function handleChatMessage(
           type: 'status',
           payload: { status: 'idle', sessionId: chatSessionId },
         });
+        cmux.onError(error.message);
       },
 
       onContextUpdate: (usage: { usedTokens: number; maxTokens: number; percentage: number; model: string }) => {
@@ -3010,9 +3044,10 @@ async function handleSessionSwitch(
       const history = conversationManager.getLiveHistory(sessionId);
       console.log(`[WebSocket] handleSessionSwitch: sessionId=${sessionId}, history.length=${history.length}, isProcessing=${conversationManager.isSessionProcessing(sessionId)}`);
 
+      const sessionName = conversationManager.getSessionName(sessionId);
       sendMessage(ws, {
         type: 'session_switched',
-        payload: { sessionId, projectPath: client.projectPath, history },
+        payload: { sessionId, sessionName, projectPath: client.projectPath, history },
       });
 
       // 同步权限配置到客户端（刷新后客户端 permissionMode 会重置为 'default'，需要从服务端恢复）
@@ -3149,6 +3184,12 @@ async function handleSessionSwitch(
             sendMessage(getActiveWs(), {
               type: 'status',
               payload: { status: 'tool_executing', message: `Executing ${toolName}...`, sessionId: chatSessionId },
+            });
+          },
+          onToolUseInputReady: (toolUseId: string, input: unknown) => {
+            sendMessage(getActiveWs(), {
+              type: 'tool_use_input_ready',
+              payload: { toolUseId, input, sessionId: chatSessionId },
             });
           },
           onToolUseDelta: (toolUseId: string, partialJson: string) => {

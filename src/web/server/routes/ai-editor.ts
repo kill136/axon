@@ -1967,9 +1967,11 @@ router.post('/time-machine', async (req: Request, res: Response) => {
 
         try {
           // 获取文件的整体历史（最近20条）
+          // 用文件所在目录作为 cwd，git 会自动向上查找 .git（多项目场景下 process.cwd() 不可靠）
+          const gitCwd = path.dirname(filePath);
           const gitLogCmd = `git log --follow --format="%H|%an|%ae|%ad|%s" -20 -- "${filePath}"`;
           const gitOutput = execSync(gitLogCmd, {
-            cwd: process.cwd(),
+            cwd: gitCwd,
             encoding: 'utf-8',
             timeout: 5000,
           });
@@ -1992,7 +1994,7 @@ router.post('/time-machine', async (req: Request, res: Response) => {
             try {
               const gitLineLogCmd = `git log -L ${startLine},${endLine}:"${filePath}" --format="%H|%an|%ad|%s" -10`;
               const lineLogOutput = execSync(gitLineLogCmd, {
-                cwd: process.cwd(),
+                cwd: gitCwd,
                 encoding: 'utf-8',
                 timeout: 5000,
               });

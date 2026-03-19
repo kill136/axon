@@ -439,14 +439,14 @@ export function Message({
   };
 
   // 对齐官方 Hh4 组件：渲染 compact_boundary 分隔线
-  // 官方 CLI: "✻ Conversation compacted (ctrl+o for history)"
   if (message.isCompactBoundary) {
+    const hint = t('message.compactBoundaryHint');
     return (
       <div className="compact-boundary">
         <div className="compact-boundary__line" />
         <span className="compact-boundary__label">
           ✻ {t('message.compactBoundary')}
-          {!isTranscriptMode && <span className="compact-boundary__hint"> {t('message.compactBoundaryHint')}</span>}
+          {!isTranscriptMode && hint && <span className="compact-boundary__hint"> {hint}</span>}
         </span>
         <div className="compact-boundary__line" />
       </div>

@@ -20,6 +20,7 @@ import { initAuth, getAuth, refreshTokenAsync } from '../auth/index.js';
 import { v4 as uuidv4 } from 'uuid';
 import { VERSION_BASE } from '../version.js';
 import { randomBytes } from 'crypto';
+import { getMaxOutputTokens } from './max-tokens.js';
 import {
   isPenguinEnabled,
   shouldActivateFastMode,
@@ -1264,12 +1265,10 @@ export class ClaudeClient {
     const resolvedModel = modelConfig.resolveAlias(config.model || 'sonnet');
     this.model = resolvedModel;
 
-    // 根据模型能力设置 maxTokens
-    const capabilities = modelConfig.getCapabilities(this.model);
-    // SDK限制：maxTokens不能太大，否则会要求streaming
-    // 计算公式：3600 * maxTokens / 128000 <= 600，即 maxTokens <= 21333
-    // 使用21000作为安全默认值（留有余量）
-    this.maxTokens = config.maxTokens || Math.min(21000, capabilities.maxOutputTokens);
+    // 对齐官方：max_tokens 由 getMaxOutputTokens() 统一计算
+    // 支持 CLAUDE_CODE_MAX_OUTPUT_TOKENS 环境变量 > settings.json maxTokens > 模型默认值
+    // 注意：我们始终使用 streaming 模式，不受非 streaming 的 21333 限制
+    this.maxTokens = config.maxTokens || getMaxOutputTokens(this.model);
 
     // 对标官方 V39: 默认 10 次重试，通过 settings.json maxRetries 配置
     this.maxRetries = config.maxRetries ?? DEFAULT_MAX_RETRIES;
@@ -1308,6 +1307,7 @@ export class ClaudeClient {
     }
 
     if (this.debug) {
+      const capabilities = modelConfig.getCapabilities(this.model);
       console.log(`[ClaudeClient] Initialized with model: ${this.model}`);
       console.log(`[ClaudeClient] Context window: ${capabilities.contextWindow.toLocaleString()} tokens`);
       console.log(`[ClaudeClient] Supports thinking: ${capabilities.supportsThinking}`);
@@ -1763,7 +1763,7 @@ export class ClaudeClient {
       toolSearchEnabled?: boolean;
     }
   ): AsyncGenerator<{
-    type: 'text' | 'thinking' | 'tool_use_start' | 'tool_use_delta' | 'server_tool_use_start' | 'web_search_result' | 'stop' | 'usage' | 'error' | 'response_headers';
+    type: 'text' | 'thinking' | 'tool_use_start' | 'tool_use_delta' | 'tool_use_complete' | 'server_tool_use_start' | 'web_search_result' | 'stop' | 'usage' | 'error' | 'response_headers';
     text?: string;
     thinking?: string;
     id?: string;
@@ -2114,11 +2114,21 @@ export class ClaudeClient {
           // 从最终消息中获取 web_search_tool_result 和 thinking_tokens
           const finalMessage = await stream.finalMessage();
 
-          // 提取 web_search_tool_result（Server Tool 的搜索结果在 finalMessage 中）
+          // 从 finalMessage.content 中提取完整的 tool_use input 和 web_search_tool_result
+          // SDK 内部维护了完整的 content_block 状态，包括 JSON.parse 后的 tool_use input
+          // 这比我们手动拼接 input_json_delta 更可靠（避免截断/解析失败问题）
           if (finalMessage?.content) {
             for (const block of finalMessage.content) {
               if ((block as any).type === 'web_search_tool_result') {
                 yield { type: 'web_search_result', data: block };
+              } else if ((block as any).type === 'tool_use') {
+                // yield 完整的 tool_use block（包含 SDK 解析好的 input 对象）
+                yield {
+                  type: 'tool_use_complete',
+                  id: (block as any).id,
+                  name: (block as any).name,
+                  input: (block as any).input,
+                };
               }
             }
           }

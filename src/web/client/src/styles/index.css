@@ -691,6 +691,83 @@ body {
   pointer-events: auto;
 }
 
+/* 可折叠的压缩历史消息区域 */
+.compacted-history {
+  margin: 0 0 4px;
+  padding: 0 8px;
+}
+
+.compacted-history__toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: 1px dashed var(--border-color, #333);
+  border-radius: 6px;
+  color: var(--text-muted, #888);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.compacted-history__toggle:hover {
+  background: var(--bg-hover, rgba(255,255,255,0.03));
+  color: var(--text-secondary, #cbd5e1);
+  border-color: var(--text-muted, #888);
+}
+
+.compacted-history__chevron {
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+  opacity: 0.6;
+}
+
+.compacted-history__hint {
+  opacity: 0.5;
+  margin-left: 4px;
+}
+
+.compacted-history__messages {
+  margin-top: 8px;
+  padding: 8px 0;
+  border-left: 2px solid var(--border-color, #333);
+  opacity: 0.45;
+  filter: saturate(0.3);
+  transition: opacity 0.2s ease;
+  position: relative;
+}
+
+.compacted-history__messages:hover {
+  opacity: 0.65;
+}
+
+.compacted-history__messages::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -2px;
+  right: 0;
+  height: 20px;
+  background: linear-gradient(to bottom, var(--bg-primary, #0f172a), transparent);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.compacted-history__messages::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: -2px;
+  right: 0;
+  height: 20px;
+  background: linear-gradient(to top, var(--bg-primary, #0f172a), transparent);
+  pointer-events: none;
+  z-index: 1;
+}
+
 /* 对齐官方 Hh4: compact_boundary 分隔线 */
 .compact-boundary {
   display: flex;
@@ -1322,6 +1399,29 @@ body {
   outline: none;
 }
 
+/* 未认证时的登录提示（替代 textarea） */
+.chat-input.auth-prompt {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  color: var(--text-secondary);
+  font-style: italic;
+  user-select: none;
+  opacity: 0.8;
+  transition: opacity 0.15s, color 0.15s;
+}
+
+.chat-input.auth-prompt:hover {
+  opacity: 1;
+  color: var(--accent-color, #6366f1);
+}
+
+/* 未认证时发送按钮变为登录引导 */
+.send-btn.auth-required {
+  opacity: 0.9;
+  background: var(--accent-color, #6366f1) !important;
+}
+
 /* 输入框包装器 */
 .input-wrapper {
   position: relative;
@@ -1375,6 +1475,27 @@ body {
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
+}
+
+/* 输入框新建对话按钮 */
+.new-session-btn {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  border-radius: var(--radius-sm);
+  padding: 3px;
+  margin-right: 2px;
+}
+
+.new-session-btn:hover {
+  background: rgba(99, 102, 241, 0.15);
+  color: var(--accent-primary);
+  border-color: var(--accent-primary);
 }
 
 .attach-btn {
@@ -1540,6 +1661,31 @@ body {
 }
 
 @keyframes voice-status-fadein {
+  from { opacity: 0; transform: translateX(-50%) translateY(4px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+/* Queued Message Bar (shown during context compaction) */
+.queued-message-bar {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: 6px;
+  padding: 5px 12px;
+  background: rgba(15, 15, 30, 0.85);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(168, 85, 247, 0.4);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  color: #c4b5fd;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: queued-bar-fadein 0.3s ease;
+  z-index: 10;
+}
+
+@keyframes queued-bar-fadein {
   from { opacity: 0; transform: translateX(-50%) translateY(4px); }
   to   { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
@@ -3555,6 +3701,8 @@ body {
   justify-content: center;
   background: rgba(0, 0, 0, 0.7);
   backdrop-filter: blur(6px);
+  /* Electron: 防止继承下层 drag 区域导致整个 overlay 无法点击 */
+  -webkit-app-region: no-drag;
 }
 
 .setup-wizard-modal {

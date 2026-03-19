@@ -8,6 +8,7 @@ import { setupTestEnvironment, cleanupTestEnvironment, createTestConfig } from '
 import type { TestEnvironment } from './setup.js';
 import { createMinimalConfig } from './helpers.js';
 import { ConfigManager } from '../../src/config/index.js';
+import { VERSION } from '../../src/version.js';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -27,7 +28,7 @@ describe('Config Loading Integration', () => {
       const config = new ConfigManager(env.configDir);
       const allConfig = config.getAll();
 
-      expect(allConfig.version).toBe('2.1.4');
+      expect(allConfig.version).toBe(VERSION);
       expect(allConfig.model).toBe('sonnet');
       expect(allConfig.maxTokens).toBe(32000);
       expect(allConfig.temperature).toBe(1);
@@ -89,24 +90,24 @@ describe('Config Loading Integration', () => {
     it('should prioritize environment variables over config files', () => {
       const globalConfig = {
         ...createMinimalConfig(),
-        maxTokens: 8192,
-        useBedrock: false,
+        language: 'en',
+        respectGitignore: false,
       };
       createTestConfig(env, globalConfig);
 
-      // Set environment variables
-      process.env.AXON_MAX_OUTPUT_TOKENS = '16384';
-      process.env.AXON_USE_BEDROCK = 'true';
+      // Set environment variables (only those actually mapped in getEnvConfig)
+      process.env.AXON_LANGUAGE = 'zh-CN';
+      process.env.AXON_RESPECT_GITIGNORE = 'true';
 
       const config = new ConfigManager(env.configDir);
       const loaded = config.getAll();
 
-      expect(loaded.maxTokens).toBe(16384);
-      expect(loaded.useBedrock).toBe(true);
+      expect(loaded.language).toBe('zh-CN');
+      expect(loaded.respectGitignore).toBe(true);
 
       // Cleanup
-      delete process.env.AXON_MAX_OUTPUT_TOKENS;
-      delete process.env.AXON_USE_BEDROCK;
+      delete process.env.AXON_LANGUAGE;
+      delete process.env.AXON_RESPECT_GITIGNORE;
     });
   });
 
@@ -269,7 +270,7 @@ describe('Config Loading Integration', () => {
       const loaded = config.getAll();
 
       expect(loaded.model).toBe('opus');
-      expect(loaded.version).toBe('2.1.4');
+      expect(loaded.version).toBe(VERSION);
     });
 
     it('should migrate deprecated settings', () => {
@@ -288,7 +289,7 @@ describe('Config Loading Integration', () => {
       expect(loaded.enableAutoSave).toBe(true);
       // maxOutputTokens is not migrated to maxTokens, so default is used
       expect(loaded.maxTokens).toBe(32000);
-      expect(loaded.version).toBe('2.1.4');
+      expect(loaded.version).toBe(VERSION);
     });
   });
 
@@ -428,34 +429,35 @@ describe('Config Loading Integration', () => {
 
   describe('Environment Variable Parsing', () => {
     it('should parse boolean environment variables', () => {
-      process.env.AXON_VERBOSE = 'true';
-      process.env.AXON_USE_BEDROCK = 'false';
+      process.env.AXON_ENABLE_PROMPT_SUGGESTION = 'true';
+      process.env.AXON_RESPECT_GITIGNORE = 'false';
 
       const config = new ConfigManager(env.configDir);
       const loaded = config.getAll();
 
-      expect(loaded.verbose).toBe(true);
-      expect(loaded.useBedrock).toBe(false);
+      expect(loaded.promptSuggestionEnabled).toBe(true);
+      expect(loaded.respectGitignore).toBe(false);
 
-      delete process.env.AXON_VERBOSE;
-      delete process.env.AXON_USE_BEDROCK;
+      delete process.env.AXON_ENABLE_PROMPT_SUGGESTION;
+      delete process.env.AXON_RESPECT_GITIGNORE;
     });
 
     it('should parse numeric environment variables', () => {
-      process.env.AXON_MAX_OUTPUT_TOKENS = '32768';
+      process.env.AXON_OTEL_SHUTDOWN_TIMEOUT_MS = '5000';
 
       const config = new ConfigManager(env.configDir);
       const loaded = config.getAll();
 
-      expect(loaded.maxTokens).toBe(32768);
+      // AXON_OTEL_SHUTDOWN_TIMEOUT_MS is a numeric env var mapped via getEnvConfig
+      expect((loaded as any).telemetry?.otelShutdownTimeoutMs).toBe(5000);
       // AXON_TEMPERATURE is not supported as env var, temperature uses default
       expect(loaded.temperature).toBe(1);
 
-      delete process.env.AXON_MAX_OUTPUT_TOKENS;
+      delete process.env.AXON_OTEL_SHUTDOWN_TIMEOUT_MS;
     });
 
     it('should handle invalid environment variable values', () => {
-      process.env.AXON_MAX_OUTPUT_TOKENS = 'not-a-number';
+      process.env.AXON_OTEL_SHUTDOWN_TIMEOUT_MS = 'not-a-number';
 
       const config = new ConfigManager(env.configDir);
       const loaded = config.getAll();
@@ -465,7 +467,7 @@ describe('Config Loading Integration', () => {
       expect(typeof loaded.maxTokens).toBe('number');
       expect(loaded.maxTokens).toBeGreaterThan(0);
 
-      delete process.env.AXON_MAX_OUTPUT_TOKENS;
+      delete process.env.AXON_OTEL_SHUTDOWN_TIMEOUT_MS;
     });
   });
 });

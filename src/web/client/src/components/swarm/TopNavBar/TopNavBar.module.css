@@ -158,6 +158,39 @@
   animation: dropdownSlide 0.15s ease;
 }
 
+/* 下拉菜单顶部的"新建对话"入口 */
+.newSessionEntry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--accent-primary);
+  border-bottom: 1px solid var(--border-color);
+  transition: background 0.15s;
+}
+
+.newSessionEntry:hover {
+  background: rgba(99, 102, 241, 0.1);
+}
+
+.newSessionEntryIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--accent-primary);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
 @keyframes dropdownSlide {
   from {
     opacity: 0;
@@ -219,6 +252,36 @@
 
 .sessionItem.active {
   background: rgba(99, 102, 241, 0.12);
+}
+
+/* 需要注意的会话 — 蓝色通知环（借鉴 cmux notification rings） */
+.sessionItem.needsAttention {
+  box-shadow: inset 3px 0 0 0 #3b82f6;
+}
+
+/* 会话状态指示点 */
+.sessionStatusDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--text-muted);
+}
+
+.sessionStatusDot.attention {
+  background: #3b82f6;
+  box-shadow: 0 0 6px rgba(59, 130, 246, 0.6);
+  animation: sessionPulse 2s ease-in-out infinite;
+}
+
+.sessionStatusDot.working {
+  background: #a78bfa;
+  animation: sessionPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes sessionPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
 }
 
 .sessionItemInfo {
@@ -426,6 +489,11 @@
 /* contextRow 在 Electron 模式下充当标题栏，整行可拖拽 */
 .electronDragRegion {
   -webkit-app-region: drag;
+}
+
+/* macOS hiddenInset 模式：交通灯（红绿灯按钮）叠加在内容区上，需要留出空间避免遮挡 */
+.electronMacDragRegion {
+  padding-left: 76px;
 }
 
 /* 拖拽区域内的可交互元素需要排除拖拽，否则点不了 */

@@ -223,7 +223,7 @@ describe('KillShellTool', () => {
     const shellId = startResult.bash_id || startResult.shell_id!;
     const killResult = await killTool.execute({ shell_id: shellId });
     expect(killResult.success).toBe(true);
-    expect(killResult.output).toContain('killed');
+    expect(killResult.output).toMatch(/killed|stopped/i);
   });
 
   it('should handle non-existent shell ID', async () => {

@@ -210,6 +210,13 @@ export class AttachmentManager {
       )
     );
 
+    // Plugin Listing — 将已加载插件的信息注入到对话中，让模型感知插件能力
+    attachmentPromises.push(
+      this.computeAttachment('plugin_listing', () =>
+        this.generatePluginListingAttachment()
+      )
+    );
+
     // Custom Attachments
     if (context.customAttachments && context.customAttachments.length > 0) {
       attachmentPromises.push(Promise.resolve(context.customAttachments));
@@ -612,6 +619,71 @@ Do not directly edit files - delegate work to teammate agents.
       ];
     } catch (error) {
       console.error('[Attachments] Failed to generate skill listing:', error);
+      return [];
+    }
+  }
+
+  /**
+   * 生成已加载插件列表附件
+   *
+   * 将已启用且活跃的插件信息（名称、描述、注册的工具/命令/技能）注入到对话上下文中，
+   * 让模型能感知并主动使用插件提供的能力。
+   */
+  private async generatePluginListingAttachment(): Promise<Attachment[]> {
+    try {
+      const { pluginManager } = await import('../plugins/index.js');
+
+      const states = pluginManager.getPluginStates();
+      // 只展示已启用且已加载的插件
+      const activePlugins = states.filter(
+        (s: any) => s.state === 'loaded' && s.enabled !== false
+      );
+
+      if (activePlugins.length === 0) {
+        return [];
+      }
+
+      const lines: string[] = [];
+      for (const state of activePlugins) {
+        const name = state.metadata.name;
+        const desc = state.metadata.description || '';
+        const tools = pluginManager.getPluginTools(name);
+        const skills = pluginManager.getPluginSkills(name);
+        const commands = pluginManager.getPluginCommands(name);
+
+        let line = `- **${name}**`;
+        if (desc) line += `: ${desc}`;
+
+        const capabilities: string[] = [];
+        if (tools.length > 0) {
+          capabilities.push(`tools: ${tools.map((t: any) => t.name).join(', ')}`);
+        }
+        if (skills.length > 0) {
+          capabilities.push(`skills: ${skills.map((s: any) => s.name).join(', ')}`);
+        }
+        if (commands.length > 0) {
+          capabilities.push(`commands: ${commands.map((c: any) => c.name).join(', ')}`);
+        }
+
+        if (capabilities.length > 0) {
+          line += ` (${capabilities.join('; ')})`;
+        }
+
+        lines.push(line);
+      }
+
+      const formattedList = lines.join('\n');
+
+      return [
+        {
+          type: 'plugin_listing' as AttachmentType,
+          content: `<system-reminder>\nThe following plugins are installed and active. You can use their tools directly:\n\n${formattedList}\n</system-reminder>`,
+          label: 'Plugin Listing',
+          priority: 26, // 紧跟 Skill Listing (25) 之后
+        },
+      ];
+    } catch (error) {
+      console.error('[Attachments] Failed to generate plugin listing:', error);
       return [];
     }
   }

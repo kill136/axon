@@ -77,6 +77,8 @@ export class AgentDiscovery extends EventEmitter {
   private peerFile: string | null = null;
   private selfAgentId: string = '';
   private peersDir: string;
+  /** process exit cleanup handler 引用（用于 stop 时移除） */
+  private cleanupHandler: (() => void) | null = null;
 
   /** Agent 离线超时（90 秒未见心跳） */
   private readonly OFFLINE_TIMEOUT = 90_000;
@@ -204,8 +206,8 @@ export class AgentDiscovery extends EventEmitter {
       this.peerFile = path.join(this.peersDir, `${port}.json`);
       fs.writeFileSync(this.peerFile, JSON.stringify(registration, null, 2));
 
-      // 进程退出时清理
-      const cleanup = () => {
+      // 进程退出时清理（保存引用以便 stop() 时移除）
+      this.cleanupHandler = () => {
         try {
           if (this.peerFile && fs.existsSync(this.peerFile)) {
             fs.unlinkSync(this.peerFile);
@@ -214,9 +216,7 @@ export class AgentDiscovery extends EventEmitter {
           // ignore
         }
       };
-      process.on('exit', cleanup);
-      process.on('SIGINT', () => { cleanup(); process.exit(0); });
-      process.on('SIGTERM', () => { cleanup(); process.exit(0); });
+      process.on('exit', this.cleanupHandler);
     } catch (err) {
       console.warn('[AgentDiscovery] Failed to register peer file:', err instanceof Error ? err.message : err);
     }
@@ -433,6 +433,12 @@ export class AgentDiscovery extends EventEmitter {
     if (this.peerScanTimer) {
       clearInterval(this.peerScanTimer);
       this.peerScanTimer = null;
+    }
+
+    // 移除 process exit handler（防止累积泄漏）
+    if (this.cleanupHandler) {
+      process.removeListener('exit', this.cleanupHandler);
+      this.cleanupHandler = null;
     }
 
     // 清理注册文件

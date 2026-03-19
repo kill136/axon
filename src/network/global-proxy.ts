@@ -9,12 +9,17 @@
  *   1. 环境变量 HTTP_PROXY / HTTPS_PROXY
  *   2. settings.json 中的 proxy.http / proxy.https
  *
+ * 可达性检查:
+ *   启用代理后会异步探测代理是否可达（TCP connect，1.5s 超时）。
+ *   如果代理不可达（如 VPN 已关闭），自动回退到直连模式。
+ *
  * 依赖: undici（Node.js 内置）
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import * as net from 'net';
 import { createRequire } from 'module';
 
 let initialized = false;
@@ -40,8 +45,64 @@ function getProxyFromSettings(): { http?: string; https?: string } {
 }
 
 /**
+ * TCP 探测代理是否可达
+ */
+function probeProxy(proxyUrl: string, timeoutMs = 1500): Promise<boolean> {
+  return new Promise((resolve) => {
+    try {
+      const url = new URL(proxyUrl);
+      const host = url.hostname;
+      const port = parseInt(url.port, 10) || (url.protocol === 'https:' ? 443 : 80);
+
+      const socket = net.createConnection({ host, port }, () => {
+        socket.destroy();
+        resolve(true);
+      });
+      socket.setTimeout(timeoutMs);
+      socket.on('timeout', () => {
+        socket.destroy();
+        resolve(false);
+      });
+      socket.on('error', () => {
+        socket.destroy();
+        resolve(false);
+      });
+    } catch {
+      resolve(false);
+    }
+  });
+}
+
+/**
+ * 回退到直连：移除代理 dispatcher，清理环境变量
+ */
+function fallbackToDirect(proxyUrl: string, settingsOrigin: boolean): void {
+  try {
+    const nodeRequire = createRequire(import.meta.url);
+    const undici = nodeRequire('undici');
+    const { Agent, setGlobalDispatcher } = undici;
+    if (Agent && setGlobalDispatcher) {
+      setGlobalDispatcher(new Agent());
+    }
+  } catch {
+    // ignore
+  }
+
+  // 只清理由 settings.json 写入的环境变量，不动用户原本设置的
+  if (settingsOrigin) {
+    delete process.env.HTTPS_PROXY;
+    delete process.env.HTTP_PROXY;
+  }
+
+  console.log(`[GlobalProxy] proxy unreachable (${proxyUrl}), falling back to direct connection`);
+}
+
+/**
  * 初始化全局 fetch 代理
  * 幂等，多次调用安全
+ *
+ * 先同步设置代理（不阻塞启动），然后异步探测可达性。
+ * 代理不可达时自动回退到直连。
  */
 export function setupGlobalFetchProxy(): void {
   if (initialized) return;
@@ -51,10 +112,13 @@ export function setupGlobalFetchProxy(): void {
   let proxyUrl = process.env.HTTPS_PROXY || process.env.https_proxy
     || process.env.HTTP_PROXY || process.env.http_proxy;
 
+  let settingsOrigin = false;
+
   if (!proxyUrl) {
     const settingsProxy = getProxyFromSettings();
     proxyUrl = settingsProxy.https || settingsProxy.http;
     if (proxyUrl) {
+      settingsOrigin = true;
       // 写入环境变量，让 EnvHttpProxyAgent 能读到
       if (settingsProxy.https) process.env.HTTPS_PROXY = settingsProxy.https;
       if (settingsProxy.http) process.env.HTTP_PROXY = settingsProxy.http;
@@ -74,6 +138,14 @@ export function setupGlobalFetchProxy(): void {
     if (EnvHttpProxyAgent && setGlobalDispatcher) {
       setGlobalDispatcher(new EnvHttpProxyAgent());
       console.log(`[GlobalProxy] fetch proxy enabled: ${proxyUrl}`);
+
+      // 异步探测代理可达性，不阻塞启动
+      const urlToProbe = proxyUrl;
+      probeProxy(urlToProbe).then((reachable) => {
+        if (!reachable) {
+          fallbackToDirect(urlToProbe, settingsOrigin);
+        }
+      });
     }
   } catch (err) {
     // undici 不可用时静默降级，不影响启动

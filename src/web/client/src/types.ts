@@ -335,6 +335,7 @@ export type WSMessageType =
   | 'thinking_start'
   | 'thinking_delta'
   | 'tool_use_start'
+  | 'tool_use_input_ready'
   | 'tool_result'
   | 'message_complete'
   | 'error'

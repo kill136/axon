@@ -145,6 +145,7 @@ export function CreateAppDialog({ isOpen, onClose, onSubmit }: CreateAppDialogPr
           justify-content: center;
           z-index: 10000;
           animation: fadeIn 0.15s ease;
+          -webkit-app-region: no-drag;
         }
         .create-app-dialog {
           background: var(--bg-secondary, #161b22);

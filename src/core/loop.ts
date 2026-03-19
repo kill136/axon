@@ -898,36 +898,10 @@ export function getContextWindowSize(model: string): number {
   return 200000;
 }
 
-/**
- * 获取模型的最大输出 tokens
- * 对齐官方 kH0 函数
- * @param model 模型 ID
- * @returns 最大输出 tokens
- */
-export function getMaxOutputTokens(model: string): number {
-  let defaultMax: number;
-
-  // 根据模型类型确定默认最大输出 tokens
-  if (model.includes('opus-4-5')) {
-    defaultMax = 64000;
-  } else if (model.includes('opus-4')) {
-    defaultMax = 32000;
-  } else if (model.includes('sonnet-4') || model.includes('haiku-4')) {
-    defaultMax = 64000;
-  } else {
-    defaultMax = 32000;
-  }
-
-  // settings.json maxTokens 可以覆盖（但不能超过默认最大值）
-  try {
-    const configMax = configManager.get('maxTokens') as number | undefined;
-    if (configMax && configMax > 0) {
-      return Math.min(configMax, defaultMax);
-    }
-  } catch {}
-
-  return defaultMax;
-}
+// getMaxOutputTokens / getModelOutputTokenLimits 已移至 max-tokens.ts（避免 client ↔ loop 循环依赖）
+// import + re-export 保持向后兼容，同时允许本地使用
+import { getMaxOutputTokens, getModelOutputTokenLimits } from './max-tokens.js';
+export { getMaxOutputTokens, getModelOutputTokenLimits };
 
 /**
  * 计算可用的输入 token 空间
@@ -3765,13 +3739,18 @@ Guidelines:
           this.session.addMessage(msg);
         }
       } else if (streamStopReason === 'max_tokens') {
-        // v4.3: 响应被截断（max_tokens），追加提醒让模型继续
-        // 对齐官方实现：当 LLM 返回数据不稳定/被截断时，不应该退出循环
-        // 这修复了 issue #84 中描述的问题
-        this.session.addMessage({
-          role: 'user',
-          content: '[system: Your response was truncated due to token limits. Please continue where you left off and complete the task using tools.]',
-        });
+        // 对齐官方：max_tokens 截断时，yield 错误消息并停止，不尝试继续
+        // 官方行为：输出 "Claude's response exceeded the N output token maximum. 
+        //   Set CLAUDE_CODE_MAX_OUTPUT_TOKENS env var to configure."
+        // 之前的 "continue" 方案会导致截断的 tool_use JSON 无法解析 → orphaned tool_use → 崩溃
+        const resolvedModelForLimit = modelConfig.resolveAlias(this.options.model || 'sonnet');
+        const currentMax = getMaxOutputTokens(resolvedModelForLimit);
+        yield {
+          type: 'text' as const,
+          content: `Claude's response exceeded the ${currentMax} output token maximum. ` +
+            `Set CLAUDE_CODE_MAX_OUTPUT_TOKENS environment variable to a higher value to configure.`,
+        };
+        break;
       } else if (this.options.isSubAgent && turns === 1) {
         // v3.4: Worker 子任务模式下，第一轮没有工具调用时不直接退出
         // 模型可能只是在"思考"或"规划"，追加提醒让它使用工具执行

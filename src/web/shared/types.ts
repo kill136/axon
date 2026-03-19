@@ -298,6 +298,7 @@ export type ServerMessage =
   | { type: 'message_start'; payload: { messageId: string; sessionId?: string } }
   | { type: 'text_delta'; payload: { messageId: string; text: string; sessionId?: string } }
   | { type: 'tool_use_start'; payload: ToolUseStartPayload }
+  | { type: 'tool_use_input_ready'; payload: { toolUseId: string; input: unknown; sessionId?: string } }
   | { type: 'tool_use_delta'; payload: { toolUseId: string; partialJson: string; sessionId?: string } }
   | { type: 'tool_result'; payload: ToolResultPayload }
   | { type: 'message_complete'; payload: MessageCompletePayload }
@@ -315,7 +316,7 @@ export type ServerMessage =
   | { type: 'session_list_response'; payload: SessionListResponsePayload }
   | { type: 'session_created'; payload: SessionCreatedPayload }
   | { type: 'session_new_ready'; payload: { sessionId: string; model: string; projectPath?: string | null } }  // 官方规范：临时会话已就绪
-  | { type: 'session_switched'; payload: { sessionId: string; projectPath?: string | null; history?: ChatMessage[] } }
+  | { type: 'session_switched'; payload: { sessionId: string; sessionName?: string; projectPath?: string | null; history?: ChatMessage[] } }
   | { type: 'session_deleted'; payload: { sessionId: string; success: boolean } }
   | { type: 'session_renamed'; payload: { sessionId: string; name: string; success: boolean } }
   | { type: 'session_exported'; payload: { sessionId: string; content: string; format: 'json' | 'md' } }

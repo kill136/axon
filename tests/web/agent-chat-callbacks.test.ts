@@ -157,7 +157,7 @@ describe('buildAgentChatCallbacks', () => {
       );
       await cb.onComplete!('end_turn');
 
-      expect(network.sendChatReply).toHaveBeenCalledWith(targetAgentId, 'Hi there!');
+      expect(network.sendChatReply).toHaveBeenCalledWith(targetAgentId, 'Hi there!', undefined);
       expect(chatLog).toHaveBeenCalledWith(expect.stringContaining('Sending reply'));
     });
 
@@ -191,7 +191,7 @@ describe('buildAgentChatCallbacks', () => {
       );
       await cb.onComplete!('end_turn');
 
-      expect(network.sendChatReply).toHaveBeenCalledWith(targetAgentId, 'It is 15:30.');
+      expect(network.sendChatReply).toHaveBeenCalledWith(targetAgentId, 'It is 15:30.', undefined);
     });
 
     it('should log error if sendChatReply fails', async () => {

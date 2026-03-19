@@ -20,6 +20,7 @@ import {
   willCommandRunInSandbox,
 } from './sandbox.js';
 import { runPreToolUseHooks, runPostToolUseHooks } from '../hooks/index.js';
+import { getChangeTracker } from '../hooks/auto-verify.js';
 import { processGitCommitCommand } from '../utils/git-helper.js';
 import { configManager } from '../config/index.js';
 import { isBackgroundTasksDisabled } from '../utils/env-check.js';
@@ -1215,6 +1216,12 @@ export class BashTool extends BaseTool<BashInput, BashResult> {
           terminalOutputBuffer.push(result.output, !result.success);
         } catch { /* 缓冲失败不影响主流程 */ }
       }
+
+      // Auto-verify: 检测测试命令执行，标记变更为已验证
+      try {
+        const sessionId = (globalThis as any).__currentSessionId;
+        if (sessionId) getChangeTracker(sessionId).trackVerification(command);
+      } catch { /* ignore */ }
 
       return result;
     } catch (err: any) {

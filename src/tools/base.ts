@@ -206,11 +206,52 @@ export abstract class BaseTool<TInput = unknown, TOutput extends ToolResult = To
   }
 }
 
+/**
+ * 插件工具包装器 — 将插件注册的 ToolDefinition + executor 桥接为 BaseTool
+ * 使插件工具能以标准 BaseTool 形式注册到 toolRegistry，从而被模型 API 识别
+ */
+export class PluginToolWrapper extends BaseTool {
+  name: string;
+  description: string;
+  private _inputSchema: ToolDefinition['inputSchema'];
+  private _executor: (input: unknown) => Promise<ToolResult>;
+  /** 来源插件名称 */
+  pluginName: string;
+
+  constructor(
+    definition: ToolDefinition,
+    executor: (input: unknown) => Promise<ToolResult>,
+    pluginName: string,
+  ) {
+    super();
+    this.name = definition.name;
+    this.description = definition.description;
+    this._inputSchema = definition.inputSchema;
+    this._executor = executor;
+    this.pluginName = pluginName;
+    // 插件工具默认 defer，避免膨胀核心工具列表
+    this.shouldDefer = true;
+    this.searchHint = definition.searchHint || `plugin tool from ${pluginName}`;
+  }
+
+  getInputSchema(): ToolDefinition['inputSchema'] {
+    return this._inputSchema;
+  }
+
+  async execute(input: unknown): Promise<ToolResult> {
+    return this._executor(input);
+  }
+}
+
 export class ToolRegistry {
   private tools: Map<string, BaseTool> = new Map();
 
   register(tool: BaseTool): void {
     this.tools.set(tool.name, tool);
+  }
+
+  unregister(name: string): void {
+    this.tools.delete(name);
   }
 
   get(name: string): BaseTool | undefined {

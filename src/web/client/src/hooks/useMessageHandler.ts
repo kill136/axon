@@ -14,6 +14,7 @@ import type {
 } from '../types';
 import type { ContextUsage, CompactState } from '../components/ContextBar';
 import type { SlashCommandResult } from '../components/SlashCommandDialog';
+import { playNotificationSound } from './useNotificationSound';
 
 export type Status = 'idle' | 'thinking' | 'streaming' | 'tool_executing';
 export type PermissionMode = 'default' | 'bypassPermissions' | 'acceptEdits' | 'plan';
@@ -154,6 +155,7 @@ export function useMessageHandler({
             toolName: (payload as any).tool,
             timestamp: Date.now(),
           });
+          playNotificationSound('warning');
         } else if (msg.type === 'user_question') {
           setCrossSessionNotification({
             sessionId: msgSessionId,
@@ -161,6 +163,7 @@ export function useMessageHandler({
             questionHeader: (payload as any).header,
             timestamp: Date.now(),
           });
+          playNotificationSound('attention');
         }
         return;
       }
@@ -168,7 +171,7 @@ export function useMessageHandler({
       // 兜底：孤立流式事件自动创建消息上下文
       const streamingEventTypes = [
         'text_delta', 'thinking_start', 'thinking_delta',
-        'tool_use_start', 'tool_use_delta', 'tool_result',
+        'tool_use_start', 'tool_use_input_ready', 'tool_use_delta', 'tool_result',
       ];
       if (streamingEventTypes.includes(msg.type) && !currentMessageRef.current) {
         // 插话保护：正在等待新消息的 message_start，忽略旧消息的尾部流式事件
@@ -275,6 +278,25 @@ export function useMessageHandler({
           }
           break;
 
+        case 'tool_use_input_ready':
+          // 工具参数流式传输完成，更新完整的 input（替代之前的 _streaming 占位）
+          if (currentMessageRef.current) {
+            const currentMsg = currentMessageRef.current;
+            const inputReadyContent = currentMsg.content.map(c => {
+              if (c.type === 'tool_use' && c.id === payload.toolUseId) {
+                return { ...c, input: payload.input };
+              }
+              return c;
+            });
+            const updatedMsg = { ...currentMsg, content: inputReadyContent };
+            currentMessageRef.current = updatedMsg;
+            setMessages(prev => {
+              const filtered = prev.filter(m => m.id !== currentMsg.id);
+              return [...filtered, updatedMsg];
+            });
+          }
+          break;
+
         case 'tool_result':
           if (currentMessageRef.current) {
             const currentMsg = currentMessageRef.current;
@@ -323,9 +345,16 @@ export function useMessageHandler({
           if (currentMessageRef.current) {
             const currentMsg = currentMessageRef.current;
             const usage = payload.usage as { inputTokens: number; outputTokens: number } | undefined;
+            // 清理所有仍在 running 状态的 tool_use（可能因 max_tokens 截断等原因未完成）
+            const completedContent = currentMsg.content.map(c => {
+              if (c.type === 'tool_use' && c.status === 'running') {
+                return { ...c, status: 'error' as const };
+              }
+              return c;
+            });
             const finalMsg = {
               ...currentMsg,
-              content: [...currentMsg.content],
+              content: completedContent,
               ...(usage && { usage }),
             };
             setMessages(prev => {
@@ -519,7 +548,8 @@ export function useMessageHandler({
                 timestamp: Date.now(),
               });
 
-              // 浏览器原生通知
+              // 浏览器原生通知 + 声音
+              playNotificationSound('attention');
               if ('Notification' in window && Notification.permission === 'granted') {
                 const fromName = payload.fromAgent as string || 'Agent';
                 const desc = (payload.taskDescription as string || '').slice(0, 80);
@@ -851,7 +881,8 @@ export function useMessageHandler({
             setMessages(prev => [...prev, alarmMessage]);
           }
 
-          // 无论是否是当前会话，都发浏览器通知（用户可能在别的 tab）
+          // 无论是否是当前会话，都发浏览器通知 + 声音（用户可能在别的 tab）
+          playNotificationSound('attention');
           if ('Notification' in window && Notification.permission === 'granted') {
             const body = alarmIsNewSession
               ? `${alarmPrompt.slice(0, 80)}\n(在新会话中执行，请切换查看)`

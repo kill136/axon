@@ -460,6 +460,7 @@ const settings = {
   'settings.about.title': '关于 Axon',
   'settings.about.version': '版本',
   'settings.general.autoSave': '自动保存会话',
+  'settings.general.notificationSound': '通知提示音',
   'settings.general.description': '配置应用程序的通用设置。',
   'settings.general.disabled': '已禁用',
   'settings.general.enabled': '已启用',

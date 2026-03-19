@@ -15,6 +15,8 @@ import agentApiRouter from './agent-api.js';
 import fileApiRouter from './file-api.js';
 import notebookApiRouter from './notebook-api.js';
 import mcpCliApiRouter from './mcp-cli-api.js';
+import tunnelApiRouter from './tunnel-api.js';
+import appApiRouter from './app-api.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
@@ -52,6 +54,11 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
   // ============ MCP CLI API ============
   // HTTP bridge for mcp-cli command (progressive MCP tool loading)
   app.use('/api/mcp-cli', mcpCliApiRouter);
+
+  // ============ Tunnel API ============
+  // Cloudflare Tunnel 公网分享
+  app.use('/api/tunnel', tunnelApiRouter);
+  app.use('/api/apps', appApiRouter);
 
   // 健康检查
   app.get('/api/health', (req: Request, res: Response) => {

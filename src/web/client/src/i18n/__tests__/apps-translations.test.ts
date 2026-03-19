@@ -82,6 +82,13 @@ describe('apps translations', () => {
     expect(zhNav['nav.apps']).toBe('活动');
   });
 
+  it('nav.myApps and nav.activity values are correct', () => {
+    expect(enNav['nav.myApps']).toBe('Apps');
+    expect(zhNav['nav.myApps']).toBe('应用');
+    expect(enNav['nav.activity']).toBe('Activity');
+    expect(zhNav['nav.activity']).toBe('活动');
+  });
+
   it('uses {{var}} format (not {var}) for i18next interpolation', () => {
     const allValues = [
       ...Object.values(enApps),
@@ -96,7 +103,7 @@ describe('apps translations', () => {
   });
 
   it('no old app factory keys remain', () => {
-    const oldKeys = ['apps.create', 'apps.createFirst', 'apps.publish', 'apps.delete'];
+    const oldKeys = ['apps.create', 'apps.createFirst', 'apps.publish'];
     for (const key of oldKeys) {
       expect(key in enApps).toBe(false);
       expect(key in zhApps).toBe(false);

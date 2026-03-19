@@ -13,6 +13,7 @@ import type {
   SlashCommand,
 } from '../types';
 import type { Status, PermissionMode } from './useMessageHandler';
+import type { CompactState } from '../components/ContextBar';
 import type { Project } from '../contexts/ProjectContext';
 import { useVoiceRecognition } from './useVoiceRecognition';
 import type { VoiceState } from './useVoiceRecognition';
@@ -35,6 +36,9 @@ interface UseChatInputParams {
   setPermissionMode: React.Dispatch<React.SetStateAction<PermissionMode>>;
   sessionId: string | null;
   openFolder: () => Promise<Project | null>;
+  compactState: CompactState;
+  isAuthenticated: boolean;
+  onLoginClick?: () => void;
 }
 
 interface UseChatInputReturn {
@@ -71,6 +75,8 @@ interface UseChatInputReturn {
   /** Pause/resume mic (used by TTS to avoid echo) */
   pauseMic: () => void;
   resumeMic: () => void;
+  /** Whether a message is queued waiting for compaction to finish */
+  isMessageQueued: boolean;
 }
 
 export function useChatInput({
@@ -91,16 +97,27 @@ export function useChatInput({
   setPermissionMode,
   sessionId,
   openFolder,
+  compactState,
+  isAuthenticated,
+  onLoginClick,
 }: UseChatInputParams): UseChatInputReturn {
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [isPinned, setIsPinned] = useState(true);
   const [conversationMode, setConversationMode] = useState(false);
+  const [isMessageQueued, setIsMessageQueued] = useState(false);
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const conversationModeRef = useRef(false);
+
+  // 压缩期间排队的消息（避免 cancel 打断压缩）
+  const queuedMessageRef = useRef<{
+    input: string;
+    attachments: Attachment[];
+    projectPath: string;
+  } | null>(null);
 
   // Keep ref in sync
   useEffect(() => { conversationModeRef.current = conversationMode; }, [conversationMode]);
@@ -275,6 +292,12 @@ export function useChatInput({
   const handleSend = async () => {
     if ((!input.trim() && attachments.length === 0) || !connected) return;
 
+    // 未认证时，弹出登录对话框而不是发送消息
+    if (!isAuthenticated) {
+      onLoginClick?.();
+      return;
+    }
+
     // 未选择项目时，弹出目录选择对话框
     let effectiveProjectPath = currentProjectPath;
     if (!effectiveProjectPath) {
@@ -286,6 +309,23 @@ export function useChatInput({
         console.error('Failed to open folder:', err);
         return;
       }
+    }
+
+    // 压缩期间：排队消息而不是 cancel 打断压缩
+    // 压缩是必要的维护操作，中断会导致下一轮又触发
+    if (compactState.phase === 'compacting') {
+      queuedMessageRef.current = {
+        input: input,
+        attachments: [...attachments],
+        projectPath: effectiveProjectPath,
+      };
+      setInput('');
+      setAttachments([]);
+      setIsMessageQueued(true);
+      if (inputRef.current) {
+        inputRef.current.style.height = 'auto';
+      }
+      return;
     }
 
     // 如果正在处理中，先取消当前回复（插话模式）
@@ -383,6 +423,64 @@ export function useChatInput({
 
   // 保持 handleSendRef 最新，供语音识别回调使用
   handleSendRef.current = handleSend;
+
+  // 压缩完成后自动发送排队的消息
+  useEffect(() => {
+    if (compactState.phase !== 'compacting' && queuedMessageRef.current) {
+      const queued = queuedMessageRef.current;
+      queuedMessageRef.current = null;
+      setIsMessageQueued(false);
+
+      // 构建并发送排队的消息
+      const contentItems: ChatContent[] = [];
+      queued.attachments.forEach(att => {
+        if (att.type === 'image') {
+          contentItems.push({
+            type: 'image',
+            source: {
+              type: 'base64',
+              media_type: att.mimeType,
+              data: att.data.split(',')[1],
+            },
+            fileName: att.name,
+          });
+        } else {
+          contentItems.push({
+            type: 'text',
+            text: `[附件: ${att.name}]`,
+          });
+        }
+      });
+      if (queued.input.trim()) {
+        contentItems.push({ type: 'text', text: queued.input });
+      }
+
+      const userMessage: ChatMessage = {
+        id: `user-${Date.now()}`,
+        role: 'user',
+        timestamp: Date.now(),
+        content: contentItems,
+        attachments: queued.attachments.map(a => ({ name: a.name, type: a.type })),
+      };
+      setMessages(prev => [...prev, userMessage]);
+
+      send({
+        type: 'chat',
+        payload: {
+          content: queued.input,
+          messageId: userMessage.id,
+          attachments: queued.attachments.map(att => ({
+            name: att.name,
+            type: att.type,
+            mimeType: att.mimeType,
+            data: att.data.includes(',') ? att.data.split(',')[1] : att.data,
+          })),
+          projectPath: queued.projectPath,
+        },
+      });
+      setStatus('thinking');
+    }
+  }, [compactState.phase, send, setMessages, setStatus]);
 
   // 命令选择：选中后直接执行命令（与官方 CLI 行为一致）
   const handleCommandSelect = (command: SlashCommand) => {
@@ -546,6 +644,8 @@ export function useChatInput({
     handlePermissionRespondWithDestination,
     handlePresetChange,
     handleDevAction,
+    // 消息排队状态（压缩期间）
+    isMessageQueued,
     // 语音识别
     voiceState,
     isVoiceSupported,

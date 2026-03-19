@@ -287,28 +287,40 @@ export default function NetworkPanel({ addMessageHandler }: NetworkPanelProps) {
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Fetch data
+  // Fetch data (只在 network enabled 时轮询)
   useEffect(() => {
+    let interval: ReturnType<typeof setInterval> | null = null;
+
     const fetchAll = async () => {
       try {
-        const [statusRes, auditRes, convRes] = await Promise.all([
-          fetch('/api/network/status'),
-          fetch('/api/network/audit?limit=500'),
-          fetch('/api/network/conversations'),
-        ]);
+        const statusRes = await fetch('/api/network/status');
         const s = await statusRes.json();
-        const a = await auditRes.json();
-        const c = await convRes.json();
         setStatus(s);
-        setAuditLog(a);
-        setConversationSummaries(Array.isArray(c) ? c : []);
-      } catch { /* ignore */ }
+
+        // 只在 network enabled 时才拉取详细数据
+        if (s.enabled) {
+          const [auditRes, convRes] = await Promise.all([
+            fetch('/api/network/audit?limit=500'),
+            fetch('/api/network/conversations'),
+          ]);
+          const a = await auditRes.json();
+          const c = await convRes.json();
+          setAuditLog(a);
+          setConversationSummaries(Array.isArray(c) ? c : []);
+        }
+      } catch (err) {
+        console.warn('[NetworkPanel] fetch error:', err instanceof Error ? err.message : err);
+      }
       setLoading(false);
     };
+
     fetchAll();
-    const interval = setInterval(fetchAll, 5000);
-    return () => clearInterval(interval);
-  }, []);
+    // 只在 enabled 时才开启轮询
+    if (status?.enabled) {
+      interval = setInterval(fetchAll, 5000);
+    }
+    return () => { if (interval) clearInterval(interval); };
+  }, [status?.enabled]);
 
   // 通过 WebSocket 实时接收 network 事件（消息、Agent 变化、任务执行状态）
   useEffect(() => {

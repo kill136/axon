@@ -23,6 +23,7 @@ export type AttachmentType =
   | 'git_status'
   | 'todo_list'
   | 'skill_listing'
+  | 'plugin_listing'
   | 'goals'
   | 'custom';
 

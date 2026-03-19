@@ -83,7 +83,7 @@ describe('PermissionDestinationSelector', () => {
       // 验证配置内容
       const config = JSON.parse(fs.readFileSync(projectSettingsPath, 'utf-8'));
       expect(config.permissions).toBeDefined();
-      expect(config.permissions.allow).toContain('Bash(npm install*)');
+      expect(config.permissions.allow).toContain('Bash(npm install:*)');
     });
 
     it('should save permission to local settings when destination is team', async () => {
@@ -134,8 +134,8 @@ describe('PermissionDestinationSelector', () => {
       const projectSettingsPath = path.join(tempDir, '.axon', 'settings.json');
       const config = JSON.parse(fs.readFileSync(projectSettingsPath, 'utf-8'));
       expect(config.permissions).toBeDefined();
-      expect(config.permissions.deny).toContain('Bash(rm*)');
-      expect(config.permissions.allow || []).not.toContain('Bash(rm*)');
+      expect(config.permissions.deny).toContain('Bash(rm:*)');
+      expect(config.permissions.allow || []).not.toContain('Bash(rm:*)');
     });
 
     it('should merge with existing config', async () => {
@@ -177,7 +177,7 @@ describe('PermissionDestinationSelector', () => {
       );
       expect(config.version).toBe('2.1.3');
       expect(config.permissions.allow).toContain('Bash(git*)');
-      expect(config.permissions.allow).toContain('Bash(npm test*)');
+      expect(config.permissions.allow).toContain('Bash(npm test:*)');
     });
   });
 
@@ -190,12 +190,12 @@ describe('PermissionDestinationSelector', () => {
 
     it('should generate Bash rule with command prefix', () => {
       const rule = handler['generatePermissionRule']('Bash', { command: 'npm run build' });
-      expect(rule).toBe('Bash(npm run*)');
+      expect(rule).toBe('Bash(npm run:*)');
     });
 
     it('should generate Bash rule with simple command', () => {
       const rule = handler['generatePermissionRule']('Bash', { command: 'ls -la' });
-      expect(rule).toBe('Bash(ls*)');
+      expect(rule).toBe('Bash(ls:*)');
     });
 
     it('should generate Write rule with extension', () => {

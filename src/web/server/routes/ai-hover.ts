@@ -242,10 +242,12 @@ async function generateHoverDoc(req: AIHoverRequest): Promise<AIHoverResult> {
   // 对自定义符号收集跨文件引用
   let crossFileRefs: CrossFileReference[] = [];
   if (isCustomSymbol(req.symbolName) && req.filePath) {
+    // 从文件路径推断项目根目录，而非依赖 process.cwd()（多项目场景下 cwd 不可靠）
+    const projectRoot = path.dirname(req.filePath);
     crossFileRefs = await collectCrossFileReferences(
       req.symbolName,
       req.filePath,
-      process.cwd(),
+      projectRoot,
     );
   }
 

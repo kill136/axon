@@ -1,6 +1,6 @@
 import { BaseTool } from './base.js';
 import type { ToolResult, ToolDefinition } from '../types/index.js';
-import type { AgentNetwork } from '../network/index.js';
+import { AgentNetwork } from '../network/index.js';
 import type { DiscoveredAgent } from '../network/types.js';
 
 /**
@@ -297,7 +297,7 @@ Examples:
         description: input.description,
         context: input.context,
         attachments: input.attachments,
-      });
+      }, undefined, AgentNetwork.LONG_TASK_TIMEOUT);
 
       const res = result as any;
 

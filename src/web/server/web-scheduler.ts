@@ -541,6 +541,12 @@ export class WebScheduler {
           payload: { status: 'tool_executing', message: `Executing ${toolName}...`, sessionId },
         });
       },
+      onToolUseInputReady: (toolUseId: string, input: unknown) => {
+        this.broadcastFn({
+          type: 'tool_use_input_ready',
+          payload: { toolUseId, input, sessionId },
+        });
+      },
       onToolUseDelta: (toolUseId: string, partialJson: string) => {
         this.broadcastFn({
           type: 'tool_use_delta',
@@ -634,6 +640,9 @@ export class WebScheduler {
       },
       onToolUseStart: (toolUseId: string, toolName: string, input: unknown) => {
         bufferedEvents.push({ type: 'tool_use_start', payload: { messageId, toolUseId, toolName, input, sessionId } });
+      },
+      onToolUseInputReady: (toolUseId: string, input: unknown) => {
+        bufferedEvents.push({ type: 'tool_use_input_ready', payload: { toolUseId, input, sessionId } });
       },
       onToolUseDelta: (toolUseId: string, partialJson: string) => {
         bufferedEvents.push({ type: 'tool_use_delta', payload: { toolUseId, partialJson, sessionId } });

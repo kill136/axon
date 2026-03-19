@@ -16,6 +16,7 @@ export interface ImageGenInput {
   image_path?: string;
   style?: string;
   size?: 'landscape' | 'portrait' | 'square';
+  output_path?: string;
 }
 
 export class ImageGenTool extends BaseTool<ImageGenInput, ToolResult> {
@@ -33,11 +34,13 @@ export class ImageGenTool extends BaseTool<ImageGenInput, ToolResult> {
 - image_path: Path to an existing image file to edit (optional — omit for text-to-image)
 - style: Style hint like "modern", "minimalist", "photorealistic" (optional)
 - size: Aspect ratio: 'landscape', 'portrait', or 'square' (optional, text-to-image only)
+- output_path: Directory to save the generated image file (optional). When provided, the image is saved as a PNG file in the specified directory and the file path is returned. This makes the image available as a reusable file resource (e.g. for game assets, documents, etc.)
 
 ## Notes
 - Requires GEMINI_API_KEY environment variable
 - Supports common image formats: PNG, JPG, WEBP, GIF
-- Generated/edited image is displayed in the chat`;
+- Generated/edited image is displayed in the chat
+- When output_path is provided, the image is also saved to disk and the absolute file path is returned`;
 
   getInputSchema(): ToolDefinition['inputSchema'] {
     return {
@@ -59,6 +62,10 @@ export class ImageGenTool extends BaseTool<ImageGenInput, ToolResult> {
           type: 'string',
           enum: ['landscape', 'portrait', 'square'],
           description: 'Image aspect ratio (optional, text-to-image only)',
+        },
+        output_path: {
+          type: 'string',
+          description: 'Directory to save the generated image file. When provided, the image is saved as a PNG file and the absolute path is returned.',
         },
       },
       required: ['prompt'],

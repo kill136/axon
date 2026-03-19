@@ -80,7 +80,6 @@ import {
   createResponse,
   createErrorResponse,
   createNotification,
-  verifyMessage,
   isRequest,
   isResponse,
   isNotification,
@@ -196,9 +195,16 @@ export class AgentNetwork extends EventEmitter {
     }
     this.pendingRequests.clear();
 
+    // 清理活跃任务
+    this.activeTasks.clear();
+
     await this.discovery.stop();
     await this.transport.stop();
     this.auditLog.close();
+
+    // 清理所有 event listeners 防止 toggle 后重复绑定
+    this.removeAllListeners();
+
     this.started = false;
     AgentNetwork.instance = null;
   }
@@ -254,10 +260,16 @@ export class AgentNetwork extends EventEmitter {
     return this.auditLog.clearConversation(conversationId);
   }
 
+  /** 默认请求超时 (30 秒) */
+  static readonly DEFAULT_REQUEST_TIMEOUT = 30_000;
+  /** 长任务超时 (5 分钟) */
+  static readonly LONG_TASK_TIMEOUT = 5 * 60_000;
+
   /**
    * 发送请求并等待响应
+   * @param timeoutMs 超时时间，默认 30 秒，delegateTask 等长任务建议传 LONG_TASK_TIMEOUT
    */
-  async sendRequest(agentId: string, method: string, params?: unknown, taskId?: string): Promise<unknown> {
+  async sendRequest(agentId: string, method: string, params?: unknown, taskId?: string, timeoutMs?: number): Promise<unknown> {
     const conn = await this.ensureConnection(agentId);
 
     const msg = createRequest(
@@ -312,11 +324,12 @@ export class AgentNetwork extends EventEmitter {
     }
 
     // 发送并等待响应
+    const effectiveTimeout = timeoutMs ?? AgentNetwork.DEFAULT_REQUEST_TIMEOUT;
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pendingRequests.delete(msg.id!);
-        reject(new Error(`Request ${method} to ${agentId.slice(0, 8)} timed out`));
-      }, 30_000);
+        reject(new Error(`Request ${method} to ${agentId.slice(0, 8)} timed out after ${effectiveTimeout / 1000}s`));
+      }, effectiveTimeout);
 
       this.pendingRequests.set(msg.id!, { resolve, reject, timeout });
 
@@ -608,13 +621,8 @@ export class AgentNetwork extends EventEmitter {
   // ===== 消息处理 =====
 
   private handleInboundMessage(msg: AgentMessage, conn: AgentConnection): void {
-    // 验证签名（使用握手时缓存的 PEM 公钥，避免每条消息重建）
-    if (conn.identity && conn.cachedPem) {
-      if (!verifyMessage(msg, conn.cachedPem)) {
-        console.warn(`[AgentNetwork] Invalid signature from ${conn.agentId.slice(0, 8)}`);
-        return;
-      }
-    }
+    // 签名验证和重放保护已在 transport 层完成（setupConnectionEvents）
+    // 到达这里的消息已经是验证通过的
 
     if (isResponse(msg)) {
       // 处理响应

@@ -11,6 +11,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
+import { structuredPatch } from 'diff';
 import { BaseTool } from './base.js';
 import type { FileReadInput, FileWriteInput, FileEditInput, FileResult, EditToolResult, ToolDefinition } from '../types/index.js';
 import {
@@ -34,11 +35,14 @@ import {
   editDocument,
   documentToText,
   clearDocumentCache,
+  extractDocumentVisuals,
+  compressExtractedImages,
 } from '../media/index.js';
 // 注意：旧的 blueprintContext 已被移除，新架构使用 SmartPlanner
 // 边界检查由 SmartPlanner 在任务规划阶段处理，工具层不再需要
 import { persistLargeOutputSync } from './output-persistence.js';
 import { runPreToolUseHooks, runPostToolUseHooks } from '../hooks/index.js';
+import { getChangeTracker } from '../hooks/auto-verify.js';
 import { getCurrentCwd } from '../core/cwd-context.js';
 import { t } from '../i18n/index.js';
 import { fromMsysPath } from '../utils/platform.js';
@@ -601,7 +605,9 @@ Usage:
   }
 
   /**
-   * Office 文档读取（docx/xlsx/pptx → HTML）
+   * Office 文档读取（图片优先模式）
+   * 从 ZIP 中提取嵌入图片 + 文本，通过 newMessages 让模型"看到"文档内容
+   * 降级：如果图片提取失败，回退到 HTML 文本模式
    */
   private async readOfficeDocument(filePath: string): Promise<FileResult> {
     try {
@@ -609,12 +615,71 @@ Usage:
       const ext = path.extname(filePath).toLowerCase().slice(1);
       const sizeKB = (stat.size / 1024).toFixed(2);
 
+      // 尝试视觉提取（图片 + 文本）
+      try {
+        const visuals = await extractDocumentVisuals(filePath);
+
+        // 收集所有图片（slide 关联的 + 未关联的）
+        const allImages = [
+          ...visuals.slides.flatMap(s => s.images),
+          ...visuals.unassociatedImages,
+        ];
+
+        if (allImages.length > 0) {
+          // 压缩图片
+          const compressed = await compressExtractedImages(allImages);
+
+          if (compressed.length > 0) {
+            // 构建文本输出
+            let textOutput = `[${ext.toUpperCase()} Document: ${filePath}] (${sizeKB} KB)\n`;
+            textOutput += `Images: ${compressed.length} embedded image(s) extracted\n\n`;
+            textOutput += visuals.fullText;
+
+            // 构建 image blocks（与 PDF readPdfEnhanced 模式一致）
+            const imageBlocks: Array<{
+              type: 'image';
+              source: {
+                type: 'base64';
+                media_type: 'image/jpeg' | 'image/png';
+                data: string;
+              };
+            }> = [];
+
+            for (const img of compressed) {
+              imageBlocks.push({
+                type: 'image' as const,
+                source: {
+                  type: 'base64' as const,
+                  media_type: img.mimeType,
+                  data: img.base64,
+                },
+              });
+            }
+
+            return {
+              success: true,
+              output: textOutput,
+              newMessages: [{
+                role: 'user' as const,
+                content: imageBlocks as any,
+              }],
+            };
+          }
+        }
+
+        // 有文本但没图片：返回纯文本
+        if (visuals.fullText) {
+          const header = `[${ext.toUpperCase()} Document: ${filePath}] (${sizeKB} KB)\n\n`;
+          return { success: true, output: header + visuals.fullText };
+        }
+      } catch {
+        // 视觉提取失败，降级到 HTML 模式
+      }
+
+      // 降级：转 HTML 文本
       const html = await documentToHtml(filePath);
-
       const header = `[${ext.toUpperCase()} Document: ${filePath}] (${sizeKB} KB)\n\n`;
-      const output = header + html;
-
-      return { success: true, output };
+      return { success: true, output: header + html };
     } catch (err) {
       return {
         success: false,
@@ -1215,6 +1280,13 @@ Usage:
         lineCount: lines,
       };
       await runPostToolUseHooks('Write', input, result.output || '');
+
+      // Auto-verify: 追踪代码文件变更
+      try {
+        const sessionId = (globalThis as any).__currentSessionId;
+        if (sessionId) getChangeTracker(sessionId).trackChange(file_path, 'Write');
+      } catch { /* ignore */ }
+
       return result;
     } catch (err) {
       return { success: false, error: t('file.writeError', { error: err }) };
@@ -1224,6 +1296,7 @@ Usage:
 
 /**
  * 生成 Unified Diff 格式的差异预览
+ * 使用 diff 库的 Myers O(ND) 算法（与官方 Claude Code 一致）
  */
 function generateUnifiedDiff(
   filePath: string,
@@ -1231,114 +1304,27 @@ function generateUnifiedDiff(
   newContent: string,
   contextLines: number = 3
 ): DiffPreview {
-  const oldLines = oldContent.split('\n');
-  const newLines = newContent.split('\n');
-
-  // 找到所有不同的行
-  const changes: Array<{ type: 'add' | 'delete' | 'equal'; line: string; oldIndex?: number; newIndex?: number }> = [];
-
-  let i = 0;
-  let j = 0;
-
-  while (i < oldLines.length || j < newLines.length) {
-    if (i >= oldLines.length) {
-      changes.push({ type: 'add', line: newLines[j], newIndex: j });
-      j++;
-    } else if (j >= newLines.length) {
-      changes.push({ type: 'delete', line: oldLines[i], oldIndex: i });
-      i++;
-    } else if (oldLines[i] === newLines[j]) {
-      changes.push({ type: 'equal', line: oldLines[i], oldIndex: i, newIndex: j });
-      i++;
-      j++;
-    } else {
-      // 检测是修改还是插入/删除
-      const isInNew = newLines.slice(j).includes(oldLines[i]);
-      const isInOld = oldLines.slice(i).includes(newLines[j]);
-
-      if (!isInNew) {
-        changes.push({ type: 'delete', line: oldLines[i], oldIndex: i });
-        i++;
-      } else if (!isInOld) {
-        changes.push({ type: 'add', line: newLines[j], newIndex: j });
-        j++;
-      } else {
-        // 都存在，按照距离判断
-        const distNew = newLines.slice(j).indexOf(oldLines[i]);
-        const distOld = oldLines.slice(i).indexOf(newLines[j]);
-
-        if (distNew <= distOld) {
-          changes.push({ type: 'add', line: newLines[j], newIndex: j });
-          j++;
-        } else {
-          changes.push({ type: 'delete', line: oldLines[i], oldIndex: i });
-          i++;
-        }
-      }
-    }
-  }
-
-  // 生成 unified diff 格式
-  let diff = '';
-  diff += `--- a/${path.basename(filePath)}\n`;
-  diff += `+++ b/${path.basename(filePath)}\n`;
-
-  // 查找变化块（hunks）
-  const hunks: Array<{ start: number; end: number }> = [];
-  for (let idx = 0; idx < changes.length; idx++) {
-    if (changes[idx].type !== 'equal') {
-      const start = Math.max(0, idx - contextLines);
-      const end = Math.min(changes.length - 1, idx + contextLines);
-
-      if (hunks.length === 0 || start > hunks[hunks.length - 1].end + 1) {
-        hunks.push({ start, end });
-      } else {
-        hunks[hunks.length - 1].end = end;
-      }
-    }
-  }
+  const baseName = path.basename(filePath);
+  const patch = structuredPatch(
+    `a/${baseName}`,
+    `b/${baseName}`,
+    oldContent,
+    newContent,
+    undefined,
+    undefined,
+    { context: contextLines }
+  );
 
   let additions = 0;
   let deletions = 0;
+  let diff = `--- a/${baseName}\n+++ b/${baseName}\n`;
 
-  // 生成每个 hunk
-  for (const hunk of hunks) {
-    const hunkChanges = changes.slice(hunk.start, hunk.end + 1);
-
-    // 计算 hunk 头部的行号范围
-    let oldStart = 0;
-    let oldCount = 0;
-    let newStart = 0;
-    let newCount = 0;
-
-    for (const change of hunkChanges) {
-      if (change.type === 'delete' || change.type === 'equal') {
-        if (oldCount === 0 && change.oldIndex !== undefined) {
-          oldStart = change.oldIndex + 1;
-        }
-        oldCount++;
-      }
-      if (change.type === 'add' || change.type === 'equal') {
-        if (newCount === 0 && change.newIndex !== undefined) {
-          newStart = change.newIndex + 1;
-        }
-        newCount++;
-      }
-    }
-
-    diff += `@@ -${oldStart},${oldCount} +${newStart},${newCount} @@\n`;
-
-    // 生成 hunk 内容
-    for (const change of hunkChanges) {
-      if (change.type === 'equal') {
-        diff += ` ${change.line}\n`;
-      } else if (change.type === 'delete') {
-        diff += `-${change.line}\n`;
-        deletions++;
-      } else if (change.type === 'add') {
-        diff += `+${change.line}\n`;
-        additions++;
-      }
+  for (const hunk of patch.hunks) {
+    diff += `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@\n`;
+    for (const line of hunk.lines) {
+      diff += line + '\n';
+      if (line.startsWith('+')) additions++;
+      else if (line.startsWith('-')) deletions++;
     }
   }
 
@@ -1715,6 +1701,13 @@ Usage:
           content: modifiedContent,
         };
         await runPostToolUseHooks('Edit', input, result.output || '');
+
+        // Auto-verify: 追踪代码文件变更
+        try {
+          const sessionId = (globalThis as any).__currentSessionId;
+          if (sessionId) getChangeTracker(sessionId).trackChange(file_path, 'Edit');
+        } catch { /* ignore */ }
+
         return result;
       } catch (writeErr) {
         // 写入失败，尝试回滚

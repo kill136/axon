@@ -100,6 +100,7 @@ export class MemorySearchManager {
   private store!: LongTermStore;
   private syncEngine!: MemorySyncEngine;
   private dirty: boolean = true;
+  private syncPromise: Promise<void> | null = null;
   private embeddingProvider: EmbeddingProvider | null = null;
   private embeddingCache: EmbeddingCache | null = null;
   private embeddingConfig: EmbeddingConfig | null = null;
@@ -146,9 +147,10 @@ export class MemorySearchManager {
    * 搜索记忆
    */
   search(query: string, opts?: MemorySearchOptions): MemorySearchResult[] {
-    // 如果 dirty，先同步
+    // 如果 dirty，触发后台同步（不阻塞，首次搜索可能在旧数据上执行）
+    // 对于需要保证数据新鲜度的场景，请使用 hybridSearch() 或 recall()
     if (this.dirty) {
-      this.syncSync();
+      this.triggerSync();
     }
 
     // 调用 store.search
@@ -198,14 +200,18 @@ export class MemorySearchManager {
   }
 
   /**
-   * 同步记忆文件（同步）
+   * 触发异步同步（不阻塞调用方，但会跟踪 Promise 状态）
+   * search() 使用此方法：首次搜索触发后台同步，不阻塞返回结果。
+   * 后续 hybridSearch() / recall() 的 await sync() 会等待同一个 Promise。
    */
-  private syncSync(): void {
-    // 使用 Promise 立即执行（不阻塞）
-    this.sync('auto').catch(err => {
-      console.warn('[MemorySearch] Sync failed:', err);
-    });
-    // 标记为非 dirty，避免重复同步
+  private triggerSync(): void {
+    if (!this.syncPromise) {
+      this.syncPromise = this.sync('auto').catch(err => {
+        console.warn('[MemorySearch] Sync failed:', err);
+      }).finally(() => {
+        this.syncPromise = null;
+      });
+    }
     this.dirty = false;
   }
 
@@ -259,7 +265,11 @@ export class MemorySearchManager {
    */
   async hybridSearch(query: string, opts?: MemorySearchOptions): Promise<MemorySearchResult[]> {
     if (this.dirty) {
-      this.syncSync();
+      this.triggerSync();
+    }
+    // Wait for any in-flight sync to complete before searching
+    if (this.syncPromise) {
+      await this.syncPromise;
     }
 
     const source = (opts?.source === 'all' ? undefined : opts?.source) as MemorySource | undefined;
@@ -403,6 +413,10 @@ export async function initMemorySearchManager(
   projectHash: string,
   embeddingConfig?: EmbeddingConfig,
 ): Promise<MemorySearchManager> {
+  // Close previous instance to avoid SQLite connection leak
+  if (managerInstance) {
+    try { managerInstance.close(); } catch { /* ignore */ }
+  }
   const resolved = resolveEmbeddingConfig(embeddingConfig);
   managerInstance = await MemorySearchManager.create({ projectDir, projectHash, embeddingConfig: resolved });
   return managerInstance;

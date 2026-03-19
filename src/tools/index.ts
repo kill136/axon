@@ -37,7 +37,7 @@ export * from './network-agent.js';
 // 蓝图工具不通过此处 re-export
 // 蓝图模块直接 import 各自需要的工具文件 (如 ../tools/dispatch-worker.js)
 
-import { toolRegistry } from './base.js';
+import { toolRegistry, PluginToolWrapper } from './base.js';
 
 // ============ 核心工具 imports ============
 import { BashTool, cleanupStaleTasks } from './bash.js';
@@ -212,5 +212,77 @@ export function registerAllTools(): void {
 // 模块加载时自动注册核心工具
 // 蓝图工具由 Web 服务器按需注册 (见 src/web/server/conversation.ts)
 registerCoreTools();
+
+// ============ 插件工具同步到 toolRegistry ============
+// 监听 PluginManager 的工具注册/注销事件，将插件工具桥接为 BaseTool 注册到全局 toolRegistry
+// 这样 ConversationLoop 通过 toolRegistry.getDefinitions() 就能拿到插件工具定义，模型 API 可以调用
+
+let pluginToolSyncInitialized = false;
+
+/**
+ * 初始化插件工具同步 — 将 PluginManager 中注册的工具同步到 toolRegistry
+ * 
+ * 需要在 PluginManager discover/load 之后调用一次。
+ * 已有幂等保护，多次调用无副作用。
+ */
+export function initPluginToolSync(): void {
+  if (pluginToolSyncInitialized) return;
+  pluginToolSyncInitialized = true;
+
+  // 延迟 import 避免循环依赖
+  import('../plugins/index.js').then(({ pluginManager, pluginToolExecutor }) => {
+    // 1. 同步已有的插件工具（可能在此函数调用前已经加载了）
+    const existingTools = pluginManager.getTools();
+    for (const toolDef of existingTools) {
+      if (toolRegistry.get(toolDef.name)) {
+        // 与内置工具重名，跳过避免覆盖
+        console.warn(`[PluginToolSync] Plugin tool "${toolDef.name}" conflicts with built-in tool, skipped`);
+        continue;
+      }
+      const executor = (input: unknown) => pluginToolExecutor.execute(toolDef.name, input);
+      // 找到工具所属的插件名
+      const pluginName = findPluginForTool(pluginManager, toolDef.name);
+      const wrapper = new PluginToolWrapper(toolDef, executor, pluginName);
+      toolRegistry.register(wrapper);
+      console.log(`[PluginToolSync] Registered plugin tool: ${toolDef.name} (from ${pluginName})`);
+    }
+
+    // 2. 监听后续的工具注册事件
+    pluginManager.on('tool:registered', (pluginName: string, toolDef: import('../types/index.js').ToolDefinition) => {
+      if (toolRegistry.get(toolDef.name)) {
+        console.warn(`[PluginToolSync] Plugin tool "${toolDef.name}" conflicts with existing tool, skipped`);
+        return;
+      }
+      const executor = (input: unknown) => pluginToolExecutor.execute(toolDef.name, input);
+      const wrapper = new PluginToolWrapper(toolDef, executor, pluginName);
+      toolRegistry.register(wrapper);
+      console.log(`[PluginToolSync] Registered plugin tool: ${toolDef.name} (from ${pluginName})`);
+    });
+
+    // 3. 监听工具注销事件
+    pluginManager.on('tool:unregistered', (_pluginName: string, toolName: string) => {
+      const existing = toolRegistry.get(toolName);
+      // 只删除插件工具，不误删内置工具
+      if (existing instanceof PluginToolWrapper) {
+        toolRegistry.unregister(toolName);
+        console.log(`[PluginToolSync] Unregistered plugin tool: ${toolName}`);
+      }
+    });
+  }).catch(err => {
+    console.warn('[PluginToolSync] Failed to initialize plugin tool sync:', err);
+  });
+}
+
+/** 根据工具名反查所属插件名 */
+function findPluginForTool(pluginManager: any, toolName: string): string {
+  const states = pluginManager.getPluginStates();
+  for (const state of states) {
+    const tools = pluginManager.getPluginTools(state.metadata.name);
+    if (tools.some((t: any) => t.name === toolName)) {
+      return state.metadata.name;
+    }
+  }
+  return 'unknown-plugin';
+}
 
 export { toolRegistry };

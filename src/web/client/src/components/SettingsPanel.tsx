@@ -15,6 +15,7 @@ import {
 import { ModePresetsPanel } from './config/ModePresetsPanel';
 import { useLanguage } from '../i18n';
 import type { Locale } from '../i18n';
+import { useNotificationSound } from '../hooks/useNotificationSound';
 
 interface SettingsPanelProps {
   isOpen: boolean;
@@ -61,6 +62,9 @@ export function SettingsPanel({
 }: SettingsPanelProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
   const { locale, setLocale, t } = useLanguage();
+  const { play, isEnabled, setEnabled, getVolume, setVolume } = useNotificationSound();
+  const [soundEnabled, setSoundEnabled] = useState(isEnabled());
+  const [soundVolume, setSoundVolume] = useState(getVolume());
 
   if (!isOpen) return null;
 
@@ -108,6 +112,41 @@ export function SettingsPanel({
                 <option value="true">{t('settings.general.enabled')}</option>
                 <option value="false">{t('settings.general.disabled')}</option>
               </select>
+            </div>
+            <div className="setting-item">
+              <label>{t('settings.general.notificationSound')}</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <select
+                  className="setting-select"
+                  value={soundEnabled ? 'true' : 'false'}
+                  onChange={(e) => {
+                    const enabled = e.target.value === 'true';
+                    setSoundEnabled(enabled);
+                    setEnabled(enabled);
+                    if (enabled) play('info');
+                  }}
+                  style={{ flex: '0 0 auto', width: 'auto' }}
+                >
+                  <option value="true">{t('settings.general.enabled')}</option>
+                  <option value="false">{t('settings.general.disabled')}</option>
+                </select>
+                {soundEnabled && (
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={Math.round(soundVolume * 100)}
+                    onChange={(e) => {
+                      const vol = parseInt(e.target.value) / 100;
+                      setSoundVolume(vol);
+                      setVolume(vol);
+                    }}
+                    onMouseUp={() => play('info')}
+                    style={{ flex: 1, maxWidth: '120px', cursor: 'pointer' }}
+                    title={`${Math.round(soundVolume * 100)}%`}
+                  />
+                )}
+              </div>
             </div>
             <div className="setting-item" style={{ marginTop: '24px', borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
               <label>{t('setupWizard.rerun')}</label>

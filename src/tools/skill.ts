@@ -262,7 +262,7 @@ interface SkillFrontmatter {
  * - projectSettings: 项目级 skills (.axon/skills)
  * - plugin: 插件提供的 skills
  */
-type SkillSource = 'policySettings' | 'userSettings' | 'projectSettings' | 'plugin';
+type SkillSource = 'policySettings' | 'userSettings' | 'projectSettings' | 'plugin' | 'builtin';
 
 /**
  * Skill 定义接口（对齐官网 NE7 函数参数）
@@ -943,42 +943,18 @@ async function loadSkillsFromPluginCache(): Promise<SkillDefinition[]> {
  */
 
 /**
- * 部署内置 skills 到用户目录
- * 将 src/skills/builtin/ 下的 skills 复制到 ~/.axon/skills/（仅在目标不存在时）
- * 确保新用户安装后开箱即有 tool-discovery 和 skill-hub 等核心 skills
+ * 获取内置 skills 目录路径
+ * 内置 skills 直接从 dist/skills/builtin/ 加载，不再复制到用户目录
+ * 这样内置 skills 随版本自动更新，用户可通过 ~/.axon/skills/ 同名 skill 覆盖
  */
-function deployBuiltinSkills(claudeDir: string): void {
+function getBuiltinSkillsDir(): string | null {
   try {
-    // 定位内置 skills 目录：src/skills/builtin/
     const __filename = fileURLToPath(import.meta.url);
     const srcRoot = path.resolve(path.dirname(__filename), '..');
     const builtinDir = path.join(srcRoot, 'skills', 'builtin');
-
-    if (!fs.existsSync(builtinDir)) return;
-
-    const userSkillsDir = path.join(claudeDir, 'skills');
-    fs.mkdirSync(userSkillsDir, { recursive: true });
-
-    const entries = fs.readdirSync(builtinDir, { withFileTypes: true });
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
-
-      const targetDir = path.join(userSkillsDir, entry.name);
-      const targetFile = path.join(targetDir, 'SKILL.md');
-
-      // 只在目标不存在时部署，用户修改过的不覆盖
-      if (fs.existsSync(targetFile)) continue;
-
-      const sourceFile = path.join(builtinDir, entry.name, 'SKILL.md');
-      if (!fs.existsSync(sourceFile)) continue;
-
-      fs.mkdirSync(targetDir, { recursive: true });
-      fs.copyFileSync(sourceFile, targetFile);
-      console.log(`[Skills] Deployed builtin skill: ${entry.name}`);
-    }
-  } catch (error) {
-    // 部署失败不应阻断 skills 加载
-    console.error('[Skills] Failed to deploy builtin skills:', error);
+    return fs.existsSync(builtinDir) ? builtinDir : null;
+  } catch {
+    return null;
   }
 }
 
@@ -1002,8 +978,16 @@ export async function initializeSkills(): Promise<void> {
     allSkillsWithPath.push({ skill, filePath: skill.filePath });
   }
 
-  // 1.5 部署内置 skills（确保新用户开箱即有 tool-discovery / skill-hub）
-  deployBuiltinSkills(claudeDir);
+  // 1.5 加载内置 skills（从 dist/skills/builtin/ 直接加载，优先级在插件和用户级之间）
+  // 内置 skills 随版本自动更新，用户可通过 ~/.axon/skills/ 同名 skill 覆盖
+  const builtinSkillsDir = getBuiltinSkillsDir();
+  let builtinSkills: SkillDefinition[] = [];
+  if (builtinSkillsDir) {
+    builtinSkills = await loadSkillsFromDirectory(builtinSkillsDir, 'builtin');
+    for (const skill of builtinSkills) {
+      allSkillsWithPath.push({ skill, filePath: skill.filePath });
+    }
+  }
 
   // 2. 加载用户级 skills（对齐官网 userSettings）
   const userSkillsDir = path.join(claudeDir, 'skills');
@@ -1098,7 +1082,7 @@ export async function initializeSkills(): Promise<void> {
 
   skillsLoaded = true;
 
-  console.log(`Loaded ${skillRegistry.size} unique skills (plugin: ${pluginSkills.length}, user: ${userSkills.length}, project: ${projectSkills.length})`);
+  console.log(`Loaded ${skillRegistry.size} unique skills (builtin: ${builtinSkills.length}, plugin: ${pluginSkills.length}, user: ${userSkills.length}, project: ${projectSkills.length})`);
 
   // 初始化完成后自动启用热重载
   enableSkillHotReload();

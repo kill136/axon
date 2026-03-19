@@ -12,10 +12,13 @@ export interface UseWebSocketReturn {
   addMessageHandler: (handler: (msg: WSMessage) => void) => () => void;
 }
 
-// sessionStorage key for persisting session ID across HMR/reconnects
-// 使用 sessionStorage 而非 localStorage，确保每个标签页有独立的会话上下文
-// sessionStorage 在同一标签页内刷新/HMR 时保持，但不会跨标签页共享
+// localStorage key for persisting session ID across tabs/HMR/reconnects
+// 使用 localStorage 而非 sessionStorage，确保多个标签页共享同一个会话上下文
+// 这样新开标签页时能自动恢复到当前活跃会话，而不是创建新会话
 const SESSION_ID_STORAGE_KEY = 'claude-code-current-session-id';
+
+// BroadcastChannel 用于跨标签页实时同步会话切换
+const SESSION_BROADCAST_CHANNEL = 'claude-code-session-sync';
 
 export function useWebSocket(url: string): UseWebSocketReturn {
   const [connected, setConnected] = useState(false);
@@ -35,8 +38,21 @@ export function useWebSocket(url: string): UseWebSocketReturn {
   urlRef.current = url;
   // 追踪是否已经发送了 session_switch 恢复请求
   const hasRestoredSessionRef = useRef(false);
+  // BroadcastChannel ref，用于跨标签页同步会话切换
+  const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
   // 记录首次连接时的 serverStartTime，后续重连发现变化则 reload 页面
   const serverStartTimeRef = useRef<number | null>(null);
+  // 跟踪当前 sessionId（ref 版本，用于同步检查，避免依赖异步 state）
+  const sessionIdRef = useRef<string | null>(null);
+
+  // 广播会话变更到其他标签页
+  const broadcastSessionChange = useCallback((newSessionId: string) => {
+    try {
+      broadcastChannelRef.current?.postMessage({ type: 'session_change', sessionId: newSessionId });
+    } catch {
+      // BroadcastChannel 可能在某些环境不可用，静默忽略
+    }
+  }, []);
 
   const connect = useCallback(() => {
     // 防止重复连接
@@ -76,7 +92,7 @@ export function useWebSocket(url: string): UseWebSocketReturn {
       // 检查是否有保存的 sessionId，如果有则自动恢复会话
       // 这对于 HMR 触发的重连特别重要
       if (!hasRestoredSessionRef.current) {
-        const savedSessionId = sessionStorage.getItem(SESSION_ID_STORAGE_KEY);
+        const savedSessionId = localStorage.getItem(SESSION_ID_STORAGE_KEY);
         if (savedSessionId) {
           console.log('[WebSocket] Detected saved sessionId, attempting to restore session:', savedSessionId);
           hasRestoredSessionRef.current = true;
@@ -119,6 +135,7 @@ export function useWebSocket(url: string): UseWebSocketReturn {
           // 如果有保存的 sessionId 且已发送恢复请求，会在 session_switched 中更新
           if (!hasRestoredSessionRef.current) {
             setSessionId(payload.sessionId);
+            sessionIdRef.current = payload.sessionId;
           }
           setModel(payload.model);
           setSessionReady(true);
@@ -142,8 +159,10 @@ export function useWebSocket(url: string): UseWebSocketReturn {
         if (message.type === 'session_switched') {
           const payload = message.payload as { sessionId: string };
           setSessionId(payload.sessionId);
+          sessionIdRef.current = payload.sessionId;
           // 持久化 sessionId，用于 HMR/重连后恢复
-          sessionStorage.setItem(SESSION_ID_STORAGE_KEY, payload.sessionId);
+          localStorage.setItem(SESSION_ID_STORAGE_KEY, payload.sessionId);
+          broadcastSessionChange(payload.sessionId);
           console.log('[WebSocket] Session switched and saved:', payload.sessionId);
         }
 
@@ -151,8 +170,10 @@ export function useWebSocket(url: string): UseWebSocketReturn {
         if (message.type === 'session_new_ready') {
           const payload = message.payload as { sessionId: string; model: string };
           setSessionId(payload.sessionId);
+          sessionIdRef.current = payload.sessionId;
           // 新建的临时会话也需要保存，以便 HMR 后能恢复
-          sessionStorage.setItem(SESSION_ID_STORAGE_KEY, payload.sessionId);
+          localStorage.setItem(SESSION_ID_STORAGE_KEY, payload.sessionId);
+          broadcastSessionChange(payload.sessionId);
           if (payload.model) {
             setModel(payload.model);
           }
@@ -166,18 +187,20 @@ export function useWebSocket(url: string): UseWebSocketReturn {
           const isBackgroundSession = payload.tags?.includes('delegated-task') || payload.tags?.includes('agent-chat');
           if (payload.sessionId && !isBackgroundSession) {
             setSessionId(payload.sessionId);
-            sessionStorage.setItem(SESSION_ID_STORAGE_KEY, payload.sessionId);
+            sessionIdRef.current = payload.sessionId;
+            localStorage.setItem(SESSION_ID_STORAGE_KEY, payload.sessionId);
+            broadcastSessionChange(payload.sessionId);
             console.log('[WebSocket] Persistent session created and saved:', payload.sessionId);
           }
         }
 
-        // 处理会话删除 - 如果删除的是当前保存的会话，清除 sessionStorage
+        // 处理会话删除 - 如果删除的是当前保存的会话，清除 localStorage
         if (message.type === 'session_deleted') {
           const payload = message.payload as { sessionId: string; success: boolean };
           if (payload.success) {
-            const savedSessionId = sessionStorage.getItem(SESSION_ID_STORAGE_KEY);
+            const savedSessionId = localStorage.getItem(SESSION_ID_STORAGE_KEY);
             if (savedSessionId === payload.sessionId) {
-              sessionStorage.removeItem(SESSION_ID_STORAGE_KEY);
+              localStorage.removeItem(SESSION_ID_STORAGE_KEY);
               console.log('[WebSocket] Current session deleted, clearing saved sessionId');
             }
           }
@@ -193,7 +216,7 @@ export function useWebSocket(url: string): UseWebSocketReturn {
               errorMsg.includes('failed to resume') ||
               errorMsg.includes('failed to switch') ||
               errorMsg.includes('failed to load')) {
-            sessionStorage.removeItem(SESSION_ID_STORAGE_KEY);
+            localStorage.removeItem(SESSION_ID_STORAGE_KEY);
             hasRestoredSessionRef.current = false;
             console.log('[WebSocket] Session restore failed, clearing invalid sessionId:', payload.message);
           }
@@ -240,25 +263,38 @@ export function useWebSocket(url: string): UseWebSocketReturn {
     isMountedRef.current = true;
     connect();
 
+    // BroadcastChannel：仅同步 localStorage 中的 sessionId 给其他标签页，
+    // **不再自动触发 session_switch**。
+    // 原因：自动切换会在多标签页频繁切换时形成乒乓循环
+    //  (A broadcast → B switch → B broadcast → A switch → ...)，
+    // 导致消息发到错误的会话。
+    // 现在只更新 localStorage，这样其他标签页在刷新/重连时会自动恢复到最新会话。
+    try {
+      const bc = new BroadcastChannel(SESSION_BROADCAST_CHANNEL);
+      broadcastChannelRef.current = bc;
+      bc.onmessage = (event) => {
+        if (!isMountedRef.current) return;
+        const { type, sessionId: newSessionId } = event.data;
+        if (type === 'session_change' && newSessionId) {
+          // 仅更新 localStorage，不触发 session_switch
+          // 其他标签页下次刷新或重连时会自动恢复到这个会话
+          localStorage.setItem(SESSION_ID_STORAGE_KEY, newSessionId);
+          console.log('[WebSocket] BroadcastChannel: updated localStorage to', newSessionId, '(no auto-switch)');
+        }
+      };
+    } catch {
+      // BroadcastChannel 可能在某些环境不可用
+    }
+
     return () => {
       // 标记组件为已卸载，阻止所有回调执行
       isMountedRef.current = false;
       isConnectingRef.current = false;
 
-      // 清理定时器
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-        reconnectTimeoutRef.current = null;
-      }
-      if (pingIntervalRef.current) {
-        clearInterval(pingIntervalRef.current);
-        pingIntervalRef.current = null;
-      }
-
-      // 清理 WebSocket 连接
+      // 第一优先：立即移除 WS 事件回调，防止 cleanup 期间回调触发 setState
+      // （React 18 StrictMode mount→unmount→remount 中有竞态窗口）
       if (wsRef.current) {
         const ws = wsRef.current;
-        // 移除所有事件监听器，防止回调被触发
         ws.onopen = null;
         ws.onmessage = null;
         ws.onclose = null;
@@ -268,6 +304,22 @@ export function useWebSocket(url: string): UseWebSocketReturn {
           ws.close();
         }
         wsRef.current = null;
+      }
+
+      // 清理 BroadcastChannel
+      if (broadcastChannelRef.current) {
+        broadcastChannelRef.current.close();
+        broadcastChannelRef.current = null;
+      }
+
+      // 清理定时器
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+      if (pingIntervalRef.current) {
+        clearInterval(pingIntervalRef.current);
+        pingIntervalRef.current = null;
       }
     };
   }, [connect]);

@@ -6,6 +6,7 @@
 import { randomUUID } from 'crypto';
 import type { WebSocket } from 'ws';
 import type { QuestionOption, UserQuestionPayload } from '../shared/types.js';
+import { getCmuxBridge } from '../../notifications/cmux.js';
 
 /**
  * 待处理的问题
@@ -94,6 +95,8 @@ export class UserInteractionHandler {
           payload: { ...payload, sessionId: this.sessionId },
         }));
         console.log(`[UserInteraction] Sending question: ${config.header} (${requestId}), session: ${this.sessionId}`);
+        // cmux 集成：Agent 等待用户输入时通知 cmux 终端
+        getCmuxBridge().onWaitingForInput(config.question);
       } catch (error) {
         this.cleanup(requestId);
         reject(error instanceof Error ? error : new Error(String(error)));

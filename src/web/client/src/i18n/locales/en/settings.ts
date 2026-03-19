@@ -460,6 +460,7 @@ const settings = {
   'settings.about.title': 'About Axon',
   'settings.about.version': 'Version',
   'settings.general.autoSave': 'Auto-save Sessions',
+  'settings.general.notificationSound': 'Notification Sound',
   'settings.general.description': 'Configure general application settings.',
   'settings.general.disabled': 'Disabled',
   'settings.general.enabled': 'Enabled',

@@ -18,6 +18,7 @@ import type { ChatMessage, ChatContent, ToolResultData, PermissionConfigPayload,
 import { UserInteractionHandler } from './user-interaction.js';
 import { PermissionHandler, type PermissionConfig, type PermissionRequest, type PermissionDestination } from './permission-handler.js';
 import { runPreToolUseHooks, runPostToolUseHooks, runPostToolUseFailureHooks, getHookCount } from '../../hooks/index.js';
+import { getChangeTracker } from '../../hooks/auto-verify.js';
 import type { WebSocket } from 'ws';
 import { WebSessionManager, type WebSessionData } from './session-manager.js';
 import type { SessionMetadata, SessionListOptions } from '../../session/index.js';
@@ -59,6 +60,7 @@ import { appendRunLog } from '../../daemon/run-log.js';
 import { promptSnippetsManager } from './prompt-snippets.js';
 import { isEvolveRestartRequested, triggerGracefulShutdown } from './evolve-state.js';
 import { loadActiveGoals } from '../../goals/index.js';
+import { getAppManager } from './app-manager.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -413,6 +415,8 @@ export interface StreamCallbacks {
   onThinkingComplete?: () => void;
   onTextDelta?: (text: string) => void;
   onToolUseStart?: (toolUseId: string, toolName: string, input: unknown) => void;
+  /** 工具参数流式传输完成，input 已完整解析（用于更新前端的工具参数显示） */
+  onToolUseInputReady?: (toolUseId: string, input: unknown) => void;
   onToolUseDelta?: (toolUseId: string, partialJson: string) => void;
   onToolResult?: (toolUseId: string, success: boolean, output?: string, error?: string, data?: ToolResultData) => void;
   onPermissionRequest?: (request: any) => void;
@@ -528,6 +532,15 @@ export class ConversationManager {
 
     // 注册蓝图工具（仅 Web 模式需要，CLI 模式不加载）
     registerBlueprintTools();
+
+    // 初始化插件工具同步 — 将插件注册的工具桥接到 toolRegistry
+    // 这样 ConversationLoop 通过 toolRegistry.getDefinitions() 能拿到插件工具，模型 API 可以调用
+    const { initPluginToolSync } = await import('../../tools/index.js');
+    initPluginToolSync();
+
+    // 发现并加载已安装的插件，触发工具注册事件
+    await pluginManager.discover();
+    console.log(`[ConversationManager] Plugin discover completed, ${pluginManager.getTools().length} plugin tools synced`);
 
     // v12.0: 注入 StartLeadAgent 自包含执行上下文（支持 TaskPlan + 结构化错误）
     StartLeadAgentTool.setContext({
@@ -1531,6 +1544,11 @@ export class ConversationManager {
     // 创建 AbortController，用于在取消时中断正在执行的工具
     state.currentAbortController = new AbortController();
 
+    // Auto-verify: 设置全局 sessionId 供工具层追踪文件变更
+    if (sessionId) {
+      (globalThis as any).__currentSessionId = sessionId;
+    }
+
     while (continueLoop && !state.cancelled) {
       // 标记本次迭代是否已有内容流式输出到前端
       // 如果有内容已输出，则不进行自动重试（避免前端内容重复）
@@ -1538,6 +1556,11 @@ export class ConversationManager {
 
       // 初始化流式中间内容追踪（用于浏览器刷新后恢复）
       state.streamingContent = { thinkingText: '', textContent: '' };
+
+      // Auto-verify: 每轮迭代重置注入标记
+      if (sessionId) {
+        try { getChangeTracker(sessionId).resetTurnFlag(); } catch { /* ignore */ }
+      }
 
       // 凭据变更检测（处理用户在 WebUI 重新登录后已有会话自动使用新凭据）
       this.ensureClientCredentialsFresh(state);
@@ -1869,24 +1892,36 @@ export class ConversationManager {
               }
               // 如果有未完成的工具调用（多工具响应时 content_block_stop 不产生事件），先完成它
               if (currentToolUse) {
-                let prevInput = {};
-                try {
-                  prevInput = JSON.parse(currentToolUse.inputJson || '{}');
-                } catch { /* 解析失败用空对象 */ }
+                // 优先使用 SDK 注入的 parsedInput
+                const sdkPrev = (currentToolUse as any).parsedInput;
+                let prevInput: Record<string, any> = {};
+                if (sdkPrev && typeof sdkPrev === 'object' && Object.keys(sdkPrev).length > 0) {
+                  prevInput = sdkPrev;
+                } else {
+                  try {
+                    prevInput = JSON.parse(currentToolUse.inputJson || '{}');
+                  } catch {
+                    console.warn(`[StreamDebug] Failed to parse tool input JSON for ${currentToolUse.name} (length=${currentToolUse.inputJson.length}), raw start: ${currentToolUse.inputJson.slice(0, 100)}`);
+                  }
+                }
+                console.log(`[StreamDebug] tool_use_start: completing previous tool ${currentToolUse.name}(${currentToolUse.id}), keys=[${Object.keys(prevInput)}]`);
                 assistantContent.push({
                   type: 'tool_use',
                   id: currentToolUse.id,
                   name: currentToolUse.name,
                   input: prevInput,
                 } as ToolUseBlock);
-                callbacks.onToolUseStart?.(currentToolUse.id, currentToolUse.name, prevInput);
+                // 通知前端完整 input（参数流完毕）
+                callbacks.onToolUseInputReady?.(currentToolUse.id, prevInput);
               }
-              // 开始新的工具调用（先不发送 onToolUseStart，等参数解析完成后再发送）
+              // 开始新的工具调用 — 立即通知前端（参数尚在流式传输）
               currentToolUse = {
                 id: event.id || '',
                 name: event.name || '',
                 inputJson: '',
               };
+              console.log(`[StreamDebug] tool_use_start: new tool ${currentToolUse.name}(${currentToolUse.id}), sending _streaming=true to frontend`);
+              callbacks.onToolUseStart?.(currentToolUse.id, currentToolUse.name, { _streaming: true });
               break;
 
             case 'tool_use_delta':
@@ -1896,6 +1931,31 @@ export class ConversationManager {
               }
               break;
 
+            case 'tool_use_complete': {
+              // 来自 SDK finalMessage 的完整 tool_use（input 已由 SDK parse 好）
+              // 覆盖手动拼接的 inputJson，确保 input 的正确性
+              const completeId = (event as any).id;
+              const completeInput = (event as any).input;
+              console.log(`[StreamDebug] tool_use_complete: id=${completeId}, inputKeys=${completeInput ? Object.keys(completeInput) : 'null'}`);
+              // 如果当前有正在流式接收的工具且 id 匹配，直接注入解析好的 input
+              if (currentToolUse && currentToolUse.id === completeId) {
+                // 把 SDK 解析好的 input 保存到 currentToolUse（stop 事件会用）
+                (currentToolUse as any).parsedInput = completeInput;
+              } else {
+                // 可能是之前已经 push 到 assistantContent 的工具（多工具场景）
+                // 用 SDK 的 input 覆盖手动 parse 的结果
+                for (const block of assistantContent) {
+                  if (block.type === 'tool_use' && block.id === completeId) {
+                    (block as any).input = completeInput || {};
+                    // 同时通知前端更新
+                    callbacks.onToolUseInputReady?.(completeId, completeInput || {});
+                    break;
+                  }
+                }
+              }
+              break;
+            }
+
             case 'stop':
               // 完成当前文本块
               if (currentTextContent) {
@@ -1904,11 +1964,20 @@ export class ConversationManager {
               }
               // 完成当前工具调用
               if (currentToolUse) {
-                let parsedInput = {};
-                try {
-                  parsedInput = JSON.parse(currentToolUse.inputJson || '{}');
-                } catch (e) {
-                  // 解析失败使用空对象
+                // 优先使用 SDK finalMessage 中的 input（由 tool_use_complete 事件注入）
+                // 回退到手动拼接 inputJson + JSON.parse（兼容非标准 API）
+                let parsedInput: Record<string, unknown> = {};
+                const sdkInput = (currentToolUse as any).parsedInput;
+                if (sdkInput && typeof sdkInput === 'object' && Object.keys(sdkInput).length > 0) {
+                  parsedInput = sdkInput;
+                  console.log(`[StreamDebug] stop: using SDK input for ${currentToolUse.name}(${currentToolUse.id}), keys=[${Object.keys(parsedInput)}]`);
+                } else {
+                  try {
+                    parsedInput = JSON.parse(currentToolUse.inputJson || '{}');
+                    console.log(`[StreamDebug] stop: using manual JSON.parse for ${currentToolUse.name}(${currentToolUse.id}), inputJson.length=${currentToolUse.inputJson.length}, keys=[${Object.keys(parsedInput)}]`);
+                  } catch (e) {
+                    console.warn(`[StreamDebug] stop: JSON.parse FAILED for ${currentToolUse.name} (length=${currentToolUse.inputJson.length}, stopReason=${event.stopReason}), raw start: ${currentToolUse.inputJson.slice(0, 200)}`);
+                  }
                 }
                 assistantContent.push({
                   type: 'tool_use',
@@ -1916,8 +1985,8 @@ export class ConversationManager {
                   name: currentToolUse.name,
                   input: parsedInput,
                 } as ToolUseBlock);
-                // 现在发送 onToolUseStart（参数已完整解析，只发送一次）
-                callbacks.onToolUseStart?.(currentToolUse.id, currentToolUse.name, parsedInput);
+                // 通知前端完整 input（onToolUseStart 已在 tool_use_start 事件时发送）
+                callbacks.onToolUseInputReady?.(currentToolUse.id, parsedInput);
                 currentToolUse = null;
               }
               stopReason = event.stopReason || null;
@@ -2088,6 +2157,27 @@ export class ConversationManager {
             }
           }
 
+          // Auto-verify: 注入验证提示到最后一个工具结果
+          if (sessionId && toolResults.length > 0) {
+            try {
+              const tracker = getChangeTracker(sessionId);
+              const cwd = state.session.cwd || process.cwd();
+              const hint = tracker.generateHint(cwd);
+              if (hint) {
+                // 找到最后一个 text 类型的工具结果并追加提示
+                const lastResult = toolResults[toolResults.length - 1];
+                if (typeof lastResult.content === 'string') {
+                  lastResult.content += `\n\n<auto-verify>${hint}</auto-verify>`;
+                } else if (Array.isArray(lastResult.content)) {
+                  const textBlocks = lastResult.content.filter((b: any) => b.type === 'text');
+                  if (textBlocks.length > 0) {
+                    textBlocks[textBlocks.length - 1].text += `\n\n<auto-verify>${hint}</auto-verify>`;
+                  }
+                }
+              }
+            } catch { /* auto-verify 失败不影响主流程 */ }
+          }
+
           // 添加工具结果到消息
           if (toolResults.length > 0) {
             const toolResultMsg: Message = {
@@ -2126,6 +2216,14 @@ export class ConversationManager {
         } else {
           // 对话结束
           continueLoop = false;
+
+          // 对齐官方：max_tokens 截断时，流式输出错误消息告知用户
+          if (stopReason === 'max_tokens') {
+            const currentMax = getMaxOutputTokens(resolvedModel);
+            const errorMsg = `\n\nClaude's response exceeded the ${currentMax} output token maximum. ` +
+              `Set CLAUDE_CODE_MAX_OUTPUT_TOKENS environment variable to a higher value to configure.`;
+            callbacks.onTextDelta?.(errorMsg);
+          }
 
           // 添加到聊天历史
           const chatContent: ChatContent[] = assistantContent.map(block => {
@@ -3194,10 +3292,10 @@ export class ConversationManager {
         const input = toolUse.input as any;
 
         try {
-          const { prompt, style, image_path } = input;
+          const { prompt, style, image_path, output_path } = input;
           console.log(`[Tool] ImageGen: ${image_path ? 'image-to-image' : 'text-to-image'} - ${prompt.substring(0, 50)}...`);
 
-          const result = await geminiImageService.generateImage(prompt, style, image_path);
+          const result = await geminiImageService.generateImage(prompt, style, image_path, output_path);
 
           if (!result.success) {
             const error = result.error || 'Image generation failed';
@@ -3218,7 +3316,14 @@ export class ConversationManager {
             }));
           }
 
-          const output = `Image generated and sent to user for preview.${result.generatedText ? `\n\nDescription: ${result.generatedText}` : ''}\n\nUser can view the generated image in the chat interface.`;
+          const parts: string[] = ['Image generated and sent to user for preview.'];
+          if (result.savedPath) {
+            parts.push(`\nSaved to: ${result.savedPath}`);
+          }
+          if (result.generatedText) {
+            parts.push(`\nDescription: ${result.generatedText}`);
+          }
+          const output = parts.join('');
           callbacks.onToolResult?.(toolUse.id, true, output);
           return { success: true, output };
         } catch (error) {
@@ -4184,6 +4289,22 @@ You are running in web server mode accessible by multiple users. HIGHEST PRIORIT
     sections.push(`# Port Forwarding
 When starting a web server for the user, they access it via \`/proxy/:port/\` (e.g. \`/proxy/9090/\`). After starting a server, tell the user: "Preview it here: [Open Preview](/proxy/9090/)". Supports HTTP and WebSocket, ports 1024-65535, localhost only.`);
 
+    // 已注册应用感知
+    try {
+      const apps = getAppManager().list();
+      if (apps.length > 0) {
+        const appLines = apps.map(a => {
+          const status = a.status === 'running' ? `running (pid ${a.pid}, port ${a.port || '?'})` : a.status;
+          return `- **${a.name}** [${status}]: ${a.description || 'no description'} (dir: \`${a.directory}\`, cmd: \`${a.startCommand}\`)`;
+        }).join('\n');
+        sections.push(`# Managed Apps
+You have ${apps.length} registered app(s) in the Apps page. You can start/stop/manage them via \`GET/POST /api/apps\`.
+${appLines}`);
+      }
+    } catch {
+      // AppManager 未初始化时忽略
+    }
+
     if (sections.length === 0) {
       return null;
     }
@@ -4482,6 +4603,9 @@ Guidelines:
         broadcast({ type: 'tool_use_start', payload: { messageId, toolUseId, toolName, input, sessionId: targetSessionId } });
         broadcast({ type: 'status', payload: { status: 'tool_executing', message: `Executing ${toolName}...`, sessionId: targetSessionId } });
       },
+      onToolUseInputReady: (toolUseId: string, input: unknown) => {
+        broadcast({ type: 'tool_use_input_ready', payload: { toolUseId, input, sessionId: targetSessionId } });
+      },
       onToolUseDelta: (toolUseId: string, partialJson: string) => broadcast({ type: 'tool_use_delta', payload: { toolUseId, partialJson, sessionId: targetSessionId } }),
       onToolResult: (toolUseId: string, success: boolean, output?: string, error?: string, data?: unknown) => {
         broadcast({ type: 'tool_result', payload: { toolUseId, success, output, error, data: data as any, defaultCollapsed: true, sessionId: targetSessionId } });
@@ -4534,6 +4658,14 @@ Guidelines:
       return null;
     }
     return state.session.cwd;
+  }
+
+  /**
+   * 获取会话名称（从 sessionManager 的持久化数据中读取）
+   */
+  getSessionName(sessionId: string): string | undefined {
+    const sessionData = this.sessionManager.loadSessionById(sessionId);
+    return sessionData?.metadata?.name;
   }
 
   /**

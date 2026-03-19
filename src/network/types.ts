@@ -140,7 +140,32 @@ export interface HandshakeAckMessage {
   trustLevel: TrustLevel;
 }
 
-export type TransportMessage = HandshakeMessage | HandshakeAckMessage | AgentMessage;
+/**
+ * Challenge 消息 — Server 发送给 Client，要求用私钥签名
+ */
+export interface HandshakeChallengeMessage {
+  type: 'handshake_challenge';
+  identity: AgentIdentity;
+  trustLevel: TrustLevel;
+  /** 32 字节随机 challenge (base64) */
+  challenge: string;
+}
+
+/**
+ * Challenge Response — Client 签名后返回
+ */
+export interface HandshakeChallengeResponseMessage {
+  type: 'handshake_challenge_response';
+  /** 对 challenge 的 Ed25519 签名 (base64) */
+  challengeResponse: string;
+}
+
+export type TransportMessage =
+  | HandshakeMessage
+  | HandshakeAckMessage
+  | HandshakeChallengeMessage
+  | HandshakeChallengeResponseMessage
+  | AgentMessage;
 
 // ============================================================================
 // 内置方法

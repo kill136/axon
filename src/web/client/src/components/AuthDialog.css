@@ -13,6 +13,7 @@
   justify-content: center;
   z-index: 9999;
   animation: fadeIn 0.2s ease-out;
+  -webkit-app-region: no-drag;
 }
 
 @keyframes fadeIn {
