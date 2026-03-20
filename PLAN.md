@@ -1,126 +1,321 @@
-# "作品" Tab 改造计划：作品管理 + 产物日志
+# Axon UX 改造计划：从"功能堆砌"到"Mission Control"
 
-## 需求
+## 背景
 
-将"产物" tab 改为真正的"作品"概念：
-1. **作品** — 用户主动创建的项目（如贪吃蛇游戏、落地页），可预览、可编辑
-2. **产物日志** — 当前已有的文件操作历史，作为辅助信息保留
+你朋友的核心判断：**功能差异化已经有了，但 UX 没跟上，导致能力感知不到、用起来费劲。**
 
-## 设计
+当前问题：
+1. **7 个顶栏 Tab 平铺**（Chat/Code/Blueprint/Swarm/Customize/Apps/Activity）——新用户看不懂，老用户找不到重点
+2. **差异化能力分散隐藏**——GoalManage 无 UI、SelfEvolve 无 UI、autoRecall 无 UI、学习过程不可见
+3. **Customize 页面 11 个子面板**——配置项堆砌，没有引导，像系统管理后台
+4. **WelcomeScreen 是模板快捷入口**——没有展示 Axon 的独特能力，和任何 ChatGPT 克隆一样
+5. **SwarmConsole 只有蓝图执行时才有内容**——平时空白，浪费了最有价值的页面
 
-### 页面结构
+## 设计理念
+
+### 核心定位重塑
+
+**从**: "一个有很多功能的 AI 编程助手"
+**到**: "一个会学习、会成长、可编排的 AI 工作伙伴"
+
+### 三个感知锚点
+
+用户应该在使用 Axon 的前 30 秒内感知到这三件事：
+
+1. **"它认识我"** — Notebook 记忆 + autoRecall，上来就知道我是谁、我的项目是什么
+2. **"它在成长"** — 学习进度可视化，每次使用都在积累经验
+3. **"它能并行工作"** — 多 Agent 编排不是隐藏功能，是核心体验
+
+---
+
+## 改造方案
+
+### Phase 1：信息架构重组（导航简化）
+
+**目标**：从 7 个平铺 Tab 减少到 3+1 的清晰层级
+
+#### 新导航结构
 
 ```
-┌─ 作品 Tab ──────────────────────────────────────────────┐
-│                                                          │
-│  [+ 创建作品]           搜索...        [卡片] [列表]      │
-│                                                          │
-│  ┌─────────┐  ┌─────────┐  ┌─────────┐                  │
-│  │ 🐍      │  │ 🌐      │  │ 📊      │                  │
-│  │ 贪吃蛇   │  │ 落地页   │  │ 数据面板 │                  │
-│  │ 游戏     │  │         │  │         │                  │
-│  │ 3个文件  │  │ 1个文件  │  │ 2个文件  │                  │
-│  │ 今天     │  │ 昨天     │  │ 3月12日  │                  │
-│  │ [预览]   │  │ [预览]   │  │ [编辑]   │                  │
-│  └─────────┘  └─────────┘  └─────────┘                  │
-│                                                          │
-│  ── 最近变更 ──────────────────────────────────────────  │
-│  ▸ 你看截图，报错怎么是英文的  12个文件 · 27次操作  17:01  │
-│  ▸ 你看截图，这里的渲染...     3个文件 · 6次操作   16:37  │
-│                                                          │
-└──────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│  [项目选择器]    Chat  │  Workspace  │  Settings   🔍 │
+└──────────────────────────────────────────────────────┘
 ```
 
-### 数据模型
+| 新 Tab | 包含的旧页面 | 说明 |
+|--------|-------------|------|
+| **Chat** | Chat + Code | 核心对话界面，Code Browser 作为 Chat 的子模式（按钮切换） |
+| **Workspace** | 新建 Dashboard + Swarm + Blueprint + Apps + Activity | 工作空间总览，包含所有"管理和监控"功能 |
+| **Settings** | Customize 的所有子面板 | 配置中心，低频操作 |
 
-```typescript
-interface Work {
-  id: string;                    // UUID
-  name: string;                  // 用户起的名称
-  description?: string;          // 可选描述
-  icon?: string;                 // emoji 图标
-  files: string[];               // 关联的文件路径（相对路径）
-  entryFile?: string;            // 主入口文件（用于预览，如 index.html）
-  createdAt: number;
-  updatedAt: number;
-  sessionIds?: string[];         // 关联的会话（可选，自动记录）
-}
+#### Workspace 内部结构
+
+Workspace 不再是空白页，而是一个始终有内容的 **Mission Control Dashboard**：
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Workspace                                                   │
+│  ┌──────────┬──────────┬───────────┬──────────┐             │
+│  │ Overview │ Agents   │ Blueprint │ Activity │   (子 Tab)  │
+│  └──────────┴──────────┴───────────┴──────────┘             │
+│                                                              │
+│  [根据子 Tab 显示不同内容]                                    │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-### 存储
+**涉及文件**：
+- `src/web/client/src/Root.tsx` — Page 类型从 7 减到 3，新增 Workspace 子路由
+- `src/web/client/src/components/swarm/TopNavBar/index.tsx` — 导航栏简化
+- `src/web/client/src/i18n/locales/{en,zh}/nav.ts` — 导航文案更新
 
-- **路径**: `~/.axon/works.json` — 简单 JSON 文件，存放所有 Work 定义
-- 不用 SQLite，因为数据量小（几十个作品）且结构简单
+---
 
-### 后端 API
+### Phase 2：Dashboard 首页（Workspace Overview）
 
-新建 `src/web/server/routes/works-api.ts`:
+**目标**：让用户一眼看到 Axon 的全局状态和独特能力
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/works` | 列出所有作品 |
-| POST | `/api/works` | 创建作品 |
-| PUT | `/api/works/:id` | 更新作品（名称、描述、文件列表） |
-| DELETE | `/api/works/:id` | 删除作品 |
+#### Dashboard 布局
 
-保留现有 `artifacts-api.ts`（产物日志），不改动。
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Workspace Overview                        │
+│                                                              │
+│  ┌─── AI Status Card ───────────────────────────────────┐   │
+│  │  🧠 Axon  ·  已学习 142 条经验  ·  记住 3 个项目     │   │
+│  │  本次会话：已完成 12 次工具调用  ·  修改 5 个文件      │   │
+│  │  [Memory: ████████░░ 78%]  [Project KB: ██░░░░ 24%]  │   │
+│  └──────────────────────────────────────────────────────┘   │
+│                                                              │
+│  ┌─── Active Goals ──────┐  ┌─── Running Agents ────────┐  │
+│  │  📎 Axon 变现 $1000   │  │  ⬡ LeadAgent: idle       │  │
+│  │  [$0/$1000] ░░░░░░░░  │  │  ⬡ Workers: 0 active     │  │
+│  │  Stars: 154/500 ███░  │  │  ⬡ Scheduled: 3 tasks    │  │
+│  │  Posts: 7/50 █░░░░░░  │  │                           │  │
+│  │  [+ New Goal]         │  │  [View Swarm Console →]   │  │
+│  └───────────────────────┘  └───────────────────────────┘  │
+│                                                              │
+│  ┌─── Recent Activity ──────────────────────────────────┐   │
+│  │  14:32  ✏️ Modified auth.ts (+12 -3)                  │   │
+│  │  14:28  🧠 Learned: "ESM mock 用 vi.mock 替代"       │   │
+│  │  14:15  ✅ Goal metric updated: Stars 154→156        │   │
+│  │  13:50  📋 Blueprint "API重构" created                │   │
+│  │  [View All Activity →]                                │   │
+│  └──────────────────────────────────────────────────────┘   │
+│                                                              │
+│  ┌─── Quick Actions ────────────────────────────────────┐   │
+│  │  [📋 Create Blueprint]  [🎯 Set Goal]  [📡 Network]  │   │
+│  │  [⏰ Schedule Task]  [🔧 Install Skill]              │   │
+│  └──────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
+```
 
-### 前端组件
+#### Dashboard 数据来源
 
-重写 `AppsPage/index.tsx`，分两个区域：
+| 卡片 | API | 已有/新建 |
+|------|-----|----------|
+| AI Status | `GET /api/notebook/list` (token usage) + 新 `GET /api/stats/session` | 部分已有 |
+| Active Goals | `GET /api/goals` (需新建路由，复用 GoalStore) | **新建 API** |
+| Running Agents | 复用 SwarmConsole 的 WebSocket 状态 | 已有 |
+| Recent Activity | `GET /api/activity` | 已有 |
+| Quick Actions | 前端路由跳转，无 API | 前端 |
 
-**上半部分：作品卡片区**
-- 卡片网格布局，每个卡片显示：图标、名称、文件数、更新时间
-- 卡片操作：预览（如果有 entryFile）、编辑（跳转到对话发指令）、删除
-- "+ 创建作品" 按钮 → 弹窗：填名称、选文件、选图标
-- 点击卡片 → 展开详情（文件列表 + 操作按钮）
+**涉及新建文件**：
+- `src/web/client/src/pages/WorkspacePage/index.tsx` — Workspace 容器
+- `src/web/client/src/pages/WorkspacePage/DashboardPanel.tsx` — Dashboard Overview
+- `src/web/client/src/pages/WorkspacePage/WorkspacePage.module.css`
+- `src/web/server/routes/goals-api.ts` — Goals REST API（暴露 GoalStore 数据）
+- `src/web/server/routes/stats-api.ts` — 统计 API
 
-**下半部分：最近变更（产物日志）**
-- 复用当前已有的按会话分组视图
-- 折叠区域，标题"最近变更"，默认展开
-- 数据来自现有 `/api/artifacts`
+---
 
-### 预览能力
+### Phase 3：学习可视化（"它在成长"）
 
-- HTML 文件：已有 `/api/files/preview?path=` + iframe sandbox 预览
-- 其他文件：跳转到文件 tab 直接查看
-- 未来可扩展：Markdown 渲染、图片预览等
+**目标**：让用户**看到** Axon 在变聪明
 
-### 创建作品的交互流程
+#### 3a. AI Status Card（Dashboard 上的核心卡片）
 
-1. 用户点击 "+ 创建作品"
-2. 弹窗：输入名称，可选描述
-3. 选择文件：显示当前项目文件树，勾选相关文件
-4. 选择图标：从常用 emoji 中选或输入
-5. 可选：指定入口文件（用于预览）
-6. 保存 → 卡片出现在列表中
+展示内容：
+- **经验数量**：Notebook 的 token 使用率，按类型分（profile/experience/project）
+- **学习事件流**：最近的 Notebook 写入事件（"学到了什么"）
+- **能力统计**：已安装 Skills 数、MCP 工具数、自定义工具数
+- **自我进化次数**：从 `~/.axon/evolve-log.jsonl` 读取
 
-或者更简单：用户在聊天中让 AI 创建了文件后，在聊天界面弹出"保存为作品？"的提示。
+#### 3b. 学习事件流（融入 Activity Feed）
 
-### Nav 标签名
+当前 ActivityPage 只记录文件修改。扩展为统一的事件流：
 
-- 改回"作品" — `nav.apps` = "作品" / "Works"
-- Tab 内部小标题：上方"我的作品"，下方"最近变更"
+| 事件类型 | 来源 | 图标 |
+|---------|------|------|
+| 文件修改 | 已有 activity API | ✏️ |
+| 经验学习 | Notebook 写入（新增 hook） | 🧠 |
+| 目标进度 | GoalStore 更新 | 🎯 |
+| 技能安装 | Skills 变更 | 🔧 |
+| 自我进化 | evolve-log.jsonl | ⚡ |
+| Agent 通信 | Network audit-log | 📡 |
 
-## 文件变更清单
+**涉及修改**：
+- `src/web/server/routes/activity-api.ts` — 扩展事件类型
+- `src/memory/notebook.ts` — 写入时 emit 事件
 
-| 文件 | 操作 | 说明 |
-|------|------|------|
-| `src/web/server/routes/works-api.ts` | 新建 | 作品 CRUD API |
-| `src/web/server/routes/__tests__/works-api.test.ts` | 新建 | API 测试 |
-| `src/web/server/index.ts` | 编辑 | 注册 works-api 路由 |
-| `src/web/client/src/pages/AppsPage/index.tsx` | 重写 | 作品卡片 + 产物日志双区域 |
-| `src/web/client/src/pages/AppsPage/AppsPage.css` | 重写 | 新的卡片布局样式 |
-| `src/web/client/src/pages/AppsPage/CreateWorkDialog.tsx` | 新建 | 创建作品弹窗组件 |
-| `src/web/client/src/i18n/locales/en/apps.ts` | 编辑 | 新增 works 相关翻译 |
-| `src/web/client/src/i18n/locales/zh/apps.ts` | 编辑 | 新增 works 相关翻译 |
-| `src/web/client/src/i18n/locales/en/nav.ts` | 编辑 | nav.apps → 'Works' |
-| `src/web/client/src/i18n/locales/zh/nav.ts` | 编辑 | nav.apps → '作品' |
+---
 
-## 执行顺序
+### Phase 4：Goal 管理界面
 
-1. 后端 works-api.ts + 测试
-2. 前端 CreateWorkDialog 组件
-3. 前端 AppsPage 重写（上方作品卡片 + 下方产物日志）
-4. i18n 更新
-5. 注册路由、构建、验证
+**目标**：GoalManage 从"纯 CLI 工具"升级为可视化管理
+
+#### Goal Panel（集成到 Workspace > Overview）
+
+```
+┌─── Goal: Axon 项目变现 $1000 ───────────────────────┐
+│  Status: Active  ·  Created: 2026-03-08              │
+│                                                       │
+│  Metrics:                                             │
+│  ├─ 累计收入    [$0 / $1000]  ░░░░░░░░░░░░  0%      │
+│  ├─ GitHub Stars [154 / 500]  ██████░░░░░░  31%     │
+│  ├─ 帖子数      [7 / 50]     ██░░░░░░░░░░  14%     │
+│  └─ PH 上线     [0 / 1]      ░░░░░░░░░░░░  0%      │
+│                                                       │
+│  Strategies (4):                                      │
+│  ├─ ✅ GitHub Sponsors 配置                           │
+│  ├─ 🔄 社交媒体内容生产 (3/10 steps)                 │
+│  ├─ ⏸️ Product Hunt 准备                             │
+│  └─ 📋 视频/博客内容 (planned)                        │
+│                                                       │
+│  [View Details]  [Pause]  [+ Add Strategy]            │
+└──────────────────────────────────────────────────────┘
+```
+
+**涉及文件**：
+- `src/web/client/src/pages/WorkspacePage/GoalCard.tsx` — Goal 卡片组件
+- `src/web/client/src/pages/WorkspacePage/GoalDetailPanel.tsx` — Goal 详情面板（策略、步骤、日志）
+- `src/web/server/routes/goals-api.ts` — REST API
+
+---
+
+### Phase 5：Chat 页面优化
+
+**目标**：Chat 页面本身也要体现"它认识我"
+
+#### 5a. 改造 WelcomeScreen
+
+**当前问题**：模板快捷入口（写周报/写论文）和任何 ChatGPT 克隆一样，没有差异化。
+
+**新设计**：
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                                                          │
+│              ✦ Axon                                      │
+│                                                          │
+│   你好，冰洁。我记得你正在做 Axon 的 UX 改造。           │
+│   上次我们讨论了导航简化方案。                            │
+│                                                          │
+│   ┌─── 继续上次的工作 ────────────────────────────────┐  │
+│   │  📋 UX 改造计划 — 还需要实现 Phase 2 的 Dashboard │  │
+│   │  🎯 变现目标 — Stars 增长到 156，差 344            │  │
+│   └───────────────────────────────────────────────────┘  │
+│                                                          │
+│   ┌─── 快速开始 ──────────────────────────────────────┐  │
+│   │  [📋 创建蓝图]  [📝 代码审查]  [🔍 分析项目]     │  │
+│   │  [📊 生成报告]  [🧪 写测试]   [🐛 修复 Bug]      │  │
+│   └───────────────────────────────────────────────────┘  │
+│                                                          │
+│   ┌──────────────────────────────────────────────────┐   │
+│   │  在这里输入任务...                     [发送]    │   │
+│   └──────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────┘
+```
+
+关键改变：
+1. **个性化问候**：从 Notebook profile 读取用户名
+2. **上下文续接**：从 project notebook + goals 读取最近工作
+3. **快捷入口精简**：从 21 个模板 → 6 个高频操作
+4. **去掉 Tab 分栏**（office/student/developer）：用 AI 根据项目类型自动推荐
+
+**涉及修改**：
+- `src/web/client/src/components/WelcomeScreen.tsx` — 全面重写
+- 新建 `GET /api/welcome-context` API — 聚合 notebook/goals/recent activity
+
+---
+
+### Phase 6：Settings 页面精简
+
+**目标**：Customize 从 11 个面板精简为更清晰的分组
+
+#### 新分组
+
+```
+Settings
+├── General          (原来没有，新增：语言、主题、快捷键)
+├── AI Profile       (原 DocsPanel：Notebook 编辑)
+├── Capabilities     (合并：原 Capabilities + Skills + MCP)
+├── Connections      (合并：原 Connectors + Channels + Network + Tunnel)
+├── Automation       (合并：原 Schedule + Proxy)
+└── Perception       (原 Perception)
+```
+
+从 11 个面板 → **6 个分组**，每组内部用折叠面板展示子项。
+
+**涉及修改**：
+- `src/web/client/src/pages/CustomizePage/index.tsx` — 重组分组
+
+---
+
+## 实施优先级
+
+| Phase | 内容 | 价值 | 工作量 | 优先级 |
+|-------|------|------|--------|--------|
+| **Phase 1** | 导航简化 (7 Tab → 3) | 高 - 第一印象 | 中 | **P0** |
+| **Phase 2** | Dashboard 首页 | 高 - 核心差异化展示 | 大 | **P0** |
+| **Phase 5a** | WelcomeScreen 个性化 | 高 - "它认识我" | 小 | **P0** |
+| **Phase 3** | 学习可视化 | 中 - "它在成长" | 中 | **P1** |
+| **Phase 4** | Goal 管理 UI | 中 - 目标可视化 | 中 | **P1** |
+| **Phase 6** | Settings 精简 | 低 - 减少认知负荷 | 小 | **P2** |
+
+**建议执行顺序**：Phase 1 + 2 + 5a 一起做（它们互相依赖），然后 Phase 3 + 4，最后 Phase 6。
+
+---
+
+## 技术要点
+
+### 后端新增 API
+
+1. **`GET /api/goals`** — 返回所有 Goal 列表（name, metrics, status）
+2. **`GET /api/goals/:id`** — 返回 Goal 详情（strategies, steps, logs）
+3. **`POST /api/goals/:id/pause`** / **`/resume`** — 目标控制
+4. **`GET /api/stats/session`** — 当前会话统计（工具调用次数、文件修改数等）
+5. **`GET /api/stats/learning`** — 学习统计（经验数、进化次数、notebook token 使用）
+6. **`GET /api/welcome-context`** — 欢迎页上下文（用户名、最近工作、目标摘要）
+
+### 前端新建组件
+
+1. `pages/WorkspacePage/` — Workspace 容器 + Dashboard + Goal UI
+2. 改造 `WelcomeScreen.tsx` — 个性化欢迎
+3. 改造 `TopNavBar/index.tsx` — 导航简化
+4. 改造 `Root.tsx` — 路由重组
+
+### 不变的部分
+
+- SwarmConsole 内部结构不变（移入 Workspace 子 Tab）
+- BlueprintPage 内部结构不变（移入 Workspace 子 Tab）
+- ActivityPage 内部结构不变（移入 Workspace 子 Tab）
+- AppsPage 内部结构不变（移入 Workspace 子 Tab）
+- CustomizePage 内部各面板不变（只改分组逻辑）
+- 所有后端功能不变，只新增 API 暴露已有数据
+
+---
+
+## 预期效果
+
+### Before（现在）
+- 新用户：打开 → 看到 7 个 Tab → 不知道点哪个 → 只用 Chat → 感觉"就是个 ChatGPT"
+- 老用户：知道有 GoalManage/SelfEvolve/Network → 但只能用 CLI 调用 → 感觉"功能多但散"
+
+### After（改造后）
+- 新用户：打开 → 看到个性化问候 + 上次工作续接 → "它认识我" → 点 Workspace → 看到 Dashboard → "它在做这么多事" → 觉得不一样
+- 老用户：Dashboard 一页看全局 → Goal 进度一目了然 → 学习事件流感受成长 → "这是我的 AI 伙伴"
+
+### 核心指标
+- **首屏感知时间**：从"需要探索 5 分钟"→"30 秒内感知三大差异化"
+- **Tab 数量**：从 7 → 3（认知负荷 -60%）
+- **差异化功能可见性**：GoalManage/Learning/Network 从"隐藏"→"Dashboard 首屏可见"

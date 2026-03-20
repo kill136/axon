@@ -7,12 +7,12 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { ClaudeClient } from '../../../core/client.js';
-import { webAuth } from '../web-auth.js';
 import { LRUCache } from 'lru-cache';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
+import type { ConversationClient } from '../runtime/types.js';
+import { createUtilityClient, requestUtilityText } from '../runtime/utility-client.js';
 
 const router = Router();
 
@@ -77,62 +77,18 @@ function hashContent(content: string): string {
 }
 
 /**
- * 初始化 Claude 客户端
+ * 初始化 Web runtime 客户端
  */
-function createClient(): ClaudeClient | null {
-  try {
-    const creds = webAuth.getCredentials();
-    const apiKey = creds.apiKey;
-    const authToken = creds.authToken;
-
-    if (!apiKey && !authToken) {
-      return null;
-    }
-
-    return new ClaudeClient({
-      apiKey,
-      authToken,
-      baseUrl: creds.baseUrl || process.env.ANTHROPIC_BASE_URL,
-      model: 'claude-haiku-4-5-20251001', // AI 补全使用 haiku 以节省成本
-    });
-  } catch (error) {
-    console.error('[AutoComplete] Failed to initialize client:', error);
-    return null;
-  }
+function createClient(): ConversationClient | null {
+  return createUtilityClient('haiku');
 }
 
 /**
- * 调用 Claude API
+ * 调用当前 Web runtime
  */
 async function callClaude(prompt: string): Promise<string | null> {
-  // 确保 OAuth token 有效（对齐官方 NM()）
-  await webAuth.ensureValidToken();
-  const client = createClient();
-  if (!client) {
-    throw new Error('API client not initialized, please check API Key configuration');
-  }
-
   try {
-    const response = await client.createMessage(
-      [
-        {
-          role: 'user',
-          content: [{ type: 'text', text: prompt }],
-        },
-      ],
-      undefined, // 无工具
-      undefined, // 无 system prompt
-      {
-        enableThinking: false, // 快速响应
-      }
-    );
-
-    const content = response.content?.[0];
-    if (content?.type === 'text') {
-      return content.text;
-    }
-
-    return null;
+    return await requestUtilityText(prompt, 'haiku');
   } catch (error: any) {
     console.error('[AutoComplete] API call failed:', error);
     throw error;

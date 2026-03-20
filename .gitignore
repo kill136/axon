@@ -24,6 +24,9 @@ demo-screenshots/*.mp4
 demo-screenshots/*.gif
 !demo-screenshots/demo.gif
 
+# Project-level skills (user-specific, not for distribution)
+.axon/skills/
+
 # Skill template assets (large binary files)
 .claude/skills/promo-video/templates/
 
@@ -51,3 +54,10 @@ installer/
 
 # Windows: git-bash 中 > nul 会创建字面文件 nul（cmd.exe 的空设备名）
 nul
+
+# Web UI 前端构建产物（由 vite build 生成，不应提交到 git）
+src/web/server/public/assets/
+src/web/server/public/index.html
+
+# 错误嵌套的构建产物副本
+src/web/client/src/web/

@@ -85,6 +85,9 @@ function ExpandableContent({
  * 获取工具调用的简要描述
  */
 function getToolDescription(name: string, input: any): string {
+  // 参数正在流式传输中
+  if (input?._streaming) return 'streaming...';
+
   switch (name) {
     case 'Bash':
       return input?.description || '';
@@ -125,6 +128,14 @@ function getToolDescription(name: string, input: any): string {
     case 'Debugger':
       return input?.action || '';
     default:
+      // 通用工具描述：尝试常见参数名
+      if (input) {
+        for (const key of ['query', 'action', 'description', 'prompt', 'skill', 'name', 'url']) {
+          if (typeof input[key] === 'string' && input[key]) {
+            return input[key].length > 80 ? input[key].slice(0, 80) + '...' : input[key];
+          }
+        }
+      }
       return '';
   }
 }
@@ -306,19 +317,31 @@ function EditToolContent({ input, result }: { input: any; result?: any }) {
  * 渲染 Write 工具内容 - 支持 Click to expand
  */
 function WriteToolContent({ input }: { input: any }) {
+  const { t } = useLanguage();
+  const isStreaming = input?._streaming;
   const filePath = input?.file_path || '';
   const ext = filePath.split('.').pop()?.toLowerCase() || '';
   const isHtml = ext === 'html' || ext === 'htm';
 
   const [expanded, setExpanded] = useState(false);
   const [previewing, setPreviewing] = useState(isHtml);
-  const { t } = useLanguage();
   const content = input?.content || '';
   const allLines = content.split('\n');
   const totalLines = allLines.length;
   const maxLines = DEFAULT_MAX_LINES;
 
   const displayLines = expanded ? allLines : allLines.slice(0, maxLines);
+
+  // 参数正在流式传输中，显示等待状态
+  if (isStreaming) {
+    return (
+      <div className="cli-write-content">
+        <div className="cli-write-info">
+          <span>{t('cli.streaming') || 'Streaming content...'}</span>
+        </div>
+      </div>
+    );
+  }
 
   // 构建预览 URL：优先使用绝对路径直接传，否则用相对路径
   const previewUrl = isHtml
@@ -1003,15 +1026,29 @@ export function CliToolCall({ toolUse }: CliToolCallProps) {
             )}
           </div>
         );
-      default:
-        // 通用显示
-        return result ? (
+      default: {
+        // 通用工具：显示 input 参数 + result
+        const inputStr = input ? JSON.stringify(input, null, 2) : '';
+        const outputStr = result
+          ? (typeof result === 'string' ? result : (result.output || result.error || JSON.stringify(result, null, 2)))
+          : '';
+        return (inputStr || outputStr) ? (
           <div className="cli-generic-content">
-            <pre className="cli-generic-output">
-              {typeof result === 'string' ? result : (result.output || result.error || JSON.stringify(result, null, 2))}
-            </pre>
+            {inputStr && (
+              <div className="cli-bash-section">
+                <span className="cli-bash-label">IN</span>
+                <pre className="cli-bash-code">{inputStr}</pre>
+              </div>
+            )}
+            {outputStr && (
+              <div className="cli-bash-section">
+                <span className="cli-bash-label">OUT</span>
+                <pre className="cli-bash-code cli-bash-output">{outputStr}</pre>
+              </div>
+            )}
           </div>
         ) : null;
+      }
     }
   };
 

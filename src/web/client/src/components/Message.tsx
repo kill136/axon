@@ -11,6 +11,11 @@ import { NotebookOutputRenderer } from './NotebookOutputRenderer';
 import { RewindMenu, RewindOption } from './RewindMenu';
 import { SkillMessage, isSkillMessage } from './SkillMessage';
 import { useLanguage } from '../i18n';
+import {
+  getAssistantDisplayName,
+  getWebModelLabel,
+  resolveWebRuntimeProvider,
+} from '../../../shared/model-catalog';
 import { coordinatorApi } from '../api/blueprint';
 import type { ChatMessage, ChatContent, ToolUse, NotebookOutputData } from '../types';
 
@@ -439,14 +444,14 @@ export function Message({
   };
 
   // 对齐官方 Hh4 组件：渲染 compact_boundary 分隔线
-  // 官方 CLI: "✻ Conversation compacted (ctrl+o for history)"
   if (message.isCompactBoundary) {
+    const hint = t('message.compactBoundaryHint');
     return (
       <div className="compact-boundary">
         <div className="compact-boundary__line" />
         <span className="compact-boundary__label">
           ✻ {t('message.compactBoundary')}
-          {!isTranscriptMode && <span className="compact-boundary__hint"> {t('message.compactBoundaryHint')}</span>}
+          {!isTranscriptMode && hint && <span className="compact-boundary__hint"> {hint}</span>}
         </span>
         <div className="compact-boundary__line" />
       </div>
@@ -486,8 +491,12 @@ export function Message({
         <div className="message-main">
           <div className="message-content-wrapper">
             <div className="message-header">
-              <span className="message-role">{role === 'user' ? t('message.role.user') : t('message.role.assistant')}</span>
-              {message.model && <span>({message.model})</span>}
+              <span className="message-role">
+                {role === 'user' ? t('message.role.user') : getAssistantDisplayName(message.model, message.runtimeBackend as any)}
+              </span>
+              {message.model && (
+                <span>({getWebModelLabel(message.model, resolveWebRuntimeProvider(message.model, message.runtimeBackend as any))})</span>
+              )}
             </div>
             {isUserMessageCollapsed ? (
               <div className="user-message-collapsed" ref={userContentRef} style={{ maxHeight: USER_MESSAGE_COLLAPSE_HEIGHT }}>

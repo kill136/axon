@@ -168,12 +168,17 @@ async function waitForServer(maxRetries = 60, interval = 1000) {
 }
 
 function createWindow() {
+  const isMac = process.platform === 'darwin';
+
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
     title: 'Axon',
-    frame: false,       // 无边框窗口，去掉系统标题栏和菜单
-    titleBarStyle: 'hidden', // macOS 上隐藏标题栏但保留红绿灯（可选）
+    // macOS: 用 titleBarStyle 隐藏标题栏但保留交通灯，不设 frame:false（否则两者冲突，导致窗口事件异常）
+    // Windows/Linux: 用 frame:false 去掉系统标题栏
+    frame: isMac ? true : false,
+    titleBarStyle: isMac ? 'hiddenInset' : undefined,
+    trafficLightPosition: isMac ? { x: 12, y: 10 } : undefined,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,

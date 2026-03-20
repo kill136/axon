@@ -178,6 +178,7 @@ export function DirectoryBrowser({ isOpen, onClose, onSelect, initialPath }: Dir
           justify-content: center;
           z-index: 10001;
           animation: fadeIn 0.15s ease;
+          -webkit-app-region: no-drag;
         }
         .dir-browser-dialog {
           background: var(--bg-secondary, #161b22);

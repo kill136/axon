@@ -287,6 +287,16 @@ export async function search(options: RipgrepOptions): Promise<RipgrepResult> {
 
     child.on('close', (code) => {
       // ripgrep 返回 1 表示没有匹配，这不是错误
+      // code === null 表示进程被 signal 终止，视为空结果
+      if (code === null) {
+        try {
+          const result = parseJsonOutput(stdout);
+          resolve(result);
+        } catch {
+          resolve({ matches: [], filesSearched: 0, matchCount: 0, truncated: false });
+        }
+        return;
+      }
       if (code !== 0 && code !== 1) {
         reject(new Error(`ripgrep failed with code ${code}: ${stderr}`));
         return;

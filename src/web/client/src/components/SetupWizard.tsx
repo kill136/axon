@@ -1,18 +1,21 @@
 /**
  * 首次启动引导 Setup Wizard
- * 4 步：语言 → 选择 Provider → 配置认证 → 完成
- *
- * Step 2 选 Provider（Anthropic / OpenAI / OpenRouter / 自定义）
- * Step 3 根据 Provider 显示对应认证方式：
- *   - Anthropic: OAuth 登录（嵌入 OAuthLogin）或 API Key
- *   - 其他: Base URL + API Key
+ * 4 步：语言 → 选择运行方式 → 配置认证 → 完成
  */
 
 import { useState } from 'react';
 import { useLanguage } from '../i18n';
 import type { Locale } from '../i18n';
 import { OAuthLogin } from './auth/OAuthLogin';
+import { CodexLogin } from './auth/CodexLogin';
 import { AxonCloudAuth } from './AxonCloudAuth';
+import { getRuntimeBackendLabel, type WebRuntimeBackend } from '../../../shared/model-catalog';
+import {
+  buildRuntimeBackendConfigPayload,
+  getRuntimeBackendAuthSpec,
+  getSetupRuntimeOptions,
+  type RuntimeApiProviderOption,
+} from '../../../shared/setup-runtime';
 
 const SETUP_DONE_KEY = 'axon_setup_done';
 
@@ -20,100 +23,34 @@ interface SetupWizardProps {
   onComplete: () => void;
 }
 
-type WizardStep = 'language' | 'mode' | 'provider' | 'auth' | 'done';
-type UsageMode = 'cloud' | 'byo-key'; // Axon Cloud 或自带 Key
-
-interface ProviderOption {
-  id: string;
-  name: string;
-  icon: string;
-  descKey: string;
-  defaultBaseUrl: string;
-  hasOAuth: boolean;
-  messageFormat: 'claude' | 'openai';
-}
-
-const PROVIDERS: ProviderOption[] = [
-  {
-    id: 'anthropic',
-    name: 'Anthropic',
-    icon: '🤖',
-    descKey: 'setupWizard.provider.anthropicDesc',
-    defaultBaseUrl: 'https://api.anthropic.com',
-    hasOAuth: true,
-    messageFormat: 'claude',
-  },
-  {
-    id: 'openai',
-    name: 'OpenAI',
-    icon: '🧠',
-    descKey: 'setupWizard.provider.openaiDesc',
-    defaultBaseUrl: 'https://api.openai.com/v1',
-    hasOAuth: false,
-    messageFormat: 'openai',
-  },
-  {
-    id: 'openrouter',
-    name: 'OpenRouter',
-    icon: '🌐',
-    descKey: 'setupWizard.provider.openrouterDesc',
-    defaultBaseUrl: 'https://openrouter.ai/api/v1',
-    hasOAuth: false,
-    messageFormat: 'openai',
-  },
-  {
-    id: 'custom',
-    name: 'Custom',
-    icon: '⚙️',
-    descKey: 'setupWizard.provider.customDesc',
-    defaultBaseUrl: '',
-    hasOAuth: false,
-    messageFormat: 'openai',
-  },
-];
-
-const STEPS: WizardStep[] = ['language', 'mode', 'provider', 'auth', 'done'];
+type WizardStep = 'language' | 'runtime' | 'auth' | 'done';
+const STEPS: WizardStep[] = ['language', 'runtime', 'auth', 'done'];
 
 export function SetupWizard({ onComplete }: SetupWizardProps) {
   const { locale, setLocale, t } = useLanguage();
   const [step, setStep] = useState<WizardStep>('language');
-
-  // Mode 选择（Axon Cloud 或自带 Key）
-  const [selectedMode, setSelectedMode] = useState<UsageMode | null>(null);
-
-  // Provider 选择
-  const [selectedProvider, setSelectedProvider] = useState<string>('anthropic');
+  const [selectedBackend, setSelectedBackend] = useState<WebRuntimeBackend>('axon-cloud');
 
   // Axon Cloud 用户信息
   const [axonCloudUser, setAxonCloudUser] = useState<{ username: string; quota: number } | null>(null);
 
-  // Auth 配置（API Key 模式）
-  const [authMethod, setAuthMethod] = useState<'oauth' | 'apikey'>('oauth');
   const [apiBaseUrl, setApiBaseUrl] = useState('');
   const [apiKey, setApiKey] = useState('');
-  const [customMessageFormat, setCustomMessageFormat] = useState<'claude' | 'openai'>('openai');
+  const [selectedApiProvider, setSelectedApiProvider] = useState<RuntimeApiProviderOption['id']>('openai');
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
 
   const currentStepIndex = STEPS.indexOf(step);
-  const provider = PROVIDERS.find((p) => p.id === selectedProvider)!;
-
-  // 实际使用的消息格式：custom Provider 用 state，其他用 Provider 定义
-  const effectiveMessageFormat = selectedProvider === 'custom' ? customMessageFormat : provider.messageFormat;
+  const runtimeOptions = getSetupRuntimeOptions();
+  const authSpec = getRuntimeBackendAuthSpec(selectedBackend);
+  const providerChoices = authSpec.providerOptions;
+  const provider = providerChoices.find(option => option.id === selectedApiProvider) || providerChoices[0];
+  const showOpenAiCompatibleHint = step === 'auth' && selectedBackend === 'openai-compatible-api';
+  const showUnsupportedTestHint = step === 'auth' && !authSpec.testConnection && !showOpenAiCompatibleHint;
 
   const goNext = () => {
-    // mode 步骤：根据选择分流
-    if (step === 'mode') {
-      if (selectedMode === 'cloud') {
-        setStep('auth'); // 直接跳到 Axon Cloud 认证
-      } else if (selectedMode === 'byo-key') {
-        setStep('provider'); // 跳到 Provider 选择
-      }
-      return;
-    }
-
     // 其他步骤正常前进
     const nextIndex = currentStepIndex + 1;
     if (nextIndex < STEPS.length) {
@@ -122,21 +59,8 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
   };
 
   const goBack = () => {
-    // auth 步骤：根据模式返回
     if (step === 'auth') {
-      if (selectedMode === 'cloud') {
-        setStep('mode'); // Cloud 模式回到模式选择
-      } else if (selectedMode === 'byo-key') {
-        setStep('provider'); // BYO Key 模式回到 Provider 选择
-      }
-      setError(null);
-      setTestResult('idle');
-      return;
-    }
-
-    // provider 步骤：回到模式选择
-    if (step === 'provider') {
-      setStep('mode');
+      setStep('runtime');
       setError(null);
       setTestResult('idle');
       return;
@@ -157,8 +81,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
     setTestResult('idle');
     setApiKey('');
     setApiBaseUrl('');
-    // Anthropic 默认 OAuth，其他默认 API Key
-    setAuthMethod(provider.hasOAuth ? 'oauth' : 'apikey');
+    setSelectedApiProvider(authSpec.providerOptions[0]?.id || 'openai');
     setStep('auth');
   };
 
@@ -171,19 +94,17 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
   };
 
   // Axon Cloud 认证成功回调
-  const handleAxonCloudSuccess = (data: { username: string; quota: number }) => {
+  const handleAxonCloudSuccess = async (data: { username: string; quota: number }) => {
+    await saveConfig();
     setAxonCloudUser(data);
     localStorage.setItem(SETUP_DONE_KEY, 'true');
-    // 直接跳到完成步骤
     setStep('done');
   };
 
   // 保存配置
   const saveConfig = async () => {
     try {
-      const payload: any = {
-        apiProvider: effectiveMessageFormat === 'claude' ? 'anthropic' : 'openai-compatible',
-      };
+      const payload = buildRuntimeBackendConfigPayload(selectedBackend);
       await fetch('/api/config/api', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -196,6 +117,9 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
 
   // API Key 模式 - 测试连接
   const handleTestConnection = async () => {
+    if (!authSpec.testConnection) {
+      return;
+    }
     setTestResult('testing');
     setError(null);
     try {
@@ -224,15 +148,10 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
     setSaving(true);
     setError(null);
     try {
-      const payload: any = {
+      const payload = buildRuntimeBackendConfigPayload(selectedBackend, {
         apiKey,
-        apiProvider: effectiveMessageFormat === 'claude' ? 'anthropic' : 'openai-compatible',
-      };
-      if (apiBaseUrl) {
-        payload.apiBaseUrl = apiBaseUrl;
-      } else if (provider.defaultBaseUrl) {
-        payload.apiBaseUrl = provider.defaultBaseUrl;
-      }
+        apiBaseUrl: apiBaseUrl || provider?.defaultBaseUrl,
+      });
 
       const response = await fetch('/api/config/api', {
         method: 'PUT',
@@ -266,9 +185,23 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
     onComplete();
   };
 
+  const isOauthAuthStep =
+    step === 'auth'
+    && (selectedBackend === 'claude-subscription' || selectedBackend === 'codex-subscription');
+  const isApiAuthStep =
+    step === 'auth'
+    && (selectedBackend === 'claude-compatible-api' || selectedBackend === 'openai-compatible-api');
+
+  const modalClassName = [
+    'setup-wizard-modal',
+    step === 'runtime' ? 'runtime-step' : '',
+    isOauthAuthStep ? 'oauth-auth-step' : '',
+    isApiAuthStep ? 'api-auth-step' : '',
+  ].filter(Boolean).join(' ');
+
   return (
     <div className="setup-wizard-overlay" style={{ position: 'fixed', inset: 0, zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.7)' }}>
-      <div className="setup-wizard-modal">
+      <div className={modalClassName}>
         {/* Progress bar */}
         <div className="setup-wizard-progress">
           {STEPS.slice(0, -1).map((s, i) => (
@@ -305,38 +238,33 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
             </div>
           )}
 
-          {/* Step 2: Choose Mode (Axon Cloud vs BYO Key) */}
-          {step === 'mode' && (
+          {/* Step 2: Choose Runtime Backend */}
+          {step === 'runtime' && (
             <div className="setup-wizard-step">
-              <h2>{t('setupWizard.mode.title')}</h2>
-              <p className="setup-wizard-desc">{t('setupWizard.mode.desc')}</p>
-              <div className="setup-wizard-provider-grid">
-                <button
-                  className={`setup-wizard-mode-card recommended ${selectedMode === 'cloud' ? 'selected' : ''}`}
-                  onClick={() => setSelectedMode('cloud')}
-                  data-badge={t('setupWizard.mode.cloudRecommended')}
-                >
-                  <span className="mode-icon">☁️</span>
-                  <span className="mode-name">{t('setupWizard.mode.cloud')}</span>
-                  <span className="mode-desc">{t('setupWizard.mode.cloudDesc')}</span>
-                </button>
-                <button
-                  className={`setup-wizard-mode-card ${selectedMode === 'byo-key' ? 'selected' : ''}`}
-                  onClick={() => setSelectedMode('byo-key')}
-                >
-                  <span className="mode-icon">🔑</span>
-                  <span className="mode-name">{t('setupWizard.mode.byoKey')}</span>
-                  <span className="mode-desc">{t('setupWizard.mode.byoKeyDesc')}</span>
-                </button>
+              <h2>{t('setupWizard.runtime.title')}</h2>
+              <p className="setup-wizard-desc">{t('setupWizard.runtime.desc')}</p>
+              <div className="setup-wizard-provider-grid runtime-grid">
+                {runtimeOptions.map(option => (
+                  <button
+                    key={option.backend}
+                    className={`setup-wizard-mode-card ${option.recommended ? 'recommended' : ''} ${selectedBackend === option.backend ? 'selected' : ''}`}
+                    onClick={() => setSelectedBackend(option.backend)}
+                    data-badge={option.recommended ? t('setupWizard.runtime.recommended') : undefined}
+                  >
+                    <span className="mode-icon">{option.icon}</span>
+                    <span className="mode-name">{getRuntimeBackendLabel(option.backend)}</span>
+                    <span className="mode-desc">{t(`setupWizard.runtime.${option.backend}.desc`)}</span>
+                  </button>
+                ))}
               </div>
             </div>
           )}
 
-          {/* Step 3a: Axon Cloud Auth (仅在选择 cloud 模式时显示) */}
-          {step === 'auth' && selectedMode === 'cloud' && (
+          {/* Step 3: Runtime Auth */}
+          {step === 'auth' && selectedBackend === 'axon-cloud' && (
             <div className="setup-wizard-step">
-              <h2>{t('setupWizard.mode.cloud')}</h2>
-              <p className="setup-wizard-desc">{t('setupWizard.mode.cloudDesc')}</p>
+              <h2>{getRuntimeBackendLabel(selectedBackend)}</h2>
+              <p className="setup-wizard-desc">{t('setupWizard.runtime.axon-cloud.desc')}</p>
               <AxonCloudAuth
                 onSuccess={handleAxonCloudSuccess}
                 onError={(err) => setError(err)}
@@ -344,120 +272,94 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
             </div>
           )}
 
-          {/* Step 3b: Choose Provider (仅在选择 byo-key 模式时显示) */}
-          {step === 'provider' && selectedMode === 'byo-key' && (
+          {step === 'auth' && selectedBackend === 'claude-subscription' && (
             <div className="setup-wizard-step">
-              <h2>{t('setupWizard.provider.title')}</h2>
-              <p className="setup-wizard-desc">{t('setupWizard.provider.desc')}</p>
-              <div className="setup-wizard-provider-grid">
-                {PROVIDERS.map((p) => (
-                  <button
-                    key={p.id}
-                    className={`setup-wizard-provider-card ${selectedProvider === p.id ? 'selected' : ''}`}
-                    onClick={() => setSelectedProvider(p.id)}
-                  >
-                    <span className="provider-icon">{p.icon}</span>
-                    <span className="provider-name">{p.id === 'custom' ? t('setupWizard.provider.customName') : p.name}</span>
-                    <span className="provider-desc">{t(p.descKey)}</span>
-                  </button>
-                ))}
+              <h2>{getRuntimeBackendLabel(selectedBackend)}</h2>
+              <p className="setup-wizard-desc">{t('setupWizard.runtime.claude-subscription.desc')}</p>
+              <div className="setup-wizard-oauth-embed">
+                <OAuthLogin
+                  onSuccess={handleOAuthSuccess}
+                  onError={(err) => setError(err)}
+                />
               </div>
             </div>
           )}
 
-          {/* Step 4a: BYO Key 路径 - Provider Auth 配置 */}
-          {step === 'auth' && selectedMode === 'byo-key' && (
+          {step === 'auth' && selectedBackend === 'codex-subscription' && (
             <div className="setup-wizard-step">
-              <h2>{t('setupWizard.auth.title', { provider: provider.id === 'custom' ? t('setupWizard.provider.customName') : provider.name })}</h2>
-              <p className="setup-wizard-desc">{t('setupWizard.auth.desc')}</p>
+              <h2>{getRuntimeBackendLabel(selectedBackend)}</h2>
+              <p className="setup-wizard-desc">{t('setupWizard.runtime.codex-subscription.desc')}</p>
+              <div className="setup-wizard-oauth-embed">
+                <CodexLogin
+                  onSuccess={handleOAuthSuccess}
+                  onError={(err) => setError(err)}
+                />
+              </div>
+            </div>
+          )}
 
-              {/* Anthropic: OAuth / API Key 切换 */}
-              {provider.hasOAuth && (
-                <div className="setup-wizard-format-toggle" style={{ marginBottom: '16px' }}>
-                  <button
-                    className={`setup-wizard-format-btn ${authMethod === 'oauth' ? 'selected' : ''}`}
-                    onClick={() => { setAuthMethod('oauth'); setError(null); }}
-                  >
-                    {t('setupWizard.config.oauthLogin')}
-                  </button>
-                  <button
-                    className={`setup-wizard-format-btn ${authMethod === 'apikey' ? 'selected' : ''}`}
-                    onClick={() => { setAuthMethod('apikey'); setError(null); }}
-                  >
-                    API Key
-                  </button>
+          {step === 'auth' && (selectedBackend === 'claude-compatible-api' || selectedBackend === 'openai-compatible-api') && (
+            <div className="setup-wizard-step">
+              <h2>{getRuntimeBackendLabel(selectedBackend)}</h2>
+              <p className="setup-wizard-desc">{t(`setupWizard.runtime.${selectedBackend}.desc`)}</p>
+
+              <div className="setup-wizard-apikey-form">
+                {providerChoices.length > 1 && (
+                  <div className="setup-wizard-provider-grid api-grid">
+                    {providerChoices.map((choice) => (
+                      <button
+                        key={choice.id}
+                        className={`setup-wizard-provider-card ${selectedApiProvider === choice.id ? 'selected' : ''}`}
+                        onClick={() => {
+                          setSelectedApiProvider(choice.id);
+                          setApiBaseUrl('');
+                          setError(null);
+                          setTestResult('idle');
+                        }}
+                      >
+                        <span className="provider-icon">{choice.icon}</span>
+                        <span className="provider-name">{choice.name}</span>
+                        <span className="provider-desc">{t(`setupWizard.provider.${choice.id}Desc`)}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                <div className="setup-wizard-field">
+                  <label>API Base URL</label>
+                  <input
+                    type="text"
+                    value={apiBaseUrl}
+                    onChange={(e) => { setApiBaseUrl(e.target.value); setTestResult('idle'); }}
+                    placeholder={provider?.defaultBaseUrl || 'https://your-api-endpoint.com/v1'}
+                    className="setup-wizard-input"
+                  />
+                  <span className="setup-wizard-hint">{t('setupWizard.config.baseUrlHint')}</span>
                 </div>
-              )}
 
-              {/* OAuth 模式 */}
-              {authMethod === 'oauth' && provider.hasOAuth && (
-                <div className="setup-wizard-oauth-embed">
-                  <OAuthLogin
-                    onSuccess={handleOAuthSuccess}
-                    onError={(err) => setError(err)}
+                <div className="setup-wizard-field">
+                  <label>API Key</label>
+                  <input
+                    type="password"
+                    value={apiKey}
+                    onChange={(e) => { setApiKey(e.target.value); setTestResult('idle'); setError(null); }}
+                    placeholder="sk-..."
+                    className="setup-wizard-input"
                   />
                 </div>
-              )}
 
-              {/* API Key 模式 */}
-              {authMethod === 'apikey' && (
-                <div className="setup-wizard-apikey-form">
-                  {/* API Base URL */}
-                  <div className="setup-wizard-field">
-                    <label>API Base URL</label>
-                    <input
-                      type="text"
-                      value={apiBaseUrl}
-                      onChange={(e) => { setApiBaseUrl(e.target.value); setTestResult('idle'); }}
-                      placeholder={provider.defaultBaseUrl || 'https://your-api-endpoint.com/v1'}
-                      className="setup-wizard-input"
-                    />
-                    <span className="setup-wizard-hint">{t('setupWizard.config.baseUrlHint')}</span>
-                  </div>
+                {showOpenAiCompatibleHint && (
+                  <span className="setup-wizard-hint">
+                    {t('setupWizard.config.openaiCompatibleHint')}
+                  </span>
+                )}
 
-                  {/* API Key */}
-                  <div className="setup-wizard-field">
-                    <label>API Key</label>
-                    <input
-                      type="password"
-                      value={apiKey}
-                      onChange={(e) => { setApiKey(e.target.value); setTestResult('idle'); setError(null); }}
-                      placeholder="sk-..."
-                      className="setup-wizard-input"
-                    />
-                  </div>
+                {error && <div className="setup-wizard-error">{error}</div>}
+                {testResult === 'success' && (
+                  <div className="setup-wizard-success">{t('setupWizard.testSuccess')}</div>
+                )}
 
-                  {/* 自定义 Provider 需选消息格式 */}
-                  {provider.id === 'custom' && (
-                    <div className="setup-wizard-field">
-                      <label>{t('setupWizard.config.messageFormat')}</label>
-                      <div className="setup-wizard-format-toggle">
-                        <button
-                          className={`setup-wizard-format-btn ${customMessageFormat === 'claude' ? 'selected' : ''}`}
-                          onClick={() => setCustomMessageFormat('claude')}
-                        >
-                          Claude
-                        </button>
-                        <button
-                          className={`setup-wizard-format-btn ${customMessageFormat === 'openai' ? 'selected' : ''}`}
-                          onClick={() => setCustomMessageFormat('openai')}
-                        >
-                          OpenAI
-                        </button>
-                      </div>
-                      <span className="setup-wizard-hint">
-                        {customMessageFormat === 'claude'
-                          ? t('setupWizard.config.claudeFormatHint')
-                          : t('setupWizard.config.openaiFormatHint')}
-                      </span>
-                    </div>
-                  )}
-
-                  {error && <div className="setup-wizard-error">{error}</div>}
-                  {testResult === 'success' && (
-                    <div className="setup-wizard-success">{t('setupWizard.testSuccess')}</div>
-                  )}
-
+                {authSpec.testConnection ? (
                   <button
                     className="setup-wizard-test-btn"
                     onClick={handleTestConnection}
@@ -465,8 +367,10 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                   >
                     {testResult === 'testing' ? t('setupWizard.testing') : t('setupWizard.testConnection')}
                   </button>
-                </div>
-              )}
+                ) : showUnsupportedTestHint ? (
+                  <div className="setup-wizard-hint">{t('setupWizard.testUnsupported')}</div>
+                ) : null}
+              </div>
             </div>
           )}
 
@@ -514,23 +418,13 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
               </button>
             )}
 
-            {step === 'mode' && (
-              <button 
-                className="setup-wizard-next-btn" 
-                onClick={goNext}
-                disabled={!selectedMode}
-              >
-                {t('setupWizard.next')}
-              </button>
-            )}
-
-            {step === 'provider' && (
+            {step === 'runtime' && (
               <button className="setup-wizard-next-btn" onClick={goToAuth}>
                 {t('setupWizard.next')}
               </button>
             )}
 
-            {step === 'auth' && selectedMode === 'byo-key' && authMethod === 'apikey' && (
+            {step === 'auth' && authSpec.authMode === 'api-key' && (
               <button
                 className="setup-wizard-next-btn primary"
                 onClick={handleSaveApiKey}
@@ -540,12 +434,12 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
               </button>
             )}
 
-            {step === 'auth' && selectedMode === 'byo-key' && authMethod === 'oauth' && (
+            {step === 'auth' && authSpec.authMode === 'oauth' && (
               // OAuth 模式由 OAuthLogin 组件成功回调推进
               null
             )}
 
-            {step === 'auth' && selectedMode === 'cloud' && (
+            {step === 'auth' && selectedBackend === 'axon-cloud' && (
               // Axon Cloud 模式由 AxonCloudAuth 组件成功回调推进
               null
             )}

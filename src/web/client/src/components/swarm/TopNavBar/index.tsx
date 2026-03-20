@@ -11,6 +11,8 @@ const electronAPI = isElectron ? (window as any).electronAPI as {
   maximize: () => void;
   close: () => void;
 } : null;
+// macOS 检测：用于交通灯按钮区域适配
+const isMacElectron = isElectron && navigator.platform.toUpperCase().includes('MAC');
 
 interface SessionItem {
   id: string;
@@ -29,8 +31,8 @@ interface ProjectItem {
 }
 
 export interface TopNavBarProps {
-  currentPage: 'chat' | 'code' | 'swarm' | 'blueprint' | 'customize' | 'apps';
-  onPageChange: (page: 'chat' | 'code' | 'swarm' | 'blueprint' | 'customize' | 'apps') => void;
+  currentPage: 'chat' | 'code' | 'swarm' | 'blueprint' | 'customize' | 'apps' | 'activity';
+  onPageChange: (page: 'chat' | 'code' | 'swarm' | 'blueprint' | 'customize' | 'apps' | 'activity') => void;
   onSettingsClick?: () => void;
   /** 连接状态 */
   connected?: boolean;
@@ -46,6 +48,7 @@ export interface TopNavBarProps {
   onCreateApp?: () => void;
   // 会话相关
   sessions?: SessionItem[];
+  sessionStatusMap?: Map<string, string>;
   currentSessionId?: string | null;
   onSessionSelect?: (id: string) => void;
   onNewSession?: () => void;
@@ -102,6 +105,12 @@ const AppsIcon = () => (
   </svg>
 );
 
+const ActivityIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="1 8 4 8 6 3 10 13 12 8 15 8" />
+  </svg>
+);
+
 const ConversationViewIcon = () => (
   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
     <path d="M2 3h12M2 8h12M2 13h8" />
@@ -153,7 +162,7 @@ export default function TopNavBar({
   connected, onLoginClick, authRefreshKey,
   onOpenFolder,
   apps, onAppSelect, onCreateApp,
-  sessions = [], currentSessionId, onSessionSelect, onNewSession,
+  sessions = [], sessionStatusMap, currentSessionId, onSessionSelect, onNewSession,
   onSessionDelete, onSessionRename,
   onOpenSessionSearch,
 }: TopNavBarProps) {
@@ -212,7 +221,7 @@ export default function TopNavBar({
   return (
     <nav className={styles.topNavBar}>
       {/* 第一行：全局上下文行（Electron 模式下充当标题栏，可拖拽） */}
-      <div className={`${styles.contextRow} ${isElectron ? styles.electronDragRegion : ''}`}>
+      <div className={`${styles.contextRow} ${isElectron ? styles.electronDragRegion : ''} ${isMacElectron ? styles.electronMacDragRegion : ''}`}>
         {/* 左侧：项目选择器 */}
         <div className={styles.contextLeft}>
           <ProjectSelector
@@ -243,15 +252,30 @@ export default function TopNavBar({
 
             {sessionDropdownOpen && (
               <div className={styles.sessionDropdown}>
+                {/* 顶部新建对话入口 - 让用户在下拉里也能一眼找到 */}
+                <div
+                  className={styles.newSessionEntry}
+                  onClick={() => {
+                    onNewSession?.();
+                    setSessionDropdownOpen(false);
+                  }}
+                >
+                  <span className={styles.newSessionEntryIcon}>+</span>
+                  <span>{t('nav.startNewChat')}</span>
+                </div>
                 <div className={styles.sessionDropdownHeader}>{t('nav.recentSessions')}</div>
                 <div className={styles.sessionList}>
                   {sessions.length === 0 ? (
                     <div className={styles.sessionEmpty}>{t('nav.noSessions')}</div>
                   ) : (
-                    sessions.map(session => (
+                    sessions.map(session => {
+                      const activityStatus = sessionStatusMap?.get(session.id);
+                      const needsAttention = activityStatus === 'waiting_input' || activityStatus === 'waiting_permission';
+                      const isWorking = activityStatus === 'thinking' || activityStatus === 'streaming' || activityStatus === 'tool_executing';
+                      return (
                       <div
                         key={session.id}
-                        className={`${styles.sessionItem} ${session.id === currentSessionId ? styles.active : ''}`}
+                        className={`${styles.sessionItem} ${session.id === currentSessionId ? styles.active : ''} ${needsAttention ? styles.needsAttention : ''}`}
                         onClick={() => {
                           if (editingSessionId !== session.id) {
                             onSessionSelect?.(session.id);
@@ -259,6 +283,13 @@ export default function TopNavBar({
                           }
                         }}
                       >
+                        {/* 会话状态指示器（借鉴 cmux 通知环设计） */}
+                        {activityStatus && session.id !== currentSessionId && (
+                          <span
+                            className={`${styles.sessionStatusDot} ${needsAttention ? styles.attention : isWorking ? styles.working : ''}`}
+                            title={activityStatus === 'waiting_input' ? t('nav.waitingInput') : activityStatus === 'waiting_permission' ? t('nav.waitingPermission') : activityStatus === 'thinking' ? t('nav.thinking') : activityStatus === 'tool_executing' ? t('nav.toolExecuting') : ''}
+                          />
+                        )}
                         <div className={styles.sessionItemInfo}>
                           {editingSessionId === session.id ? (
                             <input
@@ -304,7 +335,7 @@ export default function TopNavBar({
                           </button>
                         </div>
                       </div>
-                    ))
+                    ); })
                   )}
                 </div>
               </div>
@@ -330,8 +361,8 @@ export default function TopNavBar({
           <button className={styles.settingsButton} onClick={onSettingsClick} title={t('nav.settings')}>
             <SettingsIcon />
           </button>
-          {/* Electron 窗口控制按钮 */}
-          {electronAPI && (
+          {/* Electron 窗口控制按钮（macOS 用系统交通灯，不需要自定义按钮） */}
+          {electronAPI && !isMacElectron && (
             <div className={styles.windowControls}>
               <button className={styles.windowBtn} onClick={() => electronAPI.minimize()} title={t('nav.minimize')}>
                 <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 6h8" stroke="currentColor" strokeWidth="1.5" fill="none" /></svg>
@@ -403,7 +434,16 @@ export default function TopNavBar({
             <span className={styles.icon}>
               <AppsIcon />
             </span>
-            <span>{t('nav.apps')}</span>
+            <span>{t('nav.myApps')}</span>
+          </button>
+          <button
+            className={`${styles.navTab} ${currentPage === 'activity' ? styles.active : ''}`}
+            onClick={() => onPageChange('activity')}
+          >
+            <span className={styles.icon}>
+              <ActivityIcon />
+            </span>
+            <span>{t('nav.activity')}</span>
           </button>
         </div>
       </div>

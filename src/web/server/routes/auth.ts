@@ -5,10 +5,13 @@
 
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
+import { createServer, type Server } from 'http';
 import { v4 as uuidv4 } from 'uuid';
 import { OAUTH_ENDPOINTS, exchangeAuthorizationCode, createOAuthApiKey, type AuthConfig } from '../../../auth/index.js';
 import { isDemoMode } from '../../../utils/env-check.js';
+import { configManager } from '../../../config/index.js';
 import { oauthManager } from '../oauth-manager.js';
+import { CODEX_OAUTH_CONFIG, codexAuthManager, type CodexAuthConfig } from '../codex-auth-manager.js';
 import { webAuth } from '../web-auth.js';
 
 const router = Router();
@@ -27,6 +30,21 @@ interface OAuthSession {
 
 const oauthSessions = new Map<string, OAuthSession>();
 
+interface CodexOAuthSession {
+  authId: string;
+  state: string;
+  codeVerifier: string;
+  status: 'pending' | 'completed' | 'failed';
+  mode: 'auto' | 'manual';
+  auth?: Pick<CodexAuthConfig, 'accountId' | 'email' | 'expiresAt'>;
+  error?: string;
+  createdAt: number;
+}
+
+const codexOauthSessions = new Map<string, CodexOAuthSession>();
+let codexCallbackServer: Server | null = null;
+let codexCallbackServerStarting: Promise<boolean> | null = null;
+
 // 清理过期会话（30分钟）
 setInterval(() => {
   const now = Date.now();
@@ -35,7 +53,131 @@ setInterval(() => {
       oauthSessions.delete(authId);
     }
   }
+  for (const [authId, session] of codexOauthSessions.entries()) {
+    if (now - session.createdAt > 30 * 60 * 1000) {
+      codexOauthSessions.delete(authId);
+    }
+  }
 }, 5 * 60 * 1000); // 每5分钟清理一次
+
+function renderCallbackPage(title: string, message: string, kind: 'success' | 'error'): string {
+  const color = kind === 'success' ? '#22c55e' : '#ef4444';
+  return `
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>${title}</title>
+        <style>
+          body { font-family: system-ui, -apple-system, sans-serif; text-align: center; padding: 48px 20px; }
+          h1 { color: ${color}; margin-bottom: 12px; }
+          p { color: #334155; font-size: 16px; }
+        </style>
+      </head>
+      <body>
+        <h1>${title}</h1>
+        <p>${message}</p>
+      </body>
+    </html>
+  `;
+}
+
+function findCodexSessionByState(state: string): CodexOAuthSession | undefined {
+  for (const session of codexOauthSessions.values()) {
+    if (session.state === state) {
+      return session;
+    }
+  }
+  return undefined;
+}
+
+async function finalizeCodexSession(session: CodexOAuthSession, code: string): Promise<void> {
+  const codexAuth = await codexAuthManager.exchangeAuthorizationCode(code, session.codeVerifier);
+  await webAuth.activateCodexLogin(codexAuth);
+  session.status = 'completed';
+  session.error = undefined;
+  session.auth = {
+    accountId: codexAuth.accountId,
+    email: codexAuth.email,
+    expiresAt: codexAuth.expiresAt,
+  };
+}
+
+async function ensureCodexCallbackServer(): Promise<boolean> {
+  if (codexCallbackServer?.listening) {
+    return true;
+  }
+
+  if (codexCallbackServerStarting) {
+    return codexCallbackServerStarting;
+  }
+
+  const startPromise = new Promise<boolean>((resolve) => {
+    const server = createServer(async (req, res) => {
+      try {
+        const requestUrl = new URL(req.url || '/', CODEX_OAUTH_CONFIG.redirectUri);
+        if (requestUrl.pathname !== '/auth/callback') {
+          res.writeHead(404);
+          res.end();
+          return;
+        }
+
+        const code = requestUrl.searchParams.get('code') || '';
+        const state = requestUrl.searchParams.get('state') || '';
+        const session = state ? findCodexSessionByState(state) : undefined;
+
+        if (!state || !session) {
+          res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
+          res.end(renderCallbackPage('Codex 登录失败', '未找到匹配的登录会话，请返回 Web UI 重试。', 'error'));
+          return;
+        }
+
+        if (!code) {
+          session.status = 'failed';
+          session.error = 'Missing authorization code';
+          res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
+          res.end(renderCallbackPage('Codex 登录失败', '浏览器回调中没有拿到授权码。', 'error'));
+          return;
+        }
+
+        try {
+          await finalizeCodexSession(session, code);
+          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+          res.end(renderCallbackPage('Codex 登录成功', '授权已完成，你可以回到 Axon Web IDE。', 'success'));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Failed to complete Codex login';
+          session.status = 'failed';
+          session.error = message;
+          res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
+          res.end(renderCallbackPage('Codex 登录失败', message, 'error'));
+        }
+      } catch (error) {
+        res.writeHead(500, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(renderCallbackPage('Codex 登录失败', error instanceof Error ? error.message : 'Unexpected callback error', 'error'));
+      }
+    });
+
+    server.once('error', (error: NodeJS.ErrnoException) => {
+      codexCallbackServerStarting = null;
+      if (error.code === 'EADDRINUSE') {
+        console.warn('[CodexAuth] localhost:1455 is already in use, fallback to manual callback paste');
+        resolve(false);
+        return;
+      }
+      console.error('[CodexAuth] Failed to start callback server:', error);
+      resolve(false);
+    });
+
+    server.listen(1455, () => {
+      codexCallbackServer = server;
+      codexCallbackServerStarting = null;
+      console.log('[CodexAuth] Listening for OAuth callback on http://localhost:1455/auth/callback');
+      resolve(true);
+    });
+  });
+
+  codexCallbackServerStarting = startPromise;
+  return startPromise;
+}
 
 /**
  * POST /api/auth/oauth/start
@@ -222,11 +364,22 @@ router.post('/submit-code', async (req: Request, res: Response) => {
       oauthApiKey,
     });
 
+    const runtimeBackend = session.accountType === 'console'
+      ? 'claude-compatible-api'
+      : 'claude-subscription';
+
+    // 关键：设置 authPriority 和 runtimeBackend，否则系统不知道用户已通过 OAuth 登录
+    // 没有这一步，如果用户之前配置过 API Key，getStatus() 仍然优先使用 API Key
+    configManager.set('authPriority', 'oauth');
+    configManager.set('runtimeBackend', runtimeBackend);
+    configManager.set('runtimeProvider', 'anthropic');
+    configManager.set('apiProvider', 'anthropic');
+
     // 更新会话状态
     session.status = 'completed';
     session.authConfig = authConfig;
 
-    console.log('[OAuth] Token exchange successful!');
+    console.log('[OAuth] Token exchange successful! accountType=%s, runtimeBackend=%s', session.accountType, runtimeBackend);
 
     res.json({
       success: true,
@@ -257,12 +410,12 @@ router.post('/submit-code', async (req: Request, res: Response) => {
  * GET /api/auth/status
  * 获取当前认证状态（唯一来源：WebAuthProvider）
  */
-router.get('/status', async (req: Request, res: Response) => {
+const handleAuthStatus = async (_req: Request, res: Response) => {
   const demoMode = isDemoMode();
   const status = webAuth.getStatus();
 
   if (!status.authenticated) {
-    return res.json({ authenticated: false });
+    return res.json({ authenticated: false, runtimeBackend: status.runtimeBackend });
   }
 
   if (status.type === 'api_key') {
@@ -271,8 +424,10 @@ router.get('/status', async (req: Request, res: Response) => {
     return res.json({
       authenticated: true,
       type: 'api_key',
+      provider: status.provider,
       accountType: isAxonCloud ? 'axon-cloud' : 'api',
       isAxonCloud,
+      runtimeBackend: status.runtimeBackend,
       isDemoMode: demoMode,
     });
   }
@@ -281,12 +436,30 @@ router.get('/status', async (req: Request, res: Response) => {
     // 统一的 token 有效性检查（对齐官方 NM()）
     await webAuth.ensureValidToken();
 
+    if (status.provider === 'codex') {
+      const codexStatus = webAuth.getCodexStatus();
+      return res.json({
+        authenticated: true,
+        type: 'oauth',
+        provider: 'codex',
+        runtimeBackend: status.runtimeBackend,
+        accountType: 'chatgpt',
+        displayName: codexStatus.displayName,
+        email: codexStatus.email,
+        accountId: codexStatus.accountId,
+        expiresAt: codexStatus.expiresAt,
+        isDemoMode: demoMode,
+      });
+    }
+
     // 获取刷新后的 OAuth 详细信息
     const oauthStatus = webAuth.getOAuthStatus();
 
     return res.json({
       authenticated: true,
       type: 'oauth',
+      provider: status.provider,
+      runtimeBackend: status.runtimeBackend,
       accountType: oauthStatus.subscriptionType || 'subscription',
       displayName: oauthStatus.displayName,
       expiresAt: oauthStatus.expiresAt,
@@ -295,8 +468,13 @@ router.get('/status', async (req: Request, res: Response) => {
     });
   }
 
-  res.json({ authenticated: false });
-});
+  res.json({ authenticated: false, runtimeBackend: status.runtimeBackend });
+};
+
+router.get('/status', handleAuthStatus);
+
+// 兼容旧前端路径
+router.get('/oauth/status', handleAuthStatus);
 
 /**
  * POST /api/auth/api-key
@@ -342,6 +520,171 @@ router.post('/logout', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[OAuth] Logout error:', error);
     res.status(500).json({ error: 'Failed to logout' });
+  }
+});
+
+// 兼容旧前端路径
+router.post('/oauth/logout', async (req: Request, res: Response) => {
+  webAuth.clearAll();
+  res.json({ success: true });
+});
+
+/**
+ * POST /api/auth/codex/start
+ * 启动 Codex ChatGPT OAuth 登录
+ */
+router.post('/codex/start', async (_req: Request, res: Response) => {
+  try {
+    const authId = uuidv4();
+    const state = crypto.randomBytes(32).toString('hex');
+    const { codeVerifier, codeChallenge } = codexAuthManager.generatePkcePair();
+    const authUrl = codexAuthManager.buildAuthorizationUrl(state, codeChallenge);
+    const autoCallback = await ensureCodexCallbackServer();
+
+    codexOauthSessions.set(authId, {
+      authId,
+      state,
+      codeVerifier,
+      status: 'pending',
+      mode: autoCallback ? 'auto' : 'manual',
+      createdAt: Date.now(),
+    });
+
+    res.json({
+      authId,
+      authUrl,
+      redirectUri: CODEX_OAUTH_CONFIG.redirectUri,
+      autoCallback,
+      requiresManualPaste: !autoCallback,
+    });
+  } catch (error) {
+    console.error('[CodexAuth] Failed to start OAuth:', error);
+    res.status(500).json({ error: 'Failed to start Codex login' });
+  }
+});
+
+/**
+ * GET /api/auth/codex/status/:authId
+ * 查询 Codex 登录流程状态（供前端轮询）
+ */
+router.get('/codex/status/:authId', (req: Request, res: Response) => {
+  const session = codexOauthSessions.get(req.params.authId);
+  if (!session) {
+    return res.status(404).json({ error: 'Codex auth session not found or expired' });
+  }
+
+  res.json({
+    status: session.status,
+    mode: session.mode,
+    error: session.error,
+    auth: session.auth,
+  });
+});
+
+/**
+ * POST /api/auth/codex/submit
+ * 提交浏览器回调 URL 或 code
+ */
+router.post('/codex/submit', async (req: Request, res: Response) => {
+  try {
+    const { authId, callbackUrl, code } = req.body as { authId: string; callbackUrl?: string; code?: string };
+    const session = codexOauthSessions.get(authId);
+    if (!session) {
+      return res.status(404).json({ error: 'Codex auth session not found or expired' });
+    }
+
+    if (session.status === 'completed') {
+      return res.json({
+        success: true,
+        auth: session.auth,
+      });
+    }
+
+    let parsedCode = code?.trim() || '';
+    let parsedState = '';
+
+    if (callbackUrl) {
+      const url = new URL(callbackUrl.trim());
+      parsedCode = url.searchParams.get('code') || parsedCode;
+      parsedState = url.searchParams.get('state') || '';
+    }
+
+    if (!parsedCode) {
+      return res.status(400).json({ error: 'Missing authorization code' });
+    }
+    if (parsedState && parsedState !== session.state) {
+      return res.status(400).json({ error: 'Authorization state does not match' });
+    }
+
+    await finalizeCodexSession(session, parsedCode);
+
+    res.json({
+      success: true,
+      auth: session.auth,
+    });
+  } catch (error) {
+    console.error('[CodexAuth] Submit code error:', error);
+    const session = codexOauthSessions.get(req.body?.authId);
+    if (session) {
+      session.status = 'failed';
+      session.error = error instanceof Error ? error.message : 'Failed to complete Codex login';
+    }
+    res.status(400).json({
+      error: error instanceof Error ? error.message : 'Failed to complete Codex login',
+    });
+  }
+});
+
+/**
+ * POST /api/auth/codex/import-local
+ * 导入本机 ~/.codex/auth.json + ~/.codex/config.toml
+ */
+router.post('/codex/import-local', async (_req: Request, res: Response) => {
+  try {
+    const config = await codexAuthManager.importOfficialAuthFile();
+    const importedCodexConfig = codexAuthManager.importOfficialConfigFile();
+    await webAuth.activateCodexLogin(config);
+
+    if (importedCodexConfig) {
+      const currentConfig = configManager.getAll() as Record<string, any>;
+      const mergedDefaultModelByBackend = {
+        ...(currentConfig.defaultModelByBackend && typeof currentConfig.defaultModelByBackend === 'object'
+          ? currentConfig.defaultModelByBackend
+          : {}),
+        ...(importedCodexConfig.defaultModelByBackend || {}),
+      };
+
+      configManager.save({
+        apiProvider: 'openai-compatible',
+        apiBaseUrl: importedCodexConfig.apiBaseUrl || undefined,
+        customModelName: importedCodexConfig.customModelName || undefined,
+        defaultModelByBackend: Object.keys(mergedDefaultModelByBackend).length > 0
+          ? mergedDefaultModelByBackend
+          : undefined,
+      } as any);
+    }
+
+    res.json({
+      success: true,
+      auth: {
+        accountId: config.accountId,
+        email: config.email,
+        expiresAt: config.expiresAt,
+      },
+      importedConfig: importedCodexConfig
+        ? {
+            apiBaseUrl: importedCodexConfig.apiBaseUrl || undefined,
+            customModelName: importedCodexConfig.customModelName,
+            modelProvider: importedCodexConfig.modelProvider,
+            wireApi: importedCodexConfig.wireApi,
+          }
+        : undefined,
+    });
+  } catch (error) {
+    console.error('[CodexAuth] Import local auth failed:', error);
+    res.status(400).json({
+      error: error instanceof Error ? error.message : 'Failed to import local Codex auth',
+    });
   }
 });
 

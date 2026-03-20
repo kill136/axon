@@ -72,6 +72,7 @@ export class WebSessionManager {
   createSession(options: {
     name?: string;
     model: string;
+    runtimeBackend?: string;
     systemPrompt?: string;
     tags?: string[];
     /** 项目路径，用于按项目过滤会话，null 表示全局会话 */
@@ -82,6 +83,7 @@ export class WebSessionManager {
     const session = createSession({
       name: options.name,
       model: options.model,
+      runtimeBackend: options.runtimeBackend,
       workingDirectory: workingDir,
       systemPrompt: options.systemPrompt,
       tags: options.tags,

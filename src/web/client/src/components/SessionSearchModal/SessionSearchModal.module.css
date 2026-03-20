@@ -9,6 +9,7 @@
   align-items: flex-start;
   padding-top: 10vh;
   animation: overlayFadeIn 0.15s ease;
+  -webkit-app-region: no-drag;
 }
 
 @keyframes overlayFadeIn {

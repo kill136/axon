@@ -216,8 +216,11 @@ export class MemorySyncEngine {
         }
       }
       // Delete indexed paths for 'session' source that no longer exist on disk
+      // IMPORTANT: Only delete non-transcript session paths here.
+      // Transcript paths (prefixed with "transcript:") are managed by syncTranscriptFiles().
       const indexedSessionPaths = this.store.listFilePaths('session');
       for (const indexedPath of indexedSessionPaths) {
+        if (indexedPath.startsWith('transcript:')) continue; // managed by syncTranscriptFiles
         if (!processedPaths.has(indexedPath)) {
           this.store.removeFile(indexedPath);
           result.removed++;

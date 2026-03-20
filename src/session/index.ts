@@ -188,6 +188,7 @@ export interface SessionMetadata {
   updatedAt: number;
   workingDirectory: string;
   model: string;
+  runtimeBackend?: string;
   messageCount: number;
   tokenUsage: {
     input: number;
@@ -930,6 +931,7 @@ export function getSessionForDirectory(directory: string): SessionData | null {
 export function createSession(options: {
   name?: string;
   model: string;
+  runtimeBackend?: string;
   workingDirectory?: string;
   systemPrompt?: string;
   tags?: string[];
@@ -946,6 +948,7 @@ export function createSession(options: {
       updatedAt: now,
       workingDirectory: options.workingDirectory || process.cwd(),
       model: options.model,
+      runtimeBackend: options.runtimeBackend,
       messageCount: 0,
       tokenUsage: { input: 0, output: 0, total: 0 },
       tags: options.tags,

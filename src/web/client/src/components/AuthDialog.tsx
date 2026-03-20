@@ -4,11 +4,14 @@
  * 与 SetupWizard 的登录能力对齐
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { OAuthLogin } from './auth/OAuthLogin';
+import { CodexLogin } from './auth/CodexLogin';
 import { AxonCloudAuth } from './AxonCloudAuth';
 import { useLanguage } from '../i18n';
 import './AuthDialog.css';
+import type { WebRuntimeBackend } from '../../../shared/model-catalog';
+import { getRuntimeBackendLabel } from '../../../shared/model-catalog';
 
 interface AuthDialogProps {
   isOpen: boolean;
@@ -16,7 +19,7 @@ interface AuthDialogProps {
   onSuccess?: () => void;
 }
 
-type AuthTab = 'axon-cloud' | 'anthropic' | 'api-key';
+type AuthTab = WebRuntimeBackend;
 
 interface ProviderOption {
   id: string;
@@ -32,9 +35,35 @@ const PROVIDERS: ProviderOption[] = [
   { id: 'custom', name: 'Custom', icon: '⚙️', defaultBaseUrl: '' },
 ];
 
+const AUTH_BACKENDS: Array<{
+  id: WebRuntimeBackend;
+  icon: string;
+}> = [
+  { id: 'axon-cloud', icon: '☁️' },
+  { id: 'claude-subscription', icon: '🔐' },
+  { id: 'codex-subscription', icon: '🧠' },
+  { id: 'claude-compatible-api', icon: '🔑' },
+  { id: 'openai-compatible-api', icon: '🌐' },
+];
+
+const BACKEND_GROUPS: Array<{
+  id: 'managed' | 'api';
+  items: WebRuntimeBackend[];
+}> = [
+  {
+    id: 'managed',
+    items: ['axon-cloud', 'claude-subscription', 'codex-subscription'],
+  },
+  {
+    id: 'api',
+    items: ['claude-compatible-api', 'openai-compatible-api'],
+  },
+];
+
 export function AuthDialog({ isOpen, onClose, onSuccess }: AuthDialogProps) {
   const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState<AuthTab>('axon-cloud');
+  const [currentRuntimeBackend, setCurrentRuntimeBackend] = useState<WebRuntimeBackend>('claude-compatible-api');
 
   // API Key tab state
   const [selectedProvider, setSelectedProvider] = useState('anthropic');
@@ -43,8 +72,6 @@ export function AuthDialog({ isOpen, onClose, onSuccess }: AuthDialogProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
-
-  if (!isOpen) return null;
 
   const handleSuccess = () => {
     onSuccess?.();
@@ -61,12 +88,65 @@ export function AuthDialog({ isOpen, onClose, onSuccess }: AuthDialogProps) {
     setActiveTab(tab);
     setError(null);
     setTestResult('idle');
+    if (tab === 'claude-compatible-api') {
+      setSelectedProvider('anthropic');
+    } else if (tab === 'openai-compatible-api' && selectedProvider === 'anthropic') {
+      setSelectedProvider('openai');
+    }
   };
 
-  const provider = PROVIDERS.find(p => p.id === selectedProvider)!;
+  const providerChoices = activeTab === 'openai-compatible-api'
+    ? PROVIDERS.filter(p => p.id !== 'anthropic')
+    : PROVIDERS.filter(p => p.id === 'anthropic');
+  const provider = providerChoices.find(p => p.id === selectedProvider) || providerChoices[0];
+  const isApiBackend = activeTab === 'claude-compatible-api' || activeTab === 'openai-compatible-api';
+  const canTestConnection = activeTab === 'claude-compatible-api';
+  const activeBackendMeta = AUTH_BACKENDS.find(item => item.id === activeTab) || AUTH_BACKENDS[0];
+  const runtimeDescriptions: Record<WebRuntimeBackend, string> = {
+    'axon-cloud': t('auth.runtime.axonCloudDesc'),
+    'claude-subscription': t('auth.runtime.claudeSubscriptionDesc'),
+    'codex-subscription': t('auth.runtime.codexSubscriptionDesc'),
+    'claude-compatible-api': t('auth.runtime.claudeCompatibleApiDesc'),
+    'openai-compatible-api': t('auth.runtime.openaiCompatibleApiDesc'),
+  };
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    let cancelled = false;
+    const loadAuthStatus = async () => {
+      try {
+        const response = await fetch('/api/auth/oauth/status');
+        if (!response.ok || cancelled) {
+          return;
+        }
+
+        const data = await response.json();
+        if (!cancelled) {
+          const backend = (data.runtimeBackend || 'claude-compatible-api') as WebRuntimeBackend;
+          setCurrentRuntimeBackend(backend);
+          setActiveTab(backend);
+        }
+      } catch {
+        if (!cancelled) {
+          setCurrentRuntimeBackend('claude-compatible-api');
+        }
+      }
+    };
+
+    void loadAuthStatus();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen]);
+
+  if (!isOpen) return null;
 
   // API Key - 测试连接
   const handleTestConnection = async () => {
+    if (!canTestConnection) {
+      return;
+    }
     setTestResult('testing');
     setError(null);
     try {
@@ -92,13 +172,22 @@ export function AuthDialog({ isOpen, onClose, onSuccess }: AuthDialogProps) {
 
   // API Key - 保存并登录
   const handleSaveApiKey = async () => {
+    if (
+      currentRuntimeBackend === 'codex-subscription' &&
+      !window.confirm(t('auth.provider.leaveCodexConfirm'))
+    ) {
+      return;
+    }
+
     setSaving(true);
     setError(null);
     try {
-      const isAnthropicProvider = selectedProvider === 'anthropic';
       const payload: any = {
         apiKey,
-        apiProvider: isAnthropicProvider ? 'anthropic' : 'openai-compatible',
+        apiProvider: activeTab === 'claude-compatible-api' ? 'anthropic' : 'openai-compatible',
+        runtimeBackend: activeTab,
+        runtimeProvider: activeTab === 'claude-compatible-api' ? 'anthropic' : 'codex',
+        authPriority: 'apiKey',
       };
       if (apiBaseUrl) {
         payload.apiBaseUrl = apiBaseUrl;
@@ -119,6 +208,7 @@ export function AuthDialog({ isOpen, onClose, onSuccess }: AuthDialogProps) {
         return;
       }
 
+      setCurrentRuntimeBackend(payload.runtimeBackend);
       handleSuccess();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -137,122 +227,172 @@ export function AuthDialog({ isOpen, onClose, onSuccess }: AuthDialogProps) {
           </button>
         </div>
 
-        {/* Tab 切换 */}
-        <div className="auth-dialog-tabs">
-          <button
-            className={`auth-dialog-tab ${activeTab === 'axon-cloud' ? 'active' : ''}`}
-            onClick={() => handleTabChange('axon-cloud')}
-          >
-            <span className="tab-icon">☁️</span>
-            <span className="tab-label">{t('auth.tab.axonCloud')}</span>
-          </button>
-          <button
-            className={`auth-dialog-tab ${activeTab === 'anthropic' ? 'active' : ''}`}
-            onClick={() => handleTabChange('anthropic')}
-          >
-            <span className="tab-icon">🔐</span>
-            <span className="tab-label">{t('auth.tab.anthropic')}</span>
-          </button>
-          <button
-            className={`auth-dialog-tab ${activeTab === 'api-key' ? 'active' : ''}`}
-            onClick={() => handleTabChange('api-key')}
-          >
-            <span className="tab-icon">🔑</span>
-            <span className="tab-label">{t('auth.tab.apiKey')}</span>
-          </button>
-        </div>
+        <div className="auth-dialog-body">
+          <aside className="auth-dialog-sidebar">
+            {BACKEND_GROUPS.map(group => (
+              <section key={group.id} className="auth-sidebar-group">
+                <div className="auth-sidebar-group-header">
+                  <div className="auth-sidebar-group-title">
+                    {group.id === 'managed' ? t('auth.layout.managedTitle') : t('auth.layout.apiTitle')}
+                  </div>
+                  <div className="auth-sidebar-group-desc">
+                    {group.id === 'managed' ? t('auth.layout.managedDesc') : t('auth.layout.apiDesc')}
+                  </div>
+                </div>
+                <div className="auth-sidebar-list">
+                  {group.items.map(backend => {
+                    const tab = AUTH_BACKENDS.find(item => item.id === backend)!;
+                    const isActive = activeTab === backend;
+                    const isCurrent = currentRuntimeBackend === backend;
+                    return (
+                      <button
+                        key={backend}
+                        className={`auth-sidebar-card ${isActive ? 'active' : ''} ${isCurrent ? 'current' : ''}`}
+                        onClick={() => handleTabChange(backend)}
+                        title={getRuntimeBackendLabel(backend)}
+                      >
+                        <div className="auth-sidebar-card-top">
+                          <div className="auth-sidebar-card-title-wrap">
+                            <span className="tab-icon">{tab.icon}</span>
+                            <span className="tab-label">{getRuntimeBackendLabel(backend)}</span>
+                          </div>
+                          {isCurrent && (
+                            <span className="auth-sidebar-card-badge">{t('auth.layout.currentBadge')}</span>
+                          )}
+                        </div>
+                        <div className="auth-sidebar-card-desc">{runtimeDescriptions[backend]}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            ))}
+          </aside>
 
-        <div className="auth-dialog-content">
-          {/* Axon Cloud Tab */}
-          {activeTab === 'axon-cloud' && (
-            <div className="auth-dialog-panel">
-              <p className="auth-panel-desc">{t('auth.tab.axonCloudDesc')}</p>
-              <AxonCloudAuth
-                onSuccess={() => handleSuccess()}
-                onError={(err) => setError(err)}
-              />
+          <div className="auth-dialog-main">
+            <div className="auth-pane-hero">
+              <div className="auth-pane-hero-icon">{activeBackendMeta.icon}</div>
+              <div className="auth-pane-hero-copy">
+                <div className="auth-pane-hero-title">{getRuntimeBackendLabel(activeTab)}</div>
+                <p className="auth-panel-desc">{runtimeDescriptions[activeTab]}</p>
+              </div>
             </div>
-          )}
 
-          {/* Anthropic OAuth Tab */}
-          {activeTab === 'anthropic' && (
-            <div className="auth-dialog-panel">
-              <OAuthLogin onSuccess={handleSuccess} />
-            </div>
-          )}
-
-          {/* API Key Tab (Multi-Provider) */}
-          {activeTab === 'api-key' && (
-            <div className="auth-dialog-panel">
-              <p className="auth-panel-desc">{t('auth.tab.apiKeyDesc')}</p>
-
-              {/* Provider 选择 */}
-              <div className="auth-provider-grid">
-                {PROVIDERS.map(p => (
-                  <button
-                    key={p.id}
-                    className={`auth-provider-chip ${selectedProvider === p.id ? 'selected' : ''}`}
-                    onClick={() => {
-                      setSelectedProvider(p.id);
-                      setApiBaseUrl('');
-                      setTestResult('idle');
-                      setError(null);
-                    }}
-                  >
-                    <span>{p.icon}</span>
-                    <span>{p.name}</span>
-                  </button>
-                ))}
-              </div>
-
-              {/* API Base URL */}
-              <div className="auth-field">
-                <label>{t('auth.provider.baseUrl')}</label>
-                <input
-                  type="text"
-                  value={apiBaseUrl}
-                  onChange={e => { setApiBaseUrl(e.target.value); setTestResult('idle'); }}
-                  placeholder={provider.defaultBaseUrl || 'https://your-api-endpoint.com/v1'}
-                  className="auth-input"
-                />
-                <span className="auth-hint">{t('auth.provider.baseUrlHint')}</span>
-              </div>
-
-              {/* API Key */}
-              <div className="auth-field">
-                <label>{t('auth.provider.apiKey')}</label>
-                <input
-                  type="password"
-                  value={apiKey}
-                  onChange={e => { setApiKey(e.target.value); setTestResult('idle'); setError(null); }}
-                  placeholder="sk-..."
-                  className="auth-input"
-                />
-              </div>
-
-              {error && <div className="auth-error">{error}</div>}
-              {testResult === 'success' && (
-                <div className="auth-success">{t('auth.provider.testSuccess')}</div>
+            <div className="auth-dialog-content">
+              {/* Axon Cloud Tab */}
+              {activeTab === 'axon-cloud' && (
+                <div className="auth-dialog-panel">
+                  <AxonCloudAuth
+                    onSuccess={() => handleSuccess()}
+                    onError={(err) => setError(err)}
+                  />
+                </div>
               )}
 
-              <div className="auth-actions">
-                <button
-                  className="auth-btn-secondary"
-                  onClick={handleTestConnection}
-                  disabled={!apiKey || testResult === 'testing'}
-                >
-                  {testResult === 'testing' ? t('auth.provider.testing') : t('auth.provider.testConnection')}
-                </button>
-                <button
-                  className="auth-btn-primary"
-                  onClick={handleSaveApiKey}
-                  disabled={saving || !apiKey}
-                >
-                  {saving ? t('auth.provider.saving') : t('auth.provider.saveAndLogin')}
-                </button>
-              </div>
+              {/* Anthropic OAuth Tab */}
+              {activeTab === 'claude-subscription' && (
+                <div className="auth-dialog-panel">
+                  {error && <div className="auth-error">{error}</div>}
+                  <OAuthLogin onSuccess={handleSuccess} onError={(err) => setError(err)} />
+                </div>
+              )}
+
+              {activeTab === 'codex-subscription' && (
+                <div className="auth-dialog-panel">
+                  {error && <div className="auth-error">{error}</div>}
+                  <CodexLogin onSuccess={handleSuccess} onError={(err) => setError(err)} />
+                </div>
+              )}
+
+              {/* API Key Tab (Multi-Provider) */}
+              {isApiBackend && (
+                <div className="auth-dialog-panel">
+                  {currentRuntimeBackend === 'codex-subscription' && (
+                    <div className="auth-hint auth-inline-hint">
+                      {t('auth.provider.leaveCodexHint')}
+                    </div>
+                  )}
+
+                  {/* Provider 选择 */}
+                  {providerChoices.length > 1 && (
+                    <div className="auth-provider-grid">
+                      {providerChoices.map(p => (
+                        <button
+                          key={p.id}
+                          className={`auth-provider-chip ${selectedProvider === p.id ? 'selected' : ''}`}
+                          onClick={() => {
+                            setSelectedProvider(p.id);
+                            setApiBaseUrl('');
+                            setTestResult('idle');
+                            setError(null);
+                          }}
+                        >
+                          <span>{p.icon}</span>
+                          <span>{p.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {providerChoices.length === 1 && (
+                    <div className="auth-hint">{t('auth.provider.currentBackend', { backend: getRuntimeBackendLabel(activeTab) })}</div>
+                  )}
+
+                  {/* API Base URL */}
+                  <div className="auth-field">
+                    <label>{t('auth.provider.baseUrl')}</label>
+                    <input
+                      type="text"
+                      value={apiBaseUrl}
+                      onChange={e => { setApiBaseUrl(e.target.value); setTestResult('idle'); }}
+                      placeholder={provider.defaultBaseUrl || 'https://your-api-endpoint.com/v1'}
+                      className="auth-input"
+                    />
+                    <span className="auth-hint">{t('auth.provider.baseUrlHint')}</span>
+                  </div>
+
+                  {/* API Key */}
+                  <div className="auth-field">
+                    <label>{t('auth.provider.apiKey')}</label>
+                    <input
+                      type="password"
+                      value={apiKey}
+                      onChange={e => { setApiKey(e.target.value); setTestResult('idle'); setError(null); }}
+                      placeholder="sk-..."
+                      className="auth-input"
+                    />
+                  </div>
+
+                  {error && <div className="auth-error">{error}</div>}
+                  {testResult === 'success' && (
+                    <div className="auth-success">{t('auth.provider.testSuccess')}</div>
+                  )}
+
+                  {!canTestConnection && (
+                    <div className="auth-hint">{t('auth.provider.testUnsupported')}</div>
+                  )}
+
+                  <div className="auth-actions">
+                    {canTestConnection && (
+                      <button
+                        className="auth-btn-secondary"
+                        onClick={handleTestConnection}
+                        disabled={!apiKey || testResult === 'testing'}
+                      >
+                        {testResult === 'testing' ? t('auth.provider.testing') : t('auth.provider.testConnection')}
+                      </button>
+                    )}
+                    <button
+                      className="auth-btn-primary"
+                      onClick={handleSaveApiKey}
+                      disabled={saving || !apiKey}
+                    >
+                      {saving ? t('auth.provider.saving') : t('auth.provider.saveAndLogin')}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </div>
       </div>
     </div>

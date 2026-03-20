@@ -21,6 +21,7 @@ const cli = {
   'cli.hiddenLines': '… +{{count}} lines',
   'cli.inputLabel': 'IN',
   'cli.linesCount': '{{count}} lines',
+  'cli.streaming': 'Streaming content...',
   'cli.linesOfOutput': '{{count}} lines of output',
   'cli.noOutput': '(no output)',
   'cli.outputLabel': 'OUT',

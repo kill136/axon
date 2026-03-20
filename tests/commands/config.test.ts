@@ -8,6 +8,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { ConfigManager } from '../../src/config/index.js';
+import { VERSION } from '../../src/version.js';
 
 // ============ 测试环境设置 ============
 
@@ -79,7 +80,7 @@ describe('Config Get Command', () => {
     const version = manager.get('version');
 
     expect(model).toBeDefined();
-    expect(version).toBe('2.1.4');
+    expect(version).toBe(VERSION);
   });
 
   it('应该获取嵌套配置项', () => {
@@ -230,7 +231,7 @@ describe('Config List Command', () => {
     const config = manager.getAll();
 
     expect(config).toBeDefined();
-    expect(config.version).toBe('2.1.4');
+    expect(config.version).toBe(VERSION);
     expect(config.model).toBeDefined();
     expect(config.maxTokens).toBeDefined();
   });
@@ -242,7 +243,7 @@ describe('Config List Command', () => {
 
     const config = manager.getAll();
 
-    expect(config.version).toBe('2.1.4');
+    expect(config.version).toBe(VERSION);
     expect(config.maxTokens).toBe(32000); // 默认值是 32000
     // enableTelemetry 的默认值可能是 false 或 undefined
     expect([false, undefined]).toContain(config.enableTelemetry);
@@ -539,22 +540,27 @@ describe('Environment Variable Override', () => {
   });
 
   it('应该环境变量覆盖文件配置', () => {
+    // AXON_MAX_OUTPUT_TOKENS 已迁移到 settings.json，不再通过环境变量映射到 maxTokens
+    // 改用 AXON_LANGUAGE 测试环境变量覆盖行为（该变量在 getEnvConfig 中有映射）
     fs.writeFileSync(USER_SETTINGS, JSON.stringify({
-      maxTokens: 8192,
+      language: 'english',
     }));
 
-    process.env.AXON_MAX_OUTPUT_TOKENS = '32768';
+    process.env.AXON_LANGUAGE = 'japanese';
 
     const manager = new ConfigManager({
       workingDirectory: TEST_PROJECT_DIR,
     });
 
-    expect(manager.get('maxTokens')).toBe(32768);
+    // 环境变量优先级高于文件配置
+    expect(manager.get('language')).toBe('japanese');
   });
 
   it('应该解析布尔类型环境变量', () => {
-    process.env.AXON_ENABLE_TELEMETRY = 'true';
-    process.env.AXON_DISABLE_FILE_CHECKPOINTING = '1';
+    // AXON_ENABLE_TELEMETRY / AXON_DISABLE_FILE_CHECKPOINTING 已迁移到 settings.json
+    // 改用 getEnvConfig 中实际映射的布尔环境变量
+    process.env.AXON_ENABLE_SPINNER_TIPS = 'false';
+    process.env.AXON_RESPECT_GITIGNORE = '0';
 
     const manager = new ConfigManager({
       workingDirectory: TEST_PROJECT_DIR,
@@ -562,13 +568,17 @@ describe('Environment Variable Override', () => {
 
     const config = manager.getAll();
 
-    expect(config.enableTelemetry).toBe(true);
-    expect(config.disableFileCheckpointing).toBe(true);
+    expect(config.spinnerTipsEnabled).toBe(false);
+    expect(config.respectGitignore).toBe(false);
   });
 
   it('应该解析数字类型环境变量', () => {
-    process.env.AXON_MAX_OUTPUT_TOKENS = '16384';
-    process.env.AXON_MAX_RETRIES = '10';
+    // AXON_MAX_OUTPUT_TOKENS / AXON_MAX_RETRIES 已迁移到 settings.json，
+    // 不再通过 getEnvConfig 环境变量映射。改为测试通过文件配置设置数字值。
+    fs.writeFileSync(USER_SETTINGS, JSON.stringify({
+      maxTokens: 16384,
+      maxRetries: 10,
+    }));
 
     const manager = new ConfigManager({
       workingDirectory: TEST_PROJECT_DIR,
@@ -598,8 +608,12 @@ describe('Environment Variable Override', () => {
     consoleSpy.mockRestore();
   });
 
-  it('应该支持 Bedrock 配置环境变量', () => {
-    process.env.AXON_USE_BEDROCK = 'true';
+  it('应该支持 Bedrock 配置', () => {
+    // AXON_USE_BEDROCK 已迁移到 settings.json，不再通过环境变量映射
+    // 改为测试通过文件配置设置 useBedrock
+    fs.writeFileSync(USER_SETTINGS, JSON.stringify({
+      useBedrock: true,
+    }));
 
     const manager = new ConfigManager({
       workingDirectory: TEST_PROJECT_DIR,
@@ -860,14 +874,14 @@ describe('MCP Server Configuration', () => {
       manager.addMcpServer('invalid1', {
         type: 'stdio',
       } as any);
-    }).toThrow(/无效的 MCP 服务器配置/);
+    }).toThrow(/Invalid MCP server configuration/);
 
     // 无效配置：http 类型缺少 url
     expect(() => {
       manager.addMcpServer('invalid2', {
         type: 'http',
       } as any);
-    }).toThrow(/无效的 MCP 服务器配置/);
+    }).toThrow(/Invalid MCP server configuration/);
   });
 
   it('应该持久化 MCP 服务器配置', () => {
@@ -981,7 +995,7 @@ describe('Config Reset', () => {
     const config = manager2.getAll();
 
     // 系统配置应该仍然存在
-    expect(config.version).toBe('2.1.4');
+    expect(config.version).toBe(VERSION);
     // cwd 可能不在 UserConfig 中，检查工作目录相关配置
     expect(config.workingDirectory || TEST_PROJECT_DIR).toBeDefined();
   });

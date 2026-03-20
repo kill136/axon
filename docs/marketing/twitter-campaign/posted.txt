@@ -7,3 +7,5 @@ custom-vs-cursor (2026-03-10): Cursor $20/month vs Axon free + any model + Web I
 2 (2026-03-11): Using DeepSeek with Axon cuts costs 90% vs Cursor. Free IDE, free AI agent system, free everything.
 12 (2026-03-11): Ever wish your AI could handle multiple tasks at once? Axon's Blueprint runs agents in parallel.
 16 (2026-03-11): 37+ built-in tools in Axon: browser automation, database queries, scheduled tasks, file manipulation, API calls, code search.
+3 (2026-03-17): Your editor shouldn't be locked behind a paywall. Axon runs in any editor you want—VS Code, Vim, whatever.
+4 (2026-03-17): Cursor: $20/month + limited models + locked editor. Axon: free + any model + your editor of choice. The math is simple. Try it: https://voicegpt.site

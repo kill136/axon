@@ -11,6 +11,7 @@ import { BaseTool } from './base.js';
 import type { ToolDefinition, ToolResult } from '../types/index.js';
 import { getGoalDaemon } from '../goals/index.js';
 import type { GoalMetric, GoalStep } from '../goals/types.js';
+import { snapshotAuthCredentials } from '../auth/snapshot.js';
 
 interface GoalManageInput {
   action:
@@ -217,9 +218,15 @@ Actions: create, list, status, pause, resume, cancel, add_strategy, update_step,
 
       case 'resume': {
         if (!input.goalId) return this.error('goalId is required');
-        const goal = store.updateGoal(input.goalId, { status: 'active', nextCheckAt: Date.now() });
+        // 恢复时刷新 authSnapshot（确保 daemon 使用当前有效凭证）
+        const resumeAuth = this.getAuthSnapshot();
+        const goal = store.updateGoal(input.goalId, {
+          status: 'active',
+          nextCheckAt: Date.now(),
+          ...(Object.keys(resumeAuth).length > 0 ? { authSnapshot: resumeAuth } : {}),
+        });
         if (!goal) return this.error('Goal not found');
-        store.appendLog(input.goalId, 'info', 'Goal resumed by user');
+        store.appendLog(input.goalId, 'info', 'Goal resumed by user (auth refreshed)');
         return this.success(`Goal "${goal.name}" resumed. Next check: now.`);
       }
 
@@ -360,9 +367,14 @@ Actions: create, list, status, pause, resume, cancel, add_strategy, update_step,
       // =====================================================================
       case 'run_now': {
         if (!input.goalId) return this.error('goalId is required');
-        const goal = store.updateGoal(input.goalId, { nextCheckAt: Date.now() });
+        // 刷新 authSnapshot（修复创建时快照为空导致 daemon 401 的问题）
+        const freshAuth = this.getAuthSnapshot();
+        const goal = store.updateGoal(input.goalId, {
+          nextCheckAt: Date.now(),
+          ...(Object.keys(freshAuth).length > 0 ? { authSnapshot: freshAuth } : {}),
+        });
         if (!goal) return this.error('Goal not found');
-        store.appendLog(input.goalId, 'info', 'Manual check triggered');
+        store.appendLog(input.goalId, 'info', 'Manual check triggered (auth refreshed)');
         return this.success(`Goal "${goal.name}" will be checked on the next daemon tick.`);
       }
 
@@ -372,12 +384,9 @@ Actions: create, list, status, pause, resume, cancel, add_strategy, update_step,
   }
 
   /**
-   * 从环境变量获取认证快照
+   * 获取认证快照（统一从 settings.json / 环境变量 / CLI keychain 读取）
    */
   private getAuthSnapshot(): { apiKey?: string; authToken?: string; baseUrl?: string } {
-    return {
-      apiKey: process.env.ANTHROPIC_API_KEY || process.env.AXON_API_KEY,
-      baseUrl: process.env.ANTHROPIC_BASE_URL,
-    };
+    return snapshotAuthCredentials() || {};
   }
 }

@@ -64,6 +64,17 @@ export {
   type EditDocumentResult,
 } from './office.js';
 
+// Office 文档视觉提取（图片 + 文本）
+export {
+  extractDocumentVisuals,
+  compressExtractedImages,
+  MAX_IMAGES_PER_DOCUMENT,
+  type VisualExtractionResult,
+  type ExtractedImage,
+  type CompressedImage,
+  type SlideInfo,
+} from './office-visual.js';
+
 // SVG 渲染
 export {
   isSvgRenderEnabled,

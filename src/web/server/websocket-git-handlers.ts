@@ -6,8 +6,7 @@
 import { WebSocket } from 'ws';
 import { GitManager } from './git-manager.js';
 import { ConversationManager } from './conversation.js';
-import { ClaudeClient } from '../../core/client.js';
-import { webAuth } from './web-auth.js';
+import { requestUtilityText } from './runtime/utility-client.js';
 
 // 复用 websocket.ts 中的类型
 interface ClientConnection {
@@ -450,43 +449,11 @@ export async function handleGitGetDiff(
 // ============================================================================
 
 /**
- * 创建 ClaudeClient（复用 ConversationManager 的完整认证逻辑）
+ * 通过当前 Web runtime 发送单次 AI 请求
  */
-function createGitAIClient(conversationManager: ConversationManager): ClaudeClient {
-  const config = conversationManager.getClientConfig('haiku');
-
-  if (!config.apiKey && !config.authToken) {
-    throw new Error('API Key or Auth Token not configured');
-  }
-
-  return new ClaudeClient({
-    apiKey: config.authToken ? undefined : config.apiKey,
-    authToken: config.authToken,
-    baseUrl: config.baseUrl,
-    model: 'haiku',
-  });
-}
-
-/**
- * 通过 ClaudeClient 发送单次 AI 请求
- */
-async function aiRequest(conversationManager: ConversationManager, prompt: string): Promise<string> {
-  // 确保 OAuth token 有效（对齐官方 NM()）
-  await webAuth.ensureValidToken();
-  const client = createGitAIClient(conversationManager);
-  const response = await client.createMessage(
-    [{ role: 'user', content: prompt }],
-    undefined,
-    undefined,
-    { enableThinking: false }
-  );
-
-  for (const block of response.content) {
-    if (block.type === 'text') {
-      return block.text.trim();
-    }
-  }
-  return '';
+async function aiRequest(_conversationManager: ConversationManager, prompt: string): Promise<string> {
+  const text = await requestUtilityText(prompt, 'haiku');
+  return text?.trim() || '';
 }
 
 /**

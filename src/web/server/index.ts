@@ -181,6 +181,7 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
 
   // 设置 app.locals，供各路由使用
   app.locals.conversationManager = conversationManager;
+  app.locals.serverPort = port;
 
   // API 路由
   setupApiRoutes(app, conversationManager);
@@ -842,6 +843,27 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
       }
     }
 
+    // 关闭 Cloudflare Tunnel
+    try {
+      const { getTunnel } = await import('./tunnel.js');
+      const tunnel = getTunnel(port);
+      if (tunnel.info.status === 'connected') {
+        await tunnel.stop();
+        console.log('   Cloudflare tunnel closed');
+      }
+    } catch {
+      // 忽略关闭错误
+    }
+
+    // 关闭所有 App 进程和隧道
+    try {
+      const { getAppManager } = await import('./app-manager.js');
+      await getAppManager().shutdown();
+      console.log('   App processes stopped');
+    } catch {
+      // 忽略关闭错误
+    }
+
     // 进化重启使用退出码 42，正常退出使用 0
     const exitCode = isEvolveRestartRequested() ? 42 : 0;
     if (isEvolveRestartRequested()) {
@@ -930,6 +952,9 @@ export function buildDelegatedTaskCallbacks(
       const progress = Math.min(90, toolCallCount * 15);
       network.reportTaskProgress(taskId, progress, `Executing ${toolName}`);
     },
+    onToolUseInputReady: (toolUseId: string, input: unknown) => {
+      broadcastFn({ type: 'tool_use_input_ready', payload: { toolUseId, input, sessionId } });
+    },
     onToolUseDelta: (toolUseId: string, partialJson: string) => {
       broadcastFn({ type: 'tool_use_delta', payload: { toolUseId, partialJson, sessionId } });
     },
@@ -990,6 +1015,9 @@ export function buildAgentChatCallbacks(
     onToolUseStart: (toolUseId: string, toolName: string, input: unknown) => {
       broadcastFn({ type: 'tool_use_start', payload: { messageId, toolUseId, toolName, input, sessionId } });
       broadcastFn({ type: 'status', payload: { status: 'tool_executing', message: `Executing ${toolName}...`, sessionId } });
+    },
+    onToolUseInputReady: (toolUseId: string, input: unknown) => {
+      broadcastFn({ type: 'tool_use_input_ready', payload: { toolUseId, input, sessionId } });
     },
     onToolUseDelta: (toolUseId: string, partialJson: string) => {
       broadcastFn({ type: 'tool_use_delta', payload: { toolUseId, partialJson, sessionId } });

@@ -2,6 +2,7 @@
  * Agent Network REST API 路由
  *
  * 提供网络状态、Agent 列表、审计日志、信任管理等 HTTP 端点。
+ * 所有写操作仅允许 localhost 访问。
  */
 
 import { Router, type Request, type Response } from 'express';
@@ -9,6 +10,24 @@ import type { AgentNetwork } from '../../../network/index.js';
 import { configManager } from '../../../config/index.js';
 
 const router = Router();
+
+/**
+ * toggle 操作互斥锁 — 防止并发 toggle 创建多个实例
+ */
+let toggleInProgress = false;
+
+/**
+ * localhost 检查中间件 — 写操作仅允许本地访问
+ */
+function requireLocalhost(req: Request, res: Response, next: () => void): void {
+  const ip = req.ip || req.socket.remoteAddress || '';
+  const isLocal = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1' || ip === 'localhost';
+  if (!isLocal) {
+    res.status(403).json({ error: 'This endpoint is only accessible from localhost' });
+    return;
+  }
+  next();
+}
 
 /**
  * 获取 AgentNetwork 实例（从 app.locals）
@@ -84,7 +103,7 @@ router.get('/audit', (req: Request, res: Response) => {
  * 发送消息给指定 Agent
  * Body: { agentId, method, params? }
  */
-router.post('/send', async (req: Request, res: Response) => {
+router.post('/send', requireLocalhost, async (req: Request, res: Response) => {
   const network = getNetwork(req);
   if (!network) {
     return res.status(503).json({ error: 'Agent Network not enabled' });
@@ -111,7 +130,7 @@ router.post('/send', async (req: Request, res: Response) => {
  * 信任/取消信任某个 Agent
  * Body: { agentId, trust: boolean }
  */
-router.post('/trust', (req: Request, res: Response) => {
+router.post('/trust', requireLocalhost, (req: Request, res: Response) => {
   const network = getNetwork(req);
   if (!network) {
     return res.status(503).json({ error: 'Agent Network not enabled' });
@@ -136,7 +155,7 @@ router.post('/trust', (req: Request, res: Response) => {
  * 踢出某个 Agent
  * Body: { agentId }
  */
-router.post('/kick', (req: Request, res: Response) => {
+router.post('/kick', requireLocalhost, (req: Request, res: Response) => {
   const network = getNetwork(req);
   if (!network) {
     return res.status(503).json({ error: 'Agent Network not enabled' });
@@ -156,7 +175,7 @@ router.post('/kick', (req: Request, res: Response) => {
  * 手动连接 Agent（mDNS 不可靠时的备选方案）
  * Body: { endpoint: "ip:port" }
  */
-router.post('/connect', async (req: Request, res: Response) => {
+router.post('/connect', requireLocalhost, async (req: Request, res: Response) => {
   const network = getNetwork(req);
   if (!network) {
     return res.status(503).json({ error: 'Agent Network not enabled' });
@@ -185,7 +204,7 @@ router.post('/connect', async (req: Request, res: Response) => {
  * 清除所有聊天记录
  * Query: ?agentId=xxx (可选，只清除与指定 Agent 的记录)
  */
-router.delete('/audit', (req: Request, res: Response) => {
+router.delete('/audit', requireLocalhost, (req: Request, res: Response) => {
   const network = getNetwork(req);
   if (!network) return res.status(503).json({ error: 'Agent Network not enabled' });
 
@@ -231,7 +250,7 @@ router.get('/messages', (req: Request, res: Response) => {
  * 清除某个会话的聊天消息
  * Query: conversationId (required)
  */
-router.delete('/messages', (req: Request, res: Response) => {
+router.delete('/messages', requireLocalhost, (req: Request, res: Response) => {
   const network = getNetwork(req);
   if (!network) return res.status(503).json({ error: 'Agent Network not enabled' });
 
@@ -251,7 +270,7 @@ router.delete('/messages', (req: Request, res: Response) => {
  * 向群组所有成员广播消息
  * Body: { groupId, method, params? }
  */
-router.post('/group-send', async (req: Request, res: Response) => {
+router.post('/group-send', requireLocalhost, async (req: Request, res: Response) => {
   const network = getNetwork(req);
   if (!network) return res.status(503).json({ error: 'Agent Network not enabled' });
 
@@ -306,7 +325,7 @@ router.get('/groups', (req: Request, res: Response) => {
  * POST /api/network/groups
  * Body: { name, members: string[] }
  */
-router.post('/groups', (req: Request, res: Response) => {
+router.post('/groups', requireLocalhost, (req: Request, res: Response) => {
   const network = getNetwork(req);
   if (!network) return res.status(503).json({ error: 'Agent Network not enabled' });
 
@@ -323,7 +342,7 @@ router.post('/groups', (req: Request, res: Response) => {
  * PUT /api/network/groups/:id
  * Body: { name?, members? }
  */
-router.put('/groups/:id', (req: Request, res: Response) => {
+router.put('/groups/:id', requireLocalhost, (req: Request, res: Response) => {
   const network = getNetwork(req);
   if (!network) return res.status(503).json({ error: 'Agent Network not enabled' });
 
@@ -335,7 +354,7 @@ router.put('/groups/:id', (req: Request, res: Response) => {
 /**
  * DELETE /api/network/groups/:id
  */
-router.delete('/groups/:id', (req: Request, res: Response) => {
+router.delete('/groups/:id', requireLocalhost, (req: Request, res: Response) => {
   const network = getNetwork(req);
   if (!network) return res.status(503).json({ error: 'Agent Network not enabled' });
 
@@ -348,11 +367,17 @@ router.delete('/groups/:id', (req: Request, res: Response) => {
  * 启用或停用 Agent Network
  * Body: { enabled: boolean }
  */
-router.post('/toggle', async (req: Request, res: Response) => {
+router.post('/toggle', requireLocalhost, async (req: Request, res: Response) => {
   const { enabled } = req.body;
   if (typeof enabled !== 'boolean') {
     return res.status(400).json({ error: 'enabled (boolean) is required' });
   }
+
+  // 互斥锁 — 防止并发 toggle 创建多个实例
+  if (toggleInProgress) {
+    return res.status(409).json({ error: 'Toggle operation already in progress' });
+  }
+  toggleInProgress = true;
 
   try {
     const currentNetwork = getNetwork(req);
@@ -410,6 +435,8 @@ router.post('/toggle', async (req: Request, res: Response) => {
       success: false,
       error: error instanceof Error ? error.message : String(error),
     });
+  } finally {
+    toggleInProgress = false;
   }
 });
 

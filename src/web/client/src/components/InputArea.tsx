@@ -10,6 +10,12 @@ import { ApiUsageBar } from './ApiUsageBar';
 import type { Attachment, SlashCommand } from '../types';
 import type { Status, PermissionMode, RateLimitInfo } from '../hooks/useMessageHandler';
 import { useLanguage } from '../i18n';
+import {
+  getWebModelOptionsForBackend,
+  normalizeWebRuntimeModelForBackend,
+  type WebRuntimeBackend,
+  type WebRuntimeProvider,
+} from '../../../shared/model-catalog';
 
 
 interface InputAreaProps {
@@ -35,6 +41,9 @@ interface InputAreaProps {
   connected: boolean;
   status: Status;
   model: string;
+  availableModels?: string[];
+  runtimeProvider: WebRuntimeProvider;
+  runtimeBackend: WebRuntimeBackend;
   onModelChange: (model: string) => void;
   permissionMode: PermissionMode;
   activePresetId: string;
@@ -89,6 +98,17 @@ interface InputAreaProps {
 
   // 模式预设列表（用于动态渲染选择器）
   modePresets?: Array<{ id: string; name: string; icon: string; permissionMode: string }>;
+
+  // 消息排队状态（压缩期间）
+  isMessageQueued?: boolean;
+
+  // 认证状态
+  isAuthenticated?: boolean;
+  onLoginClick?: () => void;
+
+  // 新建对话
+  onNewSession?: () => void;
+  hasMessages?: boolean;
 }
 
 export function InputArea({
@@ -107,6 +127,9 @@ export function InputArea({
   connected,
   status,
   model,
+  availableModels,
+  runtimeProvider,
+  runtimeBackend,
   onModelChange,
   permissionMode,
   activePresetId,
@@ -137,8 +160,15 @@ export function InputArea({
   conversationMode = false,
   onToggleConversationMode,
   modePresets,
+  isMessageQueued = false,
+  isAuthenticated = true,
+  onLoginClick,
+  onNewSession,
+  hasMessages = false,
 }: InputAreaProps) {
   const { t } = useLanguage();
+  const modelOptions = getWebModelOptionsForBackend(runtimeBackend, model, model, availableModels);
+  const selectedModel = normalizeWebRuntimeModelForBackend(runtimeBackend, model, model, availableModels);
 
   // 动态 placeholder 轮播：给用户灵感，展示可以怎么说
   const PLACEHOLDER_KEYS = [
@@ -305,6 +335,11 @@ export function InputArea({
               )}
             </div>
           )}
+          {isMessageQueued && (
+            <div className="queued-message-bar">
+              <span>{t('input.messageQueued')}</span>
+            </div>
+          )}
           {showCommandPalette && (
             <SlashCommandPalette
               input={input}
@@ -312,30 +347,53 @@ export function InputArea({
               onClose={onCloseCommandPalette}
             />
           )}
-          <textarea
-            ref={inputRef}
-            className="chat-input"
-            rows={1}
-            value={input}
-            onChange={onInputChange}
-            onKeyDown={onKeyDown}
-            onPaste={onPaste}
-            placeholder={currentPlaceholder}
-            disabled={!connected}
-          />
+          {!isAuthenticated && connected ? (
+            <div
+              className="chat-input auth-prompt"
+              onClick={onLoginClick}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => { if (e.key === 'Enter') onLoginClick?.(); }}
+            >
+              {t('input.loginRequired')}
+            </div>
+          ) : (
+            <textarea
+              ref={inputRef}
+              className="chat-input"
+              rows={1}
+              value={input}
+              onChange={onInputChange}
+              onKeyDown={onKeyDown}
+              onPaste={onPaste}
+              placeholder={currentPlaceholder}
+              disabled={!connected}
+            />
+          )}
         </div>
         <div className="input-toolbar">
           <div className="input-toolbar-left">
+            {hasMessages && onNewSession && (
+              <button
+                className="new-session-btn"
+                onClick={onNewSession}
+                title={t('nav.startNewChat')}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 5v14M5 12h14"/>
+                </svg>
+              </button>
+            )}
             <select
               className="model-selector-compact"
-              value={model}
+              value={selectedModel}
               onChange={(e) => onModelChange(e.target.value)}
               disabled={status !== 'idle'}
               title={t('input.switchModel')}
             >
-              <option value="opus">Opus</option>
-              <option value="sonnet">Sonnet</option>
-              <option value="haiku">Haiku</option>
+              {modelOptions.map(option => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
             </select>
             <select
               className={`permission-mode-selector mode-${permissionMode}`}
@@ -457,10 +515,10 @@ export function InputArea({
               </button>
             )}
             <button
-              className="send-btn"
-              onClick={onSend}
-              disabled={!connected || (!input.trim() && attachments.length === 0)}
-              title={t('input.send')}
+              className={`send-btn${!isAuthenticated && connected ? ' auth-required' : ''}`}
+              onClick={!isAuthenticated && connected ? onLoginClick : onSend}
+              disabled={!connected || (isAuthenticated && !input.trim() && attachments.length === 0)}
+              title={!isAuthenticated && connected ? t('input.loginRequired') : t('input.send')}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 19V5"/>

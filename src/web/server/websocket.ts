@@ -33,6 +33,11 @@ import { logger } from '../../utils/logger.js';
 import { errorWatcher } from '../../utils/error-watcher.js';
 // Git 管理器
 import { GitManager } from './git-manager.js';
+import {
+  getDefaultWebModelForBackend,
+  normalizeWebRuntimeModelForBackend,
+  type WebRuntimeBackend,
+} from '../shared/model-catalog.js';
 // Git WebSocket 处理函数
 import {
   handleGitGetStatus,
@@ -89,6 +94,8 @@ import {
   handleGitGetConflicts,
   handleGitResolveLock,
 } from './websocket-git-handlers.js';
+// cmux 终端集成（macOS 原生 AI 终端 https://github.com/manaflow-ai/cmux）
+import { getCmuxBridge } from '../../notifications/cmux.js';
 
 // ============================================================================
 // 工具分类函数 - 用于 Web UI 状态反馈
@@ -159,10 +166,32 @@ interface ClientConnection {
   ws: WebSocket;
   sessionId: string;
   model: string;
+  runtimeBackend: WebRuntimeBackend;
   isAlive: boolean;
   swarmSubscriptions: Set<string>; // 订阅的 blueprint IDs
   projectPath?: string; // 当前选择的项目路径
   permissionMode?: string; // 客户端级别的权限模式（跨会话持久化）
+  // 会话操作互斥锁：防止 session_switch/session_new/chat(临时会话持久化) 并发修改 sessionId
+  // 使用 Promise 链实现简单的串行化
+  sessionMutex?: Promise<void>;
+}
+
+function getDefaultChatModel(runtimeBackend: WebRuntimeBackend = webAuth.getRuntimeBackend()): string {
+  return getDefaultWebModelForBackend(
+    runtimeBackend,
+    webAuth.getDefaultModelByBackend()[runtimeBackend],
+  );
+}
+
+/**
+ * 会话操作互斥锁：确保修改 client.sessionId 的操作不会并发执行
+ * 使用 Promise 链模式：每个操作 await 上一个操作完成后才开始
+ */
+function withSessionMutex<T>(client: ClientConnection, fn: () => Promise<T>): Promise<T> {
+  const prev = client.sessionMutex || Promise.resolve();
+  let resolve: () => void;
+  client.sessionMutex = new Promise<void>(r => { resolve = r; });
+  return prev.then(() => fn()).finally(() => resolve!());
 }
 
 // 全局检查点管理器实例（惰性初始化，避免模块加载时的副作用日志）
@@ -1270,12 +1299,15 @@ export function setupWebSocket(
   wss.on('connection', (ws: WebSocket) => {
     const clientId = randomUUID();
     const sessionId = randomUUID();
+    const runtimeBackend = webAuth.getRuntimeBackend();
+    const defaultModel = getDefaultChatModel(runtimeBackend);
 
     const client: ClientConnection = {
       id: clientId,
       ws,
       sessionId,
-      model: 'opus',
+      model: defaultModel,
+      runtimeBackend,
       isAlive: true,
       swarmSubscriptions: new Set<string>(),
       permissionMode: 'bypassPermissions',
@@ -1290,7 +1322,8 @@ export function setupWebSocket(
       type: 'connected',
       payload: {
         sessionId,
-        model: client.model,
+        model: defaultModel,
+        runtimeBackend,
         serverStartTime,
       },
     });
@@ -1456,15 +1489,27 @@ async function handleClientMessage(
       break;
     }
 
-    case 'chat':
-      // 确保会话关联 WebSocket
-      conversationManager.setWebSocket(client.sessionId, ws);
-      // 如果消息中包含 projectPath，更新 client.projectPath
-      if (message.payload.projectPath !== undefined) {
-        client.projectPath = message.payload.projectPath;
+    case 'chat': {
+      // 使用会话互斥锁保护 session 初始化阶段（读取/修改 client.sessionId）
+      // 但不锁住整个流式响应，否则 session_new/session_switch 会被阻塞到 AI 回复完成
+      const chatContext = await withSessionMutex(client, async () => {
+        // 确保会话关联 WebSocket
+        conversationManager.setWebSocket(client.sessionId, ws);
+        // 如果消息中包含 projectPath，更新 client.projectPath
+        if (message.payload.projectPath !== undefined) {
+          client.projectPath = message.payload.projectPath;
+        }
+        // prepareChatSession: 初始化会话并返回闭包需要的上下文
+        // 这里完成所有需要互斥保护的操作：读取 sessionId、创建持久化会话、更新 client.sessionId
+        const ctx = await prepareChatSession(client, message.payload.content, message.payload.attachments || message.payload.images, conversationManager);
+        return ctx;
+      });
+      // Phase 2: 在锁外执行流式 chat（chatContext 中的 chatSessionId 已是闭包安全值）
+      if (chatContext) {
+        await executeChatStreaming(chatContext, conversationManager, message.payload.messageId);
       }
-      await handleChatMessage(client, message.payload.content, message.payload.attachments || message.payload.images, conversationManager, message.payload.messageId);
       break;
+    }
 
     case 'cancel':
       conversationManager.cancel(client.sessionId);
@@ -1491,8 +1536,12 @@ async function handleClientMessage(
       break;
 
     case 'set_model':
-      client.model = message.payload.model;
-      conversationManager.setModel(client.sessionId, message.payload.model);
+      client.model = normalizeWebRuntimeModelForBackend(
+        client.runtimeBackend,
+        message.payload.model,
+        webAuth.getDefaultModelByBackend()[client.runtimeBackend],
+      );
+      conversationManager.setModel(client.sessionId, client.model);
       break;
 
     case 'set_language':
@@ -1565,17 +1614,17 @@ async function handleClientMessage(
       break;
 
     case 'session_create':
-      await handleSessionCreate(client, message.payload, conversationManager);
+      await withSessionMutex(client, () => handleSessionCreate(client, message.payload, conversationManager));
       break;
 
     case 'session_new':
       // 官方规范：创建新的临时会话（不立即持久化）
       // 会话只有在发送第一条消息后才会真正创建
-      await handleSessionNew(client, message.payload, conversationManager);
+      await withSessionMutex(client, () => handleSessionNew(client, message.payload, conversationManager));
       break;
 
     case 'session_switch':
-      await handleSessionSwitch(client, message.payload.sessionId, conversationManager);
+      await withSessionMutex(client, () => handleSessionSwitch(client, message.payload.sessionId, conversationManager));
       break;
 
     case 'session_delete':
@@ -2344,15 +2393,31 @@ interface FileAttachment {
 }
 
 /**
- * 处理聊天消息
+ * Chat 会话上下文 — 由 prepareChatSession 在互斥锁内生成，
+ * 供 executeChatStreaming 在锁外使用
  */
-async function handleChatMessage(
+interface ChatSessionContext {
+  chatSessionId: string;
+  model: string;
+  projectPath: string | undefined;
+  ws: WebSocket;
+  enhancedContent: string;
+  mediaAttachments: MediaAttachment[] | undefined;
+  permissionMode: string | undefined;
+  runtimeBackend: string;
+  getActiveWs: () => WebSocket;
+}
+
+/**
+ * Phase 1: 在互斥锁内执行 — 初始化会话并返回流式 chat 所需的上下文
+ * 所有读取/修改 client.sessionId 的操作在此完成
+ */
+async function prepareChatSession(
   client: ClientConnection,
   content: string,
   attachments: Attachment[] | string[] | undefined,
   conversationManager: ConversationManager,
-  userMessageId?: string
-): Promise<void> {
+): Promise<ChatSessionContext | null> {
   const { ws, model, projectPath } = client;
   let { sessionId } = client;
 
@@ -2364,13 +2429,13 @@ async function handleChatMessage(
       type: 'error',
       payload: { message: 'API Key not configured. Please configure an API Key in settings or log in via OAuth before sending messages.' },
     });
-    return;
+    return null;
   }
 
   // 检查是否为斜杠命令
   if (isSlashCommand(content)) {
     await handleSlashCommand(client, content, conversationManager);
-    return;
+    return null;
   }
 
   // 确保会话存在于 sessionManager 中（处理临时会话 ID 的情况）
@@ -2386,6 +2451,7 @@ async function handleChatMessage(
     const newSession = sessionManager.createSession({
       name: firstPrompt,  // 使用 firstPrompt 作为会话标题
       model: model,
+      runtimeBackend: client.runtimeBackend,
       tags: ['webui'],
       projectPath: client.projectPath,  // 传递项目路径
     });
@@ -2402,6 +2468,7 @@ async function handleChatMessage(
         sessionId: newSession.metadata.id,
         name: newSession.metadata.name,
         model: newSession.metadata.model,
+        runtimeBackend: client.runtimeBackend,
         createdAt: newSession.metadata.createdAt,
       },
     });
@@ -2420,8 +2487,6 @@ async function handleChatMessage(
       console.log(`[WebSocket] Updating session title to firstPrompt: ${firstPrompt}`);
     }
   }
-
-  const messageId = randomUUID();
 
   // 处理附件：图片直接传递给 Claude API，其他文件保存为临时文件传路径
   let mediaAttachments: MediaAttachment[] | undefined;
@@ -2489,6 +2554,31 @@ async function handleChatMessage(
     return conversationManager.getWebSocket(chatSessionId) || ws;
   };
 
+  return {
+    chatSessionId,
+    model,
+    projectPath: client.projectPath,
+    ws,
+    enhancedContent,
+    mediaAttachments,
+    permissionMode: client.permissionMode,
+    runtimeBackend: client.runtimeBackend,
+    getActiveWs,
+  };
+}
+
+/**
+ * Phase 2: 在互斥锁外执行 — 实际的流式 AI 对话
+ * 使用 chatSessionId 闭包值，不再读写 client.sessionId
+ */
+async function executeChatStreaming(
+  ctx: ChatSessionContext,
+  conversationManager: ConversationManager,
+  userMessageId?: string,
+): Promise<void> {
+  const { chatSessionId, model, enhancedContent, mediaAttachments, getActiveWs } = ctx;
+  const messageId = randomUUID();
+
   // 始终发送流式消息到 WebSocket，不做服务端门控
   // 客户端已有基于 sessionId 的会话隔离过滤（useMessageHandler），
   // 服务端门控（isActiveSession）会导致用户切换会话或刷新页面时消息永久丢失，
@@ -2502,6 +2592,10 @@ async function handleChatMessage(
     type: 'status',
     payload: { status: 'thinking', sessionId: chatSessionId },
   });
+
+  // cmux 集成：通知 cmux 终端 Agent 开始思考
+  const cmux = getCmuxBridge();
+  cmux.onThinking();
 
   try {
     // 调用对话管理器，传入流式回调（媒体附件包含 mimeType 和类型）
@@ -2545,6 +2639,14 @@ async function handleChatMessage(
           type: 'status',
           payload: { status: 'tool_executing', message: `Executing ${toolName}...`, sessionId: chatSessionId },
         });
+        cmux.onToolStart(toolName);
+      },
+
+      onToolUseInputReady: (toolUseId: string, input: unknown) => {
+        sendMessage(getActiveWs(), {
+          type: 'tool_use_input_ready',
+          payload: { toolUseId, input, sessionId: chatSessionId },
+        });
       },
 
       onToolUseDelta: (toolUseId: string, partialJson: string) => {
@@ -2574,6 +2676,7 @@ async function handleChatMessage(
           type: 'permission_request',
           payload: { ...request, sessionId: chatSessionId },
         });
+        cmux.onPermissionRequest(request.toolName || 'Unknown', request.description || 'execute');
       },
 
       onComplete: async (stopReason: string | null, usage?: { inputTokens: number; outputTokens: number }) => {
@@ -2604,6 +2707,7 @@ async function handleChatMessage(
           type: 'status',
           payload: { status: 'idle', sessionId: chatSessionId },
         });
+        cmux.onComplete();
       },
 
       onError: (error: Error) => {
@@ -2623,6 +2727,7 @@ async function handleChatMessage(
           type: 'status',
           payload: { status: 'idle', sessionId: chatSessionId },
         });
+        cmux.onError(error.message);
       },
 
       onContextUpdate: (usage: { usedTokens: number; maxTokens: number; percentage: number; model: string }) => {
@@ -2656,7 +2761,7 @@ async function handleChatMessage(
           });
         }
       },
-    }, client.projectPath, getActiveWs(), client.permissionMode, userMessageId);  // 传入动态 ws、权限模式和前端消息 ID，确保跨会话持久化
+    }, ctx.projectPath, getActiveWs(), ctx.permissionMode, userMessageId);  // 传入动态 ws、权限模式和前端消息 ID，确保跨会话持久化
   } catch (error) {
     console.error('[WebSocket] Chat handling error:', error);
     sendMessage(getActiveWs(), {
@@ -2726,7 +2831,8 @@ async function handleSlashCommand(
 
     // 如果命令返回 chatPrompt，将其作为聊天消息发送给 AI（用于 /init 等命令）
     if (result.success && result.data?.chatPrompt) {
-      await handleChatMessage(client, result.data.chatPrompt, undefined, conversationManager);
+      const ctx = await withSessionMutex(client, () => prepareChatSession(client, result.data.chatPrompt, undefined, conversationManager));
+      if (ctx) await executeChatStreaming(ctx, conversationManager);
       return;
     }
 
@@ -2755,7 +2861,8 @@ async function handleSlashCommand(
         }
         const messageContent = `[Skill: ${skill.skillName}]\n\n${skillContent}`;
         console.log(`[WebSocket] Executing skill ${skill.skillName}, content length: ${skillContent.length}`);
-        await handleChatMessage(client, messageContent, undefined, conversationManager);
+        const skillCtx = await withSessionMutex(client, () => prepareChatSession(client, messageContent, undefined, conversationManager));
+        if (skillCtx) await executeChatStreaming(skillCtx, conversationManager);
         return;
       }
     }
@@ -2850,6 +2957,7 @@ async function handleSessionList(
           updatedAt: s.updatedAt,
           messageCount: s.messageCount,
           model: s.model,
+          runtimeBackend: s.runtimeBackend,
           cost: s.cost,
           tokenUsage: s.tokenUsage,
           tags: s.tags,
@@ -2886,17 +2994,25 @@ async function handleSessionCreate(
   try {
     const { name, model, tags, projectPath } = payload;
     const sessionManager = conversationManager.getSessionManager();
+    const runtimeBackend = (payload?.runtimeBackend as WebRuntimeBackend | undefined) || client.runtimeBackend || webAuth.getRuntimeBackend();
+    const effectiveModel = normalizeWebRuntimeModelForBackend(
+      runtimeBackend,
+      model || client.model || getDefaultChatModel(runtimeBackend),
+      webAuth.getDefaultModelByBackend()[runtimeBackend],
+    );
 
     const newSession = sessionManager.createSession({
       name: name || `WebUI Session - ${new Date().toLocaleString('en-US')}`,
-      model: model || 'opus',
+      model: effectiveModel,
+      runtimeBackend,
       tags: tags || ['webui'],
       projectPath,
     });
 
     // 更新客户端会话状态
     client.sessionId = newSession.metadata.id;
-    client.model = model || 'opus';
+    client.model = effectiveModel;
+    client.runtimeBackend = runtimeBackend;
     client.projectPath = projectPath;
 
     sendMessage(ws, {
@@ -2904,7 +3020,8 @@ async function handleSessionCreate(
       payload: {
         sessionId: newSession.metadata.id,
         name: newSession.metadata.name,
-        model: newSession.metadata.model,
+        model: effectiveModel,
+        runtimeBackend,
         createdAt: newSession.metadata.createdAt,
         projectPath: newSession.metadata.projectPath,
       },
@@ -2938,12 +3055,18 @@ async function handleSessionNew(
 
     // 生成新的临时 sessionId（使用 crypto 生成 UUID）
     const tempSessionId = randomUUID();
-    const model = payload?.model || client.model || 'opus';
+    const runtimeBackend = (payload?.runtimeBackend as WebRuntimeBackend | undefined) || client.runtimeBackend || webAuth.getRuntimeBackend();
+    const model = normalizeWebRuntimeModelForBackend(
+      runtimeBackend,
+      payload?.model || client.model || getDefaultChatModel(runtimeBackend),
+      webAuth.getDefaultModelByBackend()[runtimeBackend],
+    );
     const projectPath = payload?.projectPath;
 
     // 更新 client 的 sessionId、model 和 projectPath
     client.sessionId = tempSessionId;
     client.model = model;
+    client.runtimeBackend = runtimeBackend;
     client.projectPath = projectPath;
 
     // 清空内存中的会话状态（如果存在）
@@ -2957,6 +3080,7 @@ async function handleSessionNew(
       payload: {
         sessionId: tempSessionId,
         model: model,
+        runtimeBackend,
         projectPath,
       },
     });
@@ -3010,9 +3134,21 @@ async function handleSessionSwitch(
       const history = conversationManager.getLiveHistory(sessionId);
       console.log(`[WebSocket] handleSessionSwitch: sessionId=${sessionId}, history.length=${history.length}, isProcessing=${conversationManager.isSessionProcessing(sessionId)}`);
 
+      const sessionName = conversationManager.getSessionName(sessionId);
+      const sessionRuntimeBackend = conversationManager.getSessionRuntimeBackend(sessionId) || webAuth.getRuntimeBackend();
+      const sessionModel = conversationManager.getSessionModel(sessionId) || getDefaultChatModel(sessionRuntimeBackend);
+      client.model = sessionModel;
+      client.runtimeBackend = sessionRuntimeBackend;
       sendMessage(ws, {
         type: 'session_switched',
-        payload: { sessionId, projectPath: client.projectPath, history },
+        payload: {
+          sessionId,
+          sessionName,
+          projectPath: client.projectPath,
+          history,
+          model: sessionModel,
+          runtimeBackend: sessionRuntimeBackend,
+        },
       });
 
       // 同步权限配置到客户端（刷新后客户端 permissionMode 会重置为 'default'，需要从服务端恢复）
@@ -3087,12 +3223,13 @@ async function handleSessionSwitch(
           console.log(`[WebSocket] Resending pending permission request: ${req.tool} (${req.requestId})`);
         }
 
-        const pendingQuestions = conversationManager.getPendingUserQuestions(sessionId);
+        const pendingQuestions = conversationManager.getUndeliveredPendingUserQuestions(sessionId);
         for (const q of pendingQuestions) {
           sendMessage(ws, {
             type: 'user_question',
             payload: { ...q, sessionId },
           } as any);
+          conversationManager.markPendingUserQuestionDelivered(sessionId, q.requestId);
           console.log(`[WebSocket] Resending pending user question: ${q.header} (${q.requestId})`);
         }
       } else if (conversationManager.needsContinuation(sessionId)) {
@@ -3149,6 +3286,12 @@ async function handleSessionSwitch(
             sendMessage(getActiveWs(), {
               type: 'status',
               payload: { status: 'tool_executing', message: `Executing ${toolName}...`, sessionId: chatSessionId },
+            });
+          },
+          onToolUseInputReady: (toolUseId: string, input: unknown) => {
+            sendMessage(getActiveWs(), {
+              type: 'tool_use_input_ready',
+              payload: { toolUseId, input, sessionId: chatSessionId },
             });
           },
           onToolUseDelta: (toolUseId: string, partialJson: string) => {
@@ -3243,9 +3386,17 @@ async function handleSessionSwitch(
       // IM 会话尚未创建（首条消息还在处理中），预先切换过去
       // chat() 运行时会在内存中创建该会话，流式消息会正常显示
       client.sessionId = sessionId;
+      client.runtimeBackend = webAuth.getRuntimeBackend();
+      client.model = getDefaultChatModel(client.runtimeBackend);
       sendMessage(ws, {
         type: 'session_switched',
-        payload: { sessionId, projectPath: client.projectPath, history: [] },
+        payload: {
+          sessionId,
+          projectPath: client.projectPath,
+          history: [],
+          model: client.model,
+          runtimeBackend: client.runtimeBackend,
+        },
       });
     } else {
       sendMessage(ws, {
@@ -3437,10 +3588,14 @@ async function handleSessionResume(
       conversationManager.setWebSocket(sessionId, ws);
 
       const history = conversationManager.getHistory(sessionId);
+      const sessionRuntimeBackend = conversationManager.getSessionRuntimeBackend(sessionId) || webAuth.getRuntimeBackend();
+      const sessionModel = conversationManager.getSessionModel(sessionId) || getDefaultChatModel(sessionRuntimeBackend);
+      client.model = sessionModel;
+      client.runtimeBackend = sessionRuntimeBackend;
 
       sendMessage(ws, {
         type: 'session_switched',
-        payload: { sessionId, history },
+        payload: { sessionId, history, model: sessionModel, runtimeBackend: sessionRuntimeBackend },
       });
     } else {
       sendMessage(ws, {
@@ -7281,4 +7436,3 @@ async function handleModePresetMessage(
     });
   }
 }
-

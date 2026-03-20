@@ -15,11 +15,15 @@ import type {
   TransportMessage,
   HandshakeMessage,
   HandshakeAckMessage,
+  HandshakeChallengeMessage,
+  HandshakeChallengeResponseMessage,
   TrustLevel,
 } from './types.js';
 import { PROTOCOL_VERSION } from './types.js';
 import type { IdentityManager } from './identity.js';
 import type { PermissionManager } from './permission.js';
+import { sign, verify } from './identity.js';
+import { verifyMessage } from './protocol.js';
 
 /** 心跳间隔 (30 秒) */
 const PING_INTERVAL = 30_000;
@@ -27,6 +31,12 @@ const PING_INTERVAL = 30_000;
 const PONG_TIMEOUT = PING_INTERVAL * 3;
 /** 握手超时 */
 const HANDSHAKE_TIMEOUT = 10_000;
+/** WebSocket 最大消息大小 (1MB) */
+const MAX_PAYLOAD = 1024 * 1024;
+/** 消息时间戳容差 (5 分钟) — 超出视为重放攻击 */
+const TIMESTAMP_TOLERANCE_MS = 5 * 60 * 1000;
+/** Nonce 去重缓存最大条目数 */
+const NONCE_CACHE_MAX = 10_000;
 
 /**
  * 与远程 Agent 的连接
@@ -121,11 +131,49 @@ export class AgentTransport extends EventEmitter {
   private connections: Map<string, AgentConnection> = new Map();
   private actualPort: number = 0;
 
+  /** 连接并发锁 — 防止同时对同一 agentId 创建多个连接 */
+  private connectingPromises: Map<string, Promise<AgentConnection>> = new Map();
+
+  /** Nonce 去重缓存 — 防止消息重放攻击 */
+  private seenNonces: Set<string> = new Set();
+  private nonceInsertionOrder: string[] = [];
+
   constructor(
     private identityManager: IdentityManager,
     private permissionManager: PermissionManager,
   ) {
     super();
+  }
+
+  /**
+   * 检查消息是否可能是重放攻击
+   * 1. timestamp 必须在 ±5 分钟窗口内
+   * 2. 消息 ID (nonce) 不能重复
+   */
+  checkReplayProtection(msg: AgentMessage): boolean {
+    const now = Date.now();
+    const diff = Math.abs(now - msg._meta.timestamp);
+    if (diff > TIMESTAMP_TOLERANCE_MS) {
+      return false; // timestamp 超出容差
+    }
+
+    if (msg.id) {
+      if (this.seenNonces.has(msg.id)) {
+        return false; // nonce 重复 — 重放攻击
+      }
+      this.seenNonces.add(msg.id);
+      this.nonceInsertionOrder.push(msg.id);
+
+      // 清理过期 nonce
+      if (this.seenNonces.size > NONCE_CACHE_MAX) {
+        const toRemove = this.nonceInsertionOrder.splice(0, NONCE_CACHE_MAX / 2);
+        for (const n of toRemove) {
+          this.seenNonces.delete(n);
+        }
+      }
+    }
+
+    return true;
   }
 
   get port(): number {
@@ -215,25 +263,51 @@ export class AgentTransport extends EventEmitter {
   }
 
   /**
-   * 主动连接远程 Agent
+   * 规范化 endpoint 地址（处理 IPv6）
+   */
+  private normalizeEndpoint(endpoint: string): string {
+    let normalized = endpoint;
+    if (!endpoint.startsWith('ws://') && !endpoint.startsWith('[')) {
+      const lastColon = endpoint.lastIndexOf(':');
+      const beforePort = endpoint.substring(0, lastColon);
+      if (beforePort.includes(':')) {
+        const port = endpoint.substring(lastColon + 1);
+        normalized = `[${beforePort}]:${port}`;
+      }
+    }
+    return normalized.startsWith('ws://') ? normalized : `ws://${normalized}`;
+  }
+
+  /**
+   * 主动连接远程 Agent（带并发锁，防止重复连接）
    */
   async connect(endpoint: string): Promise<AgentConnection> {
+    // 并发锁：如果正在连接同一 endpoint，复用 promise
+    const existing = this.connectingPromises.get(endpoint);
+    if (existing) return existing;
+
+    const promise = this.doConnect(endpoint).finally(() => {
+      this.connectingPromises.delete(endpoint);
+    });
+    this.connectingPromises.set(endpoint, promise);
+    return promise;
+  }
+
+  /**
+   * 实际执行连接（内部方法）
+   *
+   * 握手流程 (带 challenge-response):
+   *   Client → Server: HandshakeMessage { identity }
+   *   Server → Client: HandshakeChallengeMessage { identity, trustLevel, challenge }
+   *   Client → Server: HandshakeChallengeResponseMessage { challengeResponse }
+   *   Server → Client: HandshakeAckMessage { identity, trustLevel }  (final ack)
+   *
+   * 如果对端是旧版本（不支持 challenge），会回退到直接 HandshakeAck。
+   */
+  private doConnect(endpoint: string): Promise<AgentConnection> {
     return new Promise((resolve, reject) => {
-      // 处理 IPv6 地址：如果 endpoint 包含裸 IPv6（含冒号但无方括号），需要包裹
-      let normalizedEndpoint = endpoint;
-      if (!endpoint.startsWith('ws://') && !endpoint.startsWith('[')) {
-        // 检测是否为 IPv6 地址（包含多个冒号）
-        // IPv6 endpoint 格式如 "fe80::1:7860"，最后一个冒号后是端口
-        const lastColon = endpoint.lastIndexOf(':');
-        const beforePort = endpoint.substring(0, lastColon);
-        if (beforePort.includes(':')) {
-          // 是 IPv6 地址，需要方括号
-          const port = endpoint.substring(lastColon + 1);
-          normalizedEndpoint = `[${beforePort}]:${port}`;
-        }
-      }
-      const url = normalizedEndpoint.startsWith('ws://') ? normalizedEndpoint : `ws://${normalizedEndpoint}`;
-      const ws = new WebSocket(url);
+      const url = this.normalizeEndpoint(endpoint);
+      const ws = new WebSocket(url, { maxPayload: MAX_PAYLOAD });
       const conn = new AgentConnection(ws, 'outbound');
 
       const timeout = setTimeout(() => {
@@ -242,45 +316,50 @@ export class AgentTransport extends EventEmitter {
       }, HANDSHAKE_TIMEOUT);
 
       ws.on('open', () => {
-        // 发送握手
         const handshake: HandshakeMessage = {
           type: 'handshake',
           identity: this.identityManager.identity,
         };
         conn.send(handshake);
 
-        // 等待握手响应
+        // 等待 challenge 或 ack（兼容旧版）
         conn.once('message', (msg: TransportMessage) => {
-          clearTimeout(timeout);
+          if ('type' in msg && msg.type === 'handshake_challenge') {
+            // 新协议：收到 challenge，签名并回复
+            const challenge = msg as HandshakeChallengeMessage;
 
-          if ('type' in msg && msg.type === 'handshake_ack') {
-            const ack = msg as HandshakeAckMessage;
-
-            // 验证协议版本
-            if (ack.identity.protocolVersion !== PROTOCOL_VERSION) {
+            // 先验证 server 端身份
+            if (challenge.identity.protocolVersion !== PROTOCOL_VERSION) {
+              clearTimeout(timeout);
               conn.close();
-              reject(new Error(`Incompatible protocol version: ${ack.identity.protocolVersion} vs ${PROTOCOL_VERSION}`));
+              reject(new Error(`Incompatible protocol version: ${challenge.identity.protocolVersion} vs ${PROTOCOL_VERSION}`));
+              return;
+            }
+            if (!this.identityManager.verifyCertificate(challenge.identity)) {
+              clearTimeout(timeout);
+              conn.close();
+              reject(new Error('Server certificate verification failed'));
               return;
             }
 
-            // 验证归属证书
-            if (!this.identityManager.verifyCertificate(ack.identity)) {
-              conn.close();
-              reject(new Error('Certificate verification failed'));
-              return;
-            }
+            // 签名 challenge
+            const challengeResponse: HandshakeChallengeResponseMessage = {
+              type: 'handshake_challenge_response',
+              challengeResponse: sign(challenge.challenge, this.identityManager.agentPrivateKey),
+            };
+            conn.send(challengeResponse);
 
-            conn.agentId = ack.identity.agentId;
-            conn.identity = ack.identity;
-            conn.trustLevel = ack.trustLevel;
-            conn.cachedPem = this.buildPem(ack.identity.publicKey);
-            conn.startPing();
-
-            this.connections.set(conn.agentId, conn);
-            this.setupConnectionEvents(conn);
-            this.emit('connection', conn);
-            resolve(conn);
+            // 等待最终 ack
+            conn.once('message', (ackMsg: TransportMessage) => {
+              clearTimeout(timeout);
+              this.finalizeOutboundConnection(conn, ackMsg, resolve, reject);
+            });
+          } else if ('type' in msg && msg.type === 'handshake_ack') {
+            // 旧版本 server：直接 ack（无 challenge）
+            clearTimeout(timeout);
+            this.finalizeOutboundConnection(conn, msg, resolve, reject);
           } else {
+            clearTimeout(timeout);
             conn.close();
             reject(new Error('Invalid handshake response'));
           }
@@ -295,7 +374,63 @@ export class AgentTransport extends EventEmitter {
   }
 
   /**
-   * 处理入站连接
+   * 完成出站连接握手（验证 ack 并注册连接）
+   */
+  private finalizeOutboundConnection(
+    conn: AgentConnection,
+    msg: TransportMessage,
+    resolve: (c: AgentConnection) => void,
+    reject: (e: Error) => void,
+  ): void {
+    if (!('type' in msg) || msg.type !== 'handshake_ack') {
+      conn.close();
+      reject(new Error('Invalid handshake ack'));
+      return;
+    }
+
+    const ack = msg as HandshakeAckMessage;
+    if (ack.identity.protocolVersion !== PROTOCOL_VERSION) {
+      conn.close();
+      reject(new Error(`Incompatible protocol version: ${ack.identity.protocolVersion} vs ${PROTOCOL_VERSION}`));
+      return;
+    }
+    if (!this.identityManager.verifyCertificate(ack.identity)) {
+      conn.close();
+      reject(new Error('Certificate verification failed'));
+      return;
+    }
+
+    const pem = this.buildPem(ack.identity.publicKey);
+    if (!pem) {
+      conn.close();
+      reject(new Error('Invalid public key — cannot build PEM'));
+      return;
+    }
+
+    conn.agentId = ack.identity.agentId;
+    conn.identity = ack.identity;
+    conn.trustLevel = ack.trustLevel;
+    conn.cachedPem = pem;
+    conn.startPing();
+
+    // 关闭旧连接（如有）
+    const existingConn = this.connections.get(conn.agentId);
+    if (existingConn) existingConn.close();
+
+    this.connections.set(conn.agentId, conn);
+    this.setupConnectionEvents(conn);
+    this.emit('connection', conn);
+    resolve(conn);
+  }
+
+  /**
+   * 处理入站连接（带 challenge-response）
+   *
+   * 握手流程:
+   *   Client → Server: HandshakeMessage
+   *   Server → Client: HandshakeChallengeMessage (含 32 字节随机 challenge)
+   *   Client → Server: HandshakeChallengeResponseMessage (用私钥签名 challenge)
+   *   Server → Client: HandshakeAckMessage (验证通过后)
    */
   private handleInboundConnection(conn: AgentConnection): void {
     const timeout = setTimeout(() => {
@@ -303,9 +438,8 @@ export class AgentTransport extends EventEmitter {
     }, HANDSHAKE_TIMEOUT);
 
     conn.once('message', (msg: TransportMessage) => {
-      clearTimeout(timeout);
-
       if (!('type' in msg) || msg.type !== 'handshake') {
+        clearTimeout(timeout);
         conn.close();
         return;
       }
@@ -314,55 +448,120 @@ export class AgentTransport extends EventEmitter {
 
       // 验证协议版本
       if (handshake.identity.protocolVersion !== PROTOCOL_VERSION) {
+        clearTimeout(timeout);
         conn.close();
         return;
       }
 
       // 验证归属证书
       if (!this.identityManager.verifyCertificate(handshake.identity)) {
+        clearTimeout(timeout);
         conn.close();
         return;
       }
 
-      // 确定信任等级
-      const trustLevel = this.permissionManager.determineTrustLevel(handshake.identity);
-
-      conn.agentId = handshake.identity.agentId;
-      conn.identity = handshake.identity;
-      conn.trustLevel = trustLevel;
-      conn.cachedPem = this.buildPem(handshake.identity.publicKey);
-      conn.startPing();
-
-      // 发送握手确认
-      const ack: HandshakeAckMessage = {
-        type: 'handshake_ack',
-        identity: this.identityManager.identity,
-        trustLevel,
-      };
-      conn.send(ack);
-
-      // 如果已有同 agentId 的连接，关闭旧的
-      const existing = this.connections.get(conn.agentId);
-      if (existing) {
-        existing.close();
+      // 构建 PEM 并验证公钥可用
+      const pem = this.buildPem(handshake.identity.publicKey);
+      if (!pem) {
+        clearTimeout(timeout);
+        conn.close();
+        return;
       }
 
-      this.connections.set(conn.agentId, conn);
-      this.setupConnectionEvents(conn);
-      this.emit('connection', conn);
+      const trustLevel = this.permissionManager.determineTrustLevel(handshake.identity);
+
+      // 发送 challenge
+      const challenge = crypto.randomBytes(32).toString('base64');
+      const challengeMsg: HandshakeChallengeMessage = {
+        type: 'handshake_challenge',
+        identity: this.identityManager.identity,
+        trustLevel,
+        challenge,
+      };
+      conn.send(challengeMsg);
+
+      // 等待 challenge response
+      conn.once('message', (respMsg: TransportMessage) => {
+        clearTimeout(timeout);
+
+        if (!('type' in respMsg) || respMsg.type !== 'handshake_challenge_response') {
+          conn.close();
+          return;
+        }
+
+        const resp = respMsg as HandshakeChallengeResponseMessage;
+
+        // 验证 challenge 签名：用对方公钥验证
+        if (!verify(challenge, resp.challengeResponse, pem)) {
+          console.warn(`[AgentTransport] Challenge verification failed for ${handshake.identity.agentId.slice(0, 8)}`);
+          conn.close();
+          return;
+        }
+
+        // Challenge 通过，完成连接
+        conn.agentId = handshake.identity.agentId;
+        conn.identity = handshake.identity;
+        conn.trustLevel = trustLevel;
+        conn.cachedPem = pem;
+        conn.startPing();
+
+        // 发送最终 ack
+        const ack: HandshakeAckMessage = {
+          type: 'handshake_ack',
+          identity: this.identityManager.identity,
+          trustLevel,
+        };
+        conn.send(ack);
+
+        // 关闭旧连接
+        const existing = this.connections.get(conn.agentId);
+        if (existing) existing.close();
+
+        this.connections.set(conn.agentId, conn);
+        this.setupConnectionEvents(conn);
+        this.emit('connection', conn);
+      });
     });
   }
 
   /**
-   * 设置连接事件
+   * 设置连接事件（含强制签名验证 + 重放保护）
    */
   private setupConnectionEvents(conn: AgentConnection): void {
     conn.on('message', (msg: TransportMessage) => {
-      // 跳过握手消息（已在连接建立时处理）
-      if ('type' in msg && (msg.type === 'handshake' || msg.type === 'handshake_ack')) return;
+      // 跳过握手消息
+      if ('type' in msg && (
+        msg.type === 'handshake' || msg.type === 'handshake_ack' ||
+        msg.type === 'handshake_challenge' || msg.type === 'handshake_challenge_response'
+      )) return;
 
-      // 转发为 AgentMessage
-      this.emit('message', msg as AgentMessage, conn);
+      const agentMsg = msg as AgentMessage;
+
+      // 强制签名验证 — cachedPem 不可能为 null（握手时已检查）
+      if (!conn.cachedPem) {
+        console.warn(`[AgentTransport] Dropping message from ${conn.agentId.slice(0, 8)}: no cached PEM`);
+        conn.close();
+        return;
+      }
+
+      if (agentMsg._meta?.signature) {
+        if (!verifyMessage(agentMsg, conn.cachedPem)) {
+          console.warn(`[AgentTransport] Invalid signature from ${conn.agentId.slice(0, 8)}, dropping message`);
+          return;
+        }
+      } else {
+        // 无签名的消息一律拒绝
+        console.warn(`[AgentTransport] Unsigned message from ${conn.agentId.slice(0, 8)}, dropping`);
+        return;
+      }
+
+      // 重放保护
+      if (!this.checkReplayProtection(agentMsg)) {
+        console.warn(`[AgentTransport] Replay attack detected from ${conn.agentId.slice(0, 8)}, dropping message`);
+        return;
+      }
+
+      this.emit('message', agentMsg, conn);
     });
 
     conn.on('close', () => {

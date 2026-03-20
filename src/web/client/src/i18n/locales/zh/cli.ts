@@ -21,6 +21,7 @@ const cli = {
   'cli.hiddenLines': '… +{{count}} 行',
   'cli.inputLabel': 'IN',
   'cli.linesCount': '{{count}} 行',
+  'cli.streaming': '正在接收内容...',
   'cli.linesOfOutput': '{{count}} 行输出',
   'cli.noOutput': '（无输出）',
   'cli.outputLabel': 'OUT',

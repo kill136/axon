@@ -3,7 +3,7 @@
  * 包含通用设置、模型选择和系统配置（MCP 和技能&插件已移至自定义页面）
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { PromptSnippetsPanel } from './PromptSnippetsPanel';
 import {
   ApiConfigPanel,
@@ -15,14 +15,35 @@ import {
 import { ModePresetsPanel } from './config/ModePresetsPanel';
 import { useLanguage } from '../i18n';
 import type { Locale } from '../i18n';
+import { useNotificationSound } from '../hooks/useNotificationSound';
+import {
+  getRuntimeBackendLabel,
+  getWebModelOptionsForBackend,
+  normalizeWebRuntimeModelForBackend,
+  type WebRuntimeBackend,
+  type WebRuntimeProvider,
+} from '../../../shared/model-catalog';
+import {
+  resolveBackendDefaultModel,
+  upsertBackendDefaultModel,
+  type DefaultModelMap,
+} from '../../../shared/model-preferences';
 
 interface SettingsPanelProps {
   isOpen: boolean;
   onClose: () => void;
   model: string;
+  availableModels?: string[];
+  runtimeProvider: WebRuntimeProvider;
+  runtimeBackend: WebRuntimeBackend;
   onModelChange: (model: string) => void;
   onSendMessage?: (message: any) => void;
   addMessageHandler?: (handler: (msg: any) => void) => () => void;
+}
+
+interface ModelSettingsConfig {
+  runtimeBackend?: WebRuntimeBackend;
+  defaultModelByBackend?: DefaultModelMap;
 }
 
 type SettingsTab =
@@ -46,23 +67,84 @@ const TAB_KEYS: { id: SettingsTab; i18nKey: string; icon: string }[] = [
   { id: 'permissions', i18nKey: 'settings.tab.permissions', icon: '🔐' },
   { id: 'hooks', i18nKey: 'settings.tab.hooks', icon: '🪝' },
   { id: 'system', i18nKey: 'settings.tab.system', icon: '💾' },
-{ id: 'import-export', i18nKey: 'settings.tab.importExport', icon: '📦' },
+  { id: 'import-export', i18nKey: 'settings.tab.importExport', icon: '📦' },
   { id: 'prompts', i18nKey: 'settings.tab.prompts', icon: '📝' },
   { id: 'about', i18nKey: 'settings.tab.about', icon: 'ℹ️' },
 ];
 
-export function SettingsPanel({
+export function SettingsPanel(props: SettingsPanelProps) {
+  if (!props.isOpen) {
+    return null;
+  }
+
+  return <SettingsPanelContent {...props} />;
+}
+
+function SettingsPanelContent({
   isOpen,
   onClose,
   model,
+  availableModels,
+  runtimeProvider,
+  runtimeBackend,
   onModelChange,
   onSendMessage,
   addMessageHandler,
 }: SettingsPanelProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
   const { locale, setLocale, t } = useLanguage();
+  const { play, isEnabled, setEnabled, getVolume, setVolume } = useNotificationSound();
+  const [soundEnabled, setSoundEnabled] = useState(isEnabled());
+  const [soundVolume, setSoundVolume] = useState(getVolume());
+  const modelOptions = getWebModelOptionsForBackend(runtimeBackend, model, model, availableModels);
+  const selectedModel = normalizeWebRuntimeModelForBackend(runtimeBackend, model, model, availableModels);
+  const [modelConfig, setModelConfig] = useState<ModelSettingsConfig>({
+    runtimeBackend,
+    defaultModelByBackend: {},
+  });
+  const [managedBackend, setManagedBackend] = useState<WebRuntimeBackend>(runtimeBackend);
+  const [modelConfigLoading, setModelConfigLoading] = useState(false);
+  const [modelConfigSaving, setModelConfigSaving] = useState(false);
+  const [modelConfigError, setModelConfigError] = useState<string | null>(null);
+  const [modelConfigSuccess, setModelConfigSuccess] = useState<string | null>(null);
+  const managedDefaultModel = resolveBackendDefaultModel(
+    managedBackend,
+    modelConfig.defaultModelByBackend,
+    managedBackend === runtimeBackend ? model : undefined,
+  );
+  const managedModelOptions = getWebModelOptionsForBackend(managedBackend, managedDefaultModel, managedDefaultModel);
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    setManagedBackend(runtimeBackend);
+    setModelConfigLoading(true);
+    setModelConfigError(null);
+
+    fetch('/api/config/api')
+      .then(res => res.ok ? res.json() : Promise.reject(new Error('Failed to load model settings')))
+      .then(data => {
+        if (cancelled || !data.success) return;
+        setModelConfig({
+          runtimeBackend: data.data.runtimeBackend || runtimeBackend,
+          defaultModelByBackend: data.data.defaultModelByBackend || {},
+        });
+      })
+      .catch(err => {
+        if (!cancelled) {
+          setModelConfigError(err instanceof Error ? err.message : String(err));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setModelConfigLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, runtimeBackend]);
 
   const handleOverlayClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) {
@@ -73,6 +155,46 @@ export function SettingsPanel({
   const handleLanguageChange = (lang: string) => {
     setLocale(lang as Locale);
     onSendMessage?.({ type: 'set_language', payload: { language: lang } });
+  };
+
+  const handleManagedBackendChange = (backend: WebRuntimeBackend) => {
+    setManagedBackend(backend);
+    setModelConfigError(null);
+    setModelConfigSuccess(null);
+  };
+
+  const handleManagedDefaultModelChange = (nextModel: string) => {
+    setModelConfig(prev => ({
+      ...prev,
+      defaultModelByBackend: upsertBackendDefaultModel(prev.defaultModelByBackend, managedBackend, nextModel),
+    }));
+    setModelConfigError(null);
+    setModelConfigSuccess(null);
+  };
+
+  const handleSaveManagedDefaultModel = async () => {
+    setModelConfigSaving(true);
+    setModelConfigError(null);
+    setModelConfigSuccess(null);
+    try {
+      const response = await fetch('/api/config/api', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          defaultModelByBackend: modelConfig.defaultModelByBackend || {},
+        }),
+      });
+      const data = await response.json();
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to save model preferences');
+      }
+      setModelConfigSuccess(t('settings.model.saveSuccess', { backend: getRuntimeBackendLabel(managedBackend) }));
+      setTimeout(() => setModelConfigSuccess(null), 2500);
+    } catch (error) {
+      setModelConfigError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setModelConfigSaving(false);
+    }
   };
 
   const renderTabContent = () => {
@@ -109,6 +231,41 @@ export function SettingsPanel({
                 <option value="false">{t('settings.general.disabled')}</option>
               </select>
             </div>
+            <div className="setting-item">
+              <label>{t('settings.general.notificationSound')}</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <select
+                  className="setting-select"
+                  value={soundEnabled ? 'true' : 'false'}
+                  onChange={(e) => {
+                    const enabled = e.target.value === 'true';
+                    setSoundEnabled(enabled);
+                    setEnabled(enabled);
+                    if (enabled) play('info');
+                  }}
+                  style={{ flex: '0 0 auto', width: 'auto' }}
+                >
+                  <option value="true">{t('settings.general.enabled')}</option>
+                  <option value="false">{t('settings.general.disabled')}</option>
+                </select>
+                {soundEnabled && (
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={Math.round(soundVolume * 100)}
+                    onChange={(e) => {
+                      const vol = parseInt(e.target.value) / 100;
+                      setSoundVolume(vol);
+                      setVolume(vol);
+                    }}
+                    onMouseUp={() => play('info')}
+                    style={{ flex: 1, maxWidth: '120px', cursor: 'pointer' }}
+                    title={`${Math.round(soundVolume * 100)}%`}
+                  />
+                )}
+              </div>
+            </div>
             <div className="setting-item" style={{ marginTop: '24px', borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
               <label>{t('setupWizard.rerun')}</label>
               <button
@@ -133,30 +290,93 @@ export function SettingsPanel({
               {t('settings.model.description')}
             </p>
             <div className="setting-item">
-              <label>{t('settings.model.defaultModel')}</label>
+              <label>{t('settings.model.currentRuntime')}</label>
+              <input
+                className="setting-select"
+                value={getRuntimeBackendLabel(runtimeBackend)}
+                disabled
+              />
+            </div>
+            <div className="setting-item">
+              <label>{t('settings.model.currentSessionModel')}</label>
               <select
                 className="setting-select"
-                value={model}
+                value={selectedModel}
                 onChange={(e) => onModelChange(e.target.value)}
               >
-                <option value="opus">{t('settings.model.opus.name')}</option>
-                <option value="sonnet">{t('settings.model.sonnet.name')}</option>
-                <option value="haiku">{t('settings.model.haiku.name')}</option>
+                {modelOptions.map(option => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
               </select>
             </div>
+            <div className="setting-item" style={{ marginTop: '24px', borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
+              <label>{t('settings.model.defaultBackend')}</label>
+              <select
+                className="setting-select"
+                value={managedBackend}
+                onChange={(e) => handleManagedBackendChange(e.target.value as WebRuntimeBackend)}
+              >
+                {(['claude-subscription', 'claude-compatible-api', 'codex-subscription', 'openai-compatible-api'] as WebRuntimeBackend[]).map(backend => (
+                  <option key={backend} value={backend}>{getRuntimeBackendLabel(backend)}</option>
+                ))}
+              </select>
+            </div>
+            <div className="setting-item">
+              <label>{t('settings.model.defaultModelForBackend', { backend: getRuntimeBackendLabel(managedBackend) })}</label>
+              <select
+                className="setting-select"
+                value={managedDefaultModel}
+                onChange={(e) => handleManagedDefaultModelChange(e.target.value)}
+                disabled={modelConfigLoading}
+              >
+                {managedModelOptions.map(option => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </div>
+            <p className="settings-description" style={{ marginTop: '8px' }}>
+              {t('settings.model.defaultModelHint', { backend: getRuntimeBackendLabel(managedBackend) })}
+            </p>
+            {modelConfigError && (
+              <div className="mcp-form-error" style={{ marginTop: '12px' }}>{modelConfigError}</div>
+            )}
+            {modelConfigSuccess && (
+              <div className="mcp-form-success" style={{ marginTop: '12px' }}>{modelConfigSuccess}</div>
+            )}
+            <div className="setting-item" style={{ marginTop: '12px' }}>
+              <button
+                className="setting-select"
+                style={{ cursor: modelConfigSaving ? 'default' : 'pointer', textAlign: 'center', background: 'var(--bg-tertiary)' }}
+                onClick={handleSaveManagedDefaultModel}
+                disabled={modelConfigSaving || modelConfigLoading}
+              >
+                {modelConfigSaving ? t('settings.model.saving') : t('settings.model.saveDefaults')}
+              </button>
+            </div>
             <div className="model-info">
-              <div className="model-card">
-                <h4>{t('settings.model.opus.title')}</h4>
-                <p>{t('settings.model.opus.desc')}</p>
-              </div>
-              <div className="model-card">
-                <h4>{t('settings.model.sonnet.title')}</h4>
-                <p>{t('settings.model.sonnet.desc')}</p>
-              </div>
-              <div className="model-card">
-                <h4>{t('settings.model.haiku.title')}</h4>
-                <p>{t('settings.model.haiku.desc')}</p>
-              </div>
+              {runtimeProvider === 'anthropic' ? (
+                <>
+                  <div className="model-card">
+                    <h4>{t('settings.model.opus.title')}</h4>
+                    <p>{t('settings.model.opus.desc')}</p>
+                  </div>
+                  <div className="model-card">
+                    <h4>{t('settings.model.sonnet.title')}</h4>
+                    <p>{t('settings.model.sonnet.desc')}</p>
+                  </div>
+                  <div className="model-card">
+                    <h4>{t('settings.model.haiku.title')}</h4>
+                    <p>{t('settings.model.haiku.desc')}</p>
+                  </div>
+                </>
+              ) : (
+                modelOptions.map(option => (
+                  <div key={option.value} className="model-card">
+                    <h4>{option.label}</h4>
+                    <p>{option.description || option.value}</p>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         );

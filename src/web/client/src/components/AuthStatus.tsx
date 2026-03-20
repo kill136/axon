@@ -9,11 +9,15 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useLanguage } from '../i18n';
 import './AuthStatus.css';
+import { type WebRuntimeBackend } from '../../../shared/model-catalog';
+import { summarizeAuthStatus } from '../../../shared/auth-summary';
 
 interface AuthInfo {
   authenticated: boolean;
   type?: string;       // 'oauth' | 'api_key' | 'builtin'
   accountType?: string; // 'claude.ai' | 'subscription' | 'api' | 'axon-cloud'
+  provider?: string;
+  runtimeBackend?: WebRuntimeBackend;
   email?: string;
   displayName?: string;
   expiresAt?: number;
@@ -137,29 +141,15 @@ export function AuthStatus({ onLoginClick, refreshKey }: AuthStatusProps) {
 
   // 内置 API 配置不显示为已登录
   if (authInfo.authenticated && authInfo.type !== 'builtin') {
-    // 根据认证类型选择图标和标签
-    let avatar: string;
-    let label: string;
-    let typeLabel: string;
     const isAxonCloud = authInfo.isAxonCloud || authInfo.accountType === 'axon-cloud';
-
-    if (authInfo.type === 'oauth') {
-      avatar = authInfo.accountType === 'claude.ai' ? '🎨' : '⚡';
-      label = authInfo.displayName || authInfo.email || authInfo.accountType || 'User';
-      typeLabel = authInfo.accountType === 'claude.ai' ? t('auth.claudeAi') : t('auth.console');
-    } else if (isAxonCloud) {
-      avatar = '☁️';
-      label = t('auth.status.axonCloud');
-      typeLabel = 'Axon Cloud';
-    } else if (authInfo.type === 'api_key') {
-      avatar = '🔑';
-      label = t('auth.status.apiKey');
-      typeLabel = authInfo.accountType || 'API';
-    } else {
-      avatar = '☁️';
-      label = authInfo.email || 'User';
-      typeLabel = t('auth.status.axonCloud');
-    }
+    const summary = summarizeAuthStatus(authInfo, {
+      claudeAi: t('auth.claudeAi'),
+      console: t('auth.console'),
+      apiKey: t('auth.status.apiKey'),
+      axonCloud: t('auth.status.axonCloud'),
+      chatgpt: 'ChatGPT / Codex',
+      userFallback: 'User',
+    });
 
     /** 格式化金额 */
     const formatAmount = (n: number) => n.toFixed(2);
@@ -170,18 +160,34 @@ export function AuthStatus({ onLoginClick, refreshKey }: AuthStatusProps) {
           className="auth-user-trigger"
           onClick={() => setDropdownOpen(!dropdownOpen)}
         >
-          <div className="user-avatar">{avatar}</div>
-          <span className="user-name">{label}</span>
+          <div className="user-avatar">{summary.avatar}</div>
+          <span className="user-name">{summary.triggerLabel}</span>
           <span className={`auth-arrow ${dropdownOpen ? 'open' : ''}`}>▼</span>
         </button>
 
         {dropdownOpen && (
           <div className="auth-dropdown">
             <div className="auth-dropdown-info">
-              <div className="auth-dropdown-avatar">{avatar}</div>
+              <div className="auth-dropdown-avatar">{summary.avatar}</div>
               <div className="auth-dropdown-details">
-                <div className="auth-dropdown-name">{label}</div>
-                <div className="auth-dropdown-type">{typeLabel}</div>
+                <div className="auth-dropdown-name">{summary.triggerLabel}</div>
+                <div className="auth-dropdown-type">{summary.runtimeLabel}</div>
+              </div>
+            </div>
+
+            <div className="auth-dropdown-divider" />
+            <div className="auth-dropdown-meta">
+              <div className="auth-dropdown-meta-row">
+                <span className="auth-dropdown-meta-label">{t('auth.status.account')}</span>
+                <span className="auth-dropdown-meta-value">{summary.accountLabel}</span>
+              </div>
+              <div className="auth-dropdown-meta-row">
+                <span className="auth-dropdown-meta-label">{t('auth.status.identity')}</span>
+                <span className="auth-dropdown-meta-value">{summary.accountDetail}</span>
+              </div>
+              <div className="auth-dropdown-meta-row">
+                <span className="auth-dropdown-meta-label">{t('auth.status.runtime')}</span>
+                <span className="auth-dropdown-meta-value">{summary.runtimeLabel}</span>
               </div>
             </div>
 

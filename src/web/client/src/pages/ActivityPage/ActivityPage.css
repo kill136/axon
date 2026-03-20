@@ -1,0 +1,48 @@
+/* ActivityPage -- standalone activity log page */
+
+.activity-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg-primary, #0d1117);
+  color: var(--text-primary, #e6edf3);
+}
+
+.activity-page-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 24px 0;
+  flex-shrink: 0;
+}
+
+.activity-page-header h2 {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.activity-page-stats {
+  font-size: 12px;
+  color: var(--text-secondary, #8b949e);
+}
+
+/* Reuse ag-* classes from AppsPage.css (shared via global CSS) */
+
+/* Override: make the body fill available space */
+.activity-page .ag-body {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.activity-page .ag-header {
+  border-top: 1px solid var(--border-color, #30363d);
+}
+
+/* ============ Responsive ============ */
+
+@media (max-width: 768px) {
+  .activity-page-header { padding: 16px 16px 0; }
+}

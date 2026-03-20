@@ -66,7 +66,7 @@ export class GoalStore {
     return [...this.data.goals];
   }
 
-  updateGoal(id: string, updates: Partial<Pick<Goal, 'status' | 'metrics' | 'checkIntervalMs' | 'lastCheckAt' | 'nextCheckAt' | 'model' | 'notify'>>): Goal | undefined {
+  updateGoal(id: string, updates: Partial<Pick<Goal, 'status' | 'metrics' | 'checkIntervalMs' | 'lastCheckAt' | 'nextCheckAt' | 'model' | 'notify' | 'authSnapshot'>>): Goal | undefined {
     const goal = this.data.goals.find(g => g.id === id);
     if (!goal) return undefined;
     Object.assign(goal, updates, { updatedAt: Date.now() });

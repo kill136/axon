@@ -38,8 +38,20 @@ interface UseSessionManagerParams {
   setMessages: React.Dispatch<React.SetStateAction<any[]>>;
 }
 
+/**
+ * 会话实时状态（用于侧边栏状态指示器，借鉴 cmux 通知环设计）
+ */
+export type SessionActivityStatus =
+  | 'idle'              // 空闲
+  | 'thinking'          // AI 正在思考
+  | 'streaming'         // AI 正在输出
+  | 'tool_executing'    // 正在执行工具
+  | 'waiting_input'     // 等待用户输入（user_question）
+  | 'waiting_permission'; // 等待权限确认（permission_request）
+
 interface UseSessionManagerReturn {
   sessions: Session[];
+  sessionStatusMap: Map<string, SessionActivityStatus>;
   refreshSessions: () => void;
   handleSessionSelect: (id: string) => void;
   handleSessionDelete: (id: string) => void;
@@ -60,6 +72,7 @@ export function useSessionManager({
   setMessages,
 }: UseSessionManagerParams): UseSessionManagerReturn {
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [sessionStatusMap, setSessionStatusMap] = useState<Map<string, SessionActivityStatus>>(new Map());
 
   // 防抖的会话列表刷新函数
   const refreshSessionsRef = useRef<ReturnType<typeof debounce> | null>(null);
@@ -125,10 +138,31 @@ export function useSessionManager({
               name: (payload.name as string) || '新会话',
               updatedAt: (payload.createdAt as number) || Date.now(),
               messageCount: 0,
+              runtimeBackend: payload.runtimeBackend as string | undefined,
             };
             setSessions(prev => {
               if (prev.some(s => s.id === newSession.id)) return prev;
               return [newSession, ...prev];
+            });
+          }
+          break;
+
+        case 'session_switched':
+          // 切换会话后，如果目标会话不在 sessions 列表中（跨项目/被过滤），
+          // 乐观插入到列表头部，确保 TopNavBar 会话选择器能显示正确的会话名
+          if (payload.sessionId) {
+            const switchedId = payload.sessionId as string;
+            const switchedName = payload.sessionName as string | undefined;
+            setSessions(prev => {
+              if (prev.some(s => s.id === switchedId)) return prev;
+              // 会话不在列表中，插入一个临时项
+              return [{
+                id: switchedId,
+                name: switchedName || switchedId,
+                updatedAt: Date.now(),
+                messageCount: 0,
+                runtimeBackend: payload.runtimeBackend as string | undefined,
+              }, ...prev];
             });
           }
           break;
@@ -159,6 +193,47 @@ export function useSessionManager({
           // 对话完成后刷新列表，更新 messageCount 和 updatedAt
           refreshSessions();
           break;
+
+        // === 会话状态追踪（用于侧边栏状态指示器） ===
+        case 'status': {
+          const sid = payload.sessionId as string | undefined;
+          if (sid) {
+            const s = payload.status as string;
+            let activity: SessionActivityStatus = 'idle';
+            if (s === 'thinking') activity = 'thinking';
+            else if (s === 'streaming') activity = 'streaming';
+            else if (s === 'tool_executing') activity = 'tool_executing';
+            setSessionStatusMap(prev => {
+              const next = new Map(prev);
+              if (activity === 'idle') next.delete(sid);
+              else next.set(sid, activity);
+              return next;
+            });
+          }
+          break;
+        }
+        case 'user_question': {
+          const sid = payload.sessionId as string | undefined;
+          if (sid) {
+            setSessionStatusMap(prev => {
+              const next = new Map(prev);
+              next.set(sid, 'waiting_input');
+              return next;
+            });
+          }
+          break;
+        }
+        case 'permission_request': {
+          const sid = payload.sessionId as string | undefined;
+          if (sid) {
+            setSessionStatusMap(prev => {
+              const next = new Map(prev);
+              next.set(sid, 'waiting_permission');
+              return next;
+            });
+          }
+          break;
+        }
       }
     });
 
@@ -259,6 +334,7 @@ export function useSessionManager({
 
   return {
     sessions,
+    sessionStatusMap,
     refreshSessions,
     handleSessionSelect,
     handleSessionDelete,

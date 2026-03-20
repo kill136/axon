@@ -19,9 +19,13 @@ export const CORE_IDENTITY_VARIANTS = {
  * 核心身份描述（主会话模式）
  * 仅当使用 Claude Code 官方订阅时才加 "Anthropic's official CLI" 身份声明
  */
-export function getCoreIdentity(isOfficialAuth?: boolean): string {
-  const identity = isOfficialAuth
-    ? "You are Claude Code, Anthropic's official CLI for Claude."
+export function getCoreIdentity(
+  isOfficialAuth?: boolean,
+  identityVariant?: keyof typeof CORE_IDENTITY_VARIANTS,
+): string {
+  const resolvedVariant = identityVariant || (isOfficialAuth ? 'main' : undefined);
+  const identity = resolvedVariant
+    ? `${CORE_IDENTITY_VARIANTS[resolvedVariant]}`
     : '';
   return `${identity}You are an interactive CLI tool that helps users according to your "Output Style" below, which describes how you should respond to user queries. Use the instructions below and the tools available to you to assist the user.`;
 }

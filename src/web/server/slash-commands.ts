@@ -8,6 +8,14 @@ import type { WebSocket } from 'ws';
 import { createRequire } from 'module';
 import fs from 'fs';
 import path from 'path';
+import {
+  getProviderForRuntimeBackend,
+  getRuntimeBackendLabel,
+  getWebModelLabel,
+  getWebModelOptionsForBackend,
+  isCodexCompatibleModel,
+  normalizeWebRuntimeModelForBackend,
+} from '../shared/model-catalog.js';
 
 const require = createRequire(import.meta.url);
 
@@ -216,34 +224,63 @@ const modelCommand: SlashCommand = {
   name: 'model',
   aliases: ['m'],
   description: 'View or switch current model',
-  usage: '/model [opus|sonnet|haiku]',
+  usage: '/model [name]',
   category: 'config',
-  execute: (ctx: ExtendedCommandContext): CommandResult => {
+  execute: async (ctx: ExtendedCommandContext): Promise<CommandResult> => {
     const { args } = ctx;
+    const { webAuth } = await import('./web-auth.js');
+    const runtimeBackend = ctx.conversationManager.getSessionRuntimeBackend(ctx.sessionId) || webAuth.getRuntimeBackend();
+    const provider = getProviderForRuntimeBackend(runtimeBackend);
+    const customModelName = webAuth.getDefaultModelByBackend()[runtimeBackend]
+      || (provider === 'codex' ? webAuth.getCodexModelName() : webAuth.getCustomModelName());
+    const currentModel = normalizeWebRuntimeModelForBackend(runtimeBackend, ctx.model, customModelName);
+    const options = getWebModelOptionsForBackend(runtimeBackend, currentModel, customModelName);
 
     if (!args || args.length === 0) {
-      const modelMap: Record<string, string> = {
-        opus: 'Claude Opus 4.6 (Most powerful)',
-        sonnet: 'Claude Sonnet 4.5 (Balanced)',
-        haiku: 'Claude Haiku 4.5 (Fast)',
-      };
-      let message = `Current model: ${modelMap[ctx.model] || ctx.model}\n\n`;
+      let message = `Current runtime backend: ${getRuntimeBackendLabel(runtimeBackend)}\n`;
+      message += `Current model: ${getWebModelLabel(currentModel, provider)} (${currentModel})\n\n`;
       message += 'Available models:\n';
-      message += '  opus   - Claude Opus 4.6 (Most powerful, for complex tasks)\n';
-      message += '  sonnet - Claude Sonnet 4.5 (Balanced, for everyday tasks)\n';
-      message += '  haiku  - Claude Haiku 4.5 (Fast, for simple tasks)\n\n';
+      for (const option of options) {
+        message += `  ${option.value} - ${option.label}`;
+        if (option.description) {
+          message += ` (${option.description})`;
+        }
+        message += '\n';
+      }
+      if (provider === 'codex') {
+        message += runtimeBackend === 'openai-compatible-api'
+          ? '\nOpenAI-compatible mode also accepts arbitrary responses-compatible model ids, such as gpt-5.4 or gpt-5.1.\n'
+          : '\nCodex mode also accepts any Codex-compatible model id, such as gpt-5.4 or gpt-5.1-codex.\n';
+      }
+      message += '\n';
       message += 'Use /model <name> to switch models';
       return { success: true, message, dialogType: 'text' };
     }
 
-    const newModel = args[0].toLowerCase();
-    const validModels = ['opus', 'sonnet', 'haiku'];
-    if (!validModels.includes(newModel)) {
-      return { success: false, message: `Invalid model: ${newModel}\n\nAvailable models: opus, sonnet, haiku`, dialogType: 'text' };
+    const requestedModel = args[0].trim();
+    if (provider === 'codex' && !isCodexCompatibleModel(requestedModel)) {
+      return {
+        success: false,
+        message: `Invalid Codex model: ${requestedModel}\n\nUse a Codex-compatible model id such as gpt-5-codex, gpt-5.4, or gpt-5.1-codex.`,
+        dialogType: 'text',
+      };
+    }
+
+    const newModel = normalizeWebRuntimeModelForBackend(runtimeBackend, requestedModel, customModelName);
+    if (provider === 'anthropic' && !['opus', 'sonnet', 'haiku'].includes(newModel)) {
+      return {
+        success: false,
+        message: `Invalid Claude model: ${requestedModel}\n\nAvailable models: opus, sonnet, haiku`,
+        dialogType: 'text',
+      };
     }
 
     ctx.conversationManager.setModel(ctx.sessionId, newModel);
-    return { success: true, message: `Switched to ${newModel} model`, dialogType: 'text' };
+    return {
+      success: true,
+      message: `Switched to ${getRuntimeBackendLabel(runtimeBackend)} ${getWebModelLabel(newModel, provider)} (${newModel})`,
+      dialogType: 'text',
+    };
   },
 };
 
@@ -252,8 +289,11 @@ const costCommand: SlashCommand = {
   name: 'cost',
   description: 'Show current session cost',
   category: 'session',
-  execute: (ctx: ExtendedCommandContext): CommandResult => {
+  execute: async (ctx: ExtendedCommandContext): Promise<CommandResult> => {
+    const { webAuth } = await import('./web-auth.js');
     const history = ctx.conversationManager.getHistory(ctx.sessionId);
+    const runtimeBackend = ctx.conversationManager.getSessionRuntimeBackend(ctx.sessionId) || webAuth.getRuntimeBackend();
+    const provider = getProviderForRuntimeBackend(runtimeBackend);
 
     let totalInput = 0;
     let totalOutput = 0;
@@ -262,6 +302,17 @@ const costCommand: SlashCommand = {
         totalInput += msg.usage.inputTokens || 0;
         totalOutput += msg.usage.outputTokens || 0;
       }
+    }
+
+    if (provider === 'codex') {
+      let message = 'Session Cost Summary\n\n';
+      message += 'Current Session:\n';
+      message += `  Messages: ${history.length}\n`;
+      message += `  Input tokens: ${totalInput.toLocaleString()}\n`;
+      message += `  Output tokens: ${totalOutput.toLocaleString()}\n\n`;
+      message += 'Codex subscription mode does not expose a stable public per-token price table here.\n';
+      message += 'Use OpenAI billing or product quota views for authoritative usage accounting.';
+      return { success: true, message, dialogType: 'text' };
     }
 
     const modelPricing: Record<string, { input: number; output: number; name: string }> = {

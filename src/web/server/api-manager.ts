@@ -5,17 +5,38 @@
  * 认证唯一来源：WebAuthProvider（web-auth.ts）
  */
 
-import { ClaudeClient } from '../../core/client.js';
 import { configManager } from '../../config/index.js';
 import { webAuth } from './web-auth.js';
 import { modelConfig } from '../../models/index.js';
 import type { ApiStatusPayload, ApiTestResult, ProviderInfo } from '../shared/types.js';
+import { createConversationClient } from './runtime/factory.js';
+import type { ConversationClient } from './runtime/types.js';
+import {
+  getProviderForRuntimeBackend,
+  normalizeWebRuntimeModelForBackend,
+  type WebRuntimeBackend,
+} from '../shared/model-catalog.js';
 
 export class ApiManager {
-  private client: ClaudeClient | null = null;
+  private client: ConversationClient | null = null;
 
   constructor() {
     this.initializeClient();
+  }
+
+  private resolveRuntimeModel(runtimeBackend: WebRuntimeBackend): string {
+    const configuredModel = webAuth.getCustomModelName() || webAuth.getCodexModelName();
+    const preferredModel =
+      configuredModel
+      || (runtimeBackend === 'claude-subscription' || runtimeBackend === 'claude-compatible-api'
+        ? 'haiku'
+        : 'gpt-5.4');
+
+    return normalizeWebRuntimeModelForBackend(
+      runtimeBackend,
+      preferredModel,
+      configuredModel,
+    );
   }
 
   /**
@@ -24,19 +45,116 @@ export class ApiManager {
   private initializeClient(): void {
     try {
       const creds = webAuth.getCredentials();
+      const runtimeBackend = webAuth.getRuntimeBackend();
+      const model = this.resolveRuntimeModel(runtimeBackend);
+      const provider = getProviderForRuntimeBackend(runtimeBackend, model);
+      const configuredModel = webAuth.getCustomModelName() || webAuth.getCodexModelName();
 
       if (!creds.apiKey && !creds.authToken) {
         console.warn('[ApiManager] No authentication configured, please configure API Key or login with OAuth in settings');
         return;
       }
 
-      this.client = new ClaudeClient({
+      this.client = createConversationClient({
+        provider,
+        model,
         apiKey: creds.apiKey,
         authToken: creds.authToken,
         baseUrl: creds.baseUrl,
+        accountId: creds.accountId,
+        customModelName: configuredModel,
       });
     } catch (error) {
       console.error('[ApiManager] Failed to initialize client:', error);
+    }
+  }
+
+  private extractModelIds(payload: unknown): string[] {
+    const values = new Set<string>();
+    const models: string[] = [];
+
+    const append = (value: unknown) => {
+      const normalized = typeof value === 'string' ? value.trim() : '';
+      if (!normalized || values.has(normalized)) {
+        return;
+      }
+      values.add(normalized);
+      models.push(normalized);
+    };
+
+    const visit = (value: unknown) => {
+      if (typeof value === 'string') {
+        append(value);
+        return;
+      }
+      if (!value || typeof value !== 'object') {
+        return;
+      }
+
+      const record = value as Record<string, unknown>;
+      if (typeof record.id === 'string') {
+        append(record.id);
+        return;
+      }
+      if (typeof record.name === 'string') {
+        append(record.name);
+        return;
+      }
+      if (typeof record.model === 'string') {
+        append(record.model);
+      }
+    };
+
+    if (Array.isArray(payload)) {
+      payload.forEach(visit);
+      return models;
+    }
+
+    if (payload && typeof payload === 'object') {
+      const record = payload as Record<string, unknown>;
+      if (Array.isArray(record.data)) {
+        record.data.forEach(visit);
+      }
+      if (Array.isArray(record.models)) {
+        record.models.forEach(visit);
+      }
+    }
+
+    return models;
+  }
+
+  private async fetchCompatibleModels(runtimeBackend: WebRuntimeBackend): Promise<string[] | null> {
+    if (runtimeBackend !== 'axon-cloud') {
+      return null;
+    }
+
+    const creds = webAuth.getCredentials(runtimeBackend);
+    const apiKey = creds.apiKey?.trim();
+    const rawBaseUrl = creds.baseUrl?.trim();
+    const baseUrl = rawBaseUrl ? rawBaseUrl.replace(/\/+$/, '') : undefined;
+
+    if (!apiKey || !baseUrl) {
+      return null;
+    }
+
+    try {
+      const response = await fetch(`${baseUrl}/v1/models`, {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          Accept: 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Model catalog endpoint returned ${response.status}`);
+      }
+
+      const payload = await response.json();
+      const models = this.extractModelIds(payload);
+      return models.length > 0 ? models : null;
+    } catch (error) {
+      console.warn('[ApiManager] Failed to fetch compatible model catalog:', error);
+      return null;
     }
   }
 
@@ -103,6 +221,17 @@ export class ApiManager {
    */
   async getAvailableModels(): Promise<string[]> {
     try {
+      const runtimeBackend = webAuth.getRuntimeBackend();
+
+      if (webAuth.getRuntimeProvider() === 'codex') {
+        return [webAuth.getCodexModelName() || 'gpt-5-codex'];
+      }
+
+      const compatibleModels = await this.fetchCompatibleModels(runtimeBackend);
+      if (compatibleModels && compatibleModels.length > 0) {
+        return compatibleModels;
+      }
+
       const allModels = modelConfig.getAllModels().map(m => m.id);
       const tokenStatus = webAuth.getTokenStatus();
 
@@ -131,18 +260,23 @@ export class ApiManager {
 
       const models = await this.getAvailableModels();
       const providerName = webAuth.getProvider();
+      const runtimeBackend = webAuth.getRuntimeBackend();
+      const runtimeModel = this.resolveRuntimeModel(runtimeBackend);
+      const resolvedProvider = getProviderForRuntimeBackend(runtimeBackend, runtimeModel);
 
       // 确定 provider 类型
-      let provider: 'anthropic' | 'bedrock' | 'vertex' = 'anthropic';
+      let provider: 'anthropic' | 'bedrock' | 'vertex' | 'codex' = 'anthropic';
       if (providerName === 'bedrock') {
         provider = 'bedrock';
       } else if (providerName === 'vertex') {
         provider = 'vertex';
+      } else if (providerName === 'codex' || resolvedProvider === 'codex') {
+        provider = 'codex';
       }
 
       // 确定 base URL
       const creds = webAuth.getCredentials();
-      let baseUrl = creds.baseUrl || 'https://api.anthropic.com';
+      let baseUrl = creds.baseUrl || (provider === 'codex' ? webAuth.getCodexBaseUrl() : 'https://api.anthropic.com');
       if (provider === 'bedrock') {
         baseUrl = 'AWS Bedrock';
       } else if (provider === 'vertex') {
@@ -163,8 +297,8 @@ export class ApiManager {
       console.error('[ApiManager] Failed to get API status:', error);
       return {
         connected: false,
-        provider: 'anthropic',
-        baseUrl: 'https://api.anthropic.com',
+        provider: webAuth.getRuntimeProvider() === 'codex' ? 'codex' : 'anthropic',
+        baseUrl: webAuth.getRuntimeProvider() === 'codex' ? webAuth.getCodexBaseUrl() : 'https://api.anthropic.com',
         models: [],
         tokenStatus: {
           type: 'none',
@@ -187,12 +321,15 @@ export class ApiManager {
   getProviderInfo(): ProviderInfo {
     try {
       const config = configManager.getAll();
+      const runtimeBackend = webAuth.getRuntimeBackend();
+      const runtimeModel = this.resolveRuntimeModel(runtimeBackend);
+      const runtimeProvider = getProviderForRuntimeBackend(runtimeBackend, runtimeModel);
 
       // 确定 provider 类型
-      let type: 'anthropic' | 'bedrock' | 'vertex' = 'anthropic';
-      if (config.useBedrock || config.apiProvider === 'bedrock') {
+      let type: 'anthropic' | 'bedrock' | 'vertex' | 'codex' = runtimeProvider === 'codex' ? 'codex' : 'anthropic';
+      if (type !== 'codex' && (config.useBedrock || config.apiProvider === 'bedrock')) {
         type = 'bedrock';
-      } else if (config.useVertex || config.apiProvider === 'vertex') {
+      } else if (type !== 'codex' && (config.useVertex || config.apiProvider === 'vertex')) {
         type = 'vertex';
       }
 
@@ -222,9 +359,9 @@ export class ApiManager {
     } catch (error) {
       console.error('[ApiManager] Failed to get provider info:', error);
       return {
-        type: 'anthropic',
-        name: 'Anthropic',
-        endpoint: 'https://api.anthropic.com',
+        type: webAuth.getRuntimeProvider() === 'codex' ? 'codex' : 'anthropic',
+        name: webAuth.getRuntimeProvider() === 'codex' ? 'OpenAI Codex' : 'Anthropic',
+        endpoint: webAuth.getRuntimeProvider() === 'codex' ? 'https://chatgpt.com/backend-api/codex' : 'https://api.anthropic.com',
         available: false,
       };
     }
@@ -233,8 +370,10 @@ export class ApiManager {
   /**
    * 获取Provider名称
    */
-  private getProviderName(type: 'anthropic' | 'bedrock' | 'vertex'): string {
+  private getProviderName(type: 'anthropic' | 'bedrock' | 'vertex' | 'codex'): string {
     switch (type) {
+      case 'codex':
+        return 'OpenAI Codex';
       case 'anthropic':
         return 'Anthropic';
       case 'bedrock':
@@ -247,7 +386,10 @@ export class ApiManager {
   /**
    * 获取Provider端点
    */
-  private getProviderEndpoint(type: 'anthropic' | 'bedrock' | 'vertex'): string {
+  private getProviderEndpoint(type: 'anthropic' | 'bedrock' | 'vertex' | 'codex'): string {
+    if (type === 'codex') {
+      return webAuth.getCodexBaseUrl();
+    }
     if (type === 'anthropic') {
       return process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com';
     } else if (type === 'bedrock') {
@@ -263,11 +405,11 @@ export class ApiManager {
   /**
    * 检查Provider是否可用
    */
-  private isProviderAvailable(type: 'anthropic' | 'bedrock' | 'vertex'): boolean {
+  private isProviderAvailable(type: 'anthropic' | 'bedrock' | 'vertex' | 'codex'): boolean {
     try {
       const tokenStatus = this.getTokenStatus();
 
-      if (type === 'anthropic') {
+      if (type === 'codex' || type === 'anthropic') {
         return tokenStatus.valid;
       } else if (type === 'bedrock') {
         // 检查AWS凭据

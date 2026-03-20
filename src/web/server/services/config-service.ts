@@ -6,6 +6,10 @@
 import { ConfigManager, UserConfig, ConfigSource, ConfigSourceInfo, ConfigKeySource, EnterprisePolicyConfig, configManager as globalConfigManager } from '../../../config/index.js';
 import type { McpServerConfig } from '../../../types/index.js';
 import { webAuth } from '../web-auth.js';
+import {
+  getProviderForRuntimeBackend,
+  type WebRuntimeBackend,
+} from '../../shared/model-catalog.js';
 
 // ============ 类型定义 ============
 
@@ -14,10 +18,10 @@ import { webAuth } from '../web-auth.js';
  */
 export interface ApiConfig {
   apiKey?: string;
-  model: 'claude-opus-4-6' | 'claude-opus-4-5-20251101' | 'claude-sonnet-4-5-20250929' | 'claude-haiku-4-5-20251001' | 'opus' | 'sonnet' | 'haiku';
+  model: string;
   maxTokens: number;
   temperature: number;
-  apiProvider?: 'anthropic' | 'bedrock' | 'vertex';
+  apiProvider?: 'anthropic' | 'bedrock' | 'vertex' | 'openai-compatible' | 'axon-cloud';
   useBedrock: boolean;
   useVertex: boolean;
   oauthToken?: string;
@@ -27,6 +31,10 @@ export interface ApiConfig {
   apiBaseUrl?: string;
   customModelName?: string;
   authPriority?: 'apiKey' | 'oauth' | 'auto';
+  runtimeProvider?: 'anthropic' | 'codex';
+  runtimeBackend?: WebRuntimeBackend;
+  defaultModelByBackend?: Partial<Record<WebRuntimeBackend, string>>;
+  customModelCatalogByBackend?: Partial<Record<WebRuntimeBackend, string[]>>;
   // Gemini API Key（用于图片生成）
   geminiApiKey?: string;
   // Ollama / 本地模型配置
@@ -300,6 +308,10 @@ export class WebConfigService {
         apiBaseUrl: creds.baseUrl,
         customModelName: webAuth.getCustomModelName(),
         authPriority: (config as any).authPriority || 'auto',
+        runtimeProvider: webAuth.getRuntimeProvider(),
+        runtimeBackend: webAuth.getRuntimeBackend(),
+        defaultModelByBackend: webAuth.getDefaultModelByBackend(),
+        customModelCatalogByBackend: webAuth.getCustomModelCatalogByBackend(),
         geminiApiKey: maskedGeminiKey,
         ollamaUrl: (config as any).ollamaUrl || 'http://localhost:11434',
         ollamaModel: (config as any).ollamaModel || '',
@@ -448,7 +460,24 @@ export class WebConfigService {
    */
   async updateApiConfig(config: Partial<ApiConfig>): Promise<boolean> {
     try {
-      const updates = { ...config };
+      const updates = { ...config } as Record<string, any>;
+      const requestedRuntimeBackend = updates.runtimeBackend as WebRuntimeBackend | undefined;
+      let runtimeBackend = requestedRuntimeBackend || webAuth.getRuntimeBackend();
+
+      if (updates.runtimeProvider === 'codex') {
+        runtimeBackend = 'codex-subscription';
+      } else if (updates.authPriority === 'oauth') {
+        runtimeBackend = runtimeBackend === 'codex-subscription' ? runtimeBackend : 'claude-subscription';
+      } else if (updates.authPriority === 'apiKey') {
+        runtimeBackend = requestedRuntimeBackend === 'axon-cloud'
+          ? 'axon-cloud'
+          : updates.apiProvider === 'openai-compatible'
+            ? 'openai-compatible-api'
+            : 'claude-compatible-api';
+      }
+
+      updates.runtimeBackend = runtimeBackend;
+      updates.runtimeProvider = getProviderForRuntimeBackend(runtimeBackend);
 
       // apiKey 特殊处理：空值或掩码值不覆盖已有 key
       if ('apiKey' in updates) {
@@ -474,6 +503,26 @@ export class WebConfigService {
           // 保留在 updates 中，由 configManager.save 持久化到 settings.json
         }
       }
+
+      const existingModelMap = {
+        ...webAuth.getDefaultModelByBackend(),
+        ...(updates.defaultModelByBackend || {}),
+      } as Partial<Record<WebRuntimeBackend, string>>;
+
+      if ('customModelName' in updates) {
+        const val = updates.customModelName?.trim() || '';
+        if (val) {
+          existingModelMap[runtimeBackend] = val;
+          updates.customModelName = val;
+        } else {
+          delete existingModelMap[runtimeBackend];
+          updates.customModelName = '';
+        }
+      } else if (existingModelMap[runtimeBackend]) {
+        updates.customModelName = existingModelMap[runtimeBackend];
+      }
+
+      updates.defaultModelByBackend = existingModelMap;
 
       // 保存其余配置
       if (Object.keys(updates).length > 0) {

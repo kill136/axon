@@ -14,7 +14,7 @@ import type { UserConfig } from '../../src/config/index.js';
  */
 export function createMinimalConfig(): Partial<UserConfig> {
   return {
-    version: '2.1.4',
+    version: '2.1.18',
     model: 'sonnet',
     maxTokens: 8192,
     temperature: 1,

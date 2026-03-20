@@ -11,6 +11,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
+import { structuredPatch } from 'diff';
 import { BaseTool } from './base.js';
 import type { FileReadInput, FileWriteInput, FileEditInput, FileResult, EditToolResult, ToolDefinition } from '../types/index.js';
 import {
@@ -34,11 +35,14 @@ import {
   editDocument,
   documentToText,
   clearDocumentCache,
+  extractDocumentVisuals,
+  compressExtractedImages,
 } from '../media/index.js';
 // 注意：旧的 blueprintContext 已被移除，新架构使用 SmartPlanner
 // 边界检查由 SmartPlanner 在任务规划阶段处理，工具层不再需要
 import { persistLargeOutputSync } from './output-persistence.js';
 import { runPreToolUseHooks, runPostToolUseHooks } from '../hooks/index.js';
+import { getChangeTracker } from '../hooks/auto-verify.js';
 import { getCurrentCwd } from '../core/cwd-context.js';
 import { t } from '../i18n/index.js';
 import { fromMsysPath } from '../utils/platform.js';
@@ -482,18 +486,21 @@ Usage:
   }
 
   async execute(input: FileReadInput): Promise<FileResult> {
-    const { file_path: inputPath, offset = 0, limit = 2000, pages } = input;
+    const normalizedPages = typeof input.pages === 'string' && input.pages === ''
+      ? undefined
+      : input.pages;
+    const { file_path: inputPath, offset = 0, limit = 2000 } = input;
 
     // 解析文件路径（支持相对路径，基于当前工作目录上下文）
     const file_path = resolveFilePath(inputPath);
 
     // v2.1.30: 验证 pages 参数
-    if (pages !== undefined) {
-      const parsedRange = parsePageRange(pages);
+    if (normalizedPages !== undefined) {
+      const parsedRange = parsePageRange(normalizedPages);
       if (!parsedRange) {
         return {
           success: false,
-          error: t('file.invalidPages', { pages }),
+          error: t('file.invalidPages', { pages: normalizedPages }),
         };
       }
       const pageCount = parsedRange.lastPage === Infinity
@@ -502,7 +509,7 @@ Usage:
       if (pageCount > PDF_MAX_PAGES_PER_REQUEST) {
         return {
           success: false,
-          error: t('file.pageRangeExceeds', { pages, max: PDF_MAX_PAGES_PER_REQUEST }),
+          error: t('file.pageRangeExceeds', { pages: normalizedPages, max: PDF_MAX_PAGES_PER_REQUEST }),
         };
       }
     }
@@ -542,7 +549,7 @@ Usage:
 
       // 处理 PDF
       if (mediaType === 'pdf') {
-        return await this.readPdfEnhanced(file_path, pages);
+        return await this.readPdfEnhanced(file_path, normalizedPages);
       }
 
       // 处理 SVG（可选渲染）
@@ -601,7 +608,9 @@ Usage:
   }
 
   /**
-   * Office 文档读取（docx/xlsx/pptx → HTML）
+   * Office 文档读取（图片优先模式）
+   * 从 ZIP 中提取嵌入图片 + 文本，通过 newMessages 让模型"看到"文档内容
+   * 降级：如果图片提取失败，回退到 HTML 文本模式
    */
   private async readOfficeDocument(filePath: string): Promise<FileResult> {
     try {
@@ -609,12 +618,71 @@ Usage:
       const ext = path.extname(filePath).toLowerCase().slice(1);
       const sizeKB = (stat.size / 1024).toFixed(2);
 
+      // 尝试视觉提取（图片 + 文本）
+      try {
+        const visuals = await extractDocumentVisuals(filePath);
+
+        // 收集所有图片（slide 关联的 + 未关联的）
+        const allImages = [
+          ...visuals.slides.flatMap(s => s.images),
+          ...visuals.unassociatedImages,
+        ];
+
+        if (allImages.length > 0) {
+          // 压缩图片
+          const compressed = await compressExtractedImages(allImages);
+
+          if (compressed.length > 0) {
+            // 构建文本输出
+            let textOutput = `[${ext.toUpperCase()} Document: ${filePath}] (${sizeKB} KB)\n`;
+            textOutput += `Images: ${compressed.length} embedded image(s) extracted\n\n`;
+            textOutput += visuals.fullText;
+
+            // 构建 image blocks（与 PDF readPdfEnhanced 模式一致）
+            const imageBlocks: Array<{
+              type: 'image';
+              source: {
+                type: 'base64';
+                media_type: 'image/jpeg' | 'image/png';
+                data: string;
+              };
+            }> = [];
+
+            for (const img of compressed) {
+              imageBlocks.push({
+                type: 'image' as const,
+                source: {
+                  type: 'base64' as const,
+                  media_type: img.mimeType,
+                  data: img.base64,
+                },
+              });
+            }
+
+            return {
+              success: true,
+              output: textOutput,
+              newMessages: [{
+                role: 'user' as const,
+                content: imageBlocks as any,
+              }],
+            };
+          }
+        }
+
+        // 有文本但没图片：返回纯文本
+        if (visuals.fullText) {
+          const header = `[${ext.toUpperCase()} Document: ${filePath}] (${sizeKB} KB)\n\n`;
+          return { success: true, output: header + visuals.fullText };
+        }
+      } catch {
+        // 视觉提取失败，降级到 HTML 模式
+      }
+
+      // 降级：转 HTML 文本
       const html = await documentToHtml(filePath);
-
       const header = `[${ext.toUpperCase()} Document: ${filePath}] (${sizeKB} KB)\n\n`;
-      const output = header + html;
-
-      return { success: true, output };
+      return { success: true, output: header + html };
     } catch (err) {
       return {
         success: false,
@@ -1215,6 +1283,13 @@ Usage:
         lineCount: lines,
       };
       await runPostToolUseHooks('Write', input, result.output || '');
+
+      // Auto-verify: 追踪代码文件变更
+      try {
+        const sessionId = (globalThis as any).__currentSessionId;
+        if (sessionId) getChangeTracker(sessionId).trackChange(file_path, 'Write');
+      } catch { /* ignore */ }
+
       return result;
     } catch (err) {
       return { success: false, error: t('file.writeError', { error: err }) };
@@ -1224,6 +1299,7 @@ Usage:
 
 /**
  * 生成 Unified Diff 格式的差异预览
+ * 使用 diff 库的 Myers O(ND) 算法（与官方 Claude Code 一致）
  */
 function generateUnifiedDiff(
   filePath: string,
@@ -1231,114 +1307,27 @@ function generateUnifiedDiff(
   newContent: string,
   contextLines: number = 3
 ): DiffPreview {
-  const oldLines = oldContent.split('\n');
-  const newLines = newContent.split('\n');
-
-  // 找到所有不同的行
-  const changes: Array<{ type: 'add' | 'delete' | 'equal'; line: string; oldIndex?: number; newIndex?: number }> = [];
-
-  let i = 0;
-  let j = 0;
-
-  while (i < oldLines.length || j < newLines.length) {
-    if (i >= oldLines.length) {
-      changes.push({ type: 'add', line: newLines[j], newIndex: j });
-      j++;
-    } else if (j >= newLines.length) {
-      changes.push({ type: 'delete', line: oldLines[i], oldIndex: i });
-      i++;
-    } else if (oldLines[i] === newLines[j]) {
-      changes.push({ type: 'equal', line: oldLines[i], oldIndex: i, newIndex: j });
-      i++;
-      j++;
-    } else {
-      // 检测是修改还是插入/删除
-      const isInNew = newLines.slice(j).includes(oldLines[i]);
-      const isInOld = oldLines.slice(i).includes(newLines[j]);
-
-      if (!isInNew) {
-        changes.push({ type: 'delete', line: oldLines[i], oldIndex: i });
-        i++;
-      } else if (!isInOld) {
-        changes.push({ type: 'add', line: newLines[j], newIndex: j });
-        j++;
-      } else {
-        // 都存在，按照距离判断
-        const distNew = newLines.slice(j).indexOf(oldLines[i]);
-        const distOld = oldLines.slice(i).indexOf(newLines[j]);
-
-        if (distNew <= distOld) {
-          changes.push({ type: 'add', line: newLines[j], newIndex: j });
-          j++;
-        } else {
-          changes.push({ type: 'delete', line: oldLines[i], oldIndex: i });
-          i++;
-        }
-      }
-    }
-  }
-
-  // 生成 unified diff 格式
-  let diff = '';
-  diff += `--- a/${path.basename(filePath)}\n`;
-  diff += `+++ b/${path.basename(filePath)}\n`;
-
-  // 查找变化块（hunks）
-  const hunks: Array<{ start: number; end: number }> = [];
-  for (let idx = 0; idx < changes.length; idx++) {
-    if (changes[idx].type !== 'equal') {
-      const start = Math.max(0, idx - contextLines);
-      const end = Math.min(changes.length - 1, idx + contextLines);
-
-      if (hunks.length === 0 || start > hunks[hunks.length - 1].end + 1) {
-        hunks.push({ start, end });
-      } else {
-        hunks[hunks.length - 1].end = end;
-      }
-    }
-  }
+  const baseName = path.basename(filePath);
+  const patch = structuredPatch(
+    `a/${baseName}`,
+    `b/${baseName}`,
+    oldContent,
+    newContent,
+    undefined,
+    undefined,
+    { context: contextLines }
+  );
 
   let additions = 0;
   let deletions = 0;
+  let diff = `--- a/${baseName}\n+++ b/${baseName}\n`;
 
-  // 生成每个 hunk
-  for (const hunk of hunks) {
-    const hunkChanges = changes.slice(hunk.start, hunk.end + 1);
-
-    // 计算 hunk 头部的行号范围
-    let oldStart = 0;
-    let oldCount = 0;
-    let newStart = 0;
-    let newCount = 0;
-
-    for (const change of hunkChanges) {
-      if (change.type === 'delete' || change.type === 'equal') {
-        if (oldCount === 0 && change.oldIndex !== undefined) {
-          oldStart = change.oldIndex + 1;
-        }
-        oldCount++;
-      }
-      if (change.type === 'add' || change.type === 'equal') {
-        if (newCount === 0 && change.newIndex !== undefined) {
-          newStart = change.newIndex + 1;
-        }
-        newCount++;
-      }
-    }
-
-    diff += `@@ -${oldStart},${oldCount} +${newStart},${newCount} @@\n`;
-
-    // 生成 hunk 内容
-    for (const change of hunkChanges) {
-      if (change.type === 'equal') {
-        diff += ` ${change.line}\n`;
-      } else if (change.type === 'delete') {
-        diff += `-${change.line}\n`;
-        deletions++;
-      } else if (change.type === 'add') {
-        diff += `+${change.line}\n`;
-        additions++;
-      }
+  for (const hunk of patch.hunks) {
+    diff += `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@\n`;
+    for (const line of hunk.lines) {
+      diff += line + '\n';
+      if (line.startsWith('+')) additions++;
+      else if (line.startsWith('-')) deletions++;
     }
   }
 
@@ -1571,8 +1560,21 @@ Usage:
         // 这种情况在 Windows 上很常见（linter/prettier 触碰文件），不应该报错
       }
 
-      // 6. 特殊情况：old_string 为空表示写入/覆盖整个文件
-      if (old_string === '') {
+      // 6. 当存在 batch_edits 时，优先按批量编辑处理，避免空顶层字段误触发整文件覆盖
+      const hasBatchEdits = Array.isArray(batch_edits) && batch_edits.length > 0;
+
+      if (hasBatchEdits && (old_string !== undefined || new_string !== undefined)) {
+        const hasMeaningfulTopLevelEdit = (old_string ?? '') !== '' || new_string !== undefined;
+        if (hasMeaningfulTopLevelEdit) {
+          return {
+            success: false,
+            error: 'Cannot combine batch_edits with top-level old_string/new_string edits.',
+          };
+        }
+      }
+
+      // 7. 特殊情况：old_string 为空表示写入/覆盖整个文件（仅单次编辑模式）
+      if (!hasBatchEdits && old_string === '') {
         const result = this.writeEntireFile(file_path, new_string ?? '', originalContent, show_diff);
         if (result.success) {
           await runPostToolUseHooks('Edit', input, result.output || '');
@@ -1580,11 +1582,11 @@ Usage:
         return result;
       }
 
-      // 7. 备份原始内容
+      // 8. 备份原始内容
       this.fileBackup.backup(file_path, originalContent);
 
-      // 8. 确定编辑操作列表，并做 token 标准化预处理（对齐官方 sn7）
-      const rawEdits: BatchEdit[] = batch_edits || [{ old_string: old_string!, new_string: new_string!, replace_all }];
+      // 9. 确定编辑操作列表，并做 token 标准化预处理（对齐官方 sn7）
+      const rawEdits: BatchEdit[] = hasBatchEdits ? batch_edits : [{ old_string: old_string!, new_string: new_string!, replace_all }];
       const edits = rawEdits.map(edit => {
         // 如果 old_string 精确匹配文件内容，无需标准化
         if (originalContent.includes(edit.old_string)) return edit;
@@ -1601,14 +1603,14 @@ Usage:
         return edit;
       });
 
-      // 9. 验证并执行所有编辑操作
+      // 10. 验证并执行所有编辑操作
       let currentContent = originalContent;
       const appliedEdits: string[] = [];
 
       for (let i = 0; i < edits.length; i++) {
         const edit = edits[i];
 
-        // 9.1 智能查找匹配字符串
+        // 10.1 智能查找匹配字符串
         const matchedString = smartFindString(currentContent, edit.old_string);
 
         if (!matchedString) {
@@ -1620,10 +1622,10 @@ Usage:
           };
         }
 
-        // 9.2 计算匹配次数
+        // 10.2 计算匹配次数
         const matchCount = currentContent.split(matchedString).length - 1;
 
-        // 9.3 如果不是 replace_all，检查唯一性
+        // 10.3 如果不是 replace_all，检查唯一性
         if (matchCount > 1 && !edit.replace_all) {
           return {
             success: false,
@@ -1632,12 +1634,12 @@ Usage:
           };
         }
 
-        // 9.4 检查 old_string 和 new_string 是否相同
+        // 10.4 检查 old_string 和 new_string 是否相同
         if (matchedString === edit.new_string) {
           continue; // 跳过无变化的编辑
         }
 
-        // 9.5 检查是否会与之前的 new_string 冲突
+        // 10.5 检查是否会与之前的 new_string 冲突
         for (const prevEdit of appliedEdits) {
           if (matchedString !== '' && prevEdit.includes(matchedString)) {
             return {
@@ -1647,12 +1649,12 @@ Usage:
           }
         }
 
-        // 9.6 应用编辑
+        // 10.6 应用编辑
         currentContent = replaceString(currentContent, matchedString, edit.new_string, edit.replace_all);
         appliedEdits.push(edit.new_string);
       }
 
-      // 10. 检查是否有实际变化
+      // 11. 检查是否有实际变化
       if (currentContent === originalContent) {
         return {
           success: false,
@@ -1662,13 +1664,13 @@ Usage:
 
       const modifiedContent = currentContent;
 
-      // 11. 生成差异预览
+      // 12. 生成差异预览
       let diffPreview: DiffPreview | null = null;
       if (show_diff) {
         diffPreview = generateUnifiedDiff(file_path, originalContent, modifiedContent);
       }
 
-      // 12. 检查是否需要确认
+      // 13. 检查是否需要确认
       if (require_confirmation) {
         return {
           success: false,
@@ -1677,7 +1679,7 @@ Usage:
         };
       }
 
-      // 13. 执行实际的文件写入
+      // 14. 执行实际的文件写入
       try {
         fs.writeFileSync(file_path, modifiedContent, 'utf-8');
 
@@ -1715,6 +1717,13 @@ Usage:
           content: modifiedContent,
         };
         await runPostToolUseHooks('Edit', input, result.output || '');
+
+        // Auto-verify: 追踪代码文件变更
+        try {
+          const sessionId = (globalThis as any).__currentSessionId;
+          if (sessionId) getChangeTracker(sessionId).trackChange(file_path, 'Edit');
+        } catch { /* ignore */ }
+
         return result;
       } catch (writeErr) {
         // 写入失败，尝试回滚

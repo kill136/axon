@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { MarkdownContent } from '../../components/MarkdownContent';
 import { useLanguage } from '../../i18n';
+import { useProject } from '../../contexts/ProjectContext';
 import styles from './DocsPanel.module.css';
 
 interface NotebookInfo {
@@ -41,6 +42,8 @@ interface DocItem {
 
 export default function DocsPanel() {
   const { t } = useLanguage();
+  const { state: projectState } = useProject();
+  const projectPath = projectState.currentProject?.path || '';
   const [items, setItems] = useState<DocItem[]>([]);
   const [selected, setSelected] = useState<DocType | null>(null);
   const [content, setContent] = useState('');
@@ -56,7 +59,8 @@ export default function DocsPanel() {
   // 加载文件列表
   const loadList = useCallback(async () => {
     try {
-      const res = await fetch('/api/notebook/list');
+      const params = projectPath ? `?project=${encodeURIComponent(projectPath)}` : '';
+      const res = await fetch(`/api/notebook/list${params}`);
       const json: NotebookListResponse = await res.json();
       if (!json.success) return;
 
@@ -125,15 +129,25 @@ export default function DocsPanel() {
     } catch (err) {
       console.error('[DocsPanel] Failed to load list:', err);
     }
-  }, []);
+  }, [projectPath]);
 
   useEffect(() => { loadList(); }, [loadList]);
+
+  // 项目切换时重置选中状态并重新加载
+  useEffect(() => {
+    setSelected(null);
+    setContent('');
+    setEditedContent('');
+    setMode('preview');
+    loadList();
+  }, [projectPath]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 加载文件内容
   const loadContent = useCallback(async (type: DocType) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/notebook/read?type=${type}`);
+      const projectParam = projectPath ? `&project=${encodeURIComponent(projectPath)}` : '';
+      const res = await fetch(`/api/notebook/read?type=${type}${projectParam}`);
       const json = await res.json();
       if (json.success) {
         setContent(json.data.content || '');
@@ -144,7 +158,7 @@ export default function DocsPanel() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [projectPath]);
 
   // 选择文件
   const handleSelect = useCallback((type: DocType) => {
@@ -164,7 +178,7 @@ export default function DocsPanel() {
       const res = await fetch('/api/notebook/write', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: selected, content: editedContent }),
+        body: JSON.stringify({ type: selected, content: editedContent, project: projectPath || undefined }),
       });
       const json = await res.json();
       if (json.success) {
@@ -179,7 +193,7 @@ export default function DocsPanel() {
     } finally {
       setSaving(false);
     }
-  }, [selected, editedContent, t, loadList]);
+  }, [selected, editedContent, projectPath, t, loadList]);
 
   // 取消编辑
   const handleCancel = useCallback(() => {
@@ -194,7 +208,7 @@ export default function DocsPanel() {
       const res = await fetch('/api/notebook/write', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'axonmd', content: '# AXON.md\n\n## Instructions\n\nAdd your project-specific AI instructions here.\n' }),
+        body: JSON.stringify({ type: 'axonmd', content: '# AXON.md\n\n## Instructions\n\nAdd your project-specific AI instructions here.\n', project: projectPath || undefined }),
       });
       const json = await res.json();
       if (json.success) {
@@ -208,7 +222,7 @@ export default function DocsPanel() {
     } finally {
       setSaving(false);
     }
-  }, [t, loadList, loadContent]);
+  }, [projectPath, t, loadList, loadContent]);
 
   // Toast 自动消失
   useEffect(() => {

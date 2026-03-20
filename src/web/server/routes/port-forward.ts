@@ -50,8 +50,9 @@ function proxyHandler(req: Request, res: Response) {
   activeProxiedPorts.add(port);
 
   // 构造转发路径：去掉 /proxy/:port 前缀
-  // req.params.path 是命名通配符匹配的路径
-  const targetPath = '/' + (req.params.path || '');
+  // Express 5 中 *path 返回数组，需要 join
+  const rawPath = req.params.path;
+  const targetPath = '/' + (Array.isArray(rawPath) ? rawPath.join('/') : (rawPath || ''));
   const queryString = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
 
   const proxyOptions: http.RequestOptions = {

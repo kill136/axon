@@ -169,12 +169,12 @@ export class LongTermStore {
       this.hasFTS5 = false;
     }
 
-    // 版本迁移
-    const CURRENT_VERSION = '3';
+    // 版本迁移（使用数字比较，避免字符串比较在两位数版本号时失效）
+    const CURRENT_VERSION = 3;
     const versionRow = this.db.prepare('SELECT value FROM meta WHERE key = ?').get('version') as { value: string } | undefined;
-    const existingVersion = versionRow?.value;
+    const existingVersionNum = versionRow ? parseInt(versionRow.value, 10) : 0;
 
-    if (!existingVersion || existingVersion < '2') {
+    if (existingVersionNum < 2) {
       // v1→v2：引入中文字级分词，需要重建 FTS 索引
       this.db.exec('DELETE FROM chunks');
       this.db.exec('DELETE FROM files');
@@ -183,7 +183,7 @@ export class LongTermStore {
       }
     }
 
-    if (!existingVersion || existingVersion < '3') {
+    if (existingVersionNum < 3) {
       // v2→v3：新增 embedding 列（不清空数据，旧 chunk 无 embedding 值为 NULL）
       try {
         this.db.exec('ALTER TABLE chunks ADD COLUMN embedding TEXT');
@@ -208,7 +208,7 @@ export class LongTermStore {
     }
 
     const versionStmt = this.db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)');
-    versionStmt.run('version', CURRENT_VERSION);
+    versionStmt.run('version', String(CURRENT_VERSION));
   }
 
   /**
@@ -393,8 +393,13 @@ export class LongTermStore {
       const escaped = query.replace(/["\-*(){}:^~\[\]\\+.]/g, ' ');
       const ftsQuery = tokenizeChinese(escaped);
 
+      // 空查询（全是特殊字符）→ 跳过 FTS5，降级到 fallback
+      if (!ftsQuery.trim()) {
+        return this.fallbackSearch(query, source, maxResults);
+      }
+
       // 第一轮：原始 query 搜索
-      results = this.fts5Search(ftsQuery, source, maxResults * 2);
+      results = this.fts5Search(ftsQuery, source, maxResults * 2, query);
 
       // 第二轮：关键词扩展搜索（结果不足时补充）
       if (results.length < Math.ceil(maxResults / 2)) {
@@ -407,7 +412,7 @@ export class LongTermStore {
             .join(' OR ');
 
           if (keywordQuery.trim()) {
-            const supplementary = this.fts5Search(keywordQuery, source, maxResults * 2);
+            const supplementary = this.fts5Search(keywordQuery, source, maxResults * 2, query);
 
             // 合并去重（按 id）
             const seenIds = new Set(results.map(r => r.id));
@@ -423,53 +428,7 @@ export class LongTermStore {
         }
       }
     } else {
-      // Fallback: 简单的 LIKE 搜索
-      let sql = `
-        SELECT id, path, source, start_line, end_line, text, created_at
-        FROM chunks
-        WHERE text LIKE ?
-      `;
-
-      const fallbackParams: any[] = [`%${query}%`];
-      if (source) {
-        sql += ` AND source = ?`;
-        fallbackParams.push(source);
-      }
-
-      sql += ` LIMIT ?`;
-      fallbackParams.push(maxResults * 2);
-
-      const stmt = this.db.prepare(sql);
-      const rows = stmt.all(...fallbackParams) as Array<{
-        id: string;
-        path: string;
-        source: string;
-        start_line: number;
-        end_line: number;
-        text: string;
-        created_at: number;
-      }>;
-
-      const now = Date.now();
-
-      for (const row of rows) {
-        const age = now - row.created_at;
-        const decay = 1 / (1 + age / HALF_LIFE);
-        const rawScore = 0.5; // 简单搜索给固定分数
-        const finalScore = rawScore * decay;
-
-        results.push({
-          id: row.id,
-          path: row.path,
-          startLine: row.start_line,
-          endLine: row.end_line,
-          score: finalScore,
-          snippet: this.extractSnippet(row.text, query),
-          source: row.source as MemorySource,
-          timestamp: new Date(row.created_at).toISOString(),
-          age,
-        });
-      }
+      results = this.fallbackSearch(query, source, maxResults);
     }
 
     // 排序并限制结果
@@ -478,9 +437,66 @@ export class LongTermStore {
   }
 
   /**
-   * FTS5 搜索（BM25 评分 + 时间衰减）
+   * Fallback: 简单的 LIKE 搜索（FTS5 不可用或查询为空时使用）
    */
-  private fts5Search(ftsQuery: string, source: MemorySource | undefined, limit: number): MemorySearchResult[] {
+  private fallbackSearch(query: string, source: MemorySource | undefined, maxResults: number): MemorySearchResult[] {
+    let sql = `
+      SELECT id, path, source, start_line, end_line, text, created_at
+      FROM chunks
+      WHERE text LIKE ?
+    `;
+
+    const fallbackParams: any[] = [`%${query}%`];
+    if (source) {
+      sql += ` AND source = ?`;
+      fallbackParams.push(source);
+    }
+
+    sql += ` LIMIT ?`;
+    fallbackParams.push(maxResults * 2);
+
+    const stmt = this.db.prepare(sql);
+    const rows = stmt.all(...fallbackParams) as Array<{
+      id: string;
+      path: string;
+      source: string;
+      start_line: number;
+      end_line: number;
+      text: string;
+      created_at: number;
+    }>;
+
+    const now = Date.now();
+    const results: MemorySearchResult[] = [];
+
+    for (const row of rows) {
+      const age = now - row.created_at;
+      const decay = 1 / (1 + age / HALF_LIFE);
+      const rawScore = 0.5;
+      const finalScore = rawScore * decay;
+
+      results.push({
+        id: row.id,
+        path: row.path,
+        startLine: row.start_line,
+        endLine: row.end_line,
+        score: finalScore,
+        snippet: this.extractSnippet(row.text, query),
+        source: row.source as MemorySource,
+        timestamp: new Date(row.created_at).toISOString(),
+        age,
+      });
+    }
+
+    return results;
+  }
+
+  /**
+   * FTS5 搜索（BM25 评分 + 时间衰减）
+   * @param ftsQuery 经过分词/转义的 FTS5 查询
+   * @param originalQuery 原始用户查询（用于 snippet 定位，未经分词处理）
+   */
+  private fts5Search(ftsQuery: string, source: MemorySource | undefined, limit: number, originalQuery?: string): MemorySearchResult[] {
     let sql = `
       SELECT
         c.id,
@@ -538,7 +554,7 @@ export class LongTermStore {
         startLine: row.start_line,
         endLine: row.end_line,
         score: finalScore,
-        snippet: this.extractSnippet(row.text, ftsQuery),
+        snippet: this.extractSnippet(row.text, originalQuery || ftsQuery),
         source: row.source as MemorySource,
         timestamp: new Date(row.created_at).toISOString(),
         age,
@@ -645,6 +661,7 @@ export class LongTermStore {
 
     if (this.hasVecSearch) {
       // 使用 sqlite-vec 原生向量搜索
+      // sqlite-vec knn 查询需要 k = ? 约束
       let sql = `
         SELECT
           cv.chunk_id,
@@ -658,16 +675,16 @@ export class LongTermStore {
         FROM chunks_vec cv
         JOIN chunks c ON cv.chunk_id = c.id
         WHERE cv.embedding MATCH ?
+          AND k = ?
       `;
-      const params: any[] = [new Float32Array(queryVec)];
+      const params: any[] = [new Float32Array(queryVec), maxResults];
 
       if (source) {
         sql += ` AND c.source = ?`;
         params.push(source);
       }
 
-      sql += ` ORDER BY cv.distance LIMIT ?`;
-      params.push(maxResults);
+      sql += ` ORDER BY cv.distance`;
 
       const rows = this.db.prepare(sql).all(...params) as Array<{
         chunk_id: string;
@@ -697,7 +714,7 @@ export class LongTermStore {
     let sql = `
       SELECT id, path, source, start_line, end_line, text, embedding, created_at
       FROM chunks
-      WHERE embedding IS NOT NULL
+      WHERE embedding IS NOT NULL AND embedding != ''
     `;
     const params: any[] = [];
     if (source) {
@@ -765,6 +782,11 @@ export class LongTermStore {
     // FTS5 BM25 搜索（不带时间衰减，由混合搜索层统一处理）
     const escaped = query.replace(/["\-*(){}:^~\[\]\\+.]/g, ' ');
     const ftsQuery = tokenizeChinese(escaped);
+
+    // 空查询（全是特殊字符）→ 返回空结果，避免 FTS5 语法错误
+    if (!ftsQuery.trim()) {
+      return [];
+    }
 
     let sql = `
       SELECT
@@ -838,7 +860,7 @@ export class LongTermStore {
    */
   hasEmbeddings(): boolean {
     const row = this.db.prepare(
-      'SELECT 1 FROM chunks WHERE embedding IS NOT NULL LIMIT 1'
+      "SELECT 1 FROM chunks WHERE embedding IS NOT NULL AND embedding != '' LIMIT 1"
     ).get();
     return row !== undefined;
   }

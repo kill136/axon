@@ -63,6 +63,7 @@ export function UpdateBanner() {
       gap: '12px',
       fontSize: '13px',
       boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+      WebkitAppRegion: 'no-drag' as any,
     }}>
       <span>
         New version <strong>{updateInfo.latest}</strong> available (current: {updateInfo.current}).

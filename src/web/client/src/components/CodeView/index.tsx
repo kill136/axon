@@ -6,6 +6,7 @@ import { SearchPanel } from './SearchPanel';
 import { useOutlineSymbols } from '../../hooks/useOutlineSymbols';
 import type { ChatMessage } from '../../types';
 import { useLanguage } from '../../i18n';
+import type { WebRuntimeBackend, WebRuntimeProvider } from '../../../../shared/model-catalog';
 import styles from './CodeView.module.css';
 
 /**
@@ -15,6 +16,9 @@ export interface CodeViewProps {
   messages: ChatMessage[];
   status: 'idle' | 'streaming' | 'thinking';
   model: string;
+  availableModels?: string[];
+  runtimeProvider: WebRuntimeProvider;
+  runtimeBackend: WebRuntimeBackend;
   permissionMode: string;
   onModelChange: (model: string) => void;
   onPermissionModeChange: (mode: string) => void;
@@ -40,6 +44,9 @@ export const CodeView = forwardRef<CodeViewRef, CodeViewProps>(({
   messages,
   status,
   model,
+  availableModels,
+  runtimeProvider,
+  runtimeBackend,
   permissionMode,
   onModelChange,
   onPermissionModeChange,
@@ -356,16 +363,19 @@ export const CodeView = forwardRef<CodeViewRef, CodeViewProps>(({
           className={styles.chatPanel}
           style={{ width: `${chatPanelWidth}px` }}
         >
-          <CompactChatPanel
-            messages={messages}
-            onSend={onSendMessage}
-            onClose={handleChatPanelToggle}
-            onOpenFile={handleOpenFileFromChat}
-            status={status}
-            model={model}
-            onModelChange={onModelChange}
-            permissionMode={permissionMode}
-            onPermissionModeChange={onPermissionModeChange}
+            <CompactChatPanel
+              messages={messages}
+              onSend={onSendMessage}
+              onClose={handleChatPanelToggle}
+              onOpenFile={handleOpenFileFromChat}
+              status={status}
+              model={model}
+              availableModels={availableModels}
+              runtimeProvider={runtimeProvider}
+              runtimeBackend={runtimeBackend}
+              onModelChange={onModelChange}
+              permissionMode={permissionMode}
+              onPermissionModeChange={onPermissionModeChange}
             connected={connected}
             isStreaming={isStreaming}
             currentMessageId={currentMessageId}

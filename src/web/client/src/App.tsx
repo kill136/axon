@@ -28,6 +28,13 @@ import type { SessionActions } from './types';
 import { useLanguage } from './i18n/LanguageContext';
 import InitAxonMdDialog from './components/InitAxonMdDialog';
 import { useSpeechSynthesis } from './hooks/useSpeechSynthesis';
+import { useRuntimeModelCatalog } from './hooks/useRuntimeModelCatalog';
+import {
+  getProviderForRuntimeBackend,
+  normalizeWebRuntimeModelForBackend,
+  type WebRuntimeBackend,
+  type WebRuntimeProvider,
+} from '../../shared/model-catalog';
 
 // 获取 WebSocket URL
 function getWebSocketUrl(): string {
@@ -67,10 +74,13 @@ interface AppProps {
   showGitPanel?: boolean;
   onToggleGitPanel?: () => void;
   onSessionsChange?: (sessions: any[]) => void;
+  onSessionStatusMapChange?: (map: Map<string, string>) => void;
   onSessionIdChange?: (id: string | null) => void;
   onConnectedChange?: (connected: boolean) => void;
   registerSessionActions?: (actions: SessionActions) => void;
   registerMessaging?: (messaging: { send: (msg: any) => void; addMessageHandler: (handler: (msg: any) => void) => () => void }) => void;
+  onLoginClick?: () => void;
+  authRefreshKey?: number;
 }
 
 function AppContent({
@@ -79,9 +89,11 @@ function AppContent({
   onToggleCodeView,
   showSettings, onCloseSettings,
   showGitPanel: showGitPanelProp, onToggleGitPanel,
-  onSessionsChange, onSessionIdChange, onConnectedChange,
+  onSessionsChange, onSessionStatusMapChange, onSessionIdChange, onConnectedChange,
   registerSessionActions,
   registerMessaging,
+  onLoginClick,
+  authRefreshKey = 0,
 }: AppProps) {
   const { t } = useLanguage();
   const { state: projectState, openFolder } = useProject();
@@ -114,7 +126,86 @@ function AppContent({
   const codeViewRef = useRef<CodeViewRef>(null);
   const [pendingCodeRef, setPendingCodeRef] = useState<{ filePath: string; line: number } | null>(null);
 
-  const { connected, sessionId, model, setModel, send, addMessageHandler } = useWebSocket(getWebSocketUrl());
+  const {
+    connected,
+    sessionId,
+    model,
+    runtimeBackend: socketRuntimeBackend,
+    setModel,
+    send,
+    addMessageHandler,
+  } = useWebSocket(getWebSocketUrl());
+
+  // 认证状态：连接后检查，用于控制 InputArea 是否允许发送消息
+  // authRefreshKey 变化时（登录/登出后）也会重新检查
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null); // null = 加载中
+  const [runtimeProvider, setRuntimeProvider] = useState<WebRuntimeProvider>('anthropic');
+  const [runtimeBackend, setRuntimeBackend] = useState<WebRuntimeBackend>('claude-compatible-api');
+  const availableModels = useRuntimeModelCatalog({
+    connected,
+    runtimeBackend,
+    send,
+    addMessageHandler,
+  });
+  useEffect(() => {
+    if (!connected) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/auth/oauth/status');
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        if (!cancelled) {
+          setIsAuthenticated(!!data.authenticated);
+          const nextBackend = (data.runtimeBackend || 'claude-compatible-api') as WebRuntimeBackend;
+          setRuntimeBackend(nextBackend);
+          setRuntimeProvider(getProviderForRuntimeBackend(nextBackend));
+        }
+      } catch {
+        if (!cancelled) {
+          setIsAuthenticated(false);
+          setRuntimeBackend('claude-compatible-api');
+          setRuntimeProvider('anthropic');
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [connected, authRefreshKey, model]);
+
+  // 监听 auth 变化（登录/登出后刷新认证状态）
+  useEffect(() => {
+    const handler = (msg: any) => {
+      // WebSocket 连接建立时或 auth 状态变化时刷新
+      if (msg.type === 'auth_status_changed' || msg.type === 'connected') {
+        fetch('/api/auth/oauth/status')
+          .then(res => res.ok ? res.json() : null)
+          .then(data => {
+            if (data) {
+              setIsAuthenticated(!!data.authenticated);
+              const nextBackend = (data.runtimeBackend || 'claude-compatible-api') as WebRuntimeBackend;
+              setRuntimeBackend(nextBackend);
+              setRuntimeProvider(getProviderForRuntimeBackend(nextBackend));
+            }
+          })
+          .catch(() => {});
+      }
+    };
+    return addMessageHandler(handler);
+  }, [addMessageHandler]);
+
+  useEffect(() => {
+    if (!connected) return;
+    const normalizedModel = normalizeWebRuntimeModelForBackend(runtimeBackend, model, model, availableModels);
+    if (normalizedModel !== model) {
+      setModel(normalizedModel);
+    }
+  }, [availableModels, connected, model, runtimeBackend, setModel]);
+
+  useEffect(() => {
+    if (!socketRuntimeBackend) return;
+    setRuntimeBackend(socketRuntimeBackend as WebRuntimeBackend);
+    setRuntimeProvider(getProviderForRuntimeBackend(socketRuntimeBackend as WebRuntimeBackend));
+  }, [socketRuntimeBackend]);
 
   // 模式预设列表 + 当前活跃预设 ID
   const [modePresets, setModePresets] = useState<Array<{ id: string; name: string; icon: string; permissionMode: string }>>([]);
@@ -206,6 +297,7 @@ function AppContent({
   } = useMessageHandler({
     addMessageHandler,
     model,
+    runtimeBackend,
     send,
     refreshSessions: () => sessionManager.refreshSessions(),
     onNavigateToSwarm,
@@ -242,6 +334,9 @@ function AppContent({
     setPermissionMode,
     sessionId: sessionId ?? null,
     openFolder,
+    compactState,
+    isAuthenticated: isAuthenticated ?? false,
+    onLoginClick,
   });
 
   // 产物面板
@@ -319,6 +414,11 @@ function AppContent({
   useEffect(() => {
     onSessionsChange?.(sessionManager.sessions);
   }, [sessionManager.sessions, onSessionsChange]);
+
+  // 上报会话状态 Map 给 Root（用于侧边栏状态指示器）
+  useEffect(() => {
+    onSessionStatusMapChange?.(sessionManager.sessionStatusMap);
+  }, [sessionManager.sessionStatusMap, onSessionStatusMapChange]);
 
   useEffect(() => {
     onSessionIdChange?.(sessionId ?? null);
@@ -406,29 +506,38 @@ function AppContent({
     }
   }, [codeViewActive, pendingCodeRef]);
 
-  // 对齐官方渲染管线
-  const visibleMessages = useMemo(() => {
-    let filtered = messages;
-    if (!isTranscriptMode) {
-      let lastBoundaryIndex = -1;
-      for (let i = filtered.length - 1; i >= 0; i--) {
-        if (filtered[i].isCompactBoundary) {
-          lastBoundaryIndex = i;
-          break;
-        }
-      }
-      if (lastBoundaryIndex !== -1) {
-        filtered = filtered.slice(lastBoundaryIndex);
+  // 可展开的压缩历史消息
+  const [showCompactedHistory, setShowCompactedHistory] = useState(false);
+
+  // 计算压缩边界：分离"旧消息（不在上下文中）"和"当前消息（在上下文中）"
+  const { compactedMessages, activeMessages, lastBoundaryIndex: compactBoundaryIdx } = useMemo(() => {
+    let boundaryIdx = -1;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].isCompactBoundary) {
+        boundaryIdx = i;
+        break;
       }
     }
-    filtered = filtered.filter(msg => {
-      if (msg.isVisibleInTranscriptOnly && !isTranscriptMode) return false;
-      return true;
-    });
-    return filtered;
-  }, [messages, isTranscriptMode]);
+    if (boundaryIdx === -1) {
+      return { compactedMessages: [] as typeof messages, activeMessages: messages, lastBoundaryIndex: -1 };
+    }
+    // 旧消息：boundary 之前的所有消息（排除 summary 等仅 transcript 可见的消息）
+    const old = messages.slice(0, boundaryIdx).filter(msg => !msg.isCompactSummary && !msg.isCompactBoundary);
+    // 当前消息：从 boundary 开始（包含 boundary 本身），排除 transcript-only 消息
+    const active = messages.slice(boundaryIdx).filter(msg => !msg.isVisibleInTranscriptOnly || msg.isCompactBoundary);
+    return { compactedMessages: old, activeMessages: active, lastBoundaryIndex: boundaryIdx };
+  }, [messages]);
 
-  const hasCompactBoundary = useMemo(() => messages.some(m => m.isCompactBoundary), [messages]);
+  // 对齐官方渲染管线
+  const visibleMessages = useMemo(() => {
+    if (isTranscriptMode) {
+      // Transcript 模式：显示全部消息
+      return messages;
+    }
+    return activeMessages;
+  }, [messages, isTranscriptMode, activeMessages]);
+
+  const hasCompactBoundary = useMemo(() => compactBoundaryIdx !== -1, [compactBoundaryIdx]);
 
   // ========================================================================
   // Rewind 功能
@@ -578,6 +687,9 @@ function AppContent({
           messages={messages}
           status={status}
           model={model}
+          availableModels={availableModels}
+          runtimeProvider={runtimeProvider}
+          runtimeBackend={runtimeBackend}
           permissionMode={permissionMode}
           onModelChange={setModel}
           onPermissionModeChange={setPermissionMode}
@@ -605,6 +717,39 @@ function AppContent({
                 />
               ) : (
                 <>
+                {/* 可折叠的旧消息区域（压缩前的历史记录，不在 AI 上下文中） */}
+                {!isTranscriptMode && compactedMessages.length > 0 && (
+                  <div className="compacted-history">
+                    <button
+                      className="compacted-history__toggle"
+                      onClick={() => setShowCompactedHistory(!showCompactedHistory)}
+                    >
+                      <svg className="compacted-history__chevron" width="12" height="12" viewBox="0 0 16 16" fill="currentColor"
+                        style={{ transform: showCompactedHistory ? 'rotate(90deg)' : 'rotate(0deg)' }}>
+                        <path d="M6 3l5 5-5 5V3z" />
+                      </svg>
+                      <span>{t('message.compactedHistoryCount', { count: compactedMessages.length })}</span>
+                      <span className="compacted-history__hint">{t('message.compactedHistoryHint')}</span>
+                    </button>
+                    {showCompactedHistory && (
+                      <div className="compacted-history__messages">
+                        {compactedMessages.map((msg) => (
+                          <Message
+                            key={msg.id}
+                            message={msg}
+                            onNavigateToBlueprint={onNavigateToBlueprint}
+                            onNavigateToSwarm={onNavigateToSwarm}
+                            onNavigateToCode={handleNavigateToCode}
+                            onDevAction={chatInput.handleDevAction}
+                            isStreaming={false}
+                            isTranscriptMode={false}
+                            canRewind={false}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
                 {visibleMessages.flatMap((msg, idx) => {
                   const elements: React.ReactNode[] = [];
                   // 4 分钟时间分隔线
@@ -682,6 +827,9 @@ function AppContent({
               connected={connected}
               status={status}
               model={model}
+              availableModels={availableModels}
+              runtimeProvider={runtimeProvider}
+              runtimeBackend={runtimeBackend}
               onModelChange={setModel}
               permissionMode={permissionMode}
               activePresetId={activePresetId}
@@ -723,6 +871,11 @@ function AppContent({
               conversationMode={chatInput.conversationMode}
               onToggleConversationMode={chatInput.toggleConversationMode}
               modePresets={modePresets}
+              isMessageQueued={chatInput.isMessageQueued}
+              isAuthenticated={isAuthenticated ?? false}
+              onLoginClick={onLoginClick}
+              onNewSession={sessionManager.handleNewSession}
+              hasMessages={messages.length > 0}
             />
           </div>
 
@@ -802,6 +955,9 @@ function AppContent({
         isOpen={!!showSettings}
         onClose={() => onCloseSettings?.()}
         model={model}
+        availableModels={availableModels}
+        runtimeProvider={runtimeProvider}
+        runtimeBackend={runtimeBackend}
         onModelChange={setModel}
         onSendMessage={send}
         addMessageHandler={addMessageHandler}

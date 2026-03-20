@@ -18,7 +18,7 @@ import React from 'react';
 import { render } from 'ink';
 import { ConversationLoop } from './core/loop.js';
 import { Session } from './core/session.js';
-import { toolRegistry } from './tools/index.js';
+import { toolRegistry, initPluginToolSync } from './tools/index.js';
 import { configManager } from './config/index.js';
 import { listSessions, loadSession, forkSession, findSessionByPr, getSessionsByPr } from './session/index.js';
 import { emitLifecycleEvent } from './lifecycle/index.js';
@@ -877,6 +877,9 @@ async function runTextInterface(
 
   // 从配置管理器获取完整配置（包括环境变量）
   const config = configManager.getAll();
+
+  // 初始化插件工具同步 — 将已安装插件注册的工具桥接到 toolRegistry，让模型 API 可识别
+  initPluginToolSync();
 
   const loop = new ConversationLoop({
     model: modelMap[options.model] || options.model,

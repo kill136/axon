@@ -14,6 +14,8 @@ import type {
 } from '../types';
 import type { ContextUsage, CompactState } from '../components/ContextBar';
 import type { SlashCommandResult } from '../components/SlashCommandDialog';
+import { playNotificationSound } from './useNotificationSound';
+import { createAssistantMessage } from '../utils/assistantMessage';
 
 export type Status = 'idle' | 'thinking' | 'streaming' | 'tool_executing';
 export type PermissionMode = 'default' | 'bypassPermissions' | 'acceptEdits' | 'plan';
@@ -45,6 +47,7 @@ export interface CrossSessionNotification {
 interface UseMessageHandlerParams {
   addMessageHandler: (handler: (msg: WSMessage) => void) => () => void;
   model: string;
+  runtimeBackend: string;
   send: (msg: any) => void;
   refreshSessions: () => void;
   onNavigateToSwarm?: (blueprintId?: string) => void;
@@ -79,6 +82,7 @@ interface UseMessageHandlerReturn {
 export function useMessageHandler({
   addMessageHandler,
   model,
+  runtimeBackend,
   send,
   refreshSessions,
   onNavigateToSwarm,
@@ -154,6 +158,7 @@ export function useMessageHandler({
             toolName: (payload as any).tool,
             timestamp: Date.now(),
           });
+          playNotificationSound('warning');
         } else if (msg.type === 'user_question') {
           setCrossSessionNotification({
             sessionId: msgSessionId,
@@ -161,6 +166,7 @@ export function useMessageHandler({
             questionHeader: (payload as any).header,
             timestamp: Date.now(),
           });
+          playNotificationSound('attention');
         }
         return;
       }
@@ -168,7 +174,7 @@ export function useMessageHandler({
       // 兜底：孤立流式事件自动创建消息上下文
       const streamingEventTypes = [
         'text_delta', 'thinking_start', 'thinking_delta',
-        'tool_use_start', 'tool_use_delta', 'tool_result',
+        'tool_use_start', 'tool_use_input_ready', 'tool_use_delta', 'tool_result',
       ];
       if (streamingEventTypes.includes(msg.type) && !currentMessageRef.current) {
         // 插话保护：正在等待新消息的 message_start，忽略旧消息的尾部流式事件
@@ -176,13 +182,12 @@ export function useMessageHandler({
           return;
         }
         console.warn('[App] Received orphaned stream event, auto-creating message context:', msg.type);
-        currentMessageRef.current = {
+        currentMessageRef.current = createAssistantMessage({
           id: (payload.messageId as string) || `resume-${Date.now()}`,
-          role: 'assistant',
-          timestamp: Date.now(),
           content: [],
           model,
-        };
+          runtimeBackend,
+        });
         setStatus('streaming');
       }
 
@@ -190,13 +195,12 @@ export function useMessageHandler({
         case 'message_start': {
           // 新消息开始，清除插话保护标记
           interruptPendingRef.current = false;
-          const newMsg: ChatMessage = {
+          const newMsg = createAssistantMessage({
             id: payload.messageId as string,
-            role: 'assistant',
-            timestamp: Date.now(),
             content: [],
             model,
-          };
+            runtimeBackend,
+          });
           currentMessageRef.current = newMsg;
           setMessages(prev => [...prev, newMsg]);
           setStatus('streaming');
@@ -275,6 +279,25 @@ export function useMessageHandler({
           }
           break;
 
+        case 'tool_use_input_ready':
+          // 工具参数流式传输完成，更新完整的 input（替代之前的 _streaming 占位）
+          if (currentMessageRef.current) {
+            const currentMsg = currentMessageRef.current;
+            const inputReadyContent = currentMsg.content.map(c => {
+              if (c.type === 'tool_use' && c.id === payload.toolUseId) {
+                return { ...c, input: payload.input };
+              }
+              return c;
+            });
+            const updatedMsg = { ...currentMsg, content: inputReadyContent };
+            currentMessageRef.current = updatedMsg;
+            setMessages(prev => {
+              const filtered = prev.filter(m => m.id !== currentMsg.id);
+              return [...filtered, updatedMsg];
+            });
+          }
+          break;
+
         case 'tool_result':
           if (currentMessageRef.current) {
             const currentMsg = currentMessageRef.current;
@@ -323,9 +346,16 @@ export function useMessageHandler({
           if (currentMessageRef.current) {
             const currentMsg = currentMessageRef.current;
             const usage = payload.usage as { inputTokens: number; outputTokens: number } | undefined;
+            // 清理所有仍在 running 状态的 tool_use（可能因 max_tokens 截断等原因未完成）
+            const completedContent = currentMsg.content.map(c => {
+              if (c.type === 'tool_use' && c.status === 'running') {
+                return { ...c, status: 'error' as const };
+              }
+              return c;
+            });
             const finalMsg = {
               ...currentMsg,
-              content: [...currentMsg.content],
+              content: completedContent,
               ...(usage && { usage }),
             };
             setMessages(prev => {
@@ -344,12 +374,11 @@ export function useMessageHandler({
           console.error('Server error:', payload);
           const errorText = (payload as any)?.error || (payload as any)?.message || 'Unknown error';
           // 将错误显示为系统消息，让用户能看到
-          const errorMsg: ChatMessage = {
+          const errorMsg = createAssistantMessage({
             id: `error-${Date.now()}`,
-            role: 'assistant',
-            timestamp: Date.now(),
             content: [{ type: 'text', text: `**Error:** ${errorText}` }],
-          };
+            runtimeBackend,
+          });
           setMessages(prev => [...prev, errorMsg]);
           currentMessageRef.current = null;
           setStatus('idle');
@@ -519,7 +548,8 @@ export function useMessageHandler({
                 timestamp: Date.now(),
               });
 
-              // 浏览器原生通知
+              // 浏览器原生通知 + 声音
+              playNotificationSound('attention');
               if ('Notification' in window && Notification.permission === 'granted') {
                 const fromName = payload.fromAgent as string || 'Agent';
                 const desc = (payload.taskDescription as string || '').slice(0, 80);
@@ -846,12 +876,14 @@ export function useMessageHandler({
                 type: 'text',
                 text: `⏰ **定时提醒** — 任务 "${alarmTaskName}" 到时间了！\n\n正在执行: ${alarmPrompt}`,
               }],
+              runtimeBackend,
               sessionId: alarmSessionId,
             };
             setMessages(prev => [...prev, alarmMessage]);
           }
 
-          // 无论是否是当前会话，都发浏览器通知（用户可能在别的 tab）
+          // 无论是否是当前会话，都发浏览器通知 + 声音（用户可能在别的 tab）
+          playNotificationSound('attention');
           if ('Notification' in window && Notification.permission === 'granted') {
             const body = alarmIsNewSession
               ? `${alarmPrompt.slice(0, 80)}\n(在新会话中执行，请切换查看)`
@@ -866,10 +898,8 @@ export function useMessageHandler({
 
         // 持续开发消息处理
         case 'continuous_dev:flow_started': {
-          const newMessage: ChatMessage = {
+          const newMessage = createAssistantMessage({
             id: `dev-${Date.now()}`,
-            role: 'assistant',
-            timestamp: Date.now(),
             content: [{
               type: 'dev_progress',
               data: {
@@ -880,8 +910,9 @@ export function useMessageHandler({
                 status: 'running',
                 currentTask: '流程启动中...'
               }
-            }]
-          };
+            }],
+            runtimeBackend,
+          });
           setMessages(prev => [...prev, newMessage]);
           break;
         }
@@ -951,20 +982,17 @@ export function useMessageHandler({
         case 'continuous_dev:approval_required': {
           const impactAnalysis = (payload as any).impactAnalysis;
           if (impactAnalysis) {
-            const newMessage: ChatMessage = {
+            const newMessage = createAssistantMessage({
               id: `dev-approval-${Date.now()}`,
-              role: 'assistant',
-              timestamp: Date.now(),
-              content: [{ type: 'impact_analysis', data: impactAnalysis }]
-            };
+              content: [{ type: 'impact_analysis', data: impactAnalysis }],
+              runtimeBackend,
+            });
             setMessages(prev => [...prev, newMessage]);
           }
           const blueprint = (payload as any).blueprint;
           if (blueprint) {
-            const newMessage: ChatMessage = {
+            const newMessage = createAssistantMessage({
               id: `dev-blueprint-${Date.now()}`,
-              role: 'assistant',
-              timestamp: Date.now(),
               content: [{
                 type: 'blueprint',
                 blueprintId: blueprint.id,
@@ -972,8 +1000,9 @@ export function useMessageHandler({
                 moduleCount: blueprint.modules?.length || 0,
                 processCount: blueprint.businessProcesses?.length || 0,
                 nfrCount: blueprint.nfrs?.length || 0
-              }]
-            };
+              }],
+              runtimeBackend,
+            });
             setMessages(prev => [...prev, newMessage]);
           }
           break;
@@ -981,23 +1010,21 @@ export function useMessageHandler({
 
         case 'continuous_dev:regression_failed':
         case 'continuous_dev:regression_passed': {
-          const newMessage: ChatMessage = {
+          const newMessage = createAssistantMessage({
             id: `dev-regression-${Date.now()}`,
-            role: 'assistant',
-            timestamp: Date.now(),
-            content: [{ type: 'regression_result', data: payload as any }]
-          };
+            content: [{ type: 'regression_result', data: payload as any }],
+            runtimeBackend,
+          });
           setMessages(prev => [...prev, newMessage]);
           break;
         }
 
         case 'continuous_dev:cycle_review_completed': {
-          const newMessage: ChatMessage = {
+          const newMessage = createAssistantMessage({
             id: `dev-cycle-${Date.now()}`,
-            role: 'assistant',
-            timestamp: Date.now(),
-            content: [{ type: 'cycle_review', data: payload as any }]
-          };
+            content: [{ type: 'cycle_review', data: payload as any }],
+            runtimeBackend,
+          });
           setMessages(prev => [...prev, newMessage]);
           break;
         }
@@ -1033,12 +1060,11 @@ export function useMessageHandler({
                 return [...filtered, updatedMsg];
               });
             } else {
-              const newMessage: ChatMessage = {
+              const newMessage = createAssistantMessage({
                 id: `design-${Date.now()}`,
-                role: 'assistant',
-                timestamp: Date.now(),
                 content: [designContent],
-              };
+                runtimeBackend,
+              });
               setMessages(prev => [...prev, newMessage]);
             }
           }
@@ -1071,18 +1097,17 @@ export function useMessageHandler({
 
         case 'execution:report':
           console.log('[App] Execution report:', (payload as any).status, (payload as any).summary?.substring(0, 100));
-          setMessages(prev => [...prev, {
+          setMessages(prev => [...prev, createAssistantMessage({
             id: `exec-report-${Date.now()}`,
-            role: 'assistant',
-            timestamp: Date.now(),
             content: [{ type: 'text' as const, text: (payload as any).message || '执行完成' }],
-          }]);
+            runtimeBackend,
+          })]);
           break;
       }
     });
 
     return unsubscribe;
-  }, [addMessageHandler, model, send, onNavigateToSwarm]);
+  }, [addMessageHandler, model, runtimeBackend, send, onNavigateToSwarm]);
 
   // 流式响应超时检测：如果前端处于非 idle 状态超过 360 秒没有收到任何 WebSocket 消息，
   // 自动重置为 idle，防止 UI 永久卡死。
