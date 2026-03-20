@@ -138,6 +138,7 @@ export function useSessionManager({
               name: (payload.name as string) || '新会话',
               updatedAt: (payload.createdAt as number) || Date.now(),
               messageCount: 0,
+              runtimeBackend: payload.runtimeBackend as string | undefined,
             };
             setSessions(prev => {
               if (prev.some(s => s.id === newSession.id)) return prev;
@@ -160,6 +161,7 @@ export function useSessionManager({
                 name: switchedName || switchedId,
                 updatedAt: Date.now(),
                 messageCount: 0,
+                runtimeBackend: payload.runtimeBackend as string | undefined,
               }, ...prev];
             });
           }

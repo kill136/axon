@@ -7,6 +7,7 @@ export interface UseWebSocketReturn {
   sessionReady: boolean;
   sessionId: string | null;
   model: string;
+  runtimeBackend: string;
   setModel: (model: string) => void;
   send: (message: unknown) => void;
   addMessageHandler: (handler: (msg: WSMessage) => void) => () => void;
@@ -25,6 +26,7 @@ export function useWebSocket(url: string): UseWebSocketReturn {
   const [sessionReady, setSessionReady] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [model, setModel] = useState('opus');
+  const [runtimeBackend, setRuntimeBackend] = useState('claude-compatible-api');
   const wsRef = useRef<WebSocket | null>(null);
   const messageHandlersRef = useRef<Array<(msg: WSMessage) => void>>([]);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -38,6 +40,7 @@ export function useWebSocket(url: string): UseWebSocketReturn {
   urlRef.current = url;
   // 追踪是否已经发送了 session_switch 恢复请求
   const hasRestoredSessionRef = useRef(false);
+  const requestedFreshSessionRef = useRef(false);
   // BroadcastChannel ref，用于跨标签页同步会话切换
   const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
   // 记录首次连接时的 serverStartTime，后续重连发现变化则 reload 页面
@@ -119,7 +122,7 @@ export function useWebSocket(url: string): UseWebSocketReturn {
         messageHandlersRef.current.forEach(handler => handler(message));
 
         if (message.type === 'connected') {
-          const payload = message.payload as { sessionId: string; model: string; serverStartTime?: number };
+          const payload = message.payload as { sessionId: string; model: string; runtimeBackend?: string; serverStartTime?: number };
           
           // 检测后端是否重启过：如果 serverStartTime 变化，说明后端重启了，需要 reload 前端
           if (payload.serverStartTime) {
@@ -138,6 +141,9 @@ export function useWebSocket(url: string): UseWebSocketReturn {
             sessionIdRef.current = payload.sessionId;
           }
           setModel(payload.model);
+          if (payload.runtimeBackend) {
+            setRuntimeBackend(payload.runtimeBackend);
+          }
           setSessionReady(true);
         }
 
@@ -157,9 +163,16 @@ export function useWebSocket(url: string): UseWebSocketReturn {
 
         // 处理会话切换 - 更新 sessionId 并持久化
         if (message.type === 'session_switched') {
-          const payload = message.payload as { sessionId: string };
+          const payload = message.payload as { sessionId: string; model?: string; runtimeBackend?: string };
+          requestedFreshSessionRef.current = false;
           setSessionId(payload.sessionId);
           sessionIdRef.current = payload.sessionId;
+          if (payload.model) {
+            setModel(payload.model);
+          }
+          if (payload.runtimeBackend) {
+            setRuntimeBackend(payload.runtimeBackend);
+          }
           // 持久化 sessionId，用于 HMR/重连后恢复
           localStorage.setItem(SESSION_ID_STORAGE_KEY, payload.sessionId);
           broadcastSessionChange(payload.sessionId);
@@ -168,7 +181,8 @@ export function useWebSocket(url: string): UseWebSocketReturn {
 
         // 处理新建会话 - 更新 sessionId 并持久化
         if (message.type === 'session_new_ready') {
-          const payload = message.payload as { sessionId: string; model: string };
+          const payload = message.payload as { sessionId: string; model: string; runtimeBackend?: string };
+          requestedFreshSessionRef.current = false;
           setSessionId(payload.sessionId);
           sessionIdRef.current = payload.sessionId;
           // 新建的临时会话也需要保存，以便 HMR 后能恢复
@@ -177,19 +191,26 @@ export function useWebSocket(url: string): UseWebSocketReturn {
           if (payload.model) {
             setModel(payload.model);
           }
+          if (payload.runtimeBackend) {
+            setRuntimeBackend(payload.runtimeBackend);
+          }
         }
 
         // 处理会话创建（持久化会话） - 更新 sessionId 状态和存储
         // 当临时 sessionId 变为持久化 sessionId 时，必须更新 React state
         // 注意：委派任务（delegated-task）和 Agent Chat（agent-chat）创建的会话不应切换当前 sessionId
         if (message.type === 'session_created') {
-          const payload = message.payload as { sessionId: string; tags?: string[] };
+          const payload = message.payload as { sessionId: string; tags?: string[]; runtimeBackend?: string };
           const isBackgroundSession = payload.tags?.includes('delegated-task') || payload.tags?.includes('agent-chat');
           if (payload.sessionId && !isBackgroundSession) {
+            requestedFreshSessionRef.current = false;
             setSessionId(payload.sessionId);
             sessionIdRef.current = payload.sessionId;
             localStorage.setItem(SESSION_ID_STORAGE_KEY, payload.sessionId);
             broadcastSessionChange(payload.sessionId);
+            if (payload.runtimeBackend) {
+              setRuntimeBackend(payload.runtimeBackend);
+            }
             console.log('[WebSocket] Persistent session created and saved:', payload.sessionId);
           }
         }
@@ -212,13 +233,21 @@ export function useWebSocket(url: string): UseWebSocketReturn {
           const errorMsg = (payload.message || '').toLowerCase();
           // 匹配中英文错误消息：会话不存在或恢复/加载失败
           if (errorMsg.includes('会话不存在') ||
-              errorMsg.includes('session does not exist') ||
-              errorMsg.includes('failed to resume') ||
-              errorMsg.includes('failed to switch') ||
-              errorMsg.includes('failed to load')) {
+               errorMsg.includes('session does not exist') ||
+               errorMsg.includes('failed to resume') ||
+               errorMsg.includes('failed to switch') ||
+               errorMsg.includes('failed to load')) {
             localStorage.removeItem(SESSION_ID_STORAGE_KEY);
             hasRestoredSessionRef.current = false;
+            sessionIdRef.current = null;
+            setSessionId(null);
             console.log('[WebSocket] Session restore failed, clearing invalid sessionId:', payload.message);
+
+            if (!requestedFreshSessionRef.current && ws.readyState === WebSocket.OPEN) {
+              requestedFreshSessionRef.current = true;
+              ws.send(JSON.stringify({ type: 'session_new', payload: {} }));
+              console.log('[WebSocket] Requested a fresh session after restore failure');
+            }
           }
         }
       } catch (e) {
@@ -237,6 +266,7 @@ export function useWebSocket(url: string): UseWebSocketReturn {
       (window as any).__wsSend = undefined;
       // 重置会话恢复标记，确保下次重连时能重新发送 session_switch 恢复会话
       hasRestoredSessionRef.current = false;
+      requestedFreshSessionRef.current = false;
 
       // 清除 ping 定时器
       if (pingIntervalRef.current) {
@@ -345,5 +375,5 @@ export function useWebSocket(url: string): UseWebSocketReturn {
     }
   }, []);
 
-  return { connected, sessionReady, sessionId, model, setModel: handleModelChange, send, addMessageHandler };
+  return { connected, sessionReady, sessionId, model, runtimeBackend, setModel: handleModelChange, send, addMessageHandler };
 }

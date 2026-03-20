@@ -21,6 +21,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { VERSION } from '../../../version.js';
+import {
+  getWebModelLabel,
+  getWebModelOptionsForBackend,
+} from '../../shared/model-catalog.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -159,27 +163,29 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
 
   // 获取模型列表
   app.get('/api/models', (req: Request, res: Response) => {
+    const provider = webAuth.getRuntimeProvider();
+    const runtimeBackend = webAuth.getRuntimeBackend();
+    const currentModel = webAuth.getDefaultModelByBackend()[runtimeBackend];
+    const backendLabel =
+      runtimeBackend === 'codex-subscription' ? 'Codex' :
+      runtimeBackend === 'openai-compatible-api' ? 'OpenAI Compatible' :
+      runtimeBackend === 'claude-compatible-api' ? 'Claude Compatible' :
+      runtimeBackend === 'axon-cloud' ? 'Axon Cloud' :
+      'Claude';
+    const models = getWebModelOptionsForBackend(runtimeBackend, currentModel, currentModel).map(model => ({
+      id: model.value,
+      name: `${backendLabel} ${getWebModelLabel(model.value, provider)}`,
+      description: model.description || (provider === 'codex'
+        ? 'Current or configured responses-compatible model'
+        : 'Claude-family model'),
+      modelId: model.value,
+      provider: model.provider,
+    }));
+
     res.json({
-      models: [
-        {
-          id: 'opus',
-          name: 'Claude Opus 4.6',
-          description: 'Most powerful model, suitable for complex tasks (latest)',
-          modelId: 'claude-opus-4-6',
-        },
-        {
-          id: 'sonnet',
-          name: 'Claude Sonnet 4.5',
-          description: 'Balanced performance and speed',
-          modelId: 'claude-sonnet-4-5-20250929',
-        },
-        {
-          id: 'haiku',
-          name: 'Claude Haiku 4.5',
-          description: 'Fastest model',
-          modelId: 'claude-haiku-4-5-20251001',
-        },
-      ],
+      provider,
+      runtimeBackend,
+      models,
     });
   });
 

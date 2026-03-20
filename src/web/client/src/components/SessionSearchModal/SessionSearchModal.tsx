@@ -1,6 +1,11 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useLanguage } from '../../i18n';
 import type { Session } from '../../types';
+import {
+  getRuntimeBackendLabel,
+  getWebModelLabel,
+  resolveWebRuntimeProvider,
+} from '../../../../shared/model-catalog';
 import styles from './SessionSearchModal.module.css';
 
 // ─── SVG Icons ───────────────────────────────────────────
@@ -74,13 +79,9 @@ function formatTime(ts: number): string {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-function getModelShortName(model?: string): string | null {
+function getModelShortName(model?: string, runtimeBackend?: string): string | null {
   if (!model) return null;
-  const lower = model.toLowerCase();
-  if (lower.includes('opus')) return 'Opus';
-  if (lower.includes('sonnet')) return 'Sonnet';
-  if (lower.includes('haiku')) return 'Haiku';
-  return null;
+  return getWebModelLabel(model, resolveWebRuntimeProvider(model, runtimeBackend as any));
 }
 
 // ─── Types ───────────────────────────────────────────────
@@ -322,7 +323,8 @@ export function SessionSearchModal({
                     const idx = sessionIdxMap.get(session.id) ?? 0;
                     const isActive = session.id === currentSessionId;
                     const isFocused = idx === focusIndex;
-                    const modelName = getModelShortName(session.model);
+                    const modelName = getModelShortName(session.model, session.runtimeBackend);
+                    const runtimeLabel = session.runtimeBackend ? getRuntimeBackendLabel(session.runtimeBackend as any) : null;
 
                     return (
                       <div
@@ -364,6 +366,12 @@ export function SessionSearchModal({
                                   <>
                                     <span className={styles.dot} />
                                     <span className={styles.modelBadge}>{modelName}</span>
+                                  </>
+                                )}
+                                {runtimeLabel && (
+                                  <>
+                                    <span className={styles.dot} />
+                                    <span className={styles.modelBadge}>{runtimeLabel}</span>
                                   </>
                                 )}
                               </span>

@@ -1,0 +1,1141 @@
+import type { PromptBlock } from '../../../prompt/index.js';
+import type {
+  ContentBlock,
+  Message,
+  ToolDefinition,
+} from '../../../types/index.js';
+import type { ImageBlockParam, TextBlock, ToolResultBlockParam, ToolUseBlock } from '../../../types/messages.js';
+import type {
+  ConversationClient,
+  ConversationClientConfig,
+  ConversationMessageResponse,
+  ConversationStreamEvent,
+} from './types.js';
+
+const DEFAULT_CODEX_BASE_URL = 'https://chatgpt.com/backend-api/codex';
+const DEFAULT_CODEX_INSTRUCTIONS = 'You are Axon, a coding assistant helping inside a web IDE.';
+
+interface ResponseUsage {
+  input_tokens?: number;
+  output_tokens?: number;
+  reasoning_tokens?: number;
+}
+
+interface ResponseOutputItem {
+  id?: string;
+  type: string;
+  call_id?: string;
+  name?: string;
+  arguments?: string;
+  summary?: Array<{ text?: string }>;
+  content?: Array<{ type?: string; text?: string }>;
+}
+
+interface ResponsesApiResult {
+  id?: string;
+  model?: string;
+  output?: ResponseOutputItem[];
+  usage?: ResponseUsage;
+}
+
+interface ChatCompletionToolCall {
+  id?: string;
+  type?: string;
+  function?: {
+    name?: string;
+    arguments?: string;
+  };
+}
+
+interface ChatCompletionMessage {
+  role?: string;
+  content?: string | Array<{ type?: string; text?: string; image_url?: { url?: string } }> | null;
+  tool_calls?: ChatCompletionToolCall[];
+  reasoning_content?: string;
+}
+
+interface ChatCompletionChoice {
+  message?: ChatCompletionMessage;
+  delta?: ChatCompletionMessage;
+  finish_reason?: string | null;
+}
+
+interface ChatCompletionUsage {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  completion_tokens_details?: {
+    reasoning_tokens?: number;
+  };
+}
+
+interface ChatCompletionsApiResult {
+  id?: string;
+  model?: string;
+  choices?: ChatCompletionChoice[];
+  usage?: ChatCompletionUsage;
+}
+
+function safeJsonParse<T>(value: string | undefined, fallback: T): T {
+  if (!value) return fallback;
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+function coerceTextContent(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  return content
+    .map(part => {
+      if (!part || typeof part !== 'object') return '';
+      const text = (part as any).text;
+      if (typeof text === 'string') return text;
+      return '';
+    })
+    .filter(Boolean)
+    .join('\n');
+}
+
+function extractTextFromOutput(output?: ResponseOutputItem[]): string {
+  if (!Array.isArray(output)) return '';
+  return output
+    .flatMap(item => Array.isArray(item.content) ? item.content : [])
+    .map(part => part.text || '')
+    .join('');
+}
+
+function isCodexCompatibleModel(model?: string): boolean {
+  if (!model) return false;
+  const normalized = model.trim();
+  if (!normalized) return false;
+  return /^(gpt-|o\d(?:$|[-_])|codex)/i.test(normalized) || normalized.toLowerCase().includes('codex');
+}
+
+function getMessageTextContentType(role: Message['role']): 'input_text' | 'output_text' {
+  return role === 'assistant' ? 'output_text' : 'input_text';
+}
+
+function isImageBlock(block: unknown): block is ImageBlockParam {
+  return !!block
+    && typeof block === 'object'
+    && (block as { type?: string }).type === 'image'
+    && !!(block as { source?: { data?: string } }).source?.data;
+}
+
+function parseResponsesApiResult(value: string | undefined): ResponsesApiResult | null {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(trimmed) as ResponsesApiResult;
+  } catch {
+    return null;
+  }
+}
+
+function buildResponsesEndpoint(baseUrl: string): string {
+  const normalized = baseUrl.replace(/\/+$/, '');
+
+  try {
+    const parsed = new URL(normalized);
+    const pathname = parsed.pathname.replace(/\/+$/, '');
+
+    if (pathname.endsWith('/backend-api/codex') || pathname.endsWith('/v1')) {
+      return `${normalized}/responses`;
+    }
+
+    return `${normalized}/v1/responses`;
+  } catch {
+    if (normalized.endsWith('/backend-api/codex') || normalized.endsWith('/v1')) {
+      return `${normalized}/responses`;
+    }
+    return `${normalized}/v1/responses`;
+  }
+}
+
+function buildChatCompletionsEndpoint(baseUrl: string): string {
+  const normalized = baseUrl.replace(/\/+$/, '');
+
+  try {
+    const parsed = new URL(normalized);
+    const pathname = parsed.pathname.replace(/\/+$/, '');
+
+    if (pathname.endsWith('/backend-api/codex')) {
+      return `${normalized}/chat/completions`;
+    }
+    if (pathname.endsWith('/v1')) {
+      return `${normalized}/chat/completions`;
+    }
+
+    return `${normalized}/v1/chat/completions`;
+  } catch {
+    if (normalized.endsWith('/backend-api/codex') || normalized.endsWith('/v1')) {
+      return `${normalized}/chat/completions`;
+    }
+    return `${normalized}/v1/chat/completions`;
+  }
+}
+
+function isCustomResponsesEndpoint(baseUrl: string): boolean {
+  const normalized = baseUrl.replace(/\/+$/, '');
+  return !/chatgpt\.com\/backend-api\/codex$/i.test(normalized);
+}
+
+function shouldFallbackToChatCompletions(errorText: string | undefined): boolean {
+  const normalized = errorText?.toLowerCase() || '';
+  return normalized.includes('convert_request_failed') || normalized.includes('not implemented');
+}
+
+export class CodexConversationClient implements ConversationClient {
+  private model: string;
+  private authToken?: string;
+  private apiKey?: string;
+  private baseUrl: string;
+  private accountId?: string;
+  private timeout: number;
+  private customModelName?: string;
+
+  constructor(config: ConversationClientConfig) {
+    this.model = config.model;
+    this.authToken = config.authToken;
+    this.apiKey = config.apiKey;
+    this.baseUrl = (config.baseUrl || DEFAULT_CODEX_BASE_URL).replace(/\/+$/, '');
+    this.accountId = config.accountId;
+    this.timeout = config.timeout || 300000;
+    this.customModelName = config.customModelName;
+  }
+
+  async createMessage(
+    messages: Message[],
+    tools?: ToolDefinition[],
+    systemPrompt?: string,
+    options?: {
+      enableThinking?: boolean;
+      thinkingBudget?: number;
+      toolChoice?: { type: 'auto' } | { type: 'any' } | { type: 'tool'; name: string };
+      promptBlocks?: PromptBlock[];
+      toolSearchEnabled?: boolean;
+    }
+  ): Promise<ConversationMessageResponse> {
+    if (this.shouldUseChatCompletionsTransport()) {
+      const response = await this.callChatCompletionsApi(messages, tools, systemPrompt, options, false);
+      return this.mapChatCompletionResponse(response);
+    }
+
+    const response = await this.callResponsesApi(messages, tools, systemPrompt, options, false);
+    const content = this.mapOutputToContentBlocks(response.output);
+    const hasToolUse = content.some(block => block.type === 'tool_use');
+
+    return {
+      content,
+      stopReason: hasToolUse ? 'tool_use' : 'end_turn',
+      usage: {
+        inputTokens: response.usage?.input_tokens || 0,
+        outputTokens: response.usage?.output_tokens || 0,
+        thinkingTokens: response.usage?.reasoning_tokens || 0,
+      },
+      model: response.model || this.resolveModelName(),
+    };
+  }
+
+  async *createMessageStream(
+    messages: Message[],
+    tools?: ToolDefinition[],
+    systemPrompt?: string,
+    options?: {
+      enableThinking?: boolean;
+      thinkingBudget?: number;
+      signal?: AbortSignal;
+      toolChoice?: { type: 'auto' } | { type: 'any' } | { type: 'tool'; name: string };
+      promptBlocks?: PromptBlock[];
+      toolSearchEnabled?: boolean;
+    }
+  ): AsyncGenerator<ConversationStreamEvent> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(new Error('Codex request timed out')), this.timeout);
+    if (options?.signal) {
+      options.signal.addEventListener('abort', () => controller.abort(options.signal?.reason), { once: true });
+    }
+
+    if (this.shouldUseChatCompletionsTransport()) {
+      yield* this.createChatCompletionsStream(messages, tools, systemPrompt, options);
+      return;
+    }
+
+    const endpoint = buildResponsesEndpoint(this.baseUrl);
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: this.buildHeaders(),
+      body: JSON.stringify(this.buildRequestBody(messages, tools, systemPrompt, options, true)),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+    yield { type: 'response_headers', headers: response.headers };
+
+    if (!response.ok) {
+      const text = await response.text();
+      if (isCustomResponsesEndpoint(this.baseUrl) && shouldFallbackToChatCompletions(text)) {
+        yield* this.createChatCompletionsStream(messages, tools, systemPrompt, options);
+        return;
+      }
+      yield { type: 'error', error: `Codex request failed: ${text || response.statusText}` };
+      return;
+    }
+
+    const contentType = response.headers.get('content-type') || '';
+    if (!/text\/event-stream/i.test(contentType)) {
+      const text = await response.text();
+      const apiResponse = parseResponsesApiResult(text);
+      if (!apiResponse) {
+        yield {
+          type: 'error',
+          error: `Codex request returned a non-stream payload that could not be parsed: ${text || 'empty response'}`,
+        };
+        return;
+      }
+
+      yield* this.emitCompletedResponse(apiResponse);
+      return;
+    }
+
+    if (!response.body) {
+      yield { type: 'error', error: 'Codex response body is empty' };
+      return;
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let activeToolCallId: string | undefined;
+    let activeToolCallName: string | undefined;
+    let completed = false;
+
+    for await (const chunk of response.body as any as AsyncIterable<Uint8Array>) {
+      buffer += decoder.decode(chunk, { stream: true });
+
+      while (true) {
+        const boundary = buffer.indexOf('\n\n');
+        if (boundary === -1) break;
+
+        const rawEvent = buffer.slice(0, boundary);
+        buffer = buffer.slice(boundary + 2);
+
+        const lines = rawEvent.split(/\r?\n/);
+        let eventType = 'message';
+        const dataLines: string[] = [];
+        for (const line of lines) {
+          if (line.startsWith('event:')) {
+            eventType = line.slice(6).trim();
+          } else if (line.startsWith('data:')) {
+            dataLines.push(line.slice(5).trim());
+          }
+        }
+
+        const dataString = dataLines.join('\n');
+        if (!dataString || dataString === '[DONE]') {
+          continue;
+        }
+
+        const payload = safeJsonParse<Record<string, any>>(dataString, {});
+        const eventName = typeof payload.type === 'string' ? payload.type : eventType;
+
+        switch (eventName) {
+          case 'response.output_text.delta':
+            yield { type: 'text', text: payload.delta || '' };
+            break;
+          case 'response.reasoning_summary_text.delta':
+          case 'response.reasoning.delta':
+            yield { type: 'thinking', thinking: payload.delta || '' };
+            break;
+          case 'response.output_item.added': {
+            const item = payload.item || {};
+            if (item.type === 'function_call') {
+              activeToolCallId = item.call_id || item.id;
+              activeToolCallName = item.name;
+              yield {
+                type: 'tool_use_start',
+                id: activeToolCallId,
+                name: activeToolCallName,
+              };
+            }
+            break;
+          }
+          case 'response.function_call_arguments.delta':
+            yield {
+              type: 'tool_use_delta',
+              id: payload.call_id || activeToolCallId,
+              input: payload.delta || '',
+            };
+            break;
+          case 'response.function_call_arguments.done':
+            yield {
+              type: 'tool_use_complete',
+              id: payload.call_id || activeToolCallId,
+              input: safeJsonParse(payload.arguments, {}),
+            };
+            break;
+          case 'response.completed': {
+            const apiResponse = payload.response as ResponsesApiResult | undefined;
+            completed = true;
+            yield* this.emitCompletedResponse(apiResponse);
+            break;
+          }
+          case 'response.error':
+            yield { type: 'error', error: payload.error?.message || payload.message || 'Codex stream error' };
+            return;
+        }
+      }
+    }
+
+    const trailingText = buffer.trim();
+    if (!completed && trailingText) {
+      const apiResponse = parseResponsesApiResult(trailingText);
+      if (apiResponse) {
+        yield* this.emitCompletedResponse(apiResponse);
+        return;
+      }
+    }
+
+    if (!completed) {
+      yield {
+        type: 'error',
+        error: 'Codex stream ended without a completion event',
+      };
+    }
+  }
+
+  private async callResponsesApi(
+    messages: Message[],
+    tools: ToolDefinition[] | undefined,
+    systemPrompt: string | undefined,
+    options:
+      | {
+          enableThinking?: boolean;
+          thinkingBudget?: number;
+          toolChoice?: { type: 'auto' } | { type: 'any' } | { type: 'tool'; name: string };
+          promptBlocks?: PromptBlock[];
+          toolSearchEnabled?: boolean;
+        }
+      | undefined,
+    stream: boolean
+  ): Promise<ResponsesApiResult> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(new Error('Codex request timed out')), this.timeout);
+
+    try {
+      const endpoint = buildResponsesEndpoint(this.baseUrl);
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: this.buildHeaders(),
+        body: JSON.stringify(this.buildRequestBody(messages, tools, systemPrompt, options, stream)),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        if (isCustomResponsesEndpoint(this.baseUrl) && shouldFallbackToChatCompletions(text)) {
+          const fallback = await this.callChatCompletionsApi(messages, tools, systemPrompt, options, stream);
+          return this.mapChatCompletionApiResultToResponses(fallback);
+        }
+        throw new Error(text || response.statusText);
+      }
+
+      return await response.json() as ResponsesApiResult;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  private async callChatCompletionsApi(
+    messages: Message[],
+    tools: ToolDefinition[] | undefined,
+    systemPrompt: string | undefined,
+    options:
+      | {
+          enableThinking?: boolean;
+          thinkingBudget?: number;
+          toolChoice?: { type: 'auto' } | { type: 'any' } | { type: 'tool'; name: string };
+          promptBlocks?: PromptBlock[];
+          toolSearchEnabled?: boolean;
+        }
+      | undefined,
+    stream: boolean,
+  ): Promise<ChatCompletionsApiResult> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(new Error('OpenAI-compatible request timed out')), this.timeout);
+
+    try {
+      const endpoint = buildChatCompletionsEndpoint(this.baseUrl);
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: this.buildHeaders(),
+        body: JSON.stringify(this.buildChatCompletionsBody(messages, tools, systemPrompt, options, stream)),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text || response.statusText);
+      }
+
+      return await response.json() as ChatCompletionsApiResult;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  private async *createChatCompletionsStream(
+    messages: Message[],
+    tools: ToolDefinition[] | undefined,
+    systemPrompt: string | undefined,
+    options:
+      | {
+          enableThinking?: boolean;
+          thinkingBudget?: number;
+          signal?: AbortSignal;
+          toolChoice?: { type: 'auto' } | { type: 'any' } | { type: 'tool'; name: string };
+          promptBlocks?: PromptBlock[];
+          toolSearchEnabled?: boolean;
+        }
+      | undefined,
+  ): AsyncGenerator<ConversationStreamEvent> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(new Error('OpenAI-compatible request timed out')), this.timeout);
+    if (options?.signal) {
+      options.signal.addEventListener('abort', () => controller.abort(options.signal?.reason), { once: true });
+    }
+
+    const endpoint = buildChatCompletionsEndpoint(this.baseUrl);
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: this.buildHeaders(),
+      body: JSON.stringify(this.buildChatCompletionsBody(messages, tools, systemPrompt, options, true)),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+    yield { type: 'response_headers', headers: response.headers };
+
+    if (!response.ok) {
+      const text = await response.text();
+      yield { type: 'error', error: `OpenAI-compatible request failed: ${text || response.statusText}` };
+      return;
+    }
+
+    if (!response.body) {
+      yield { type: 'error', error: 'OpenAI-compatible response body is empty' };
+      return;
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let finishReason: string | null = null;
+    let usage: ChatCompletionUsage | undefined;
+    const toolCalls = new Map<number, { id: string; name: string; arguments: string }>();
+
+    for await (const chunk of response.body as any as AsyncIterable<Uint8Array>) {
+      buffer += decoder.decode(chunk, { stream: true });
+
+      const lines = buffer.split(/\r?\n/);
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (!line.startsWith('data:')) {
+          continue;
+        }
+
+        const data = line.slice(5).trim();
+        if (!data || data === '[DONE]') {
+          continue;
+        }
+
+        const payload = safeJsonParse<ChatCompletionsApiResult>(data, {});
+        const choice = payload.choices?.[0];
+
+        if (payload.usage) {
+          usage = payload.usage;
+        }
+
+        if (!choice) {
+          continue;
+        }
+
+        const delta = choice.delta || {};
+        const reasoning = delta.reasoning_content;
+        if (reasoning) {
+          yield { type: 'thinking', thinking: reasoning };
+        }
+
+        if (typeof delta.content === 'string' && delta.content) {
+          yield { type: 'text', text: delta.content };
+        }
+
+        for (const toolCall of delta.tool_calls || []) {
+          const index = (toolCall as any).index ?? 0;
+          const existing = toolCalls.get(index);
+          if (!existing) {
+            const next = {
+              id: toolCall.id || `call_${Date.now()}_${index}`,
+              name: toolCall.function?.name || 'unknown_tool',
+              arguments: toolCall.function?.arguments || '',
+            };
+            toolCalls.set(index, next);
+            yield {
+              type: 'tool_use_start',
+              id: next.id,
+              name: next.name,
+            };
+            if (toolCall.function?.arguments) {
+              yield {
+                type: 'tool_use_delta',
+                id: next.id,
+                input: toolCall.function.arguments,
+              };
+            }
+            continue;
+          }
+
+          if (toolCall.function?.name && existing.name === 'unknown_tool') {
+            existing.name = toolCall.function.name;
+          }
+          if (toolCall.function?.arguments) {
+            existing.arguments += toolCall.function.arguments;
+            yield {
+              type: 'tool_use_delta',
+              id: existing.id,
+              input: toolCall.function.arguments,
+            };
+          }
+        }
+
+        if (choice.finish_reason) {
+          finishReason = choice.finish_reason;
+        }
+      }
+    }
+
+    for (const toolCall of toolCalls.values()) {
+      yield {
+        type: 'tool_use_complete',
+        id: toolCall.id,
+        input: safeJsonParse(toolCall.arguments, {}),
+      };
+    }
+
+    yield {
+      type: 'usage',
+      usage: {
+        inputTokens: usage?.prompt_tokens || 0,
+        outputTokens: usage?.completion_tokens || 0,
+        thinkingTokens: usage?.completion_tokens_details?.reasoning_tokens || 0,
+      },
+    };
+    yield {
+      type: 'stop',
+      stopReason: finishReason === 'tool_calls' ? 'tool_use' : finishReason === 'length' ? 'max_tokens' : 'end_turn',
+    };
+  }
+
+  private buildChatCompletionsBody(
+    messages: Message[],
+    tools: ToolDefinition[] | undefined,
+    systemPrompt: string | undefined,
+    options:
+      | {
+          enableThinking?: boolean;
+          thinkingBudget?: number;
+          signal?: AbortSignal;
+          toolChoice?: { type: 'auto' } | { type: 'any' } | { type: 'tool'; name: string };
+          promptBlocks?: PromptBlock[];
+          toolSearchEnabled?: boolean;
+        }
+      | undefined,
+    stream: boolean,
+  ): Record<string, any> {
+    const body: Record<string, any> = {
+      model: this.resolveModelName(),
+      messages: this.convertMessagesToChatCompletions(messages, systemPrompt),
+      stream,
+    };
+
+    if (stream) {
+      body.stream_options = { include_usage: true };
+    }
+
+    if (tools && tools.length > 0) {
+      body.tools = tools.map(tool => ({
+        type: 'function',
+        function: {
+          name: tool.name,
+          description: tool.description,
+          parameters: tool.inputSchema,
+        },
+      }));
+    }
+
+    if (options?.toolChoice) {
+      if (options.toolChoice.type === 'tool') {
+        body.tool_choice = {
+          type: 'function',
+          function: { name: options.toolChoice.name },
+        };
+      } else {
+        body.tool_choice = options.toolChoice.type;
+      }
+    }
+
+    return body;
+  }
+
+  private convertMessagesToChatCompletions(messages: Message[], systemPrompt?: string): any[] {
+    const openAiMessages: any[] = [];
+
+    if (systemPrompt?.trim()) {
+      openAiMessages.push({
+        role: 'system',
+        content: systemPrompt.trim(),
+      });
+    }
+
+    for (const message of messages) {
+      const contentBlocks = typeof message.content === 'string'
+        ? [{ type: 'text', text: message.content }]
+        : message.content;
+
+      if (!Array.isArray(contentBlocks)) {
+        continue;
+      }
+
+      if (message.role === 'assistant') {
+        const textParts: string[] = [];
+        const toolCalls: any[] = [];
+
+        for (const block of contentBlocks) {
+          if (block.type === 'text' && block.text) {
+            textParts.push(block.text);
+            continue;
+          }
+
+          if (block.type === 'tool_use') {
+            const toolUse = block as ToolUseBlock;
+            toolCalls.push({
+              id: toolUse.id,
+              type: 'function',
+              function: {
+                name: toolUse.name,
+                arguments: JSON.stringify(toolUse.input || {}),
+              },
+            });
+          }
+        }
+
+        openAiMessages.push({
+          role: 'assistant',
+          content: textParts.length > 0 ? textParts.join('') : null,
+          ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
+        });
+        continue;
+      }
+
+      const userTextParts: string[] = [];
+      const userVisionParts: any[] = [];
+      const toolResults: Array<{ tool_call_id: string; content: string }> = [];
+
+      for (const block of contentBlocks) {
+        if (block.type === 'text' && block.text) {
+          userTextParts.push(block.text);
+          continue;
+        }
+
+        if (isImageBlock(block)) {
+          userVisionParts.push({
+            type: 'image_url',
+            image_url: {
+              url: `data:${block.source.media_type};base64,${block.source.data}`,
+            },
+          });
+          continue;
+        }
+
+        if (block.type === 'tool_result') {
+          const toolResult = block as ToolResultBlockParam;
+          toolResults.push({
+            tool_call_id: toolResult.tool_use_id,
+            content: coerceTextContent(toolResult.content),
+          });
+        }
+      }
+
+      for (const toolResult of toolResults) {
+        openAiMessages.push({
+          role: 'tool',
+          tool_call_id: toolResult.tool_call_id,
+          content: toolResult.content,
+        });
+      }
+
+      if (userTextParts.length > 0 || userVisionParts.length > 0) {
+        if (userVisionParts.length > 0) {
+          const content: any[] = [];
+          if (userTextParts.length > 0) {
+            content.push({
+              type: 'text',
+              text: userTextParts.join('\n'),
+            });
+          }
+          content.push(...userVisionParts);
+          openAiMessages.push({
+            role: 'user',
+            content,
+          });
+        } else {
+          openAiMessages.push({
+            role: 'user',
+            content: userTextParts.join('\n'),
+          });
+        }
+      }
+    }
+
+    return openAiMessages;
+  }
+
+  private mapChatCompletionResponse(response: ChatCompletionsApiResult): ConversationMessageResponse {
+    const choice = response.choices?.[0];
+    const message = choice?.message || {};
+    const content: ContentBlock[] = [];
+
+    if (message.reasoning_content) {
+      content.push({ type: 'thinking', thinking: message.reasoning_content } as any);
+    }
+
+    for (const toolCall of message.tool_calls || []) {
+      content.push({
+        type: 'tool_use',
+        id: toolCall.id || `call_${Date.now()}`,
+        name: toolCall.function?.name || 'unknown_tool',
+        input: safeJsonParse(toolCall.function?.arguments, {}),
+      } as ToolUseBlock);
+    }
+
+    if (typeof message.content === 'string' && message.content) {
+      content.push({ type: 'text', text: message.content } as TextBlock);
+    }
+
+    return {
+      content,
+      stopReason: choice?.finish_reason === 'tool_calls' ? 'tool_use' : choice?.finish_reason === 'length' ? 'max_tokens' : 'end_turn',
+      usage: {
+        inputTokens: response.usage?.prompt_tokens || 0,
+        outputTokens: response.usage?.completion_tokens || 0,
+        thinkingTokens: response.usage?.completion_tokens_details?.reasoning_tokens || 0,
+      },
+      model: response.model || this.resolveModelName(),
+    };
+  }
+
+  private mapChatCompletionApiResultToResponses(response: ChatCompletionsApiResult): ResponsesApiResult {
+    const mapped = this.mapChatCompletionResponse(response);
+    const output: ResponseOutputItem[] = [];
+
+    for (const block of mapped.content) {
+      if (block.type === 'thinking') {
+        output.push({
+          type: 'reasoning',
+          summary: [{ text: (block as any).thinking }],
+        });
+        continue;
+      }
+
+      if (block.type === 'tool_use') {
+        const toolUse = block as ToolUseBlock;
+        output.push({
+          type: 'function_call',
+          call_id: toolUse.id,
+          name: toolUse.name,
+          arguments: JSON.stringify(toolUse.input || {}),
+        });
+        continue;
+      }
+
+      if (block.type === 'text') {
+        output.push({
+          type: 'message',
+          content: [{ type: 'output_text', text: block.text }],
+        });
+      }
+    }
+
+    return {
+      model: mapped.model,
+      output,
+      usage: {
+        input_tokens: mapped.usage.inputTokens,
+        output_tokens: mapped.usage.outputTokens,
+        reasoning_tokens: mapped.usage.thinkingTokens,
+      },
+    };
+  }
+
+  private shouldUseChatCompletionsTransport(): boolean {
+    return isCustomResponsesEndpoint(this.baseUrl) && !isCodexCompatibleModel(this.resolveModelName());
+  }
+
+  private buildHeaders(): Record<string, string> {
+    const token = this.apiKey || this.authToken;
+    if (!token) {
+      throw new Error('Codex credentials are not configured');
+    }
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    };
+
+    if (this.authToken && this.accountId) {
+      headers['ChatGPT-Account-ID'] = this.accountId;
+    }
+
+    return headers;
+  }
+
+  private buildRequestBody(
+    messages: Message[],
+    tools: ToolDefinition[] | undefined,
+    systemPrompt: string | undefined,
+    options:
+      | {
+          enableThinking?: boolean;
+          thinkingBudget?: number;
+          toolChoice?: { type: 'auto' } | { type: 'any' } | { type: 'tool'; name: string };
+          promptBlocks?: PromptBlock[];
+          toolSearchEnabled?: boolean;
+        }
+      | undefined,
+    stream: boolean
+  ): Record<string, any> {
+    const input = this.convertMessages(messages);
+    const instructions = systemPrompt?.trim() || DEFAULT_CODEX_INSTRUCTIONS;
+    const resolvedModel = this.resolveModelName();
+    const body: Record<string, any> = {
+      model: resolvedModel,
+      input,
+      stream,
+      store: false,
+      instructions,
+    };
+
+    if (tools && tools.length > 0) {
+      body.tools = tools.map(tool => ({
+        type: 'function',
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.inputSchema,
+      }));
+    }
+
+    if (options?.toolChoice) {
+      if (options.toolChoice.type === 'tool') {
+        body.tool_choice = {
+          type: 'function',
+          name: options.toolChoice.name,
+        };
+      } else {
+        body.tool_choice = options.toolChoice.type;
+      }
+    }
+
+    if (options?.enableThinking && this.supportsReasoning(resolvedModel)) {
+      body.reasoning = {
+        effort: 'medium',
+        summary: 'auto',
+      };
+    }
+
+    return body;
+  }
+
+  private convertMessages(messages: Message[]): any[] {
+    const input: any[] = [];
+
+    for (const message of messages) {
+      const contentBlocks = typeof message.content === 'string'
+        ? [{ type: 'text', text: message.content }]
+        : message.content;
+
+      const textParts: string[] = [];
+      const imageParts: any[] = [];
+
+      for (const block of contentBlocks) {
+        if (block.type === 'text') {
+          textParts.push(block.text);
+          continue;
+        }
+
+        if (isImageBlock(block)) {
+          imageParts.push({
+            type: 'input_image',
+            image_url: `data:${block.source.media_type};base64,${block.source.data}`,
+          });
+          continue;
+        }
+
+        if (block.type === 'tool_result') {
+          const toolResult = block as ToolResultBlockParam;
+          input.push({
+            type: 'function_call_output',
+            call_id: toolResult.tool_use_id,
+            output: coerceTextContent(toolResult.content),
+          });
+          continue;
+        }
+
+        if (message.role === 'assistant' && block.type === 'tool_use') {
+          const toolUse = block as ToolUseBlock;
+          input.push({
+            type: 'function_call',
+            call_id: toolUse.id,
+            name: toolUse.name,
+            arguments: JSON.stringify(toolUse.input || {}),
+          });
+        }
+      }
+
+      if (textParts.length > 0 || imageParts.length > 0) {
+        const content: any[] = [];
+        if (textParts.length > 0) {
+          content.push({
+            type: getMessageTextContentType(message.role),
+            text: textParts.join('\n'),
+          });
+        }
+        if (message.role !== 'assistant') {
+          content.push(...imageParts);
+        }
+        input.push({
+          type: 'message',
+          role: message.role,
+          content,
+        });
+      }
+    }
+
+    return input;
+  }
+
+  private mapOutputToContentBlocks(output?: ResponseOutputItem[]): ContentBlock[] {
+    if (!Array.isArray(output)) {
+      return [{ type: 'text', text: '' } as TextBlock];
+    }
+
+    const contentBlocks: ContentBlock[] = [];
+    for (const item of output) {
+      if (item.type === 'message' && Array.isArray(item.content)) {
+        const text = item.content
+          .map(part => part.text || '')
+          .join('');
+        if (text) {
+          contentBlocks.push({ type: 'text', text } as TextBlock);
+        }
+        continue;
+      }
+
+      if (item.type === 'reasoning' && Array.isArray(item.summary)) {
+        const text = item.summary.map(part => part.text || '').join('');
+        if (text) {
+          contentBlocks.push({ type: 'thinking', thinking: text } as any);
+        }
+        continue;
+      }
+
+      if (item.type === 'function_call') {
+        contentBlocks.push({
+          type: 'tool_use',
+          id: item.call_id || item.id || `call_${Date.now()}`,
+          name: item.name || 'unknown_tool',
+          input: safeJsonParse(item.arguments, {}),
+        } as ToolUseBlock);
+      }
+    }
+
+    if (contentBlocks.length === 0) {
+      const text = extractTextFromOutput(output);
+      if (text) {
+        contentBlocks.push({ type: 'text', text } as TextBlock);
+      }
+    }
+
+    return contentBlocks;
+  }
+
+  private *emitCompletedResponse(response?: ResponsesApiResult): Generator<ConversationStreamEvent> {
+    const output = response?.output || [];
+    for (const item of output) {
+      if (item.type === 'reasoning' && Array.isArray(item.summary)) {
+        const text = item.summary.map(part => part.text || '').join('');
+        if (text) {
+          yield { type: 'thinking', thinking: text };
+        }
+        continue;
+      }
+
+      if (item.type === 'function_call') {
+        const callId = item.call_id || item.id || `call_${Date.now()}`;
+        yield {
+          type: 'tool_use_start',
+          id: callId,
+          name: item.name || 'unknown_tool',
+        };
+        yield {
+          type: 'tool_use_complete',
+          id: callId,
+          input: safeJsonParse(item.arguments, {}),
+        };
+        continue;
+      }
+
+      if (item.type === 'message' && Array.isArray(item.content)) {
+        for (const part of item.content) {
+          if (part.type === 'output_text' && part.text) {
+            yield { type: 'text', text: part.text };
+          }
+        }
+      }
+    }
+
+    const hasToolUse = output.some(item => item.type === 'function_call');
+    yield {
+      type: 'usage',
+      usage: {
+        inputTokens: response?.usage?.input_tokens || 0,
+        outputTokens: response?.usage?.output_tokens || 0,
+        thinkingTokens: response?.usage?.reasoning_tokens || 0,
+      },
+    };
+    yield {
+      type: 'stop',
+      stopReason: hasToolUse ? 'tool_use' : 'end_turn',
+    };
+  }
+
+  private resolveModelName(): string {
+    const allowArbitraryModel = isCustomResponsesEndpoint(this.baseUrl);
+
+    if (this.customModelName?.trim() && (allowArbitraryModel || isCodexCompatibleModel(this.customModelName))) {
+      return this.customModelName.trim();
+    }
+    const normalized = this.model.trim();
+    if (normalized && (allowArbitraryModel || isCodexCompatibleModel(normalized))) {
+      return normalized;
+    }
+    return 'gpt-5-codex';
+  }
+
+  private supportsReasoning(model: string): boolean {
+    return isCodexCompatibleModel(model);
+  }
+}

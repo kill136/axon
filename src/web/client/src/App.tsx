@@ -28,6 +28,13 @@ import type { SessionActions } from './types';
 import { useLanguage } from './i18n/LanguageContext';
 import InitAxonMdDialog from './components/InitAxonMdDialog';
 import { useSpeechSynthesis } from './hooks/useSpeechSynthesis';
+import { useRuntimeModelCatalog } from './hooks/useRuntimeModelCatalog';
+import {
+  getProviderForRuntimeBackend,
+  normalizeWebRuntimeModelForBackend,
+  type WebRuntimeBackend,
+  type WebRuntimeProvider,
+} from '../../shared/model-catalog';
 
 // 获取 WebSocket URL
 function getWebSocketUrl(): string {
@@ -119,11 +126,27 @@ function AppContent({
   const codeViewRef = useRef<CodeViewRef>(null);
   const [pendingCodeRef, setPendingCodeRef] = useState<{ filePath: string; line: number } | null>(null);
 
-  const { connected, sessionId, model, setModel, send, addMessageHandler } = useWebSocket(getWebSocketUrl());
+  const {
+    connected,
+    sessionId,
+    model,
+    runtimeBackend: socketRuntimeBackend,
+    setModel,
+    send,
+    addMessageHandler,
+  } = useWebSocket(getWebSocketUrl());
 
   // 认证状态：连接后检查，用于控制 InputArea 是否允许发送消息
   // authRefreshKey 变化时（登录/登出后）也会重新检查
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null); // null = 加载中
+  const [runtimeProvider, setRuntimeProvider] = useState<WebRuntimeProvider>('anthropic');
+  const [runtimeBackend, setRuntimeBackend] = useState<WebRuntimeBackend>('claude-compatible-api');
+  const availableModels = useRuntimeModelCatalog({
+    connected,
+    runtimeBackend,
+    send,
+    addMessageHandler,
+  });
   useEffect(() => {
     if (!connected) return;
     let cancelled = false;
@@ -132,13 +155,22 @@ function AppContent({
         const res = await fetch('/api/auth/oauth/status');
         if (!res.ok || cancelled) return;
         const data = await res.json();
-        if (!cancelled) setIsAuthenticated(!!data.authenticated);
+        if (!cancelled) {
+          setIsAuthenticated(!!data.authenticated);
+          const nextBackend = (data.runtimeBackend || 'claude-compatible-api') as WebRuntimeBackend;
+          setRuntimeBackend(nextBackend);
+          setRuntimeProvider(getProviderForRuntimeBackend(nextBackend));
+        }
       } catch {
-        if (!cancelled) setIsAuthenticated(false);
+        if (!cancelled) {
+          setIsAuthenticated(false);
+          setRuntimeBackend('claude-compatible-api');
+          setRuntimeProvider('anthropic');
+        }
       }
     })();
     return () => { cancelled = true; };
-  }, [connected, authRefreshKey]);
+  }, [connected, authRefreshKey, model]);
 
   // 监听 auth 变化（登录/登出后刷新认证状态）
   useEffect(() => {
@@ -147,12 +179,33 @@ function AppContent({
       if (msg.type === 'auth_status_changed' || msg.type === 'connected') {
         fetch('/api/auth/oauth/status')
           .then(res => res.ok ? res.json() : null)
-          .then(data => { if (data) setIsAuthenticated(!!data.authenticated); })
+          .then(data => {
+            if (data) {
+              setIsAuthenticated(!!data.authenticated);
+              const nextBackend = (data.runtimeBackend || 'claude-compatible-api') as WebRuntimeBackend;
+              setRuntimeBackend(nextBackend);
+              setRuntimeProvider(getProviderForRuntimeBackend(nextBackend));
+            }
+          })
           .catch(() => {});
       }
     };
     return addMessageHandler(handler);
   }, [addMessageHandler]);
+
+  useEffect(() => {
+    if (!connected) return;
+    const normalizedModel = normalizeWebRuntimeModelForBackend(runtimeBackend, model, model, availableModels);
+    if (normalizedModel !== model) {
+      setModel(normalizedModel);
+    }
+  }, [availableModels, connected, model, runtimeBackend, setModel]);
+
+  useEffect(() => {
+    if (!socketRuntimeBackend) return;
+    setRuntimeBackend(socketRuntimeBackend as WebRuntimeBackend);
+    setRuntimeProvider(getProviderForRuntimeBackend(socketRuntimeBackend as WebRuntimeBackend));
+  }, [socketRuntimeBackend]);
 
   // 模式预设列表 + 当前活跃预设 ID
   const [modePresets, setModePresets] = useState<Array<{ id: string; name: string; icon: string; permissionMode: string }>>([]);
@@ -244,6 +297,7 @@ function AppContent({
   } = useMessageHandler({
     addMessageHandler,
     model,
+    runtimeBackend,
     send,
     refreshSessions: () => sessionManager.refreshSessions(),
     onNavigateToSwarm,
@@ -633,6 +687,9 @@ function AppContent({
           messages={messages}
           status={status}
           model={model}
+          availableModels={availableModels}
+          runtimeProvider={runtimeProvider}
+          runtimeBackend={runtimeBackend}
           permissionMode={permissionMode}
           onModelChange={setModel}
           onPermissionModeChange={setPermissionMode}
@@ -770,6 +827,9 @@ function AppContent({
               connected={connected}
               status={status}
               model={model}
+              availableModels={availableModels}
+              runtimeProvider={runtimeProvider}
+              runtimeBackend={runtimeBackend}
               onModelChange={setModel}
               permissionMode={permissionMode}
               activePresetId={activePresetId}
@@ -895,6 +955,9 @@ function AppContent({
         isOpen={!!showSettings}
         onClose={() => onCloseSettings?.()}
         model={model}
+        availableModels={availableModels}
+        runtimeProvider={runtimeProvider}
+        runtimeBackend={runtimeBackend}
         onModelChange={setModel}
         onSendMessage={send}
         addMessageHandler={addMessageHandler}

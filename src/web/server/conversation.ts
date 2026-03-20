@@ -3,7 +3,6 @@
  * 封装核心对话逻辑，提供 WebUI 专用接口
  */
 
-import { ClaudeClient } from '../../core/client.js';
 import { Session } from '../../core/session.js';
 import { runWithCwd } from '../../core/cwd-context.js';
 import { runWithSessionId } from '../../core/session-context.js';
@@ -12,7 +11,7 @@ import { toolRegistry, registerBlueprintTools } from '../../tools/index.js';
 import { systemPromptBuilder, type PromptContext, type PromptBlock } from '../../prompt/index.js';
 import { modelConfig } from '../../models/index.js';
 import { configManager } from '../../config/index.js';
-import { getAuth, createOAuthApiKey } from '../../auth/index.js';
+import { createOAuthApiKey } from '../../auth/index.js';
 import type { Message, ContentBlock, ToolUseBlock, TextBlock } from '../../types/index.js';
 import type { ChatMessage, ChatContent, ToolResultData, PermissionConfigPayload, PermissionRequestPayload, SystemPromptConfig, SystemPromptGetPayload, DebugMessagesPayload } from '../shared/types.js';
 import { UserInteractionHandler } from './user-interaction.js';
@@ -61,6 +60,14 @@ import { promptSnippetsManager } from './prompt-snippets.js';
 import { isEvolveRestartRequested, triggerGracefulShutdown } from './evolve-state.js';
 import { loadActiveGoals } from '../../goals/index.js';
 import { getAppManager } from './app-manager.js';
+import { createConversationClient } from './runtime/factory.js';
+import { resolveRuntimeSelection } from './runtime/runtime-selection.js';
+import type { ConversationClient, ConversationClientConfig } from './runtime/types.js';
+import { normalizeToolInputForWebRuntime } from './runtime/tool-input-normalizer.js';
+import {
+  getProviderForRuntimeBackend,
+  type WebRuntimeBackend,
+} from '../shared/model-catalog.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -435,9 +442,10 @@ export interface StreamCallbacks {
  */
 interface SessionState {
   session: Session;
-  client: ClaudeClient;
+  client: ConversationClient;
   messages: Message[];
   model: string;
+  runtimeBackend: WebRuntimeBackend;
   cancelled: boolean;
   chatHistory: ChatMessage[];
   userInteractionHandler: UserInteractionHandler;
@@ -505,7 +513,7 @@ export class ConversationManager {
 
   constructor(cwd: string, defaultModel: string = 'opus', options?: { verbose?: boolean }) {
     this.cwd = cwd;
-    this.defaultModel = defaultModel;
+    this.defaultModel = this.normalizeRuntimeModel(defaultModel);
     this.options = options;
     this.sessionManager = new WebSessionManager(cwd);
     this.mcpConfigManager = new McpConfigManager({
@@ -913,10 +921,10 @@ export class ConversationManager {
   /**
    * 计算凭据指纹，用于检测认证变更
    */
-  private getCredentialsFingerprint(): string {
-    const creds = webAuth.getCredentials();
+  private getCredentialsFingerprint(runtimeBackend: WebRuntimeBackend = this.getRuntimeBackend()): string {
+    const creds = webAuth.getCredentials(runtimeBackend);
     // 用凭据的关键字段拼接成指纹，任何变更都会导致指纹不同
-    return `${creds.apiKey || ''}\0${creds.authToken || ''}\0${creds.baseUrl || ''}`;
+    return `${this.getRuntimeProvider(runtimeBackend)}\0${creds.apiKey || ''}\0${creds.authToken || ''}\0${creds.baseUrl || ''}\0${creds.accountId || ''}`;
   }
 
   /**
@@ -924,28 +932,76 @@ export class ConversationManager {
    * 处理场景：用户在 WebUI 重新登录/切换 API Key 后，已有会话自动使用新凭据
    */
   private ensureClientCredentialsFresh(state: SessionState): void {
-    const currentFingerprint = this.getCredentialsFingerprint();
+    const currentFingerprint = this.getCredentialsFingerprint(state.runtimeBackend);
     if (state.credentialsFingerprint && state.credentialsFingerprint !== currentFingerprint) {
       console.log('[ConversationManager] Detected auth credentials change, rebuilding client');
-      const newConfig = this.buildClientConfig(state.model);
-      state.client = new ClaudeClient({ ...newConfig });
+      const newConfig = this.buildClientConfig(state.model, state.runtimeBackend);
+      state.client = createConversationClient(newConfig);
       state.credentialsFingerprint = currentFingerprint;
     }
+  }
+
+  private getRuntimeBackend(): WebRuntimeBackend {
+    return webAuth.getRuntimeBackend();
+  }
+
+  private getRuntimeSelection(
+    model: string | undefined,
+    runtimeBackend: WebRuntimeBackend = this.getRuntimeBackend(),
+  ) {
+    return resolveRuntimeSelection({
+      runtimeBackend,
+      model,
+      defaultModelByBackend: webAuth.getDefaultModelByBackend(),
+      codexModelName: webAuth.getCodexModelName(),
+      customModelName: webAuth.getCustomModelName(),
+    });
+  }
+
+  private getRuntimeProvider(runtimeBackend: WebRuntimeBackend = this.getRuntimeBackend()) {
+    return this.getRuntimeSelection(undefined, runtimeBackend).provider;
+  }
+
+  private getRuntimeCustomModelName(runtimeBackend: WebRuntimeBackend = this.getRuntimeBackend()): string | undefined {
+    return this.getRuntimeSelection(undefined, runtimeBackend).customModelName;
+  }
+
+  private normalizeRuntimeModel(model?: string, runtimeBackend: WebRuntimeBackend = this.getRuntimeBackend()): string {
+    return this.getRuntimeSelection(model, runtimeBackend).normalizedModel;
+  }
+
+  private ensureStateModelMatchesRuntime(state: SessionState): void {
+    const normalizedModel = this.normalizeRuntimeModel(state.model, state.runtimeBackend);
+    if (normalizedModel === state.model) {
+      return;
+    }
+
+    state.model = normalizedModel;
+    state.client = createConversationClient(this.buildClientConfig(normalizedModel, state.runtimeBackend));
   }
 
   /**
    * 构建 ClaudeClient 配置
    * 认证全部委托给 webAuth（唯一认证入口）
    */
-  private buildClientConfig(model: string): { model: string; apiKey?: string; authToken?: string; baseUrl?: string; timeout?: number } {
-    const creds = webAuth.getCredentials();
-    const customModel = webAuth.getCustomModelName();
+  private buildClientConfig(
+    model: string,
+    runtimeBackend: WebRuntimeBackend = this.getRuntimeBackend(),
+  ): ConversationClientConfig {
+    const creds = webAuth.getCredentials(runtimeBackend);
+    const selection = this.getRuntimeSelection(model, runtimeBackend);
+    const normalizedModel = selection.normalizedModel;
+    const provider = selection.provider;
+    const customModel = selection.customModelName;
 
     return {
-      model: customModel || this.getModelId(model),
+      provider,
+      model: provider === 'codex' ? normalizedModel : this.getModelId(normalizedModel),
       apiKey: creds.apiKey,
       authToken: creds.authToken,
       baseUrl: creds.baseUrl,
+      accountId: creds.accountId,
+      customModelName: customModel,
       timeout: 300000,
     };
   }
@@ -954,12 +1010,13 @@ export class ConversationManager {
    * 获取 Anthropic 客户端配置（供外部模块使用，如 Git AI 功能）
    * 复用 buildClientConfig 的完整认证逻辑
    */
-  getClientConfig(model: string = 'sonnet'): { apiKey?: string; authToken?: string; baseUrl?: string } {
+  getClientConfig(model: string = 'sonnet'): { apiKey?: string; authToken?: string; baseUrl?: string; accountId?: string } {
     const config = this.buildClientConfig(model);
     return {
       apiKey: config.apiKey,
       authToken: config.authToken,
       baseUrl: config.baseUrl,
+      accountId: config.accountId,
     };
   }
 
@@ -968,6 +1025,24 @@ export class ConversationManager {
    * 这个方法在每次调用 API 之前被调用，检查 token 是否过期，如果过期则自动刷新
    */
   private async ensureValidOAuthToken(state: SessionState): Promise<void> {
+    const runtimeProvider = getProviderForRuntimeBackend(state.runtimeBackend, state.model);
+
+    if (runtimeProvider !== 'anthropic') {
+      const tokenBefore = webAuth.getCredentials(state.runtimeBackend).authToken;
+      const refreshOk = await webAuth.ensureValidToken(state.runtimeBackend);
+      if (!refreshOk) {
+        throw new Error('OAuth token expired, refresh failed. Please log in again.');
+      }
+      const tokenAfter = webAuth.getCredentials(state.runtimeBackend).authToken;
+      if (tokenBefore !== tokenAfter) {
+        const newConfig = this.buildClientConfig(state.model, state.runtimeBackend);
+        state.client = createConversationClient(newConfig);
+        state.credentialsFingerprint = this.getCredentialsFingerprint(state.runtimeBackend);
+        console.log('[ConversationManager] Client now using refreshed OAuth credentials');
+      }
+      return;
+    }
+
     // 只在使用 OAuth 时处理
     const oauthConfig = oauthManager.getOAuthConfig();
     if (!oauthConfig) {
@@ -984,9 +1059,9 @@ export class ConversationManager {
         if (apiKey) {
           await oauthManager.saveOAuthConfig({ oauthApiKey: apiKey });
           console.log('[ConversationManager] OAuth API Key auto-created, rebuilding client');
-          const newConfig = this.buildClientConfig(state.model);
-          state.client = new ClaudeClient({ ...newConfig });
-          state.credentialsFingerprint = this.getCredentialsFingerprint();
+          const newConfig = this.buildClientConfig(state.model, state.runtimeBackend);
+          state.client = createConversationClient(newConfig);
+          state.credentialsFingerprint = this.getCredentialsFingerprint(state.runtimeBackend);
         } else {
           console.warn('[ConversationManager] createOAuthApiKey returned null, inference may fail');
         }
@@ -999,7 +1074,7 @@ export class ConversationManager {
     const tokenBefore = oauthManager.getOAuthConfig()?.accessToken;
 
     // 统一的 token 有效性检查（对齐官方 NM() 语义）
-    const refreshOk = await webAuth.ensureValidToken();
+    const refreshOk = await webAuth.ensureValidToken(state.runtimeBackend);
     if (!refreshOk) {
       throw new Error('OAuth token expired, refresh failed. Please log in again.');
     }
@@ -1007,9 +1082,9 @@ export class ConversationManager {
     // 只有 token 真正变更了才重建客户端
     const tokenAfter = oauthManager.getOAuthConfig()?.accessToken;
     if (tokenBefore !== tokenAfter) {
-      const newConfig = this.buildClientConfig(state.model);
-      state.client = new ClaudeClient({ ...newConfig });
-      state.credentialsFingerprint = this.getCredentialsFingerprint();
+      const newConfig = this.buildClientConfig(state.model, state.runtimeBackend);
+      state.client = createConversationClient(newConfig);
+      state.credentialsFingerprint = this.getCredentialsFingerprint(state.runtimeBackend);
       console.log('[ConversationManager] Client now using refreshed OAuth credentials');
     }
   }
@@ -1022,6 +1097,8 @@ export class ConversationManager {
     let state = this.sessions.get(sessionId);
 
     if (state) {
+      state.runtimeBackend = state.runtimeBackend || this.getRuntimeBackend();
+      this.ensureStateModelMatchesRuntime(state);
       // 会话已存在，检查是否需要更新工作目录
       if (projectPath && state.session.cwd !== projectPath) {
         console.log(`[ConversationManager] Updated session ${sessionId} working directory: ${state.session.cwd} -> ${projectPath}`);
@@ -1037,17 +1114,16 @@ export class ConversationManager {
 
     // 创建新会话
     const workingDir = projectPath || this.cwd;
+    const runtimeBackend = this.getRuntimeBackend();
+    const resolvedModel = this.normalizeRuntimeModel(model || this.defaultModel, runtimeBackend);
     console.log(`[ConversationManager] Creating new session ${sessionId}, workingDir: ${workingDir}, permissionMode: ${permissionMode || 'default'}`);
 
     const session = new Session(workingDir, sessionId);
     await session.initializeGitInfo();
 
     // 使用与核心 loop.ts 一致的认证逻辑
-    const clientConfig = this.buildClientConfig(model || this.defaultModel);
-    const client = new ClaudeClient({
-      ...clientConfig,
-      timeout: clientConfig.timeout,
-    });
+    const clientConfig = this.buildClientConfig(resolvedModel, runtimeBackend);
+    const client = createConversationClient(clientConfig);
 
     // 创建用户交互处理器
     const userInteractionHandler = new UserInteractionHandler();
@@ -1066,7 +1142,8 @@ export class ConversationManager {
       session,
       client,
       messages: [],
-      model: model || this.defaultModel,
+      model: resolvedModel,
+      runtimeBackend,
       cancelled: false,
       chatHistory: [],
       userInteractionHandler,
@@ -1084,7 +1161,7 @@ export class ConversationManager {
       lastActualInputTokens: 0,
       messagesLenAtLastApiCall: 0,
       lastPersistedMessageCount: 0,
-      credentialsFingerprint: this.getCredentialsFingerprint(),
+      credentialsFingerprint: this.getCredentialsFingerprint(runtimeBackend),
     };
 
     this.sessions.set(sessionId, state);
@@ -1125,14 +1202,30 @@ export class ConversationManager {
   setModel(sessionId: string, model: string): void {
     const state = this.sessions.get(sessionId);
     if (state) {
-      state.model = model;
+      const normalizedModel = this.normalizeRuntimeModel(model, state.runtimeBackend);
+      state.model = normalizedModel;
       // 使用与核心 loop.ts 一致的认证逻辑
-      const clientConfig = this.buildClientConfig(model);
-      state.client = new ClaudeClient({
-        ...clientConfig,
-        timeout: clientConfig.timeout,
-      });
+      const clientConfig = this.buildClientConfig(normalizedModel, state.runtimeBackend);
+      state.client = createConversationClient(clientConfig);
     }
+  }
+
+  getSessionModel(sessionId: string): string | null {
+    const state = this.sessions.get(sessionId);
+    if (!state) {
+      return null;
+    }
+
+    this.ensureStateModelMatchesRuntime(state);
+    return state.model;
+  }
+
+  getSessionRuntimeBackend(sessionId: string): WebRuntimeBackend | null {
+    const state = this.sessions.get(sessionId);
+    if (!state) {
+      return null;
+    }
+    return state.runtimeBackend;
   }
 
   /**
@@ -1164,7 +1257,7 @@ export class ConversationManager {
     const hasCompactBoundary = state.chatHistory.some(m => m.isCompactBoundary);
     if (!hasCompactBoundary) {
       // 未压缩：messages 是完整的，可以安全重建
-      return this.convertMessagesToChatHistory(state.messages);
+      return this.convertMessagesToChatHistory(state.messages, state.runtimeBackend);
     }
 
     // 已压缩：以 chatHistory 为基础，找出 messages 中还没同步的增量部分
@@ -1181,7 +1274,7 @@ export class ConversationManager {
       return state.chatHistory;
     }
 
-    const incrementalHistory = this.convertMessagesToChatHistory(incrementalMessages);
+    const incrementalHistory = this.convertMessagesToChatHistory(incrementalMessages, state.runtimeBackend);
     return [...state.chatHistory, ...incrementalHistory];
   }
 
@@ -1474,6 +1567,7 @@ export class ConversationManager {
         role: 'user' as const,
         timestamp: Date.now(),
         content: chatContentItems,
+        runtimeBackend: state.runtimeBackend,
         _messagesLen: state.messages.length,
       };
       state.chatHistory.push(chatEntry);
@@ -2248,6 +2342,7 @@ export class ConversationManager {
             timestamp: Date.now(),
             content: chatContent,
             model: state.model,
+            runtimeBackend: state.runtimeBackend,
             usage: {
               inputTokens: totalInputTokens,
               outputTokens: totalOutputTokens,
@@ -2511,6 +2606,7 @@ export class ConversationManager {
         sessionData.messages = state.messages;
         sessionData.chatHistory = state.chatHistory;
         sessionData.currentModel = state.model;
+        sessionData.metadata.runtimeBackend = state.runtimeBackend;
         (sessionData as any).toolFilterConfig = state.toolFilterConfig;
         (sessionData as any).systemPromptConfig = state.systemPromptConfig;
         sessionData.metadata.messageCount = state.messages.length;
@@ -2556,7 +2652,7 @@ export class ConversationManager {
     // 如果 messages 中的 assistant 消息比 chatHistory 多，说明有消息没有同步
     if (assistantMsgCount > assistantChatCount) {
       // 从 messages 重建 chatHistory
-      state.chatHistory = this.convertMessagesToChatHistory(state.messages);
+      state.chatHistory = this.convertMessagesToChatHistory(state.messages, state.runtimeBackend);
       console.log(`[ConversationManager] Syncing chatHistory: messages=${assistantMsgCount}, chatHistory=${state.chatHistory.filter(m => m.role === 'assistant').length}`);
     }
   }
@@ -2697,7 +2793,7 @@ export class ConversationManager {
     sendCountdown('executing', 0);
     console.log(`[ScheduleTask] Countdown finished, starting execution: ${taskName}`);
 
-    const mainClientConfig = this.buildClientConfig(input.model || state.model);
+    const mainClientConfig = this.buildClientConfig(input.model || state.model, state.runtimeBackend);
     const startedAt = Date.now();
 
     try {
@@ -2854,10 +2950,15 @@ export class ConversationManager {
       return { success: false, error };
     }
 
+    const normalizedToolInput = normalizeToolInputForWebRuntime(toolUse.input, tool?.getInputSchema());
+    const normalizedToolUse = normalizedToolInput === toolUse.input
+      ? toolUse
+      : { ...toolUse, input: normalizedToolInput };
+
     // 检查工具是否被过滤
-    if (!this.isToolEnabled(toolUse.name, state.toolFilterConfig)) {
-      const error = `Tool ${toolUse.name} is disabled`;
-      callbacks.onToolResult?.(toolUse.id, false, undefined, error);
+    if (!this.isToolEnabled(normalizedToolUse.name, state.toolFilterConfig)) {
+      const error = `Tool ${normalizedToolUse.name} is disabled`;
+      callbacks.onToolResult?.(normalizedToolUse.id, false, undefined, error);
       return { success: false, error };
     }
 
@@ -2865,17 +2966,17 @@ export class ConversationManager {
     // 权限检查（对齐 CLI loop.ts 的 handlePermissionRequest 逻辑）
     // ========================================================================
     try {
-      const permissionResult = await this.checkToolPermission(toolUse, state, callbacks);
+      const permissionResult = await this.checkToolPermission(normalizedToolUse, state, callbacks);
       if (permissionResult === 'denied') {
-        const error = `User denied execution permission for ${toolUse.name}`;
-        callbacks.onToolResult?.(toolUse.id, false, undefined, error);
+        const error = `User denied execution permission for ${normalizedToolUse.name}`;
+        callbacks.onToolResult?.(normalizedToolUse.id, false, undefined, error);
         return { success: false, error };
       }
       // permissionResult === 'allowed' 或 'skipped'（无需权限），继续执行
     } catch (permError) {
       // 权限请求超时或被取消
       const error = permError instanceof Error ? permError.message : 'Permission request failed';
-      callbacks.onToolResult?.(toolUse.id, false, undefined, error);
+      callbacks.onToolResult?.(normalizedToolUse.id, false, undefined, error);
       return { success: false, error };
     }
 
@@ -2884,10 +2985,10 @@ export class ConversationManager {
     // ========================================================================
     const hookSessionId = state.session.sessionId || '';
     try {
-      const hookResult = await runPreToolUseHooks(toolUse.name, toolUse.input, hookSessionId);
+      const hookResult = await runPreToolUseHooks(normalizedToolUse.name, normalizedToolUse.input, hookSessionId);
       if (!hookResult.allowed) {
-        const error = hookResult.message || `PreToolUse hook blocked execution of ${toolUse.name}`;
-        callbacks.onToolResult?.(toolUse.id, false, undefined, error);
+        const error = hookResult.message || `PreToolUse hook blocked execution of ${normalizedToolUse.name}`;
+        callbacks.onToolResult?.(normalizedToolUse.id, false, undefined, error);
         return { success: false, error };
       }
     } catch (hookError) {
@@ -2896,12 +2997,12 @@ export class ConversationManager {
     }
 
     try {
-      console.log(`[Tool] Executing ${toolUse.name}:`, JSON.stringify(toolUse.input).slice(0, 200));
+      console.log(`[Tool] Executing ${normalizedToolUse.name}:`, JSON.stringify(normalizedToolUse.input).slice(0, 200));
 
       // 拦截 Task 工具 - WebUI 模式下使用同步执行 + WebSocket 实时推送
       // 不再默认后台执行，避免 TaskOutput 多次轮询的性能浪费
-      if (toolUse.name === 'Task') {
-        const input = toolUse.input as any;
+      if (normalizedToolUse.name === 'Task') {
+        const input = normalizedToolUse.input as any;
         const description = input.description || 'Background task';
         const prompt = input.prompt || '';
         const agentType = input.subagent_type || 'general-purpose';
@@ -2909,13 +3010,13 @@ export class ConversationManager {
         // 验证必需参数
         if (!prompt) {
           const error = 'Task prompt is required';
-          callbacks.onToolResult?.(toolUse.id, false, undefined, error);
+          callbacks.onToolResult?.(normalizedToolUse.id, false, undefined, error);
           return { success: false, error };
         }
 
         try {
           // 获取主 agent 的认证信息，传递给子 agent 复用（避免子 agent initAuth 拿到不同凭证导致 403）
-          const mainClientConfig = this.buildClientConfig(input.model || state.model);
+          const mainClientConfig = this.buildClientConfig(input.model || state.model, state.runtimeBackend);
 
           // WebUI 始终使用同步执行：await 拿结果，中间过程由 TaskManager 通过 WebSocket 实时推送
           const result = await state.taskManager.executeTaskSync(
@@ -2931,7 +3032,7 @@ export class ConversationManager {
                 authToken: mainClientConfig.authToken,
                 baseUrl: mainClientConfig.baseUrl,
               },
-              toolUseId: toolUse.id,
+              toolUseId: normalizedToolUse.id,
               maxTurns: input.max_turns,
             }
           );
@@ -2955,7 +3056,7 @@ export class ConversationManager {
             output = parts.join('');
           }
 
-          callbacks.onToolResult?.(toolUse.id, result.success, output, result.success ? undefined : result.error, {
+          callbacks.onToolResult?.(normalizedToolUse.id, result.success, output, result.success ? undefined : result.error, {
             tool: 'Task',
             agentType,
             description,
@@ -2967,14 +3068,14 @@ export class ConversationManager {
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error);
           console.error(`[Tool] Task execution failed:`, errorMessage);
-          callbacks.onToolResult?.(toolUse.id, false, undefined, errorMessage);
+          callbacks.onToolResult?.(normalizedToolUse.id, false, undefined, errorMessage);
           return { success: false, error: errorMessage };
         }
       }
 
       // 拦截 ScheduleTask 工具 - inline 执行时提供倒计时 + 子 agent 渲染
-      if (toolUse.name === 'ScheduleTask') {
-        const input = toolUse.input as any;
+      if (normalizedToolUse.name === 'ScheduleTask') {
+        const input = normalizedToolUse.input as any;
 
         // 只拦截 create + once + 10分钟内的情况（即 inline 执行路径）
         if (input.action === 'create' && input.type === 'once' && input.triggerAt) {
@@ -3004,16 +3105,16 @@ export class ConversationManager {
           const scheduleTool = toolRegistry.get('ScheduleTask');
           if (!scheduleTool) {
             const error = 'ScheduleTask tool not found in registry';
-            callbacks.onToolResult?.(toolUse.id, false, undefined, error);
+            callbacks.onToolResult?.(normalizedToolUse.id, false, undefined, error);
             return { success: false, error };
           }
-          const rawResult = await scheduleTool.execute(toolUse.input);
+          const rawResult = await scheduleTool.execute(normalizedToolUse.input);
           const result = typeof rawResult === 'object' && rawResult !== null
             ? rawResult as { success: boolean; output?: string; error?: string }
             : { success: true, output: String(rawResult) };
 
           // 通知前端工具结果
-          callbacks.onToolResult?.(toolUse.id, result.success, result.output, result.error);
+          callbacks.onToolResult?.(normalizedToolUse.id, result.success, result.output, result.error);
 
           // 用差集精确找到新创建的任务
           if (result.success && existingIds) {
@@ -3034,8 +3135,8 @@ export class ConversationManager {
       }
 
       // 拦截 TaskOutput 工具 - 从 TaskManager 获取任务输出
-      if (toolUse.name === 'TaskOutput') {
-        const input = toolUse.input as any;
+      if (normalizedToolUse.name === 'TaskOutput') {
+        const input = normalizedToolUse.input as any;
         const taskId = input.task_id;
         const block = input.block !== false;
         const timeout = input.timeout || 300000; // 默认5分钟超时
@@ -3043,7 +3144,7 @@ export class ConversationManager {
 
         if (!taskId) {
           const error = 'task_id is required';
-          callbacks.onToolResult?.(toolUse.id, false, undefined, error);
+          callbacks.onToolResult?.(normalizedToolUse.id, false, undefined, error);
           return { success: false, error };
         }
 
@@ -3065,12 +3166,12 @@ export class ConversationManager {
                 ? true
                 : (fallbackResult as any)?.success ?? false;
 
-              callbacks.onToolResult?.(toolUse.id, fallbackSuccess, fallbackOutput, fallbackSuccess ? undefined : fallbackOutput);
+              callbacks.onToolResult?.(normalizedToolUse.id, fallbackSuccess, fallbackOutput, fallbackSuccess ? undefined : fallbackOutput);
               return { success: fallbackSuccess, output: fallbackOutput, error: fallbackSuccess ? undefined : fallbackOutput };
             }
 
             const error = `Task ${taskId} not found`;
-            callbacks.onToolResult?.(toolUse.id, false, undefined, error);
+            callbacks.onToolResult?.(normalizedToolUse.id, false, undefined, error);
             return { success: false, error };
           }
 
@@ -3083,7 +3184,7 @@ export class ConversationManager {
 
             if (task.status === 'running') {
               const output = `Task ${taskId} is still running (timeout reached).\n\nStatus: ${task.status}\nDescription: ${task.description}`;
-              callbacks.onToolResult?.(toolUse.id, true, output);
+              callbacks.onToolResult?.(normalizedToolUse.id, true, output);
               return { success: true, output };
             }
           }
@@ -3119,24 +3220,24 @@ export class ConversationManager {
             output += `\nError: ${task.error}`;
           }
 
-          callbacks.onToolResult?.(toolUse.id, true, output);
+          callbacks.onToolResult?.(normalizedToolUse.id, true, output);
           return { success: true, output };
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error);
           console.error(`[Tool] TaskOutput execution failed:`, errorMessage);
-          callbacks.onToolResult?.(toolUse.id, false, undefined, errorMessage);
+          callbacks.onToolResult?.(normalizedToolUse.id, false, undefined, errorMessage);
           return { success: false, error: errorMessage };
         }
       }
 
       // 拦截 AskUserQuestion 工具 - 通过 WebSocket 向前端发送问题
-      if (toolUse.name === 'AskUserQuestion') {
-        const input = toolUse.input as any;
+      if (normalizedToolUse.name === 'AskUserQuestion') {
+        const input = normalizedToolUse.input as any;
         const questions = input.questions || [];
 
         if (questions.length === 0) {
           const error = 'No questions provided';
-          callbacks.onToolResult?.(toolUse.id, false, undefined, error);
+          callbacks.onToolResult?.(normalizedToolUse.id, false, undefined, error);
           return { success: false, error };
         }
 
@@ -3161,19 +3262,19 @@ export class ConversationManager {
             .join(', ');
           const output = `User has answered your questions: ${formattedAnswers}. You can now continue with the user's answers in mind.`;
 
-          callbacks.onToolResult?.(toolUse.id, true, output);
+          callbacks.onToolResult?.(normalizedToolUse.id, true, output);
           return { success: true, output };
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error);
           console.error(`[Tool] AskUserQuestion failed:`, errorMessage);
-          callbacks.onToolResult?.(toolUse.id, false, undefined, errorMessage);
+          callbacks.onToolResult?.(normalizedToolUse.id, false, undefined, errorMessage);
           return { success: false, error: errorMessage };
         }
       }
 
       // 拦截 GenerateBlueprint 工具 - 将对话需求结构化为蓝图
-      if (toolUse.name === 'GenerateBlueprint') {
-        const input = toolUse.input as any;
+      if (normalizedToolUse.name === 'GenerateBlueprint') {
+        const input = normalizedToolUse.input as any;
         try {
           const blueprintId = `bp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
           const hasModules = Array.isArray(input.modules) && input.modules.length > 0;
@@ -3256,19 +3357,19 @@ export class ConversationManager {
             ? `Modules: ${moduleCount}, Processes: ${processCount}, NFR: ${nfrCount}`
             : `Requirements: ${reqCount}`;
           const output = `Blueprint generated and saved.\nBlueprint ID: ${blueprint.id}\nProject: ${blueprint.name}\nType: ${isCodebase ? 'Panoramic Blueprint' : 'Requirements Blueprint'}\n${stats}\n\nYou can now call StartLeadAgent to start execution.`;
-          callbacks.onToolResult?.(toolUse.id, true, output);
+          callbacks.onToolResult?.(normalizedToolUse.id, true, output);
           return { success: true, output };
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error);
           console.error(`[Tool] GenerateBlueprint execution failed:`, errorMessage);
-          callbacks.onToolResult?.(toolUse.id, false, undefined, errorMessage);
+          callbacks.onToolResult?.(normalizedToolUse.id, false, undefined, errorMessage);
           return { success: false, error: errorMessage };
         }
       }
 
       // v11.0: StartLeadAgent 不再拦截，走正常 tool.execute() 路径
       // 执行前动态绑定当前会话的 WebSocket 和工作目录，确保蜂群在正确的项目路径下执行
-      if (toolUse.name === 'StartLeadAgent') {
+      if (normalizedToolUse.name === 'StartLeadAgent') {
         const currentCtx = StartLeadAgentTool.getContext();
         if (currentCtx) {
           StartLeadAgentTool.setContext({
@@ -3288,8 +3389,8 @@ export class ConversationManager {
       }
 
       // 拦截 ImageGen 工具 - 文生图 / 图生图
-      if (toolUse.name === 'ImageGen') {
-        const input = toolUse.input as any;
+      if (normalizedToolUse.name === 'ImageGen') {
+        const input = normalizedToolUse.input as any;
 
         try {
           const { prompt, style, image_path, output_path } = input;
@@ -3299,7 +3400,7 @@ export class ConversationManager {
 
           if (!result.success) {
             const error = result.error || 'Image generation failed';
-            callbacks.onToolResult?.(toolUse.id, false, undefined, error);
+            callbacks.onToolResult?.(normalizedToolUse.id, false, undefined, error);
             return { success: false, error };
           }
 
@@ -3324,20 +3425,20 @@ export class ConversationManager {
             parts.push(`\nDescription: ${result.generatedText}`);
           }
           const output = parts.join('');
-          callbacks.onToolResult?.(toolUse.id, true, output);
+          callbacks.onToolResult?.(normalizedToolUse.id, true, output);
           return { success: true, output };
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error);
           console.error(`[Tool] ImageGen execution failed:`, errorMessage);
-          callbacks.onToolResult?.(toolUse.id, false, undefined, errorMessage);
+          callbacks.onToolResult?.(normalizedToolUse.id, false, undefined, errorMessage);
           return { success: false, error: errorMessage };
         }
       }
 
       // 拦截 Mcp 工具的 server management actions (action=list/enable/disable)
       // 这些 action 需要访问 ConversationManager 的 toggleMcpServer/listMcpServers
-      if (toolUse.name === 'Mcp') {
-        const input = toolUse.input as { query?: string; action?: string; name?: string };
+      if (normalizedToolUse.name === 'Mcp') {
+        const input = normalizedToolUse.input as { query?: string; action?: string; name?: string };
         if (input.action) {
           try {
             if (input.action === 'list') {
@@ -3348,14 +3449,14 @@ export class ConversationManager {
               const output = servers.length > 0
                 ? `MCP Servers (${servers.length}):\n${lines.join('\n')}`
                 : 'No MCP servers configured.';
-              callbacks.onToolResult?.(toolUse.id, true, output);
+              callbacks.onToolResult?.(normalizedToolUse.id, true, output);
               return { success: true, output };
             }
 
             if (input.action === 'enable' || input.action === 'disable') {
               if (!input.name) {
                 const error = `"name" parameter is required for ${input.action} action.`;
-                callbacks.onToolResult?.(toolUse.id, false, undefined, error);
+                callbacks.onToolResult?.(normalizedToolUse.id, false, undefined, error);
                 return { success: false, error };
               }
               const enabled = input.action === 'enable';
@@ -3368,22 +3469,22 @@ export class ConversationManager {
                   this.temporarilyEnabledMcpServers.delete(input.name);
                 }
                 const output = `MCP server "${input.name}" has been ${result.enabled ? 'enabled' : 'disabled'}.`;
-                callbacks.onToolResult?.(toolUse.id, true, output);
+                callbacks.onToolResult?.(normalizedToolUse.id, true, output);
                 return { success: true, output };
               } else {
                 const error = `Failed to ${input.action} MCP server "${input.name}". The server may not exist in the configuration. Use action="list" to see available servers.`;
-                callbacks.onToolResult?.(toolUse.id, false, undefined, error);
+                callbacks.onToolResult?.(normalizedToolUse.id, false, undefined, error);
                 return { success: false, error };
               }
             }
 
             const error = `Unknown Mcp action: ${input.action}. Use "list", "enable", or "disable".`;
-            callbacks.onToolResult?.(toolUse.id, false, undefined, error);
+            callbacks.onToolResult?.(normalizedToolUse.id, false, undefined, error);
             return { success: false, error };
           } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
             console.error(`[Tool] Mcp server management failed:`, errorMessage);
-            callbacks.onToolResult?.(toolUse.id, false, undefined, errorMessage);
+            callbacks.onToolResult?.(normalizedToolUse.id, false, undefined, errorMessage);
             return { success: false, error: errorMessage };
           }
         }
@@ -3392,18 +3493,18 @@ export class ConversationManager {
 
       // MCP 工具执行：解析 mcp__{serverName}__{toolName} 格式，调用 callMcpTool()
       if (isMcpTool) {
-        const parts = toolUse.name.split('__');
+        const parts = normalizedToolUse.name.split('__');
         // 格式: mcp__{serverName}__{toolName}
         const mcpServerName = parts[1];
         const mcpToolName = parts.slice(2).join('__');
 
         if (!mcpServerName || !mcpToolName) {
-          const error = `Invalid MCP tool name format: ${toolUse.name}`;
-          callbacks.onToolResult?.(toolUse.id, false, undefined, error);
+          const error = `Invalid MCP tool name format: ${normalizedToolUse.name}`;
+          callbacks.onToolResult?.(normalizedToolUse.id, false, undefined, error);
           return { success: false, error };
         }
 
-        const mcpResult = await callMcpTool(mcpServerName, mcpToolName, toolUse.input);
+        const mcpResult = await callMcpTool(mcpServerName, mcpToolName, normalizedToolUse.input);
         const mcpOutput = mcpResult.output || mcpResult.error || JSON.stringify(mcpResult);
         const truncatedMcpOutput = mcpOutput.length > 50000
           ? mcpOutput.slice(0, 50000) + '\n... (output truncated)'
@@ -3411,20 +3512,20 @@ export class ConversationManager {
 
         // PostToolUse Hook
         try {
-          await runPostToolUseHooks(toolUse.name, toolUse.input, truncatedMcpOutput, hookSessionId);
+          await runPostToolUseHooks(normalizedToolUse.name, normalizedToolUse.input, truncatedMcpOutput, hookSessionId);
         } catch (hookError) {
           console.warn(`[Hook] PostToolUse hook execution failed:`, hookError);
         }
 
-        callbacks.onToolResult?.(toolUse.id, mcpResult.success, truncatedMcpOutput, mcpResult.error ? mcpResult.error : undefined);
+        callbacks.onToolResult?.(normalizedToolUse.id, mcpResult.success, truncatedMcpOutput, mcpResult.error ? mcpResult.error : undefined);
         return { success: mcpResult.success, output: truncatedMcpOutput, error: mcpResult.error };
       }
 
       // 执行其他工具（内置 registry 工具）
-      const result = await tool!.execute(toolUse.input);
+      const result = await tool!.execute(normalizedToolUse.input);
 
       // 构建结构化数据
-      const data = this.buildToolResultData(toolUse.name, toolUse.input, result);
+      const data = this.buildToolResultData(normalizedToolUse.name, normalizedToolUse.input, result);
 
       // 格式化输出
       let output: string;
@@ -3462,7 +3563,7 @@ export class ConversationManager {
 
       // PostToolUse Hook
       try {
-        await runPostToolUseHooks(toolUse.name, toolUse.input, output, hookSessionId);
+        await runPostToolUseHooks(normalizedToolUse.name, normalizedToolUse.input, output, hookSessionId);
       } catch (hookError) {
         console.warn(`[Hook] PostToolUse hook execution failed:`, hookError);
       }
@@ -4702,6 +4803,7 @@ Guidelines:
       sessionData.messages = state.messages;
       sessionData.chatHistory = state.chatHistory;
       sessionData.currentModel = state.model;
+      sessionData.metadata.runtimeBackend = state.runtimeBackend;
       (sessionData as any).toolFilterConfig = state.toolFilterConfig;
       (sessionData as any).systemPromptConfig = state.systemPromptConfig;
 
@@ -4759,9 +4861,10 @@ Guidelines:
     try {
       // 如果会话已经在内存中，直接返回成功（避免重复创建）
       if (this.sessions.has(sessionId)) {
+        const state = this.sessions.get(sessionId)!;
+        this.ensureStateModelMatchesRuntime(state);
         // 同步权限模式（修复切换会话后 YOLO 模式丢失的问题）
         if (permissionMode) {
-          const state = this.sessions.get(sessionId)!;
           state.permissionHandler.updateConfig({ mode: permissionMode as any });
         }
         return true;
@@ -4778,16 +4881,18 @@ Guidelines:
       // 在后台异步获取 Git 信息，不阻塞会话切换（Git 信息主要用于 system prompt，在用户发送消息时才需要）
       session.initializeGitInfo().catch(() => {});
 
-      const clientConfig = this.buildClientConfig(sessionData.currentModel || this.defaultModel);
-      const client = new ClaudeClient({
-        ...clientConfig,
-        timeout: clientConfig.timeout,
-      });
+      const runtimeBackend = (sessionData.metadata.runtimeBackend as WebRuntimeBackend | undefined) || this.getRuntimeBackend();
+      const resolvedModel = this.normalizeRuntimeModel(
+        sessionData.currentModel || sessionData.metadata.model || this.defaultModel,
+        runtimeBackend,
+      );
+      const clientConfig = this.buildClientConfig(resolvedModel, runtimeBackend);
+      const client = createConversationClient(clientConfig);
 
       // 如果 chatHistory 为空但 messages 不为空，从 messages 构建 chatHistory
       let chatHistory = sessionData.chatHistory || [];
       if (chatHistory.length === 0 && sessionData.messages && sessionData.messages.length > 0) {
-        chatHistory = this.convertMessagesToChatHistory(sessionData.messages);
+        chatHistory = this.convertMessagesToChatHistory(sessionData.messages, runtimeBackend);
       }
 
       const resumeUserInteractionHandler = new UserInteractionHandler();
@@ -4797,7 +4902,8 @@ Guidelines:
         session,
         client,
         messages: sessionData.messages,
-        model: sessionData.currentModel || sessionData.metadata.model,
+        model: resolvedModel,
+        runtimeBackend,
         cancelled: false,
         chatHistory,
         userInteractionHandler: resumeUserInteractionHandler,
@@ -4815,7 +4921,7 @@ Guidelines:
         lastActualInputTokens: 0,
         messagesLenAtLastApiCall: 0,
         lastPersistedMessageCount: sessionData.messages.length, // 从磁盘加载时，初始化为当前消息数
-        credentialsFingerprint: this.getCredentialsFingerprint(),
+        credentialsFingerprint: this.getCredentialsFingerprint(runtimeBackend),
       };
 
       this.sessions.set(sessionId, state);
@@ -4895,7 +5001,10 @@ Guidelines:
   /**
    * 将 API 消息格式转换为 ChatHistory 格式
    */
-  private convertMessagesToChatHistory(messages: Message[]): ChatMessage[] {
+  private convertMessagesToChatHistory(
+    messages: Message[],
+    runtimeBackend: WebRuntimeBackend = this.getRuntimeBackend(),
+  ): ChatMessage[] {
     const chatHistory: ChatMessage[] = [];
 
     // 预构建 tool_use_id → tool_result 映射，用于将工具结果关联回工具调用
@@ -4945,6 +5054,7 @@ Guidelines:
         role: msg.role as 'user' | 'assistant',
         timestamp: Date.now(),
         content: [],
+        runtimeBackend,
         // 记录此 chatEntry 对应的 messages 位置（i+1 表示包含当前消息）
         _messagesLen: i + 1,
       };

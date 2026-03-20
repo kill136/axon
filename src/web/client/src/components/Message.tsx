@@ -11,6 +11,11 @@ import { NotebookOutputRenderer } from './NotebookOutputRenderer';
 import { RewindMenu, RewindOption } from './RewindMenu';
 import { SkillMessage, isSkillMessage } from './SkillMessage';
 import { useLanguage } from '../i18n';
+import {
+  getAssistantDisplayName,
+  getWebModelLabel,
+  resolveWebRuntimeProvider,
+} from '../../../shared/model-catalog';
 import { coordinatorApi } from '../api/blueprint';
 import type { ChatMessage, ChatContent, ToolUse, NotebookOutputData } from '../types';
 
@@ -486,8 +491,12 @@ export function Message({
         <div className="message-main">
           <div className="message-content-wrapper">
             <div className="message-header">
-              <span className="message-role">{role === 'user' ? t('message.role.user') : t('message.role.assistant')}</span>
-              {message.model && <span>({message.model})</span>}
+              <span className="message-role">
+                {role === 'user' ? t('message.role.user') : getAssistantDisplayName(message.model, message.runtimeBackend as any)}
+              </span>
+              {message.model && (
+                <span>({getWebModelLabel(message.model, resolveWebRuntimeProvider(message.model, message.runtimeBackend as any))})</span>
+              )}
             </div>
             {isUserMessageCollapsed ? (
               <div className="user-message-collapsed" ref={userContentRef} style={{ maxHeight: USER_MESSAGE_COLLAPSE_HEIGHT }}>

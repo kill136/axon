@@ -49,8 +49,8 @@ const UserConfigSchema = z.object({
   maxTokens: z.number().int().positive().max(200000).default(32000),
   temperature: z.number().min(0).max(1).default(1),
 
-  // 后端选择（新增 apiProvider 枚举，保留向后兼容）
-  apiProvider: z.enum(['anthropic', 'bedrock', 'vertex']).default('anthropic').optional(),
+  // 后端选择（Web UI 扩展 openai-compatible / axon-cloud，保留向后兼容）
+  apiProvider: z.enum(['anthropic', 'bedrock', 'vertex', 'openai-compatible', 'axon-cloud']).default('anthropic').optional(),
   useBedrock: z.boolean().default(false),
   useVertex: z.boolean().default(false),
   oauthToken: z.string().optional(),
@@ -58,8 +58,19 @@ const UserConfigSchema = z.object({
   // WebUI 专用配置（settings.json passthrough 字段）
   apiBaseUrl: z.string().optional(),
   customModelName: z.string().optional(),
+  runtimeProvider: z.enum(['anthropic', 'codex']).optional(),
+  runtimeBackend: z.enum([
+    'axon-cloud',
+    'claude-subscription',
+    'claude-compatible-api',
+    'codex-subscription',
+    'openai-compatible-api',
+  ]).optional(),
+  defaultModelByBackend: z.record(z.string()).optional(),
+  customModelCatalogByBackend: z.record(z.array(z.string())).optional(),
   authPriority: z.enum(['apiKey', 'oauth', 'auto']).default('auto').optional(),
   oauthAccount: z.record(z.any()).optional(),
+  codexAccount: z.record(z.any()).optional(),
 
   // Ollama / 本地模型配置
   ollamaUrl: z.string().default('http://localhost:11434').optional(),

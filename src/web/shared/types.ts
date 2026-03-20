@@ -59,6 +59,8 @@ export interface AuthStatus {
   type: 'api_key' | 'oauth' | 'none';
   /** Provider 类型 */
   provider: string;
+  /** 运行方式 */
+  runtimeBackend?: string;
   /** 用户名（OAuth时） */
   username?: string;
   /** 过期时间（OAuth时） */
@@ -292,7 +294,7 @@ export type ClientMessage =
  * 服务端发送的消息类型
  */
 export type ServerMessage =
-  | { type: 'connected'; payload: { sessionId: string; model: string; serverStartTime?: number } }
+  | { type: 'connected'; payload: { sessionId: string; model: string; runtimeBackend?: string; serverStartTime?: number } }
   | { type: 'pong' }
   | { type: 'history'; payload: { messages: ChatMessage[]; sessionId?: string } }
   | { type: 'message_start'; payload: { messageId: string; sessionId?: string } }
@@ -315,8 +317,8 @@ export type ServerMessage =
   | { type: 'slash_command_result'; payload: SlashCommandResultPayload }
   | { type: 'session_list_response'; payload: SessionListResponsePayload }
   | { type: 'session_created'; payload: SessionCreatedPayload }
-  | { type: 'session_new_ready'; payload: { sessionId: string; model: string; projectPath?: string | null } }  // 官方规范：临时会话已就绪
-  | { type: 'session_switched'; payload: { sessionId: string; sessionName?: string; projectPath?: string | null; history?: ChatMessage[] } }
+  | { type: 'session_new_ready'; payload: { sessionId: string; model: string; runtimeBackend?: string; projectPath?: string | null } }  // 官方规范：临时会话已就绪
+  | { type: 'session_switched'; payload: { sessionId: string; sessionName?: string; projectPath?: string | null; history?: ChatMessage[]; model?: string; runtimeBackend?: string } }
   | { type: 'session_deleted'; payload: { sessionId: string; success: boolean } }
   | { type: 'session_renamed'; payload: { sessionId: string; name: string; success: boolean } }
   | { type: 'session_exported'; payload: { sessionId: string; content: string; format: 'json' | 'md' } }
@@ -682,6 +684,7 @@ export interface ChatMessage {
   content: ChatContent[];
   /** 仅助手消息有 */
   model?: string;
+  runtimeBackend?: string;
   usage?: {
     inputTokens: number;
     outputTokens: number;
@@ -1045,6 +1048,7 @@ export interface SessionSummary {
   updatedAt: number;
   messageCount: number;
   model: string;
+  runtimeBackend?: string;
   cost?: number;
   tokenUsage: {
     input: number;
@@ -1075,6 +1079,7 @@ export interface SessionCreatedPayload {
   sessionId: string;
   name?: string;
   model: string;
+  runtimeBackend?: string;
   createdAt: number;
   /** 项目路径，用于按项目过滤会话，null/undefined 表示全局会话 */
   projectPath?: string | null;
@@ -1370,7 +1375,7 @@ export interface ApiStatusPayload {
   /** 是否已连接 */
   connected: boolean;
   /** Provider 类型 */
-  provider: 'anthropic' | 'bedrock' | 'vertex';
+  provider: 'anthropic' | 'bedrock' | 'vertex' | 'codex';
   /** API Base URL */
   baseUrl: string;
   /** 可用模型列表 */
@@ -1405,7 +1410,7 @@ export interface ApiTestResult {
  */
 export interface ProviderInfo {
   /** Provider 类型 */
-  type: 'anthropic' | 'bedrock' | 'vertex';
+  type: 'anthropic' | 'bedrock' | 'vertex' | 'codex';
   /** Provider 名称 */
   name: string;
   /** 区域（Bedrock/Vertex） */

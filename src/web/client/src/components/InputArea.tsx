@@ -10,6 +10,12 @@ import { ApiUsageBar } from './ApiUsageBar';
 import type { Attachment, SlashCommand } from '../types';
 import type { Status, PermissionMode, RateLimitInfo } from '../hooks/useMessageHandler';
 import { useLanguage } from '../i18n';
+import {
+  getWebModelOptionsForBackend,
+  normalizeWebRuntimeModelForBackend,
+  type WebRuntimeBackend,
+  type WebRuntimeProvider,
+} from '../../../shared/model-catalog';
 
 
 interface InputAreaProps {
@@ -35,6 +41,9 @@ interface InputAreaProps {
   connected: boolean;
   status: Status;
   model: string;
+  availableModels?: string[];
+  runtimeProvider: WebRuntimeProvider;
+  runtimeBackend: WebRuntimeBackend;
   onModelChange: (model: string) => void;
   permissionMode: PermissionMode;
   activePresetId: string;
@@ -118,6 +127,9 @@ export function InputArea({
   connected,
   status,
   model,
+  availableModels,
+  runtimeProvider,
+  runtimeBackend,
   onModelChange,
   permissionMode,
   activePresetId,
@@ -155,6 +167,8 @@ export function InputArea({
   hasMessages = false,
 }: InputAreaProps) {
   const { t } = useLanguage();
+  const modelOptions = getWebModelOptionsForBackend(runtimeBackend, model, model, availableModels);
+  const selectedModel = normalizeWebRuntimeModelForBackend(runtimeBackend, model, model, availableModels);
 
   // 动态 placeholder 轮播：给用户灵感，展示可以怎么说
   const PLACEHOLDER_KEYS = [
@@ -372,14 +386,14 @@ export function InputArea({
             )}
             <select
               className="model-selector-compact"
-              value={model}
+              value={selectedModel}
               onChange={(e) => onModelChange(e.target.value)}
               disabled={status !== 'idle'}
               title={t('input.switchModel')}
             >
-              <option value="opus">Opus</option>
-              <option value="sonnet">Sonnet</option>
-              <option value="haiku">Haiku</option>
+              {modelOptions.map(option => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
             </select>
             <select
               className={`permission-mode-selector mode-${permissionMode}`}

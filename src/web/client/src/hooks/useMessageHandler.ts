@@ -15,6 +15,7 @@ import type {
 import type { ContextUsage, CompactState } from '../components/ContextBar';
 import type { SlashCommandResult } from '../components/SlashCommandDialog';
 import { playNotificationSound } from './useNotificationSound';
+import { createAssistantMessage } from '../utils/assistantMessage';
 
 export type Status = 'idle' | 'thinking' | 'streaming' | 'tool_executing';
 export type PermissionMode = 'default' | 'bypassPermissions' | 'acceptEdits' | 'plan';
@@ -46,6 +47,7 @@ export interface CrossSessionNotification {
 interface UseMessageHandlerParams {
   addMessageHandler: (handler: (msg: WSMessage) => void) => () => void;
   model: string;
+  runtimeBackend: string;
   send: (msg: any) => void;
   refreshSessions: () => void;
   onNavigateToSwarm?: (blueprintId?: string) => void;
@@ -80,6 +82,7 @@ interface UseMessageHandlerReturn {
 export function useMessageHandler({
   addMessageHandler,
   model,
+  runtimeBackend,
   send,
   refreshSessions,
   onNavigateToSwarm,
@@ -179,13 +182,12 @@ export function useMessageHandler({
           return;
         }
         console.warn('[App] Received orphaned stream event, auto-creating message context:', msg.type);
-        currentMessageRef.current = {
+        currentMessageRef.current = createAssistantMessage({
           id: (payload.messageId as string) || `resume-${Date.now()}`,
-          role: 'assistant',
-          timestamp: Date.now(),
           content: [],
           model,
-        };
+          runtimeBackend,
+        });
         setStatus('streaming');
       }
 
@@ -193,13 +195,12 @@ export function useMessageHandler({
         case 'message_start': {
           // 新消息开始，清除插话保护标记
           interruptPendingRef.current = false;
-          const newMsg: ChatMessage = {
+          const newMsg = createAssistantMessage({
             id: payload.messageId as string,
-            role: 'assistant',
-            timestamp: Date.now(),
             content: [],
             model,
-          };
+            runtimeBackend,
+          });
           currentMessageRef.current = newMsg;
           setMessages(prev => [...prev, newMsg]);
           setStatus('streaming');
@@ -373,12 +374,11 @@ export function useMessageHandler({
           console.error('Server error:', payload);
           const errorText = (payload as any)?.error || (payload as any)?.message || 'Unknown error';
           // 将错误显示为系统消息，让用户能看到
-          const errorMsg: ChatMessage = {
+          const errorMsg = createAssistantMessage({
             id: `error-${Date.now()}`,
-            role: 'assistant',
-            timestamp: Date.now(),
             content: [{ type: 'text', text: `**Error:** ${errorText}` }],
-          };
+            runtimeBackend,
+          });
           setMessages(prev => [...prev, errorMsg]);
           currentMessageRef.current = null;
           setStatus('idle');
@@ -876,6 +876,7 @@ export function useMessageHandler({
                 type: 'text',
                 text: `⏰ **定时提醒** — 任务 "${alarmTaskName}" 到时间了！\n\n正在执行: ${alarmPrompt}`,
               }],
+              runtimeBackend,
               sessionId: alarmSessionId,
             };
             setMessages(prev => [...prev, alarmMessage]);
@@ -897,10 +898,8 @@ export function useMessageHandler({
 
         // 持续开发消息处理
         case 'continuous_dev:flow_started': {
-          const newMessage: ChatMessage = {
+          const newMessage = createAssistantMessage({
             id: `dev-${Date.now()}`,
-            role: 'assistant',
-            timestamp: Date.now(),
             content: [{
               type: 'dev_progress',
               data: {
@@ -911,8 +910,9 @@ export function useMessageHandler({
                 status: 'running',
                 currentTask: '流程启动中...'
               }
-            }]
-          };
+            }],
+            runtimeBackend,
+          });
           setMessages(prev => [...prev, newMessage]);
           break;
         }
@@ -982,20 +982,17 @@ export function useMessageHandler({
         case 'continuous_dev:approval_required': {
           const impactAnalysis = (payload as any).impactAnalysis;
           if (impactAnalysis) {
-            const newMessage: ChatMessage = {
+            const newMessage = createAssistantMessage({
               id: `dev-approval-${Date.now()}`,
-              role: 'assistant',
-              timestamp: Date.now(),
-              content: [{ type: 'impact_analysis', data: impactAnalysis }]
-            };
+              content: [{ type: 'impact_analysis', data: impactAnalysis }],
+              runtimeBackend,
+            });
             setMessages(prev => [...prev, newMessage]);
           }
           const blueprint = (payload as any).blueprint;
           if (blueprint) {
-            const newMessage: ChatMessage = {
+            const newMessage = createAssistantMessage({
               id: `dev-blueprint-${Date.now()}`,
-              role: 'assistant',
-              timestamp: Date.now(),
               content: [{
                 type: 'blueprint',
                 blueprintId: blueprint.id,
@@ -1003,8 +1000,9 @@ export function useMessageHandler({
                 moduleCount: blueprint.modules?.length || 0,
                 processCount: blueprint.businessProcesses?.length || 0,
                 nfrCount: blueprint.nfrs?.length || 0
-              }]
-            };
+              }],
+              runtimeBackend,
+            });
             setMessages(prev => [...prev, newMessage]);
           }
           break;
@@ -1012,23 +1010,21 @@ export function useMessageHandler({
 
         case 'continuous_dev:regression_failed':
         case 'continuous_dev:regression_passed': {
-          const newMessage: ChatMessage = {
+          const newMessage = createAssistantMessage({
             id: `dev-regression-${Date.now()}`,
-            role: 'assistant',
-            timestamp: Date.now(),
-            content: [{ type: 'regression_result', data: payload as any }]
-          };
+            content: [{ type: 'regression_result', data: payload as any }],
+            runtimeBackend,
+          });
           setMessages(prev => [...prev, newMessage]);
           break;
         }
 
         case 'continuous_dev:cycle_review_completed': {
-          const newMessage: ChatMessage = {
+          const newMessage = createAssistantMessage({
             id: `dev-cycle-${Date.now()}`,
-            role: 'assistant',
-            timestamp: Date.now(),
-            content: [{ type: 'cycle_review', data: payload as any }]
-          };
+            content: [{ type: 'cycle_review', data: payload as any }],
+            runtimeBackend,
+          });
           setMessages(prev => [...prev, newMessage]);
           break;
         }
@@ -1064,12 +1060,11 @@ export function useMessageHandler({
                 return [...filtered, updatedMsg];
               });
             } else {
-              const newMessage: ChatMessage = {
+              const newMessage = createAssistantMessage({
                 id: `design-${Date.now()}`,
-                role: 'assistant',
-                timestamp: Date.now(),
                 content: [designContent],
-              };
+                runtimeBackend,
+              });
               setMessages(prev => [...prev, newMessage]);
             }
           }
@@ -1102,18 +1097,17 @@ export function useMessageHandler({
 
         case 'execution:report':
           console.log('[App] Execution report:', (payload as any).status, (payload as any).summary?.substring(0, 100));
-          setMessages(prev => [...prev, {
+          setMessages(prev => [...prev, createAssistantMessage({
             id: `exec-report-${Date.now()}`,
-            role: 'assistant',
-            timestamp: Date.now(),
             content: [{ type: 'text' as const, text: (payload as any).message || '执行完成' }],
-          }]);
+            runtimeBackend,
+          })]);
           break;
       }
     });
 
     return unsubscribe;
-  }, [addMessageHandler, model, send, onNavigateToSwarm]);
+  }, [addMessageHandler, model, runtimeBackend, send, onNavigateToSwarm]);
 
   // 流式响应超时检测：如果前端处于非 idle 状态超过 360 秒没有收到任何 WebSocket 消息，
   // 自动重置为 idle，防止 UI 永久卡死。

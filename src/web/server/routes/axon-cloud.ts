@@ -44,6 +44,8 @@ async function handleAuthSuccess(result: { username: string; quota: number; apiK
     await webConfigService.updateApiConfig({
       apiKey: result.apiKey,
       apiBaseUrl: result.apiBaseUrl,
+      authPriority: 'apiKey',
+      runtimeBackend: 'axon-cloud',
       customModelName: '',  // NewAPI 支持模型别名路由，不需要硬编码模型名
     });
     console.log('[AxonCloud] API config updated');

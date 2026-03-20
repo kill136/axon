@@ -187,6 +187,35 @@ const HOP_BY_HOP_HEADERS = new Set([
 ]);
 
 /**
+ * 不应该透传给上游的来源 IP / 代理链头部。
+ * 这些头会暴露客户端真实地址或中间代理链路，OAuth 透传模式下必须显式剥离。
+ */
+const CLIENT_NETWORK_HEADERS = new Set([
+  'cf-connecting-ip',
+  'cf-connecting-ipv6',
+  'cf-pseudo-ipv4',
+  'fastly-client-ip',
+  'fly-client-ip',
+  'forwarded',
+  'true-client-ip',
+  'x-client-ip',
+  'x-cluster-client-ip',
+  'x-forwarded',
+  'x-forwarded-for',
+  'x-original-forwarded-for',
+  'x-real-ip',
+]);
+
+function shouldStripForwardedHeader(headerName: string): boolean {
+  const key = headerName.toLowerCase();
+  return HOP_BY_HOP_HEADERS.has(key)
+    || CLIENT_NETWORK_HEADERS.has(key)
+    || key === 'authorization'
+    || key === 'content-length'
+    || key === 'x-api-key';
+}
+
+/**
  * 将刷新后的 OAuth token 写回凭据文件
  * 同时更新 settings.json 和 .credentials.json（如果存在）
  */
@@ -345,7 +374,8 @@ function buildProxyBetas(model: string): string[] {
 /**
  * 构建转发到目标服务器的请求头
  *
- * 策略：转发客户端 SDK 生成的 headers + 定向修补认证和 betas。
+ * 策略：转发客户端 SDK 生成的 headers + 定向修补认证和 betas，
+ * 同时剥离会暴露客户端来源地址的网络头。
  *
  * 实验证明：转发客户端 headers（SDK 自动生成的 x-stainless-*、User-Agent 等）
  * 是唯一通过 CC 身份验证的方式。从零构建会遗漏 SDK 内部的微妙差异。
@@ -379,9 +409,8 @@ function buildForwardHeaders(
 
   // 1. 复制客户端的所有 headers（保留 SDK 的 x-stainless-*、User-Agent 等）
   for (const [key, value] of Object.entries(clientHeaders)) {
-    // 跳过 hop-by-hop headers 和需要替换的 headers
-    if (key === 'host' || key === 'connection' || key === 'transfer-encoding' ||
-        key === 'x-api-key' || key === 'authorization' || key === 'content-length') {
+    // 跳过 hop-by-hop / 敏感网络头 / 需要替换的 headers
+    if (shouldStripForwardedHeader(key)) {
       continue;
     }
     if (value !== undefined) {
@@ -950,10 +979,7 @@ export async function createProxyServer(config: ProxyConfig) {
           const fwdHeaders: Record<string, string> = {};
           for (const [key, value] of Object.entries(req.headers)) {
             const lk = key.toLowerCase();
-            if (HOP_BY_HOP_HEADERS.has(lk)) continue;
-            if (lk === 'x-api-key') continue;       // 去掉代理 key
-            if (lk === 'authorization') continue;    // 去掉代理 key
-            if (lk === 'content-length') continue;   // 后面重新计算
+            if (shouldStripForwardedHeader(lk)) continue;
             if (typeof value === 'string') fwdHeaders[lk] = value;
             else if (Array.isArray(value)) fwdHeaders[lk] = value[0]; // 取第一个
           }

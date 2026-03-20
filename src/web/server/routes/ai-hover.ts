@@ -8,10 +8,10 @@
 
 import { Router, Request, Response } from 'express';
 import * as path from 'path';
-import { ClaudeClient } from '../../../core/client.js';
-import { webAuth } from '../web-auth.js';
 import { LRUCache } from 'lru-cache';
 import { search as rgSearch, isRipgrepAvailable } from '../../../search/ripgrep.js';
+import type { ConversationClient } from '../runtime/types.js';
+import { createUtilityClient } from '../runtime/utility-client.js';
 
 const router = Router();
 
@@ -202,35 +202,16 @@ function getCacheKey(req: AIHoverRequest): string {
 }
 
 /**
- * 初始化 Claude 客户端
+ * 初始化 Web runtime 客户端
  */
-function createClient(): ClaudeClient | null {
-  try {
-    const creds = webAuth.getCredentials();
-    const apiKey = creds.apiKey;
-    const authToken = creds.authToken;
-
-    if (!apiKey && !authToken) {
-      return null;
-    }
-
-    return new ClaudeClient({
-      apiKey,
-      authToken,
-      baseUrl: creds.baseUrl || process.env.ANTHROPIC_BASE_URL,
-      model: 'haiku',
-    });
-  } catch (error) {
-    console.error('[AI Hover] Failed to initialize client:', error);
-    return null;
-  }
+function createClient(): ConversationClient | null {
+  return createUtilityClient('haiku');
 }
 
 /**
  * 调用 AI 生成文档
  */
 async function generateHoverDoc(req: AIHoverRequest): Promise<AIHoverResult> {
-  await webAuth.ensureValidToken();
   const client = createClient();
   if (!client) {
     return {

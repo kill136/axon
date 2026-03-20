@@ -9,6 +9,8 @@ import { TaskStore } from '../../../daemon/store.js';
 import { readRunLogEntries } from '../../../daemon/run-log.js';
 import { broadcastMessage } from '../websocket.js';
 import { getWebScheduler } from '../web-scheduler.js';
+import { webAuth } from '../web-auth.js';
+import { normalizeWebRuntimeModelForBackend } from '../../shared/model-catalog.js';
 
 const router = express.Router();
 
@@ -58,12 +60,15 @@ router.post('/tasks', (req, res) => {
     }
     
     // 构造任务数据
+    const runtimeBackend = webAuth.getRuntimeBackend();
+    const customModelName = webAuth.getDefaultModelByBackend()[runtimeBackend] || webAuth.getCustomModelName();
+
     const taskData: any = {
       id: randomUUID(),
       type,
       name: name.trim(),
       prompt: prompt.trim(),
-      model: model || 'sonnet',
+      model: normalizeWebRuntimeModelForBackend(runtimeBackend, model, customModelName),
       enabled: true,
       createdAt: Date.now(),
       createdBy: 'web-ui',

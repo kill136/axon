@@ -33,6 +33,11 @@ import { logger } from '../../utils/logger.js';
 import { errorWatcher } from '../../utils/error-watcher.js';
 // Git 管理器
 import { GitManager } from './git-manager.js';
+import {
+  getDefaultWebModelForBackend,
+  normalizeWebRuntimeModelForBackend,
+  type WebRuntimeBackend,
+} from '../shared/model-catalog.js';
 // Git WebSocket 处理函数
 import {
   handleGitGetStatus,
@@ -161,6 +166,7 @@ interface ClientConnection {
   ws: WebSocket;
   sessionId: string;
   model: string;
+  runtimeBackend: WebRuntimeBackend;
   isAlive: boolean;
   swarmSubscriptions: Set<string>; // 订阅的 blueprint IDs
   projectPath?: string; // 当前选择的项目路径
@@ -168,6 +174,13 @@ interface ClientConnection {
   // 会话操作互斥锁：防止 session_switch/session_new/chat(临时会话持久化) 并发修改 sessionId
   // 使用 Promise 链实现简单的串行化
   sessionMutex?: Promise<void>;
+}
+
+function getDefaultChatModel(runtimeBackend: WebRuntimeBackend = webAuth.getRuntimeBackend()): string {
+  return getDefaultWebModelForBackend(
+    runtimeBackend,
+    webAuth.getDefaultModelByBackend()[runtimeBackend],
+  );
 }
 
 /**
@@ -1286,12 +1299,15 @@ export function setupWebSocket(
   wss.on('connection', (ws: WebSocket) => {
     const clientId = randomUUID();
     const sessionId = randomUUID();
+    const runtimeBackend = webAuth.getRuntimeBackend();
+    const defaultModel = getDefaultChatModel(runtimeBackend);
 
     const client: ClientConnection = {
       id: clientId,
       ws,
       sessionId,
-      model: 'opus',
+      model: defaultModel,
+      runtimeBackend,
       isAlive: true,
       swarmSubscriptions: new Set<string>(),
       permissionMode: 'bypassPermissions',
@@ -1306,7 +1322,8 @@ export function setupWebSocket(
       type: 'connected',
       payload: {
         sessionId,
-        model: client.model,
+        model: defaultModel,
+        runtimeBackend,
         serverStartTime,
       },
     });
@@ -1510,8 +1527,12 @@ async function handleClientMessage(
       break;
 
     case 'set_model':
-      client.model = message.payload.model;
-      conversationManager.setModel(client.sessionId, message.payload.model);
+      client.model = normalizeWebRuntimeModelForBackend(
+        client.runtimeBackend,
+        message.payload.model,
+        webAuth.getDefaultModelByBackend()[client.runtimeBackend],
+      );
+      conversationManager.setModel(client.sessionId, client.model);
       break;
 
     case 'set_language':
@@ -2405,6 +2426,7 @@ async function handleChatMessage(
     const newSession = sessionManager.createSession({
       name: firstPrompt,  // 使用 firstPrompt 作为会话标题
       model: model,
+      runtimeBackend: client.runtimeBackend,
       tags: ['webui'],
       projectPath: client.projectPath,  // 传递项目路径
     });
@@ -2421,6 +2443,7 @@ async function handleChatMessage(
         sessionId: newSession.metadata.id,
         name: newSession.metadata.name,
         model: newSession.metadata.model,
+        runtimeBackend: client.runtimeBackend,
         createdAt: newSession.metadata.createdAt,
       },
     });
@@ -2884,6 +2907,7 @@ async function handleSessionList(
           updatedAt: s.updatedAt,
           messageCount: s.messageCount,
           model: s.model,
+          runtimeBackend: s.runtimeBackend,
           cost: s.cost,
           tokenUsage: s.tokenUsage,
           tags: s.tags,
@@ -2920,17 +2944,25 @@ async function handleSessionCreate(
   try {
     const { name, model, tags, projectPath } = payload;
     const sessionManager = conversationManager.getSessionManager();
+    const runtimeBackend = (payload?.runtimeBackend as WebRuntimeBackend | undefined) || client.runtimeBackend || webAuth.getRuntimeBackend();
+    const effectiveModel = normalizeWebRuntimeModelForBackend(
+      runtimeBackend,
+      model || client.model || getDefaultChatModel(runtimeBackend),
+      webAuth.getDefaultModelByBackend()[runtimeBackend],
+    );
 
     const newSession = sessionManager.createSession({
       name: name || `WebUI Session - ${new Date().toLocaleString('en-US')}`,
-      model: model || 'opus',
+      model: effectiveModel,
+      runtimeBackend,
       tags: tags || ['webui'],
       projectPath,
     });
 
     // 更新客户端会话状态
     client.sessionId = newSession.metadata.id;
-    client.model = model || 'opus';
+    client.model = effectiveModel;
+    client.runtimeBackend = runtimeBackend;
     client.projectPath = projectPath;
 
     sendMessage(ws, {
@@ -2938,7 +2970,8 @@ async function handleSessionCreate(
       payload: {
         sessionId: newSession.metadata.id,
         name: newSession.metadata.name,
-        model: newSession.metadata.model,
+        model: effectiveModel,
+        runtimeBackend,
         createdAt: newSession.metadata.createdAt,
         projectPath: newSession.metadata.projectPath,
       },
@@ -2972,12 +3005,18 @@ async function handleSessionNew(
 
     // 生成新的临时 sessionId（使用 crypto 生成 UUID）
     const tempSessionId = randomUUID();
-    const model = payload?.model || client.model || 'opus';
+    const runtimeBackend = (payload?.runtimeBackend as WebRuntimeBackend | undefined) || client.runtimeBackend || webAuth.getRuntimeBackend();
+    const model = normalizeWebRuntimeModelForBackend(
+      runtimeBackend,
+      payload?.model || client.model || getDefaultChatModel(runtimeBackend),
+      webAuth.getDefaultModelByBackend()[runtimeBackend],
+    );
     const projectPath = payload?.projectPath;
 
     // 更新 client 的 sessionId、model 和 projectPath
     client.sessionId = tempSessionId;
     client.model = model;
+    client.runtimeBackend = runtimeBackend;
     client.projectPath = projectPath;
 
     // 清空内存中的会话状态（如果存在）
@@ -2991,6 +3030,7 @@ async function handleSessionNew(
       payload: {
         sessionId: tempSessionId,
         model: model,
+        runtimeBackend,
         projectPath,
       },
     });
@@ -3045,9 +3085,20 @@ async function handleSessionSwitch(
       console.log(`[WebSocket] handleSessionSwitch: sessionId=${sessionId}, history.length=${history.length}, isProcessing=${conversationManager.isSessionProcessing(sessionId)}`);
 
       const sessionName = conversationManager.getSessionName(sessionId);
+      const sessionRuntimeBackend = conversationManager.getSessionRuntimeBackend(sessionId) || webAuth.getRuntimeBackend();
+      const sessionModel = conversationManager.getSessionModel(sessionId) || getDefaultChatModel(sessionRuntimeBackend);
+      client.model = sessionModel;
+      client.runtimeBackend = sessionRuntimeBackend;
       sendMessage(ws, {
         type: 'session_switched',
-        payload: { sessionId, sessionName, projectPath: client.projectPath, history },
+        payload: {
+          sessionId,
+          sessionName,
+          projectPath: client.projectPath,
+          history,
+          model: sessionModel,
+          runtimeBackend: sessionRuntimeBackend,
+        },
       });
 
       // 同步权限配置到客户端（刷新后客户端 permissionMode 会重置为 'default'，需要从服务端恢复）
@@ -3284,9 +3335,17 @@ async function handleSessionSwitch(
       // IM 会话尚未创建（首条消息还在处理中），预先切换过去
       // chat() 运行时会在内存中创建该会话，流式消息会正常显示
       client.sessionId = sessionId;
+      client.runtimeBackend = webAuth.getRuntimeBackend();
+      client.model = getDefaultChatModel(client.runtimeBackend);
       sendMessage(ws, {
         type: 'session_switched',
-        payload: { sessionId, projectPath: client.projectPath, history: [] },
+        payload: {
+          sessionId,
+          projectPath: client.projectPath,
+          history: [],
+          model: client.model,
+          runtimeBackend: client.runtimeBackend,
+        },
       });
     } else {
       sendMessage(ws, {
@@ -3478,10 +3537,14 @@ async function handleSessionResume(
       conversationManager.setWebSocket(sessionId, ws);
 
       const history = conversationManager.getHistory(sessionId);
+      const sessionRuntimeBackend = conversationManager.getSessionRuntimeBackend(sessionId) || webAuth.getRuntimeBackend();
+      const sessionModel = conversationManager.getSessionModel(sessionId) || getDefaultChatModel(sessionRuntimeBackend);
+      client.model = sessionModel;
+      client.runtimeBackend = sessionRuntimeBackend;
 
       sendMessage(ws, {
         type: 'session_switched',
-        payload: { sessionId, history },
+        payload: { sessionId, history, model: sessionModel, runtimeBackend: sessionRuntimeBackend },
       });
     } else {
       sendMessage(ws, {
@@ -7322,4 +7385,3 @@ async function handleModePresetMessage(
     });
   }
 }
-

@@ -486,18 +486,21 @@ Usage:
   }
 
   async execute(input: FileReadInput): Promise<FileResult> {
-    const { file_path: inputPath, offset = 0, limit = 2000, pages } = input;
+    const normalizedPages = typeof input.pages === 'string' && input.pages === ''
+      ? undefined
+      : input.pages;
+    const { file_path: inputPath, offset = 0, limit = 2000 } = input;
 
     // 解析文件路径（支持相对路径，基于当前工作目录上下文）
     const file_path = resolveFilePath(inputPath);
 
     // v2.1.30: 验证 pages 参数
-    if (pages !== undefined) {
-      const parsedRange = parsePageRange(pages);
+    if (normalizedPages !== undefined) {
+      const parsedRange = parsePageRange(normalizedPages);
       if (!parsedRange) {
         return {
           success: false,
-          error: t('file.invalidPages', { pages }),
+          error: t('file.invalidPages', { pages: normalizedPages }),
         };
       }
       const pageCount = parsedRange.lastPage === Infinity
@@ -506,7 +509,7 @@ Usage:
       if (pageCount > PDF_MAX_PAGES_PER_REQUEST) {
         return {
           success: false,
-          error: t('file.pageRangeExceeds', { pages, max: PDF_MAX_PAGES_PER_REQUEST }),
+          error: t('file.pageRangeExceeds', { pages: normalizedPages, max: PDF_MAX_PAGES_PER_REQUEST }),
         };
       }
     }
@@ -546,7 +549,7 @@ Usage:
 
       // 处理 PDF
       if (mediaType === 'pdf') {
-        return await this.readPdfEnhanced(file_path, pages);
+        return await this.readPdfEnhanced(file_path, normalizedPages);
       }
 
       // 处理 SVG（可选渲染）

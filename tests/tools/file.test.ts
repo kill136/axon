@@ -124,6 +124,18 @@ describe('ReadTool', () => {
       expect(result.success).toBe(false);
       expect(result.error).toContain('directory');
     });
+
+    it('should treat empty pages as omitted for non-pdf files', async () => {
+      fs.writeFileSync(testFile, 'Hello World');
+
+      const result = await runWithCwd(testDir, () => readTool.execute({
+        file_path: testFile,
+        pages: '',
+      }));
+
+      expect(result.success).toBe(true);
+      expect(result.output).toContain('Hello World');
+    });
   });
 
   describe('Line Truncation', () => {

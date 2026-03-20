@@ -6,6 +6,13 @@
 import { useState, useEffect } from 'react';
 import { useLanguage } from '../../i18n';
 import '../../styles/config-panels.css';
+import {
+  getRuntimeBackendLabel,
+  getRuntimeBackendOptions,
+  getWebModelOptionsForBackend,
+  normalizeWebRuntimeModelForBackend,
+  type WebRuntimeBackend,
+} from '../../../../shared/model-catalog';
 
 /**
  * API 配置接口
@@ -20,7 +27,7 @@ interface ApiConfig {
   /** 请求超时时间(ms) */
   requestTimeout?: number;
   /** API Provider */
-  apiProvider?: 'anthropic' | 'bedrock' | 'vertex';
+  apiProvider?: 'anthropic' | 'bedrock' | 'vertex' | 'openai-compatible' | 'axon-cloud';
   /** 自定义 API Base URL */
   apiBaseUrl?: string;
   /** 自定义 API Key */
@@ -29,6 +36,14 @@ interface ApiConfig {
   customModelName?: string;
   /** 认证优先级 */
   authPriority?: 'apiKey' | 'oauth' | 'auto';
+  /** 运行方式 */
+  runtimeBackend?: WebRuntimeBackend;
+  /** 旧兼容字段 */
+  runtimeProvider?: 'anthropic' | 'codex';
+  /** 按运行方式保存的默认模型 */
+  defaultModelByBackend?: Partial<Record<WebRuntimeBackend, string>>;
+  /** 按运行方式保存的自定义模型目录 */
+  customModelCatalogByBackend?: Partial<Record<WebRuntimeBackend, string[]>>;
   /** Gemini API Key（图片生成） */
   geminiApiKey?: string;
   /** Ollama 服务地址 */
@@ -105,6 +120,10 @@ export function ApiConfigPanel({ onSave, onClose }: ApiConfigPanelProps) {
     apiProvider: 'anthropic',
     apiBaseUrl: '',
     apiKey: '',
+    runtimeBackend: 'claude-compatible-api',
+    runtimeProvider: 'anthropic',
+    defaultModelByBackend: {},
+    customModelCatalogByBackend: {},
     customModelName: '',
     authPriority: 'auto',
     geminiApiKey: '',
@@ -134,6 +153,17 @@ export function ApiConfigPanel({ onSave, onClose }: ApiConfigPanelProps) {
   const [ollamaTesting, setOllamaTesting] = useState(false);
   const [ollamaTestSuccess, setOllamaTestSuccess] = useState<string | null>(null);
   const [ollamaTestError, setOllamaTestError] = useState<string | null>(null);
+  const runtimeBackend = config.runtimeBackend || 'claude-compatible-api';
+  const backendOptions = getRuntimeBackendOptions().filter(option => option.value !== 'axon-cloud');
+  const selectedModel = normalizeWebRuntimeModelForBackend(
+    runtimeBackend,
+    config.defaultModelByBackend?.[runtimeBackend] || config.customModelName,
+    config.defaultModelByBackend?.[runtimeBackend] || config.customModelName,
+  );
+  const modelOptions = getWebModelOptionsForBackend(runtimeBackend, selectedModel, selectedModel);
+  const isApiBackend = runtimeBackend === 'claude-compatible-api' || runtimeBackend === 'openai-compatible-api';
+  const isOauthBackend = runtimeBackend === 'claude-subscription' || runtimeBackend === 'codex-subscription';
+  const supportsConnectionTest = runtimeBackend === 'claude-compatible-api';
 
   /**
    * 加载当前配置
@@ -224,6 +254,47 @@ export function ApiConfigPanel({ onSave, onClose }: ApiConfigPanelProps) {
     setTestSuccess(null);
     setTestError(null);
     setSaveSuccess(null);
+  };
+
+  const syncBackendModel = (backend: WebRuntimeBackend, modelValue?: string) => {
+    const normalized = normalizeWebRuntimeModelForBackend(backend, modelValue, modelValue);
+    setConfig(prev => ({
+      ...prev,
+      runtimeBackend: backend,
+      runtimeProvider: backend === 'codex-subscription' || backend === 'openai-compatible-api' ? 'codex' : 'anthropic',
+      apiProvider:
+        backend === 'openai-compatible-api' || backend === 'codex-subscription'
+          ? 'openai-compatible'
+          : backend === 'axon-cloud'
+            ? 'axon-cloud'
+            : 'anthropic',
+      authPriority:
+        backend === 'claude-subscription' || backend === 'codex-subscription'
+          ? 'oauth'
+          : backend === 'axon-cloud'
+            ? 'auto'
+            : 'apiKey',
+      customModelName: normalized,
+      defaultModelByBackend: {
+        ...(prev.defaultModelByBackend || {}),
+        [backend]: normalized,
+      },
+    }));
+    setValidationError(null);
+    setTestSuccess(null);
+    setTestError(null);
+    setSaveSuccess(null);
+  };
+
+  const handleRuntimeBackendChange = (backend: WebRuntimeBackend) => {
+    const existing = config.defaultModelByBackend?.[backend]
+      || config.customModelCatalogByBackend?.[backend]?.[0]
+      || config.customModelName;
+    syncBackendModel(backend, existing);
+  };
+
+  const handleDefaultModelChange = (modelValue: string) => {
+    syncBackendModel(runtimeBackend, modelValue);
   };
 
   /**
@@ -394,22 +465,39 @@ export function ApiConfigPanel({ onSave, onClose }: ApiConfigPanelProps) {
             </span>
           </div>
 
-          {/* API Provider */}
           <div className="mcp-form-group">
             <label>
-              {t('apiConfig.provider.label')}
+              {t('apiConfig.runtimeBackend.label')}
               <select
                 className="mcp-form-input"
-                value={config.apiProvider ?? 'anthropic'}
-                onChange={(e) => updateConfig('apiProvider', e.target.value as ApiConfig['apiProvider'])}
+                value={runtimeBackend}
+                onChange={(e) => handleRuntimeBackendChange(e.target.value as WebRuntimeBackend)}
               >
-                <option value="anthropic">{t('apiConfig.provider.anthropic')}</option>
-                <option value="bedrock">{t('apiConfig.provider.bedrock')}</option>
-                <option value="vertex">{t('apiConfig.provider.vertex')}</option>
+                {backendOptions.map(option => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
               </select>
             </label>
             <span className="help-text">
-              {t('apiConfig.provider.help')}
+              {backendOptions.find(option => option.value === runtimeBackend)?.description || t('apiConfig.runtimeBackend.help')}
+            </span>
+          </div>
+
+          <div className="mcp-form-group">
+            <label>
+              {t('apiConfig.defaultModelByBackend.label')}
+              <select
+                className="mcp-form-input"
+                value={selectedModel}
+                onChange={(e) => handleDefaultModelChange(e.target.value)}
+              >
+                {modelOptions.map(option => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </label>
+            <span className="help-text">
+              {t('apiConfig.defaultModelByBackend.help', { backend: getRuntimeBackendLabel(runtimeBackend) })}
             </span>
           </div>
 
@@ -417,51 +505,69 @@ export function ApiConfigPanel({ onSave, onClose }: ApiConfigPanelProps) {
           <div style={{ margin: '24px 0', borderTop: '1px solid var(--border-color)' }} />
           <h4 style={{ marginBottom: '16px', color: 'var(--text-primary)' }}>{t('apiConfig.custom.title')}</h4>
           <p className="help-text" style={{ marginBottom: '16px' }}>
-            {t('apiConfig.custom.description')}
+            {isApiBackend ? t('apiConfig.custom.description') : t('apiConfig.subscription.description')}
           </p>
 
-          {/* API Base URL */}
-          <div className="mcp-form-group">
-            <label>
-              {t('apiConfig.baseUrl.label')}
-              <input
-                type="text"
-                className="mcp-form-input"
-                placeholder={t('placeholder.apiBaseUrl')}
-                value={config.apiBaseUrl ?? ''}
-                onChange={(e) => updateConfig('apiBaseUrl', e.target.value)}
-              />
-            </label>
-            <span className="help-text">
-              {t('apiConfig.baseUrl.help')}
-            </span>
-          </div>
+          {isApiBackend ? (
+            <>
+              {/* API Base URL */}
+              <div className="mcp-form-group">
+                <label>
+                  {t('apiConfig.baseUrl.label')}
+                  <input
+                    type="text"
+                    className="mcp-form-input"
+                    placeholder={t('placeholder.apiBaseUrl')}
+                    value={config.apiBaseUrl ?? ''}
+                    onChange={(e) => updateConfig('apiBaseUrl', e.target.value)}
+                  />
+                </label>
+                <span className="help-text">
+                  {t('apiConfig.baseUrl.help')}
+                </span>
+              </div>
 
-          {/* API Key */}
-          <div className="mcp-form-group">
-            <label>
-              {t('apiConfig.apiKey.label')}
-              <input
-                type={apiKeyDirty ? 'password' : 'text'}
-                className="mcp-form-input"
-                placeholder={t('placeholder.apiKey')}
-                value={config.apiKey ?? ''}
-                onFocus={() => {
-                  // 聚焦时，如果显示的是掩码值，清空以便输入新 key
-                  if (!apiKeyDirty && config.apiKey && config.apiKey.includes('...')) {
-                    setConfig(prev => ({ ...prev, apiKey: '' }));
-                  }
-                }}
-                onChange={(e) => {
-                  setApiKeyDirty(true);
-                  updateConfig('apiKey', e.target.value);
-                }}
-              />
-            </label>
-            <span className="help-text">
-              {t('apiConfig.apiKey.help')}
-            </span>
-          </div>
+              {/* API Key */}
+              <div className="mcp-form-group">
+                <label>
+                  {t('apiConfig.apiKey.label')}
+                  <input
+                    type={apiKeyDirty ? 'password' : 'text'}
+                    className="mcp-form-input"
+                    placeholder={t('placeholder.apiKey')}
+                    value={config.apiKey ?? ''}
+                    onFocus={() => {
+                      if (!apiKeyDirty && config.apiKey && config.apiKey.includes('...')) {
+                        setConfig(prev => ({ ...prev, apiKey: '' }));
+                      }
+                    }}
+                    onChange={(e) => {
+                      setApiKeyDirty(true);
+                      updateConfig('apiKey', e.target.value);
+                    }}
+                  />
+                </label>
+                <span className="help-text">
+                  {t('apiConfig.apiKey.help')}
+                </span>
+              </div>
+            </>
+          ) : (
+            <div className="mcp-form-group">
+              <label>
+                {t('apiConfig.subscription.accountLabel')}
+                <input
+                  type="text"
+                  className="mcp-form-input"
+                  value={getRuntimeBackendLabel(runtimeBackend)}
+                  disabled
+                />
+              </label>
+              <span className="help-text">
+                {t('apiConfig.subscription.accountHelp')}
+              </span>
+            </div>
+          )}
 
           {/* Custom Model Name */}
           <div className="mcp-form-group">
@@ -472,7 +578,7 @@ export function ApiConfigPanel({ onSave, onClose }: ApiConfigPanelProps) {
                 className="mcp-form-input"
                 placeholder={t('placeholder.customModel')}
                 value={config.customModelName ?? ''}
-                onChange={(e) => updateConfig('customModelName', e.target.value)}
+                onChange={(e) => handleDefaultModelChange(e.target.value)}
               />
             </label>
             <span className="help-text">
@@ -480,22 +586,22 @@ export function ApiConfigPanel({ onSave, onClose }: ApiConfigPanelProps) {
             </span>
           </div>
 
-          {/* Auth Priority */}
           <div className="mcp-form-group">
             <label>
               {t('apiConfig.authPriority.label')}
-              <select
+              <input
+                type="text"
                 className="mcp-form-input"
-                value={config.authPriority ?? 'auto'}
-                onChange={(e) => updateConfig('authPriority', e.target.value as ApiConfig['authPriority'])}
-              >
-                <option value="auto">{t('apiConfig.authPriority.auto')}</option>
-                <option value="apiKey">{t('apiConfig.authPriority.apiKey')}</option>
-                <option value="oauth">{t('apiConfig.authPriority.oauth')}</option>
-              </select>
+                value={config.authPriority === 'oauth'
+                  ? t('apiConfig.authPriority.oauth')
+                  : config.authPriority === 'apiKey'
+                    ? t('apiConfig.authPriority.apiKey')
+                    : t('apiConfig.authPriority.auto')}
+                disabled
+              />
             </label>
             <span className="help-text">
-              {t('apiConfig.authPriority.help')}
+              {t('apiConfig.authPriority.backendManaged')}
             </span>
           </div>
 
@@ -640,7 +746,7 @@ export function ApiConfigPanel({ onSave, onClose }: ApiConfigPanelProps) {
           <button
             className="mcp-btn-secondary mcp-btn"
             onClick={handleTest}
-            disabled={loading || testing}
+            disabled={loading || testing || !supportsConnectionTest}
             style={{ marginLeft: 'auto' }}
           >
             {testing ? t('apiConfig.testing') : t('apiConfig.testConnection')}

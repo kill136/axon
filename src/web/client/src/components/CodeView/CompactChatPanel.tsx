@@ -2,6 +2,12 @@ import { useState, useRef, useEffect, forwardRef } from 'react';
 import { CompactMessage } from './CompactMessage';
 import type { ChatMessage } from '../../types';
 import { useLanguage } from '../../i18n';
+import {
+  getWebModelOptionsForBackend,
+  normalizeWebRuntimeModelForBackend,
+  type WebRuntimeBackend,
+  type WebRuntimeProvider,
+} from '../../../../shared/model-catalog';
 import styles from './CompactChatPanel.module.css';
 
 interface CompactChatPanelProps {
@@ -11,6 +17,9 @@ interface CompactChatPanelProps {
   onOpenFile: (path: string) => void;
   status: 'idle' | 'streaming' | 'thinking';
   model: string;
+  availableModels?: string[];
+  runtimeProvider: WebRuntimeProvider;
+  runtimeBackend: WebRuntimeBackend;
   onModelChange: (model: string) => void;
   permissionMode: string;
   onPermissionModeChange: (mode: string) => void;
@@ -30,6 +39,9 @@ export const CompactChatPanel = forwardRef<HTMLTextAreaElement, CompactChatPanel
       onOpenFile,
       status,
       model,
+      availableModels,
+      runtimeProvider,
+      runtimeBackend,
       onModelChange,
       permissionMode,
       onPermissionModeChange,
@@ -42,6 +54,8 @@ export const CompactChatPanel = forwardRef<HTMLTextAreaElement, CompactChatPanel
     ref
   ) => {
     const { t } = useLanguage();
+    const modelOptions = getWebModelOptionsForBackend(runtimeBackend, model, model, availableModels);
+    const selectedModel = normalizeWebRuntimeModelForBackend(runtimeBackend, model, model, availableModels);
     const [inputText, setInputText] = useState(initialInput);
     const internalInputRef = useRef<HTMLTextAreaElement>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -163,13 +177,13 @@ export const CompactChatPanel = forwardRef<HTMLTextAreaElement, CompactChatPanel
               <label className={styles.toolbarLabel}>{t('compactChat.model')}</label>
               <select
                 className={styles.toolbarSelect}
-                value={model}
+                value={selectedModel}
                 onChange={(e) => onModelChange(e.target.value)}
                 disabled={!connected || isStreaming}
               >
-                <option value="haiku">Haiku</option>
-                <option value="sonnet">Sonnet</option>
-                <option value="opus">Opus</option>
+                {modelOptions.map(option => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
               </select>
             </div>
 

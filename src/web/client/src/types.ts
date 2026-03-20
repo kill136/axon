@@ -5,6 +5,7 @@ export interface ChatMessage {
   timestamp: number;
   content: ChatContent[];
   model?: string;
+  runtimeBackend?: string;
   usage?: {
     inputTokens: number;
     outputTokens: number;
@@ -255,6 +256,7 @@ export interface Session {
   messageCount: number;
   createdAt?: number;
   model?: string;
+  runtimeBackend?: string;
   cost?: number;
   tokenUsage?: {
     input: number;
