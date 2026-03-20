@@ -13,5 +13,6 @@ export function createConversationClient(config: ConversationClientConfig): Conv
     model: config.model,
     baseUrl: config.baseUrl,
     timeout: config.timeout,
+    identityVariant: config.identityVariant,
   });
 }

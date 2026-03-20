@@ -6,6 +6,7 @@ import { configManager } from '../../config/index.js';
 
 const CODEX_AUTH_DIR = path.join(os.homedir(), '.codex');
 const CODEX_AUTH_FILE = path.join(CODEX_AUTH_DIR, 'auth.json');
+const CODEX_CONFIG_FILE = path.join(CODEX_AUTH_DIR, 'config.toml');
 
 export const CODEX_OAUTH_CONFIG = {
   clientId: 'app_EMoamEEZ73f0CkXaXp7hrann',
@@ -16,6 +17,7 @@ export const CODEX_OAUTH_CONFIG = {
 };
 
 export interface CodexAuthConfig {
+  apiKey?: string;
   accessToken?: string;
   refreshToken?: string;
   idToken?: string;
@@ -27,6 +29,14 @@ export interface CodexAuthConfig {
   source?: 'imported' | 'manual' | 'refreshed';
 }
 
+export interface ImportedCodexConfig {
+  apiBaseUrl?: string | null;
+  customModelName?: string;
+  defaultModelByBackend?: Record<string, string>;
+  modelProvider?: string;
+  wireApi?: string;
+}
+
 interface CodexTokenResponse {
   access_token: string;
   refresh_token?: string;
@@ -34,6 +44,120 @@ interface CodexTokenResponse {
   expires_in?: number;
   token_type?: string;
   account_id?: string;
+}
+
+function stripTomlComment(line: string): string {
+  let result = '';
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    const prev = i > 0 ? line[i - 1] : '';
+
+    if (char === "'" && !inDoubleQuote) {
+      inSingleQuote = !inSingleQuote;
+      result += char;
+      continue;
+    }
+
+    if (char === '"' && !inSingleQuote && prev !== '\\') {
+      inDoubleQuote = !inDoubleQuote;
+      result += char;
+      continue;
+    }
+
+    if (char === '#' && !inSingleQuote && !inDoubleQuote) {
+      break;
+    }
+
+    result += char;
+  }
+
+  return result.trim();
+}
+
+function parseTomlPath(input: string): string[] {
+  const segments: string[] = [];
+  let buffer = '';
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+
+  for (let i = 0; i < input.length; i++) {
+    const char = input[i];
+    const prev = i > 0 ? input[i - 1] : '';
+
+    if (char === "'" && !inDoubleQuote) {
+      inSingleQuote = !inSingleQuote;
+      buffer += char;
+      continue;
+    }
+
+    if (char === '"' && !inSingleQuote && prev !== '\\') {
+      inDoubleQuote = !inDoubleQuote;
+      buffer += char;
+      continue;
+    }
+
+    if (char === '.' && !inSingleQuote && !inDoubleQuote) {
+      const normalized = buffer.trim().replace(/^['"]|['"]$/g, '');
+      if (normalized) segments.push(normalized);
+      buffer = '';
+      continue;
+    }
+
+    buffer += char;
+  }
+
+  const normalized = buffer.trim().replace(/^['"]|['"]$/g, '');
+  if (normalized) segments.push(normalized);
+  return segments;
+}
+
+function parseTomlScalar(raw: string): string | boolean | number {
+  const trimmed = raw.trim();
+  if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+    return trimmed.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+  }
+  if (/^(true|false)$/i.test(trimmed)) {
+    return trimmed.toLowerCase() === 'true';
+  }
+  if (/^[+-]?\d+(\.\d+)?$/.test(trimmed)) {
+    return Number(trimmed);
+  }
+  return trimmed;
+}
+
+function parseSimpleToml(text: string): Record<string, any> {
+  const root: Record<string, any> = {};
+  let current: Record<string, any> = root;
+
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = stripTomlComment(rawLine);
+    if (!line) continue;
+
+    const sectionMatch = line.match(/^\[(.+)\]$/);
+    if (sectionMatch) {
+      const pathSegments = parseTomlPath(sectionMatch[1]);
+      current = root;
+      for (const segment of pathSegments) {
+        if (!current[segment] || typeof current[segment] !== 'object' || Array.isArray(current[segment])) {
+          current[segment] = {};
+        }
+        current = current[segment];
+      }
+      continue;
+    }
+
+    const equalsIndex = line.indexOf('=');
+    if (equalsIndex === -1) continue;
+
+    const key = line.slice(0, equalsIndex).trim().replace(/^['"]|['"]$/g, '');
+    const value = parseTomlScalar(line.slice(equalsIndex + 1));
+    current[key] = value;
+  }
+
+  return root;
 }
 
 function decodeJwtPayload(token?: string): Record<string, any> | null {
@@ -121,6 +245,13 @@ function extractProfile(idToken?: string, accessToken?: string): Pick<CodexAuthC
 }
 
 function normalizeCodexAuth(raw: Record<string, any>): CodexAuthConfig | null {
+  const apiKey = pickFirstString([
+    raw.apiKey,
+    raw.api_key,
+    raw.openaiApiKey,
+    raw.openai_api_key,
+    raw.OPENAI_API_KEY,
+  ]);
   const accessToken = pickFirstString([
     raw.accessToken,
     raw.access_token,
@@ -135,7 +266,7 @@ function normalizeCodexAuth(raw: Record<string, any>): CodexAuthConfig | null {
     raw.id_token,
   ]);
 
-  if (!accessToken && !pickFirstString([raw.apiKey, raw.api_key])) {
+  if (!accessToken && !apiKey) {
     return null;
   }
 
@@ -147,6 +278,7 @@ function normalizeCodexAuth(raw: Record<string, any>): CodexAuthConfig | null {
       : profile.expiresAt;
 
   return {
+    apiKey: apiKey || undefined,
     accessToken: accessToken || undefined,
     refreshToken: refreshToken || undefined,
     idToken: idToken || undefined,
@@ -154,7 +286,8 @@ function normalizeCodexAuth(raw: Record<string, any>): CodexAuthConfig | null {
     email: pickFirstString([raw.email, profile.email]),
     displayName: pickFirstString([raw.displayName, raw.display_name, profile.displayName]),
     expiresAt,
-    authMethod: (pickFirstString([raw.authMethod, raw.auth_method]) as CodexAuthConfig['authMethod']) || 'chatgpt',
+    authMethod: (pickFirstString([raw.authMethod, raw.auth_method]) as CodexAuthConfig['authMethod'])
+      || (!accessToken && apiKey ? 'api_key' : 'chatgpt'),
     source: (pickFirstString([raw.source]) as CodexAuthConfig['source']) || 'imported',
   };
 }
@@ -187,7 +320,9 @@ export class CodexAuthManager {
 
   isTokenExpired(bufferMs: number = 5 * 60 * 1000): boolean {
     const config = this.getAuthConfig();
-    if (!config?.accessToken) return true;
+    if (!config) return true;
+    if (!config.accessToken && (config.authMethod === 'api_key' || config.apiKey)) return false;
+    if (!config.accessToken) return true;
     if (!config.expiresAt) return false;
     return Date.now() + bufferMs >= config.expiresAt;
   }
@@ -208,6 +343,50 @@ export class CodexAuthManager {
 
     await this.saveAuthConfig(normalized);
     return this.getAuthConfig()!;
+  }
+
+  importOfficialConfigFile(): ImportedCodexConfig | null {
+    if (!fs.existsSync(CODEX_CONFIG_FILE)) {
+      return null;
+    }
+
+    const parsed = parseSimpleToml(fs.readFileSync(CODEX_CONFIG_FILE, 'utf8'));
+    const modelProvider = pickFirstString([parsed.model_provider, parsed.modelProvider]);
+    const customModelName = pickFirstString([parsed.model]);
+    const providerConfig = modelProvider
+      && parsed.model_providers
+      && typeof parsed.model_providers === 'object'
+      && !Array.isArray(parsed.model_providers)
+      && parsed.model_providers[modelProvider]
+      && typeof parsed.model_providers[modelProvider] === 'object'
+      && !Array.isArray(parsed.model_providers[modelProvider])
+      ? parsed.model_providers[modelProvider] as Record<string, any>
+      : null;
+
+    const providerBaseUrl = pickFirstString([
+      providerConfig?.base_url,
+      providerConfig?.baseUrl,
+    ]);
+    const wireApi = pickFirstString([
+      providerConfig?.wire_api,
+      providerConfig?.wireApi,
+      parsed.wire_api,
+      parsed.wireApi,
+    ]);
+
+    if (!modelProvider && !customModelName && providerBaseUrl === undefined && !wireApi) {
+      return null;
+    }
+
+    return {
+      apiBaseUrl: providerBaseUrl ? providerBaseUrl.replace(/\/+$/, '') : modelProvider ? null : undefined,
+      customModelName,
+      defaultModelByBackend: customModelName
+        ? { 'codex-subscription': customModelName }
+        : undefined,
+      modelProvider: modelProvider || undefined,
+      wireApi: wireApi || undefined,
+    };
   }
 
   generatePkcePair(): { codeVerifier: string; codeChallenge: string } {
@@ -259,6 +438,7 @@ export class CodexAuthManager {
     const tokenResponse = await response.json() as CodexTokenResponse;
     const profile = extractProfile(tokenResponse.id_token, tokenResponse.access_token);
     const config: CodexAuthConfig = {
+      apiKey: undefined,
       accessToken: tokenResponse.access_token,
       refreshToken: tokenResponse.refresh_token,
       idToken: tokenResponse.id_token,
@@ -305,6 +485,7 @@ export class CodexAuthManager {
     const profile = extractProfile(tokenResponse.id_token || current.idToken, tokenResponse.access_token);
 
     await this.saveAuthConfig({
+      apiKey: undefined,
       accessToken: tokenResponse.access_token,
       refreshToken: tokenResponse.refresh_token || current.refreshToken,
       idToken: tokenResponse.id_token || current.idToken,

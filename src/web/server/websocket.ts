@@ -1489,18 +1489,27 @@ async function handleClientMessage(
       break;
     }
 
-    case 'chat':
-      // 使用会话互斥锁，防止与 session_switch/session_new 并发修改 client.sessionId
-      await withSessionMutex(client, async () => {
+    case 'chat': {
+      // 使用会话互斥锁保护 session 初始化阶段（读取/修改 client.sessionId）
+      // 但不锁住整个流式响应，否则 session_new/session_switch 会被阻塞到 AI 回复完成
+      const chatContext = await withSessionMutex(client, async () => {
         // 确保会话关联 WebSocket
         conversationManager.setWebSocket(client.sessionId, ws);
         // 如果消息中包含 projectPath，更新 client.projectPath
         if (message.payload.projectPath !== undefined) {
           client.projectPath = message.payload.projectPath;
         }
-        await handleChatMessage(client, message.payload.content, message.payload.attachments || message.payload.images, conversationManager, message.payload.messageId);
+        // prepareChatSession: 初始化会话并返回闭包需要的上下文
+        // 这里完成所有需要互斥保护的操作：读取 sessionId、创建持久化会话、更新 client.sessionId
+        const ctx = await prepareChatSession(client, message.payload.content, message.payload.attachments || message.payload.images, conversationManager);
+        return ctx;
       });
+      // Phase 2: 在锁外执行流式 chat（chatContext 中的 chatSessionId 已是闭包安全值）
+      if (chatContext) {
+        await executeChatStreaming(chatContext, conversationManager, message.payload.messageId);
+      }
       break;
+    }
 
     case 'cancel':
       conversationManager.cancel(client.sessionId);
@@ -2384,15 +2393,31 @@ interface FileAttachment {
 }
 
 /**
- * 处理聊天消息
+ * Chat 会话上下文 — 由 prepareChatSession 在互斥锁内生成，
+ * 供 executeChatStreaming 在锁外使用
  */
-async function handleChatMessage(
+interface ChatSessionContext {
+  chatSessionId: string;
+  model: string;
+  projectPath: string | undefined;
+  ws: WebSocket;
+  enhancedContent: string;
+  mediaAttachments: MediaAttachment[] | undefined;
+  permissionMode: string | undefined;
+  runtimeBackend: string;
+  getActiveWs: () => WebSocket;
+}
+
+/**
+ * Phase 1: 在互斥锁内执行 — 初始化会话并返回流式 chat 所需的上下文
+ * 所有读取/修改 client.sessionId 的操作在此完成
+ */
+async function prepareChatSession(
   client: ClientConnection,
   content: string,
   attachments: Attachment[] | string[] | undefined,
   conversationManager: ConversationManager,
-  userMessageId?: string
-): Promise<void> {
+): Promise<ChatSessionContext | null> {
   const { ws, model, projectPath } = client;
   let { sessionId } = client;
 
@@ -2404,13 +2429,13 @@ async function handleChatMessage(
       type: 'error',
       payload: { message: 'API Key not configured. Please configure an API Key in settings or log in via OAuth before sending messages.' },
     });
-    return;
+    return null;
   }
 
   // 检查是否为斜杠命令
   if (isSlashCommand(content)) {
     await handleSlashCommand(client, content, conversationManager);
-    return;
+    return null;
   }
 
   // 确保会话存在于 sessionManager 中（处理临时会话 ID 的情况）
@@ -2462,8 +2487,6 @@ async function handleChatMessage(
       console.log(`[WebSocket] Updating session title to firstPrompt: ${firstPrompt}`);
     }
   }
-
-  const messageId = randomUUID();
 
   // 处理附件：图片直接传递给 Claude API，其他文件保存为临时文件传路径
   let mediaAttachments: MediaAttachment[] | undefined;
@@ -2530,6 +2553,31 @@ async function handleChatMessage(
   const getActiveWs = (): WebSocket => {
     return conversationManager.getWebSocket(chatSessionId) || ws;
   };
+
+  return {
+    chatSessionId,
+    model,
+    projectPath: client.projectPath,
+    ws,
+    enhancedContent,
+    mediaAttachments,
+    permissionMode: client.permissionMode,
+    runtimeBackend: client.runtimeBackend,
+    getActiveWs,
+  };
+}
+
+/**
+ * Phase 2: 在互斥锁外执行 — 实际的流式 AI 对话
+ * 使用 chatSessionId 闭包值，不再读写 client.sessionId
+ */
+async function executeChatStreaming(
+  ctx: ChatSessionContext,
+  conversationManager: ConversationManager,
+  userMessageId?: string,
+): Promise<void> {
+  const { chatSessionId, model, enhancedContent, mediaAttachments, getActiveWs } = ctx;
+  const messageId = randomUUID();
 
   // 始终发送流式消息到 WebSocket，不做服务端门控
   // 客户端已有基于 sessionId 的会话隔离过滤（useMessageHandler），
@@ -2713,7 +2761,7 @@ async function handleChatMessage(
           });
         }
       },
-    }, client.projectPath, getActiveWs(), client.permissionMode, userMessageId);  // 传入动态 ws、权限模式和前端消息 ID，确保跨会话持久化
+    }, ctx.projectPath, getActiveWs(), ctx.permissionMode, userMessageId);  // 传入动态 ws、权限模式和前端消息 ID，确保跨会话持久化
   } catch (error) {
     console.error('[WebSocket] Chat handling error:', error);
     sendMessage(getActiveWs(), {
@@ -2783,7 +2831,8 @@ async function handleSlashCommand(
 
     // 如果命令返回 chatPrompt，将其作为聊天消息发送给 AI（用于 /init 等命令）
     if (result.success && result.data?.chatPrompt) {
-      await handleChatMessage(client, result.data.chatPrompt, undefined, conversationManager);
+      const ctx = await withSessionMutex(client, () => prepareChatSession(client, result.data.chatPrompt, undefined, conversationManager));
+      if (ctx) await executeChatStreaming(ctx, conversationManager);
       return;
     }
 
@@ -2812,7 +2861,8 @@ async function handleSlashCommand(
         }
         const messageContent = `[Skill: ${skill.skillName}]\n\n${skillContent}`;
         console.log(`[WebSocket] Executing skill ${skill.skillName}, content length: ${skillContent.length}`);
-        await handleChatMessage(client, messageContent, undefined, conversationManager);
+        const skillCtx = await withSessionMutex(client, () => prepareChatSession(client, messageContent, undefined, conversationManager));
+        if (skillCtx) await executeChatStreaming(skillCtx, conversationManager);
         return;
       }
     }
@@ -3173,12 +3223,13 @@ async function handleSessionSwitch(
           console.log(`[WebSocket] Resending pending permission request: ${req.tool} (${req.requestId})`);
         }
 
-        const pendingQuestions = conversationManager.getPendingUserQuestions(sessionId);
+        const pendingQuestions = conversationManager.getUndeliveredPendingUserQuestions(sessionId);
         for (const q of pendingQuestions) {
           sendMessage(ws, {
             type: 'user_question',
             payload: { ...q, sessionId },
           } as any);
+          conversationManager.markPendingUserQuestionDelivered(sessionId, q.requestId);
           console.log(`[WebSocket] Resending pending user question: ${q.header} (${q.requestId})`);
         }
       } else if (conversationManager.needsContinuation(sessionId)) {

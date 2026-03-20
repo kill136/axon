@@ -60,6 +60,8 @@ export interface ClientConfig {
   fastMode?: boolean;
   /** 请求来源标识，用于缓存破裂追踪（对齐官方 querySource，默认 "main"） */
   querySource?: string;
+  /** 系统提示词身份前缀变体（Web Anthropic runtime 用） */
+  identityVariant?: 'main' | 'sdk' | 'agent';
 }
 
 export interface StreamCallbacks {
@@ -348,6 +350,19 @@ const AXON_IDENTITY = "You are Claude Code, Anthropic's official CLI for Claude.
 const AXON_AGENT_SDK_IDENTITY = "You are Claude Code, Anthropic's official CLI for Claude, running within the Claude Agent SDK.";
 const AXON_AGENT_IDENTITY = "You are a Claude agent, built on Anthropic's Claude Agent SDK.";
 
+function getIdentityText(identityVariant?: 'main' | 'sdk' | 'agent'): string | undefined {
+  switch (identityVariant) {
+    case 'sdk':
+      return AXON_AGENT_SDK_IDENTITY;
+    case 'agent':
+      return AXON_AGENT_IDENTITY;
+    case 'main':
+      return AXON_IDENTITY;
+    default:
+      return undefined;
+  }
+}
+
 /**
  * 检查 system prompt 是否包含有效的 Axon 身份标识
  */
@@ -432,13 +447,16 @@ export function formatSystemPrompt(
   isOAuth: boolean,
   promptBlocks?: PromptBlock[],
   enableCaching?: boolean,
-  skipGlobalCacheForSystemPrompt: 'none' | 'system_prompt' = 'none'
+  skipGlobalCacheForSystemPrompt: 'none' | 'system_prompt' = 'none',
+  identityVariant?: 'main' | 'sdk' | 'agent',
 ): Array<{type: 'text'; text: string; cache_control?: Record<string, unknown>}> | string | undefined {
+  const preferredIdentity = getIdentityText(identityVariant) || (isOAuth ? AXON_IDENTITY : undefined);
+
   // 没有 system prompt 时
   if (!systemPrompt) {
-    if (isOAuth) {
+    if (preferredIdentity) {
       return [
-        { type: 'text', text: AXON_IDENTITY, ...(enableCaching !== false ? { cache_control: { type: 'ephemeral' } } : {}) }
+        { type: 'text', text: preferredIdentity, ...(enableCaching !== false ? { cache_control: { type: 'ephemeral' } } : {}) }
       ];
     }
     return undefined;
@@ -502,6 +520,10 @@ export function formatSystemPrompt(
       }
     }
 
+    if (preferredIdentity) {
+      apiBlocks.push({ type: 'text', text: preferredIdentity });
+    }
+
     for (const block of promptBlocks) {
       if (!block.text) continue;
       const scope = resolveScope(block.cacheScope);
@@ -515,14 +537,14 @@ export function formatSystemPrompt(
   }
 
   // 兼容旧路径：单字符串模式
-  if (!isOAuth) {
+  if (!isOAuth && !preferredIdentity) {
     return [
       { type: 'text', text: systemPrompt, ...(enableCaching !== false ? { cache_control: { type: 'ephemeral' } } : {}) }
     ];
   }
 
-  // OAuth 模式需要身份标识作为第一个 block
-  let identityToUse = AXON_IDENTITY;
+  // OAuth 或显式 identityVariant 模式需要身份标识作为第一个 block
+  let identityToUse = preferredIdentity || AXON_IDENTITY;
   let remainingText = '';
 
   if (systemPrompt.startsWith(AXON_IDENTITY)) {
@@ -537,7 +559,7 @@ export function formatSystemPrompt(
   } else {
     const cc = enableCaching !== false ? { cache_control: { type: 'ephemeral' as const } } : {};
     return [
-      { type: 'text', text: AXON_IDENTITY },
+      { type: 'text', text: identityToUse },
       { type: 'text', text: systemPrompt, ...cc }
     ];
   }
@@ -1161,6 +1183,7 @@ export class ClaudeClient {
   private fastMode: boolean = false;
   private isOAuth: boolean = false;  // 是否使用 OAuth 模式
   private isThirdParty: boolean = false;  // 是否使用第三方兼容 API（非 Anthropic 官方）
+  private identityVariant?: 'main' | 'sdk' | 'agent';
   /** 请求来源标识，用于缓存破裂追踪（对齐官方 querySource） */
   private querySource: string = 'main';
   private totalUsage: UsageStats = {
@@ -1256,6 +1279,7 @@ export class ClaudeClient {
 
     this.client = new Anthropic(anthropicConfig);
     this.debug = config.debug ?? false;
+    this.identityVariant = config.identityVariant;
 
     // 检测是否使用第三方兼容 API（非 Anthropic 官方）
     const effectiveBaseUrl = config.baseUrl || 'https://api.anthropic.com';
@@ -1648,7 +1672,7 @@ export class ClaudeClient {
         const skipGlobal: 'none' | 'system_prompt' = (enableCaching && (hasMcpTools || hasToolSearch)) ? 'system_prompt' : 'none';
 
         // 格式化 system prompt（优先使用 blocks 分块缓存）
-        const formattedSystem = formatSystemPrompt(systemPrompt, this.isOAuth, options?.promptBlocks, enableCaching, skipGlobal);
+        const formattedSystem = formatSystemPrompt(systemPrompt, this.isOAuth, options?.promptBlocks, enableCaching, skipGlobal, this.identityVariant);
 
         // 构建 API 工具列表（将 WebSearch 客户端工具替换为 Server Tool）
         const apiTools = buildApiTools(tools, options?.toolSearchEnabled, enableCaching, this.isOAuth, this.isThirdParty);
@@ -1823,7 +1847,7 @@ export class ClaudeClient {
       const skipGlobal: 'none' | 'system_prompt' = (enableCaching && (hasMcpTools || hasToolSearch)) ? 'system_prompt' : 'none';
 
       // 格式化 system prompt（优先使用 blocks 分块缓存）
-      const formattedSystem = formatSystemPrompt(systemPrompt, this.isOAuth, options?.promptBlocks, enableCaching, skipGlobal);
+      const formattedSystem = formatSystemPrompt(systemPrompt, this.isOAuth, options?.promptBlocks, enableCaching, skipGlobal, this.identityVariant);
 
       // 构建 API 工具列表（将 WebSearch 客户端工具替换为 Server Tool）
       const apiTools = buildApiTools(tools, options?.toolSearchEnabled, enableCaching, this.isOAuth, this.isThirdParty);
@@ -1858,7 +1882,7 @@ export class ClaudeClient {
       }
 
       // 使用 beta.messages.stream 而不是 messages.stream（官方方式）
-      stream = this.client.beta.messages.stream({
+      const requestParams = {
         model: this.model,
         max_tokens: this.maxTokens,
         system: formattedSystem as any,
@@ -1877,7 +1901,22 @@ export class ClaudeClient {
         // v2.1.36: Fast mode extra body 参数
         ...(isFastActive ? { [FAST_MODE_RESEARCH_PREVIEW]: 'active' } : {}),
         ...thinkingParams,
-      } as any);
+      };
+
+      // Debug: log request summary for diagnosing 400 errors
+      console.log('[ClaudeClient] Request summary — model:', this.model,
+        '| max_tokens:', this.maxTokens,
+        '| betas:', betas,
+        '| isOAuth:', this.isOAuth,
+        '| apiKey:', this.client.apiKey ? this.client.apiKey.substring(0, 12) + '...' : 'null',
+        '| authToken:', (this.client as any).authToken ? 'set' : 'null',
+        '| baseURL:', (this.client as any).baseURL || 'default',
+        '| thinking:', JSON.stringify(thinkingParams),
+        '| tools:', (apiTools?.length || 0),
+        '| messages:', messages.length,
+      );
+
+      stream = this.client.beta.messages.stream(requestParams as any);
       return stream;
     };
 

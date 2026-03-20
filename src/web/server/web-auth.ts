@@ -33,6 +33,7 @@ import {
 } from '../shared/model-catalog.js';
 
 const DEFAULT_CODEX_BASE_URL = 'https://chatgpt.com/backend-api/codex';
+const DEFAULT_CODEX_API_KEY_BASE_URL = 'https://api.openai.com/v1';
 
 function isCodexCompatibleModel(model?: string): boolean {
   if (!model) return false;
@@ -62,7 +63,7 @@ interface WebUiSettings {
   customModelCatalogByBackend?: Partial<Record<WebRuntimeBackend, string[]>>;
 }
 
-function isCodexBaseUrlCandidate(baseUrl: string): boolean {
+function isCodexChatGptBaseUrlCandidate(baseUrl: string): boolean {
   try {
     const parsed = new URL(baseUrl);
     const normalizedPath = parsed.pathname.replace(/\/+$/, '');
@@ -72,6 +73,21 @@ function isCodexBaseUrlCandidate(baseUrl: string): boolean {
     }
 
     return /\/backend-api\/codex$/i.test(normalizedPath);
+  } catch {
+    return false;
+  }
+}
+
+function isCodexApiKeyBaseUrlCandidate(baseUrl: string): boolean {
+  try {
+    const parsed = new URL(baseUrl);
+    const normalizedPath = parsed.pathname.replace(/\/+$/, '');
+
+    if (normalizedPath === '/v1') {
+      return true;
+    }
+
+    return isCodexChatGptBaseUrlCandidate(baseUrl);
   } catch {
     return false;
   }
@@ -143,6 +159,16 @@ class WebAuthProvider {
   }
 
   private inferRuntimeBackend(settings: WebUiSettings): WebRuntimeBackend {
+    const oauthConfig = oauthManager.getOAuthConfig();
+
+    if (
+      settings.authPriority === 'oauth'
+      && oauthConfig?.subscriptionType === 'console'
+      && settings.runtimeBackend === 'claude-subscription'
+    ) {
+      return 'claude-compatible-api';
+    }
+
     if (settings.runtimeBackend) {
       return settings.runtimeBackend;
     }
@@ -156,6 +182,9 @@ class WebAuthProvider {
     }
 
     if (settings.authPriority === 'oauth') {
+      if (oauthConfig?.subscriptionType === 'console') {
+        return 'claude-compatible-api';
+      }
       return 'claude-subscription';
     }
 
@@ -254,8 +283,12 @@ class WebAuthProvider {
       return this.refreshPromise;
     }
 
+    const isAnthropicOAuthBackend =
+      runtimeBackend === 'claude-subscription'
+      || (runtimeBackend === 'claude-compatible-api' && settings.authPriority === 'oauth');
+
     // 非 Claude OAuth 模式，不需要刷新
-    if (runtimeBackend !== 'claude-subscription') return true;
+    if (!isAnthropicOAuthBackend) return true;
 
     // 检查是否有 OAuth 配置
     const config = oauthManager.getOAuthConfig();
@@ -311,15 +344,21 @@ class WebAuthProvider {
     }
 
     const result: WebAuthCredentials = {};
-    if (settings.apiBaseUrl) {
-      result.baseUrl = settings.apiBaseUrl;
-    }
 
-    if (runtimeBackend === 'claude-subscription') {
+    const isAnthropicOAuthMode =
+      settings.authPriority === 'oauth'
+      && (runtimeBackend === 'claude-subscription' || runtimeBackend === 'claude-compatible-api');
+
+    if (isAnthropicOAuthMode) {
+      // OAuth 凭据由 Anthropic 官方颁发，必须发到 api.anthropic.com
+      // 不能使用用户之前配置的自定义 apiBaseUrl（可能是代理，不认 OAuth key）
       const oauthCreds = this.getOAuthCredentials();
       result.apiKey = oauthCreds.apiKey;
       result.authToken = oauthCreds.authToken;
     } else {
+      if (settings.apiBaseUrl) {
+        result.baseUrl = settings.apiBaseUrl;
+      }
       result.apiKey = settings.apiKey;
     }
 
@@ -354,7 +393,7 @@ class WebAuthProvider {
 
     if (runtimeBackend === 'codex-subscription') {
       const codexConfig = codexAuthManager.getAuthConfig();
-      if (codexConfig?.accessToken || codexConfig?.authMethod === 'api_key') {
+      if (codexConfig?.accessToken || codexConfig?.apiKey || codexConfig?.authMethod === 'api_key') {
         return { authenticated: true, type: 'oauth', provider: 'codex', runtimeBackend };
       }
     }
@@ -432,6 +471,12 @@ class WebAuthProvider {
           valid: !isExpired,
           expiresAt: codexConfig.expiresAt,
           scope: ['openid', 'profile', 'email', 'offline_access'],
+        };
+      }
+      if (codexConfig?.apiKey || codexConfig?.authMethod === 'api_key') {
+        return {
+          type: 'api_key',
+          valid: true,
         };
       }
       return { type: 'none', valid: false };
@@ -582,12 +627,18 @@ class WebAuthProvider {
       return envBaseUrl.replace(/\/+$/, '');
     }
 
+    const codexConfig = codexAuthManager.getAuthConfig();
+    const usesApiKey = !codexConfig?.accessToken && !!(codexConfig?.apiKey || codexConfig?.authMethod === 'api_key');
     const configuredBaseUrl = settings.apiBaseUrl?.trim();
-    if (configuredBaseUrl && isCodexBaseUrlCandidate(configuredBaseUrl)) {
+    const isSupportedConfiguredBaseUrl = configuredBaseUrl
+      && (usesApiKey
+        ? isCodexApiKeyBaseUrlCandidate(configuredBaseUrl)
+        : isCodexChatGptBaseUrlCandidate(configuredBaseUrl));
+    if (configuredBaseUrl && isSupportedConfiguredBaseUrl) {
       return configuredBaseUrl.replace(/\/+$/, '');
     }
 
-    return DEFAULT_CODEX_BASE_URL;
+    return usesApiKey ? DEFAULT_CODEX_API_KEY_BASE_URL : DEFAULT_CODEX_BASE_URL;
   }
 
   getRuntimeBackend(): WebRuntimeBackend {
@@ -616,6 +667,16 @@ class WebAuthProvider {
     }
     if (runtimeBackend === 'axon-cloud') {
       return 'axon-cloud';
+    }
+    if (runtimeBackend === 'claude-subscription') {
+      return 'anthropic';
+    }
+    if (runtimeBackend === 'claude-compatible-api') {
+      const apiProvider = configManager.get('apiProvider');
+      if (apiProvider === 'bedrock' || apiProvider === 'vertex' || apiProvider === 'anthropic') {
+        return apiProvider;
+      }
+      return 'anthropic';
     }
     if (runtimeBackend === 'openai-compatible-api') {
       return 'openai-compatible';
@@ -662,6 +723,11 @@ class WebAuthProvider {
         accountId: codexConfig.accountId,
       };
     }
+    if (codexConfig.apiKey) {
+      return {
+        apiKey: codexConfig.apiKey,
+      };
+    }
     return {};
   }
 
@@ -673,13 +739,13 @@ class WebAuthProvider {
     expiresAt?: number;
   } {
     const config = codexAuthManager.getAuthConfig();
-    if (!config?.accessToken) {
+    if (!config?.accessToken && !config?.apiKey) {
       return { authenticated: false };
     }
 
     return {
       authenticated: true,
-      displayName: config.displayName || config.email,
+      displayName: config.displayName || config.email || (config.apiKey ? 'API Key' : undefined),
       email: config.email,
       accountId: config.accountId,
       expiresAt: config.expiresAt,

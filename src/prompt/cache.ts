@@ -179,12 +179,16 @@ export function generateCacheKey(context: {
   model?: string;
   permissionMode?: string;
   planMode?: boolean;
+  isOfficialAuth?: boolean;
+  coreIdentityVariant?: 'main' | 'sdk' | 'agent';
 }): string {
   const parts = [
     context.workingDir,
     context.model || 'default',
     context.permissionMode || 'default',
     context.planMode ? 'plan' : 'normal',
+    context.isOfficialAuth ? 'official' : 'non-official',
+    context.coreIdentityVariant || 'default-identity',
   ];
   return parts.join(':');
 }

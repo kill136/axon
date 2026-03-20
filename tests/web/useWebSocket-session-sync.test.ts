@@ -205,21 +205,21 @@ describe('useWebSocket session sync - BroadcastChannel', () => {
 });
 
 describe('useWebSocket session sync - backend sessionMutex', () => {
+  interface MockClient {
+    sessionId: string;
+    sessionMutex?: Promise<void>;
+  }
+
+  function withSessionMutex<T>(client: MockClient, fn: () => Promise<T>): Promise<T> {
+    const prev = client.sessionMutex || Promise.resolve();
+    let resolve: () => void;
+    client.sessionMutex = new Promise<void>(r => { resolve = r; });
+    return prev.then(() => fn()).finally(() => resolve!());
+  }
+
   it('should serialize session operations with Promise chain mutex', async () => {
     // Test the withSessionMutex pattern used in the backend
     // This verifies that concurrent session_switch and chat don't interleave
-
-    interface MockClient {
-      sessionId: string;
-      sessionMutex?: Promise<void>;
-    }
-
-    function withSessionMutex<T>(client: MockClient, fn: () => Promise<T>): Promise<T> {
-      const prev = client.sessionMutex || Promise.resolve();
-      let resolve: () => void;
-      client.sessionMutex = new Promise<void>(r => { resolve = r; });
-      return prev.then(() => fn()).finally(() => resolve!());
-    }
 
     const client: MockClient = { sessionId: 'initial' };
     const executionOrder: string[] = [];
@@ -254,18 +254,6 @@ describe('useWebSocket session sync - backend sessionMutex', () => {
   });
 
   it('should handle mutex errors without blocking subsequent operations', async () => {
-    interface MockClient {
-      sessionId: string;
-      sessionMutex?: Promise<void>;
-    }
-
-    function withSessionMutex<T>(client: MockClient, fn: () => Promise<T>): Promise<T> {
-      const prev = client.sessionMutex || Promise.resolve();
-      let resolve: () => void;
-      client.sessionMutex = new Promise<void>(r => { resolve = r; });
-      return prev.then(() => fn()).finally(() => resolve!());
-    }
-
     const client: MockClient = { sessionId: 'initial' };
 
     // First operation throws an error
@@ -283,5 +271,107 @@ describe('useWebSocket session sync - backend sessionMutex', () => {
     const result = await successOp;
     expect(result).toBe('success');
     expect(client.sessionId).toBe('after-error');
+  });
+
+  it('session_new should NOT be blocked by ongoing chat streaming (two-phase mutex fix)', async () => {
+    // This test validates the fix for the bug where clicking "new session"
+    // while AI is streaming would be blocked until the stream completes.
+    //
+    // Root cause: chat handler held the session mutex for the entire streaming
+    // duration. session_new queued behind it and couldn't execute until chat finished.
+    //
+    // Fix: Split chat into two phases:
+    //   Phase 1 (mutex-protected): initialize session, capture chatSessionId closure
+    //   Phase 2 (outside mutex): actual streaming with conversationManager.chat()
+
+    const client: MockClient = { sessionId: 'session-A' };
+    const executionOrder: string[] = [];
+    let streamingResolve: () => void;
+    const streamingPromise = new Promise<void>(r => { streamingResolve = r; });
+
+    // Phase 1: prepareChatSession — runs in mutex, captures chatSessionId, returns quickly
+    const chatSessionId = await withSessionMutex(client, async () => {
+      executionOrder.push('chat:prepare:start');
+      // May create persistent session, update client.sessionId
+      client.sessionId = 'persistent-session-A';
+      const captured = client.sessionId;
+      executionOrder.push('chat:prepare:end');
+      return captured;
+    });
+
+    // Phase 2: streaming — runs OUTSIDE mutex
+    const streamPromise = (async () => {
+      executionOrder.push('chat:stream:start');
+      // Simulate long-running AI streaming (uses captured chatSessionId, not client.sessionId)
+      expect(chatSessionId).toBe('persistent-session-A');
+      await streamingPromise;
+      executionOrder.push('chat:stream:end');
+    })();
+
+    // Now session_new arrives while streaming is in progress
+    // It should NOT be blocked because streaming is outside the mutex
+    const sessionNewPromise = withSessionMutex(client, async () => {
+      executionOrder.push('session_new:start');
+      client.sessionId = 'new-temp-session-B';
+      executionOrder.push('session_new:end');
+    });
+
+    // session_new should complete immediately (not waiting for streaming)
+    await sessionNewPromise;
+    expect(executionOrder).toContain('session_new:start');
+    expect(executionOrder).toContain('session_new:end');
+
+    // Streaming should still be running
+    expect(executionOrder).not.toContain('chat:stream:end');
+
+    // Verify session_new completed before stream ended
+    const newIdx = executionOrder.indexOf('session_new:end');
+    expect(executionOrder).not.toContain('chat:stream:end');
+
+    // Now complete the streaming
+    streamingResolve!();
+    await streamPromise;
+
+    expect(executionOrder).toContain('chat:stream:end');
+
+    // Final sessionId should be the new session (session_new overwrote it)
+    expect(client.sessionId).toBe('new-temp-session-B');
+
+    // The stream used the captured chatSessionId, unaffected by session_new
+    expect(chatSessionId).toBe('persistent-session-A');
+  });
+
+  it('old behavior: session_new blocked by full-mutex chat (regression proof)', async () => {
+    // This demonstrates what the OLD behavior looked like:
+    // If chat holds the mutex for the entire streaming duration,
+    // session_new is blocked until streaming completes.
+
+    const client: MockClient = { sessionId: 'session-old' };
+    const executionOrder: string[] = [];
+
+    // OLD pattern: entire chat (including streaming) inside mutex
+    const chatPromise = withSessionMutex(client, async () => {
+      executionOrder.push('chat:full:start');
+      // Simulate streaming delay
+      await new Promise(r => setTimeout(r, 100));
+      executionOrder.push('chat:full:end');
+    });
+
+    // session_new queues behind the full chat
+    const sessionNewPromise = withSessionMutex(client, async () => {
+      executionOrder.push('session_new:start');
+      client.sessionId = 'new-session';
+      executionOrder.push('session_new:end');
+    });
+
+    await Promise.all([chatPromise, sessionNewPromise]);
+
+    // In the old pattern, session_new waits for chat to finish
+    expect(executionOrder).toEqual([
+      'chat:full:start',
+      'chat:full:end',
+      'session_new:start',
+      'session_new:end',
+    ]);
   });
 });

@@ -21,6 +21,15 @@ const SESSION_ID_STORAGE_KEY = 'claude-code-current-session-id';
 // BroadcastChannel 用于跨标签页实时同步会话切换
 const SESSION_BROADCAST_CHANNEL = 'claude-code-session-sync';
 
+function isSessionRestoreFailureMessage(message: string): boolean {
+  const errorMsg = message.toLowerCase();
+  return errorMsg.includes('会话不存在')
+    || errorMsg.includes('session does not exist')
+    || errorMsg.includes('failed to resume')
+    || errorMsg.includes('failed to switch')
+    || errorMsg.includes('failed to load');
+}
+
 export function useWebSocket(url: string): UseWebSocketReturn {
   const [connected, setConnected] = useState(false);
   const [sessionReady, setSessionReady] = useState(false);
@@ -40,6 +49,7 @@ export function useWebSocket(url: string): UseWebSocketReturn {
   urlRef.current = url;
   // 追踪是否已经发送了 session_switch 恢复请求
   const hasRestoredSessionRef = useRef(false);
+  const pendingRestoreSessionIdRef = useRef<string | null>(null);
   const requestedFreshSessionRef = useRef(false);
   // BroadcastChannel ref，用于跨标签页同步会话切换
   const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
@@ -99,6 +109,7 @@ export function useWebSocket(url: string): UseWebSocketReturn {
         if (savedSessionId) {
           console.log('[WebSocket] Detected saved sessionId, attempting to restore session:', savedSessionId);
           hasRestoredSessionRef.current = true;
+          pendingRestoreSessionIdRef.current = savedSessionId;
           // 延迟发送，确保 connected 消息已处理
           setTimeout(() => {
             if (ws.readyState === WebSocket.OPEN) {
@@ -118,6 +129,27 @@ export function useWebSocket(url: string): UseWebSocketReturn {
 
         // 忽略 pong 消息
         if (message.type === 'pong') return;
+
+        if (message.type === 'error') {
+          const payload = message.payload as { message?: string; error?: string };
+          const errorText = payload.message || payload.error || '';
+          if (pendingRestoreSessionIdRef.current && isSessionRestoreFailureMessage(errorText)) {
+            const failedSessionId = pendingRestoreSessionIdRef.current;
+            localStorage.removeItem(SESSION_ID_STORAGE_KEY);
+            pendingRestoreSessionIdRef.current = null;
+            hasRestoredSessionRef.current = false;
+            sessionIdRef.current = null;
+            setSessionId(null);
+            console.log('[WebSocket] Auto-restore failed, clearing stale sessionId:', failedSessionId);
+
+            if (!requestedFreshSessionRef.current && ws.readyState === WebSocket.OPEN) {
+              requestedFreshSessionRef.current = true;
+              ws.send(JSON.stringify({ type: 'session_new', payload: {} }));
+              console.log('[WebSocket] Requested a fresh session after restore failure');
+            }
+            return;
+          }
+        }
 
         messageHandlersRef.current.forEach(handler => handler(message));
 
@@ -164,6 +196,7 @@ export function useWebSocket(url: string): UseWebSocketReturn {
         // 处理会话切换 - 更新 sessionId 并持久化
         if (message.type === 'session_switched') {
           const payload = message.payload as { sessionId: string; model?: string; runtimeBackend?: string };
+          pendingRestoreSessionIdRef.current = null;
           requestedFreshSessionRef.current = false;
           setSessionId(payload.sessionId);
           sessionIdRef.current = payload.sessionId;
@@ -182,6 +215,7 @@ export function useWebSocket(url: string): UseWebSocketReturn {
         // 处理新建会话 - 更新 sessionId 并持久化
         if (message.type === 'session_new_ready') {
           const payload = message.payload as { sessionId: string; model: string; runtimeBackend?: string };
+          pendingRestoreSessionIdRef.current = null;
           requestedFreshSessionRef.current = false;
           setSessionId(payload.sessionId);
           sessionIdRef.current = payload.sessionId;
@@ -203,6 +237,7 @@ export function useWebSocket(url: string): UseWebSocketReturn {
           const payload = message.payload as { sessionId: string; tags?: string[]; runtimeBackend?: string };
           const isBackgroundSession = payload.tags?.includes('delegated-task') || payload.tags?.includes('agent-chat');
           if (payload.sessionId && !isBackgroundSession) {
+            pendingRestoreSessionIdRef.current = null;
             requestedFreshSessionRef.current = false;
             setSessionId(payload.sessionId);
             sessionIdRef.current = payload.sessionId;
@@ -227,29 +262,6 @@ export function useWebSocket(url: string): UseWebSocketReturn {
           }
         }
 
-        // 处理恢复会话失败 - 清除无效的 sessionId
-        if (message.type === 'error') {
-          const payload = message.payload as { message: string };
-          const errorMsg = (payload.message || '').toLowerCase();
-          // 匹配中英文错误消息：会话不存在或恢复/加载失败
-          if (errorMsg.includes('会话不存在') ||
-               errorMsg.includes('session does not exist') ||
-               errorMsg.includes('failed to resume') ||
-               errorMsg.includes('failed to switch') ||
-               errorMsg.includes('failed to load')) {
-            localStorage.removeItem(SESSION_ID_STORAGE_KEY);
-            hasRestoredSessionRef.current = false;
-            sessionIdRef.current = null;
-            setSessionId(null);
-            console.log('[WebSocket] Session restore failed, clearing invalid sessionId:', payload.message);
-
-            if (!requestedFreshSessionRef.current && ws.readyState === WebSocket.OPEN) {
-              requestedFreshSessionRef.current = true;
-              ws.send(JSON.stringify({ type: 'session_new', payload: {} }));
-              console.log('[WebSocket] Requested a fresh session after restore failure');
-            }
-          }
-        }
       } catch (e) {
         console.error('Failed to parse message:', e);
       }
@@ -266,6 +278,7 @@ export function useWebSocket(url: string): UseWebSocketReturn {
       (window as any).__wsSend = undefined;
       // 重置会话恢复标记，确保下次重连时能重新发送 session_switch 恢复会话
       hasRestoredSessionRef.current = false;
+      pendingRestoreSessionIdRef.current = null;
       requestedFreshSessionRef.current = false;
 
       // 清除 ping 定时器

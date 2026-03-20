@@ -17,6 +17,7 @@ interface PendingQuestion {
   reject: (error: Error) => void;
   timeoutId?: NodeJS.Timeout;
   payload: UserQuestionPayload; // 保存原始 payload，用于会话切换时重发
+  deliveredWebSocketVersion: number | null; // 当前问题是否已送达当前 ws
 }
 
 /**
@@ -36,12 +37,16 @@ export interface QuestionConfig {
 export class UserInteractionHandler {
   private pendingQuestions = new Map<string, PendingQuestion>();
   private ws: WebSocket | null = null;
+  private wsVersion = 0;
   private sessionId: string | null = null;
 
   /**
    * 设置 WebSocket 连接
    */
   setWebSocket(ws: WebSocket): void {
+    if (this.ws !== ws) {
+      this.wsVersion += 1;
+    }
     this.ws = ws;
   }
 
@@ -78,6 +83,7 @@ export class UserInteractionHandler {
         resolve,
         reject,
         payload,
+        deliveredWebSocketVersion: null,
       };
 
       // 设置超时
@@ -94,6 +100,7 @@ export class UserInteractionHandler {
           type: 'user_question',
           payload: { ...payload, sessionId: this.sessionId },
         }));
+        pending.deliveredWebSocketVersion = this.wsVersion;
         console.log(`[UserInteraction] Sending question: ${config.header} (${requestId}), session: ${this.sessionId}`);
         // cmux 集成：Agent 等待用户输入时通知 cmux 终端
         getCmuxBridge().onWaitingForInput(config.question);
@@ -181,5 +188,26 @@ export class UserInteractionHandler {
    */
   getPendingPayloads(): UserQuestionPayload[] {
     return Array.from(this.pendingQuestions.values()).map(p => p.payload);
+  }
+
+  /**
+   * 获取当前 ws 还未收到的待处理问题。
+   * 用于会话恢复时补发，避免把已经实时送达当前连接的问题再发一遍。
+   */
+  getUndeliveredPayloadsForCurrentWebSocket(): UserQuestionPayload[] {
+    return Array.from(this.pendingQuestions.values())
+      .filter((pending) => pending.deliveredWebSocketVersion !== this.wsVersion)
+      .map((pending) => pending.payload);
+  }
+
+  /**
+   * 标记某个问题已经送达当前 ws。
+   */
+  markDeliveredToCurrentWebSocket(requestId: string): void {
+    const pending = this.pendingQuestions.get(requestId);
+    if (!pending) {
+      return;
+    }
+    pending.deliveredWebSocketVersion = this.wsVersion;
   }
 }

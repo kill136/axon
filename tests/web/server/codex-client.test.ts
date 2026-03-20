@@ -518,6 +518,97 @@ describe('CodexConversationClient', () => {
     ]);
   });
 
+  it('should not replay streamed Responses tool calls from response.completed', async () => {
+    const args = {
+      questions: [
+        {
+          header: '要做什么',
+          question: '你发的“1”目前缺少明确上下文，要我基于这批改动执行哪一种？',
+          options: [
+            { label: '代码审查', description: '基于当前改动检查代码质量、风险和潜在问题。' },
+          ],
+        },
+      ],
+    };
+
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      headers: new Headers({
+        'content-type': 'text/event-stream',
+      }),
+      body: {
+        async *[Symbol.asyncIterator]() {
+          yield new TextEncoder().encode(
+            `event: message\ndata: ${JSON.stringify({
+              type: 'response.output_item.added',
+              item: {
+                type: 'function_call',
+                call_id: 'call_ask_1',
+                name: 'AskUserQuestion',
+              },
+            })}\n\n`,
+          );
+          yield new TextEncoder().encode(
+            `event: message\ndata: ${JSON.stringify({
+              type: 'response.function_call_arguments.done',
+              call_id: 'call_ask_1',
+              arguments: JSON.stringify(args),
+            })}\n\n`,
+          );
+          yield new TextEncoder().encode(
+            `event: message\ndata: ${JSON.stringify({
+              type: 'response.completed',
+              response: {
+                model: 'gpt-5.4',
+                output: [
+                  {
+                    type: 'function_call',
+                    call_id: 'call_ask_1',
+                    name: 'AskUserQuestion',
+                    arguments: JSON.stringify(args),
+                  },
+                ],
+                usage: {
+                  input_tokens: 8,
+                  output_tokens: 3,
+                },
+              },
+            })}\n\n`,
+          );
+        },
+      },
+    });
+
+    const client = new CodexConversationClient({
+      provider: 'codex',
+      model: 'gpt-5.4',
+      apiKey: 'sk-test',
+      baseUrl: 'https://api.chatbi.site/v1',
+    });
+
+    const events = await collectStreamEvents(client, [
+      {
+        role: 'user',
+        content: [{ type: 'text', text: '1' }],
+      },
+    ]);
+
+    expect(events).toEqual([
+      expect.objectContaining({ type: 'response_headers' }),
+      { type: 'tool_use_start', id: 'call_ask_1', name: 'AskUserQuestion' },
+      { type: 'tool_use_complete', id: 'call_ask_1', input: args },
+      {
+        type: 'usage',
+        usage: {
+          inputTokens: 8,
+          outputTokens: 3,
+          thinkingTokens: 0,
+        },
+      },
+      { type: 'stop', stopReason: 'tool_use' },
+    ]);
+  });
+
   it('should use chat completions transport for custom non-codex models', async () => {
     fetchSpy.mockResolvedValueOnce({
       ok: true,
@@ -564,6 +655,147 @@ describe('CodexConversationClient', () => {
     ]);
     expect(response.content).toEqual([{ type: 'text', text: '我是 Kimi。' }]);
     expect(response.stopReason).toBe('end_turn');
+  });
+
+  it('should include reasoning_content when replaying assistant tool-call history in chat completions', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        model: 'kimi-k2.5',
+        choices: [
+          {
+            message: {
+              content: '继续处理。',
+            },
+            finish_reason: 'stop',
+          },
+        ],
+        usage: {
+          prompt_tokens: 12,
+          completion_tokens: 4,
+        },
+      }),
+    });
+
+    const client = new CodexConversationClient({
+      provider: 'codex',
+      model: 'kimi-k2.5',
+      apiKey: 'sk-test',
+      baseUrl: 'https://api.chatbi.site',
+    });
+
+    await client.createMessage([
+      {
+        role: 'user',
+        content: [{ type: 'text', text: '读一下配置' }],
+      },
+      {
+        role: 'assistant',
+        content: [
+          { type: 'thinking', thinking: '先读取配置，再分析差异。' } as any,
+          { type: 'tool_use', id: 'call_1', name: 'Read', input: { file_path: 'config.json' } },
+        ],
+      },
+      {
+        role: 'user',
+        content: [{ type: 'tool_result', tool_use_id: 'call_1', content: '配置内容' }],
+      },
+    ]);
+
+    const [, request] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(String(request.body));
+    expect(body.messages).toEqual([
+      {
+        role: 'user',
+        content: '读一下配置',
+      },
+      {
+        role: 'assistant',
+        content: null,
+        reasoning_content: '先读取配置，再分析差异。',
+        tool_calls: [
+          {
+            id: 'call_1',
+            type: 'function',
+            function: {
+              name: 'Read',
+              arguments: JSON.stringify({ file_path: 'config.json' }),
+            },
+          },
+        ],
+      },
+      {
+        role: 'tool',
+        tool_call_id: 'call_1',
+        content: '配置内容',
+      },
+    ]);
+  });
+
+  it('should emit empty reasoning_content for assistant tool-call history when no thinking block is available', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        model: 'kimi-k2.5',
+        choices: [
+          {
+            message: {
+              content: '继续处理。',
+            },
+            finish_reason: 'stop',
+          },
+        ],
+        usage: {
+          prompt_tokens: 9,
+          completion_tokens: 3,
+        },
+      }),
+    });
+
+    const client = new CodexConversationClient({
+      provider: 'codex',
+      model: 'kimi-k2.5',
+      apiKey: 'sk-test',
+      baseUrl: 'https://api.chatbi.site',
+    });
+
+    await client.createMessage([
+      {
+        role: 'assistant',
+        content: [
+          { type: 'tool_use', id: 'call_2', name: 'Read', input: { file_path: 'README.md' } },
+        ],
+      },
+      {
+        role: 'user',
+        content: [{ type: 'tool_result', tool_use_id: 'call_2', content: 'README 内容' }],
+      },
+    ]);
+
+    const [, request] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(String(request.body));
+    expect(body.messages).toEqual([
+      {
+        role: 'assistant',
+        content: null,
+        reasoning_content: '',
+        tool_calls: [
+          {
+            id: 'call_2',
+            type: 'function',
+            function: {
+              name: 'Read',
+              arguments: JSON.stringify({ file_path: 'README.md' }),
+            },
+          },
+        ],
+      },
+      {
+        role: 'tool',
+        tool_call_id: 'call_2',
+        content: 'README 内容',
+      },
+    ]);
   });
 
   it('should parse chat completions streaming payloads for custom non-codex models', async () => {

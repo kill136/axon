@@ -31,12 +31,34 @@ interface GenerateDesignResult {
 }
 
 // 通用图片生成结果类型
+export interface GenerateImageSource {
+  imagePath?: string;
+  imageBase64?: string;
+  imageMimeType?: string;
+}
+
 export interface GenerateImageResult {
   success: boolean;
   imageUrl?: string;
   savedPath?: string;   // 保存到磁盘的绝对路径（当传入 outputDir 时）
   error?: string;
   generatedText?: string;
+}
+
+export function parseImageBase64Input(imageBase64: string, imageMimeType?: string): { mimeType: string; data: string } {
+  const trimmed = imageBase64.trim();
+  const dataUrlMatch = trimmed.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+  if (dataUrlMatch) {
+    return {
+      mimeType: dataUrlMatch[1],
+      data: dataUrlMatch[2],
+    };
+  }
+
+  return {
+    mimeType: imageMimeType?.trim() || 'image/png',
+    data: trimmed,
+  };
 }
 
 // 缓存条目
@@ -300,7 +322,7 @@ Generate a complete system interface design showing the overall layout and main 
    * 通用图片生成方法
    * 直接使用 prompt 调用 Gemini API
    */
-  async generateImage(prompt: string, style?: string, imagePath?: string, outputDir?: string): Promise<GenerateImageResult> {
+  async generateImage(prompt: string, style?: string, imageSource?: GenerateImageSource, outputDir?: string): Promise<GenerateImageResult> {
     try {
       this.initClient();
 
@@ -310,8 +332,14 @@ Generate a complete system interface design showing the overall layout and main 
         fullPrompt = `${prompt}\n\nStyle: ${style}`;
       }
 
-      // 检查缓存（图生图时把文件路径也算进缓存 key）
-      const cacheInput = imagePath ? `${fullPrompt}::${imagePath}::${fs.statSync(imagePath).mtimeMs}` : fullPrompt;
+      const { imagePath, imageBase64, imageMimeType } = imageSource ?? {};
+
+      // 检查缓存（图生图时把输入图片身份也算进缓存 key）
+      const cacheInput = imagePath
+        ? `${fullPrompt}::path::${imagePath}::${fs.statSync(imagePath).mtimeMs}`
+        : imageBase64
+          ? `${fullPrompt}::base64::${crypto.createHash('md5').update(imageBase64).digest('hex')}::${imageMimeType || ''}`
+          : fullPrompt;
       const cacheKey = crypto.createHash('md5').update(cacheInput).digest('hex');
       const cachedImage = this.getFromCache(cacheKey);
       if (cachedImage) {
@@ -324,6 +352,10 @@ Generate a complete system interface design showing the overall layout and main 
 
       // 构建 parts：文生图只有 text，图生图先传图片再传 prompt
       const parts: any[] = [];
+
+      if (imagePath && imageBase64) {
+        return { success: false, error: 'Provide either image_path or image_base64, not both' };
+      }
 
       if (imagePath) {
         // 图生图：读取图片文件
@@ -338,12 +370,18 @@ Generate a complete system interface design showing the overall layout and main 
         };
         const mimeType = mimeMap[ext] || 'image/png';
         parts.push({ inlineData: { mimeType, data: imageBuffer.toString('base64') } });
-        console.log(`[GeminiImageService] Image-to-image: ${imagePath} (${(imageBuffer.length / 1024).toFixed(1)} KB)`);
+        console.log(`[GeminiImageService] Image-to-image(path): ${imagePath} (${(imageBuffer.length / 1024).toFixed(1)} KB)`);
+      }
+
+      if (imageBase64) {
+        const { mimeType, data } = parseImageBase64Input(imageBase64, imageMimeType);
+        parts.push({ inlineData: { mimeType, data } });
+        console.log(`[GeminiImageService] Image-to-image(base64): ${mimeType} (${(data.length / 1024).toFixed(1)} KB base64)`);
       }
 
       parts.push({ text: fullPrompt });
 
-      console.log(`[GeminiImageService] Starting ${imagePath ? 'image-to-image' : 'text-to-image'} generation...`);
+      console.log(`[GeminiImageService] Starting ${imagePath || imageBase64 ? 'image-to-image' : 'text-to-image'} generation...`);
       console.log('[GeminiImageService] Prompt:', fullPrompt.substring(0, 200) + '...');
 
       // 调用 Gemini API

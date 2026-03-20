@@ -86,6 +86,8 @@ export interface PromptContext {
   language?: string;
   /** 是否使用 Claude Code 官方订阅认证（oauth 登录） */
   isOfficialAuth?: boolean;
+  /** 核心身份前缀变体 */
+  coreIdentityVariant?: 'main' | 'sdk' | 'agent';
   /** 可用工具名称集合（用于条件化提示词组装） */
   toolNames?: Set<string>;
   /** 自定义输出样式 */

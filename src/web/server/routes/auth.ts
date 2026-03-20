@@ -9,6 +9,7 @@ import { createServer, type Server } from 'http';
 import { v4 as uuidv4 } from 'uuid';
 import { OAUTH_ENDPOINTS, exchangeAuthorizationCode, createOAuthApiKey, type AuthConfig } from '../../../auth/index.js';
 import { isDemoMode } from '../../../utils/env-check.js';
+import { configManager } from '../../../config/index.js';
 import { oauthManager } from '../oauth-manager.js';
 import { CODEX_OAUTH_CONFIG, codexAuthManager, type CodexAuthConfig } from '../codex-auth-manager.js';
 import { webAuth } from '../web-auth.js';
@@ -363,11 +364,22 @@ router.post('/submit-code', async (req: Request, res: Response) => {
       oauthApiKey,
     });
 
+    const runtimeBackend = session.accountType === 'console'
+      ? 'claude-compatible-api'
+      : 'claude-subscription';
+
+    // 关键：设置 authPriority 和 runtimeBackend，否则系统不知道用户已通过 OAuth 登录
+    // 没有这一步，如果用户之前配置过 API Key，getStatus() 仍然优先使用 API Key
+    configManager.set('authPriority', 'oauth');
+    configManager.set('runtimeBackend', runtimeBackend);
+    configManager.set('runtimeProvider', 'anthropic');
+    configManager.set('apiProvider', 'anthropic');
+
     // 更新会话状态
     session.status = 'completed';
     session.authConfig = authConfig;
 
-    console.log('[OAuth] Token exchange successful!');
+    console.log('[OAuth] Token exchange successful! accountType=%s, runtimeBackend=%s', session.accountType, runtimeBackend);
 
     res.json({
       success: true,
@@ -625,12 +637,33 @@ router.post('/codex/submit', async (req: Request, res: Response) => {
 
 /**
  * POST /api/auth/codex/import-local
- * 导入本机 ~/.codex/auth.json
+ * 导入本机 ~/.codex/auth.json + ~/.codex/config.toml
  */
 router.post('/codex/import-local', async (_req: Request, res: Response) => {
   try {
     const config = await codexAuthManager.importOfficialAuthFile();
+    const importedCodexConfig = codexAuthManager.importOfficialConfigFile();
     await webAuth.activateCodexLogin(config);
+
+    if (importedCodexConfig) {
+      const currentConfig = configManager.getAll() as Record<string, any>;
+      const mergedDefaultModelByBackend = {
+        ...(currentConfig.defaultModelByBackend && typeof currentConfig.defaultModelByBackend === 'object'
+          ? currentConfig.defaultModelByBackend
+          : {}),
+        ...(importedCodexConfig.defaultModelByBackend || {}),
+      };
+
+      configManager.save({
+        apiProvider: 'openai-compatible',
+        apiBaseUrl: importedCodexConfig.apiBaseUrl || undefined,
+        customModelName: importedCodexConfig.customModelName || undefined,
+        defaultModelByBackend: Object.keys(mergedDefaultModelByBackend).length > 0
+          ? mergedDefaultModelByBackend
+          : undefined,
+      } as any);
+    }
+
     res.json({
       success: true,
       auth: {
@@ -638,6 +671,14 @@ router.post('/codex/import-local', async (_req: Request, res: Response) => {
         email: config.email,
         expiresAt: config.expiresAt,
       },
+      importedConfig: importedCodexConfig
+        ? {
+            apiBaseUrl: importedCodexConfig.apiBaseUrl || undefined,
+            customModelName: importedCodexConfig.customModelName,
+            modelProvider: importedCodexConfig.modelProvider,
+            wireApi: importedCodexConfig.wireApi,
+          }
+        : undefined,
     });
   } catch (error) {
     console.error('[CodexAuth] Import local auth failed:', error);

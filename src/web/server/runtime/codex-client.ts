@@ -38,6 +38,13 @@ interface ResponsesApiResult {
   usage?: ResponseUsage;
 }
 
+interface ResponsesStreamReplayState {
+  sawTextDelta: boolean;
+  sawThinkingDelta: boolean;
+  startedToolCallIds: Set<string>;
+  completedToolCallIds: Set<string>;
+}
+
 interface ChatCompletionToolCall {
   id?: string;
   type?: string;
@@ -106,6 +113,10 @@ function extractTextFromOutput(output?: ResponseOutputItem[]): string {
     .join('');
 }
 
+function getResponseToolCallId(item: Pick<ResponseOutputItem, 'call_id' | 'id'>): string {
+  return item.call_id || item.id || `call_${Date.now()}`;
+}
+
 function isCodexCompatibleModel(model?: string): boolean {
   if (!model) return false;
   const normalized = model.trim();
@@ -122,6 +133,13 @@ function isImageBlock(block: unknown): block is ImageBlockParam {
     && typeof block === 'object'
     && (block as { type?: string }).type === 'image'
     && !!(block as { source?: { data?: string } }).source?.data;
+}
+
+function isThinkingBlock(block: unknown): block is { type: 'thinking'; thinking: string } {
+  return !!block
+    && typeof block === 'object'
+    && (block as { type?: string }).type === 'thinking'
+    && typeof (block as { thinking?: unknown }).thinking === 'string';
 }
 
 function parseResponsesApiResult(value: string | undefined): ResponsesApiResult | null {
@@ -313,6 +331,12 @@ export class CodexConversationClient implements ConversationClient {
     let activeToolCallId: string | undefined;
     let activeToolCallName: string | undefined;
     let completed = false;
+    const replayState: ResponsesStreamReplayState = {
+      sawTextDelta: false,
+      sawThinkingDelta: false,
+      startedToolCallIds: new Set<string>(),
+      completedToolCallIds: new Set<string>(),
+    };
 
     for await (const chunk of response.body as any as AsyncIterable<Uint8Array>) {
       buffer += decoder.decode(chunk, { stream: true });
@@ -345,17 +369,24 @@ export class CodexConversationClient implements ConversationClient {
 
         switch (eventName) {
           case 'response.output_text.delta':
+            if (payload.delta) {
+              replayState.sawTextDelta = true;
+            }
             yield { type: 'text', text: payload.delta || '' };
             break;
           case 'response.reasoning_summary_text.delta':
           case 'response.reasoning.delta':
+            if (payload.delta) {
+              replayState.sawThinkingDelta = true;
+            }
             yield { type: 'thinking', thinking: payload.delta || '' };
             break;
           case 'response.output_item.added': {
             const item = payload.item || {};
             if (item.type === 'function_call') {
-              activeToolCallId = item.call_id || item.id;
+              activeToolCallId = getResponseToolCallId(item);
               activeToolCallName = item.name;
+              replayState.startedToolCallIds.add(activeToolCallId);
               yield {
                 type: 'tool_use_start',
                 id: activeToolCallId,
@@ -372,6 +403,9 @@ export class CodexConversationClient implements ConversationClient {
             };
             break;
           case 'response.function_call_arguments.done':
+            if (payload.call_id || activeToolCallId) {
+              replayState.completedToolCallIds.add(payload.call_id || activeToolCallId || '');
+            }
             yield {
               type: 'tool_use_complete',
               id: payload.call_id || activeToolCallId,
@@ -381,7 +415,7 @@ export class CodexConversationClient implements ConversationClient {
           case 'response.completed': {
             const apiResponse = payload.response as ResponsesApiResult | undefined;
             completed = true;
-            yield* this.emitCompletedResponse(apiResponse);
+            yield* this.emitCompletedResponse(apiResponse, replayState);
             break;
           }
           case 'response.error':
@@ -395,7 +429,7 @@ export class CodexConversationClient implements ConversationClient {
     if (!completed && trailingText) {
       const apiResponse = parseResponsesApiResult(trailingText);
       if (apiResponse) {
-        yield* this.emitCompletedResponse(apiResponse);
+        yield* this.emitCompletedResponse(apiResponse, replayState);
         return;
       }
     }
@@ -713,10 +747,19 @@ export class CodexConversationClient implements ConversationClient {
       if (message.role === 'assistant') {
         const textParts: string[] = [];
         const toolCalls: any[] = [];
+        const reasoningParts: string[] = [];
 
         for (const block of contentBlocks) {
           if (block.type === 'text' && block.text) {
             textParts.push(block.text);
+            continue;
+          }
+
+          if (isThinkingBlock(block)) {
+            const normalizedThinking = block.thinking.trim();
+            if (normalizedThinking) {
+              reasoningParts.push(normalizedThinking);
+            }
             continue;
           }
 
@@ -733,11 +776,21 @@ export class CodexConversationClient implements ConversationClient {
           }
         }
 
-        openAiMessages.push({
+        const assistantMessage: Record<string, any> = {
           role: 'assistant',
           content: textParts.length > 0 ? textParts.join('') : null,
           ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
-        });
+        };
+        const reasoningContent = reasoningParts.join('\n').trim();
+        if (reasoningContent) {
+          assistantMessage.reasoning_content = reasoningContent;
+        } else if (toolCalls.length > 0) {
+          // 一些 OpenAI-compatible 网关在 assistant tool_calls 历史里强制要求该字段存在，
+          // 即使当前无法恢复完整 reasoning trace，也至少补空字符串避免恢复会话时报错。
+          assistantMessage.reasoning_content = '';
+        }
+
+        openAiMessages.push(assistantMessage);
         continue;
       }
 
@@ -1072,10 +1125,16 @@ export class CodexConversationClient implements ConversationClient {
     return contentBlocks;
   }
 
-  private *emitCompletedResponse(response?: ResponsesApiResult): Generator<ConversationStreamEvent> {
+  private *emitCompletedResponse(
+    response?: ResponsesApiResult,
+    replayState?: ResponsesStreamReplayState,
+  ): Generator<ConversationStreamEvent> {
     const output = response?.output || [];
     for (const item of output) {
       if (item.type === 'reasoning' && Array.isArray(item.summary)) {
+        if (replayState?.sawThinkingDelta) {
+          continue;
+        }
         const text = item.summary.map(part => part.text || '').join('');
         if (text) {
           yield { type: 'thinking', thinking: text };
@@ -1084,21 +1143,28 @@ export class CodexConversationClient implements ConversationClient {
       }
 
       if (item.type === 'function_call') {
-        const callId = item.call_id || item.id || `call_${Date.now()}`;
-        yield {
-          type: 'tool_use_start',
-          id: callId,
-          name: item.name || 'unknown_tool',
-        };
-        yield {
-          type: 'tool_use_complete',
-          id: callId,
-          input: safeJsonParse(item.arguments, {}),
-        };
+        const callId = getResponseToolCallId(item);
+        if (!replayState?.startedToolCallIds.has(callId)) {
+          yield {
+            type: 'tool_use_start',
+            id: callId,
+            name: item.name || 'unknown_tool',
+          };
+        }
+        if (!replayState?.completedToolCallIds.has(callId)) {
+          yield {
+            type: 'tool_use_complete',
+            id: callId,
+            input: safeJsonParse(item.arguments, {}),
+          };
+        }
         continue;
       }
 
       if (item.type === 'message' && Array.isArray(item.content)) {
+        if (replayState?.sawTextDelta) {
+          continue;
+        }
         for (const part of item.content) {
           if (part.type === 'output_text' && part.text) {
             yield { type: 'text', text: part.text };

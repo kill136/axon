@@ -993,6 +993,13 @@ export class ConversationManager {
     const normalizedModel = selection.normalizedModel;
     const provider = selection.provider;
     const customModel = selection.customModelName;
+    const authStatus = webAuth.getStatus();
+    const identityVariant =
+      provider === 'anthropic'
+      && runtimeBackend === 'claude-compatible-api'
+      && authStatus.type === 'oauth'
+        ? 'agent'
+        : undefined;
 
     return {
       provider,
@@ -1002,6 +1009,7 @@ export class ConversationManager {
       baseUrl: creds.baseUrl,
       accountId: creds.accountId,
       customModelName: customModel,
+      identityVariant,
       timeout: 300000,
     };
   }
@@ -1026,6 +1034,7 @@ export class ConversationManager {
    */
   private async ensureValidOAuthToken(state: SessionState): Promise<void> {
     const runtimeProvider = getProviderForRuntimeBackend(state.runtimeBackend, state.model);
+    const authStatus = webAuth.getStatus();
 
     if (runtimeProvider !== 'anthropic') {
       const tokenBefore = webAuth.getCredentials(state.runtimeBackend).authToken;
@@ -1040,6 +1049,10 @@ export class ConversationManager {
         state.credentialsFingerprint = this.getCredentialsFingerprint(state.runtimeBackend);
         console.log('[ConversationManager] Client now using refreshed OAuth credentials');
       }
+      return;
+    }
+
+    if (authStatus.type !== 'oauth') {
       return;
     }
 
@@ -1452,6 +1465,23 @@ export class ConversationManager {
   getPendingUserQuestions(sessionId: string): Array<{ requestId: string; question: string; header: string; options?: any[]; multiSelect?: boolean }> {
     const state = this.sessions.get(sessionId);
     return state?.userInteractionHandler.getPendingPayloads() ?? [];
+  }
+
+  /**
+   * 获取当前 ws 还未收到的待处理用户问题。
+   * 用于恢复会话时补发，避免重复弹窗。
+   */
+  getUndeliveredPendingUserQuestions(sessionId: string): Array<{ requestId: string; question: string; header: string; options?: any[]; multiSelect?: boolean }> {
+    const state = this.sessions.get(sessionId);
+    return state?.userInteractionHandler.getUndeliveredPayloadsForCurrentWebSocket() ?? [];
+  }
+
+  /**
+   * 标记问题已经送达当前 ws，防止同一连接被重复补发。
+   */
+  markPendingUserQuestionDelivered(sessionId: string, requestId: string): void {
+    const state = this.sessions.get(sessionId);
+    state?.userInteractionHandler.markDeliveredToCurrentWebSocket(requestId);
   }
 
   /**
@@ -3393,10 +3423,14 @@ export class ConversationManager {
         const input = normalizedToolUse.input as any;
 
         try {
-          const { prompt, style, image_path, output_path } = input;
-          console.log(`[Tool] ImageGen: ${image_path ? 'image-to-image' : 'text-to-image'} - ${prompt.substring(0, 50)}...`);
+          const { prompt, style, image_path, image_base64, image_mime_type, output_path } = input;
+          console.log(`[Tool] ImageGen: ${image_path || image_base64 ? 'image-to-image' : 'text-to-image'} - ${prompt.substring(0, 50)}...`);
 
-          const result = await geminiImageService.generateImage(prompt, style, image_path, output_path);
+          const result = await geminiImageService.generateImage(prompt, style, {
+            imagePath: image_path,
+            imageBase64: image_base64,
+            imageMimeType: image_mime_type,
+          }, output_path);
 
           if (!result.success) {
             const error = result.error || 'Image generation failed';
@@ -4201,6 +4235,12 @@ Respond ONLY with valid JSON, no other text.`;
 
       // 构建提示上下文（与 CLI loop.ts 保持一致）
       // 注意：不注入 contextUsage，保持 system prompt 稳定可缓存
+      const runtimeBackend = state.runtimeBackend || this.getRuntimeBackend();
+      const authStatus = webAuth.getStatus();
+      const isAnthropicOauth =
+        authStatus.type === 'oauth'
+        && getProviderForRuntimeBackend(runtimeBackend, state.model) === 'anthropic';
+
       const promptContext: PromptContext = {
         workingDir: state.session.cwd,
         model: this.getModelId(state.model),
@@ -4214,8 +4254,12 @@ Respond ONLY with valid JSON, no other text.`;
         debug: false,
         // v2.1.0+: 语言配置 - 与 CLI 保持一致
         language: configManager.get('language'),
-        // 是否使用官方订阅认证（有 oauthToken 或 oauthAccount 说明通过 Claude.ai 登录）
-        isOfficialAuth: webAuth.getStatus().type === 'oauth',
+        // 只有 Claude 官方订阅 OAuth 才使用官方 CLI 身份前缀
+        isOfficialAuth: isAnthropicOauth && runtimeBackend === 'claude-subscription',
+        // Console OAuth + oauthApiKey 必须使用 Agent SDK 身份前缀
+        coreIdentityVariant: isAnthropicOauth && runtimeBackend === 'claude-compatible-api'
+          ? 'agent'
+          : undefined,
         // Agent 笔记本内容
         notebookSummary,
         // MCP 服务器信息（用于系统提示中的 MCP 指令）

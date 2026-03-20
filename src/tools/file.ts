@@ -1560,8 +1560,21 @@ Usage:
         // 这种情况在 Windows 上很常见（linter/prettier 触碰文件），不应该报错
       }
 
-      // 6. 特殊情况：old_string 为空表示写入/覆盖整个文件
-      if (old_string === '') {
+      // 6. 当存在 batch_edits 时，优先按批量编辑处理，避免空顶层字段误触发整文件覆盖
+      const hasBatchEdits = Array.isArray(batch_edits) && batch_edits.length > 0;
+
+      if (hasBatchEdits && (old_string !== undefined || new_string !== undefined)) {
+        const hasMeaningfulTopLevelEdit = (old_string ?? '') !== '' || new_string !== undefined;
+        if (hasMeaningfulTopLevelEdit) {
+          return {
+            success: false,
+            error: 'Cannot combine batch_edits with top-level old_string/new_string edits.',
+          };
+        }
+      }
+
+      // 7. 特殊情况：old_string 为空表示写入/覆盖整个文件（仅单次编辑模式）
+      if (!hasBatchEdits && old_string === '') {
         const result = this.writeEntireFile(file_path, new_string ?? '', originalContent, show_diff);
         if (result.success) {
           await runPostToolUseHooks('Edit', input, result.output || '');
@@ -1569,11 +1582,11 @@ Usage:
         return result;
       }
 
-      // 7. 备份原始内容
+      // 8. 备份原始内容
       this.fileBackup.backup(file_path, originalContent);
 
-      // 8. 确定编辑操作列表，并做 token 标准化预处理（对齐官方 sn7）
-      const rawEdits: BatchEdit[] = batch_edits || [{ old_string: old_string!, new_string: new_string!, replace_all }];
+      // 9. 确定编辑操作列表，并做 token 标准化预处理（对齐官方 sn7）
+      const rawEdits: BatchEdit[] = hasBatchEdits ? batch_edits : [{ old_string: old_string!, new_string: new_string!, replace_all }];
       const edits = rawEdits.map(edit => {
         // 如果 old_string 精确匹配文件内容，无需标准化
         if (originalContent.includes(edit.old_string)) return edit;
@@ -1590,14 +1603,14 @@ Usage:
         return edit;
       });
 
-      // 9. 验证并执行所有编辑操作
+      // 10. 验证并执行所有编辑操作
       let currentContent = originalContent;
       const appliedEdits: string[] = [];
 
       for (let i = 0; i < edits.length; i++) {
         const edit = edits[i];
 
-        // 9.1 智能查找匹配字符串
+        // 10.1 智能查找匹配字符串
         const matchedString = smartFindString(currentContent, edit.old_string);
 
         if (!matchedString) {
@@ -1609,10 +1622,10 @@ Usage:
           };
         }
 
-        // 9.2 计算匹配次数
+        // 10.2 计算匹配次数
         const matchCount = currentContent.split(matchedString).length - 1;
 
-        // 9.3 如果不是 replace_all，检查唯一性
+        // 10.3 如果不是 replace_all，检查唯一性
         if (matchCount > 1 && !edit.replace_all) {
           return {
             success: false,
@@ -1621,12 +1634,12 @@ Usage:
           };
         }
 
-        // 9.4 检查 old_string 和 new_string 是否相同
+        // 10.4 检查 old_string 和 new_string 是否相同
         if (matchedString === edit.new_string) {
           continue; // 跳过无变化的编辑
         }
 
-        // 9.5 检查是否会与之前的 new_string 冲突
+        // 10.5 检查是否会与之前的 new_string 冲突
         for (const prevEdit of appliedEdits) {
           if (matchedString !== '' && prevEdit.includes(matchedString)) {
             return {
@@ -1636,12 +1649,12 @@ Usage:
           }
         }
 
-        // 9.6 应用编辑
+        // 10.6 应用编辑
         currentContent = replaceString(currentContent, matchedString, edit.new_string, edit.replace_all);
         appliedEdits.push(edit.new_string);
       }
 
-      // 10. 检查是否有实际变化
+      // 11. 检查是否有实际变化
       if (currentContent === originalContent) {
         return {
           success: false,
@@ -1651,13 +1664,13 @@ Usage:
 
       const modifiedContent = currentContent;
 
-      // 11. 生成差异预览
+      // 12. 生成差异预览
       let diffPreview: DiffPreview | null = null;
       if (show_diff) {
         diffPreview = generateUnifiedDiff(file_path, originalContent, modifiedContent);
       }
 
-      // 12. 检查是否需要确认
+      // 13. 检查是否需要确认
       if (require_confirmation) {
         return {
           success: false,
@@ -1666,7 +1679,7 @@ Usage:
         };
       }
 
-      // 13. 执行实际的文件写入
+      // 14. 执行实际的文件写入
       try {
         fs.writeFileSync(file_path, modifiedContent, 'utf-8');
 

@@ -120,7 +120,7 @@ export class SystemPromptBuilder {
 
     // 1. 核心身份 (Rqz)
     if (opts.includeIdentity) {
-      staticParts.push(getCoreIdentity(context.isOfficialAuth));
+      staticParts.push(getCoreIdentity(context.isOfficialAuth, context.coreIdentityVariant));
     }
 
     // 2. 语气和风格 (yqz) - 当没有自定义输出样式时才添加完整版

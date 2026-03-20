@@ -1,24 +1,28 @@
 import type { Message } from '../../../types/index.js';
 import { webAuth } from '../web-auth.js';
-import {
-  getProviderForRuntimeBackend,
-  normalizeWebRuntimeModelForBackend,
-} from '../../shared/model-catalog.js';
+import { resolveRuntimeSelection } from './runtime-selection.js';
+import { normalizeWebRuntimeModelForBackend } from '../../shared/model-catalog.js';
 import { createConversationClient } from './factory.js';
 import type { ConversationClient } from './types.js';
 
 export function getUtilityModel(preferredAnthropicModel: string = 'haiku'): string {
   const runtimeBackend = webAuth.getRuntimeBackend();
-  const configuredModel = webAuth.getCustomModelName() || webAuth.getCodexModelName();
-  const seedModel =
-    runtimeBackend === 'claude-subscription' || runtimeBackend === 'claude-compatible-api'
-      ? preferredAnthropicModel
-      : (configuredModel || preferredAnthropicModel);
-  return normalizeWebRuntimeModelForBackend(
+  const selection = resolveRuntimeSelection({
     runtimeBackend,
-    seedModel,
-    configuredModel,
-  );
+    model:
+      runtimeBackend === 'claude-subscription' || runtimeBackend === 'claude-compatible-api'
+        ? preferredAnthropicModel
+        : undefined,
+    defaultModelByBackend: webAuth.getDefaultModelByBackend(),
+    codexModelName: webAuth.getCodexModelName(),
+    customModelName: webAuth.getCustomModelName(),
+  });
+
+  if (selection.provider === 'anthropic') {
+    return normalizeWebRuntimeModelForBackend(runtimeBackend, preferredAnthropicModel, selection.customModelName);
+  }
+
+  return selection.normalizedModel;
 }
 
 export function createUtilityClient(preferredAnthropicModel: string = 'haiku'): ConversationClient | null {
@@ -29,17 +33,22 @@ export function createUtilityClient(preferredAnthropicModel: string = 'haiku'): 
 
   const runtimeBackend = webAuth.getRuntimeBackend();
   const model = getUtilityModel(preferredAnthropicModel);
-  const provider = getProviderForRuntimeBackend(runtimeBackend, model);
-  const configuredModel = webAuth.getCustomModelName() || webAuth.getCodexModelName();
+  const selection = resolveRuntimeSelection({
+    runtimeBackend,
+    model,
+    defaultModelByBackend: webAuth.getDefaultModelByBackend(),
+    codexModelName: webAuth.getCodexModelName(),
+    customModelName: webAuth.getCustomModelName(),
+  });
 
   return createConversationClient({
-    provider,
+    provider: selection.provider,
     model,
     apiKey: creds.apiKey,
     authToken: creds.authToken,
     baseUrl: creds.baseUrl,
     accountId: creds.accountId,
-    customModelName: configuredModel,
+    customModelName: selection.customModelName,
     timeout: 300000,
   });
 }

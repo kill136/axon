@@ -120,6 +120,60 @@ describe('webAuth Codex credentials', () => {
     expect(webAuth.getCodexBaseUrl()).toBe('https://proxy.example.com/backend-api/codex');
   });
 
+  it('should use OpenAI v1 baseUrl and apiKey for Codex API key auth', async () => {
+    fs.writeFileSync(settingsPath, JSON.stringify({
+      runtimeProvider: 'codex',
+      authPriority: 'oauth',
+    }), 'utf-8');
+
+    mockGetCodexAuthConfig.mockReturnValue({
+      apiKey: 'sk-codex-local',
+      authMethod: 'api_key',
+    });
+
+    const { webAuth } = await import('../../../src/web/server/web-auth.js');
+    expect(webAuth.getCredentials()).toEqual({
+      apiKey: 'sk-codex-local',
+      authToken: undefined,
+      accountId: undefined,
+      baseUrl: 'https://api.openai.com/v1',
+    });
+    expect(webAuth.getCodexBaseUrl()).toBe('https://api.openai.com/v1');
+    expect(webAuth.getStatus()).toEqual({
+      authenticated: true,
+      type: 'oauth',
+      provider: 'codex',
+      runtimeBackend: 'codex-subscription',
+    });
+    expect(webAuth.getTokenStatus()).toEqual({
+      type: 'api_key',
+      valid: true,
+    });
+    expect(webAuth.getCodexStatus()).toEqual({
+      authenticated: true,
+      displayName: 'API Key',
+      email: undefined,
+      accountId: undefined,
+      expiresAt: undefined,
+    });
+  });
+
+  it('should allow OpenAI-compatible /v1 baseUrl overrides for Codex API key auth', async () => {
+    fs.writeFileSync(settingsPath, JSON.stringify({
+      runtimeProvider: 'codex',
+      authPriority: 'oauth',
+      apiBaseUrl: 'https://proxy.example.com/v1/',
+    }), 'utf-8');
+
+    mockGetCodexAuthConfig.mockReturnValue({
+      apiKey: 'sk-codex-local',
+      authMethod: 'api_key',
+    });
+
+    const { webAuth } = await import('../../../src/web/server/web-auth.js');
+    expect(webAuth.getCodexBaseUrl()).toBe('https://proxy.example.com/v1');
+  });
+
   it('should ignore stale customModelName values that are not Codex-compatible', async () => {
     fs.writeFileSync(settingsPath, JSON.stringify({
       runtimeProvider: 'codex',
@@ -273,5 +327,122 @@ describe('webAuth Codex credentials', () => {
       provider: 'axon-cloud',
       runtimeBackend: 'axon-cloud',
     });
+  });
+
+  it('should NOT use apiBaseUrl for claude-compatible-api when console OAuth is active', async () => {
+    // Scenario: user had a proxy configured, then logs in via Console OAuth
+    // OAuth credentials must go directly to api.anthropic.com, not the proxy
+    fs.writeFileSync(settingsPath, JSON.stringify({
+      runtimeBackend: 'claude-compatible-api',
+      runtimeProvider: 'anthropic',
+      authPriority: 'oauth',
+      apiBaseUrl: 'https://proxy.example.com/v1',
+      apiKey: 'sk-old-proxy-key',
+    }), 'utf-8');
+
+    mockGetOAuthConfig.mockReturnValue({
+      accessToken: 'oauth-access-token',
+      scopes: ['org:create_api_key', 'user:profile'],
+      oauthApiKey: 'sk-ant-oauthkey-console',
+    });
+
+    const { webAuth } = await import('../../../src/web/server/web-auth.js');
+    const creds = webAuth.getCredentials();
+
+    // OAuth credentials should NOT include the proxy baseUrl
+    expect(creds.baseUrl).toBeUndefined();
+    // Should use the oauthApiKey, not the old proxy apiKey
+    expect(creds.apiKey).toBe('sk-ant-oauthkey-console');
+    expect(creds.authToken).toBeUndefined();
+  });
+
+  it('should infer claude-compatible-api backend from legacy console oauth settings', async () => {
+    fs.writeFileSync(settingsPath, JSON.stringify({
+      runtimeProvider: 'anthropic',
+      authPriority: 'oauth',
+    }), 'utf-8');
+
+    mockGetOAuthConfig.mockReturnValue({
+      accessToken: 'console-oauth-token',
+      subscriptionType: 'console',
+      scopes: ['org:create_api_key', 'user:profile'],
+      oauthApiKey: 'sk-ant-oauthkey-console',
+    });
+
+    const { webAuth } = await import('../../../src/web/server/web-auth.js');
+    expect(webAuth.getRuntimeBackend()).toBe('claude-compatible-api');
+    expect(webAuth.getCredentials()).toEqual({
+      apiKey: 'sk-ant-oauthkey-console',
+      authToken: undefined,
+    });
+  });
+
+  it('should migrate stale claude-subscription backend for console oauth accounts', async () => {
+    fs.writeFileSync(settingsPath, JSON.stringify({
+      runtimeBackend: 'claude-subscription',
+      runtimeProvider: 'anthropic',
+      authPriority: 'oauth',
+    }), 'utf-8');
+
+    mockGetOAuthConfig.mockReturnValue({
+      accessToken: 'console-oauth-token',
+      subscriptionType: 'console',
+      scopes: ['org:create_api_key', 'user:profile'],
+      oauthApiKey: 'sk-ant-oauthkey-console',
+    });
+
+    const { webAuth } = await import('../../../src/web/server/web-auth.js');
+    expect(webAuth.getRuntimeBackend()).toBe('claude-compatible-api');
+    expect(webAuth.getStatus()).toEqual({
+      authenticated: true,
+      type: 'oauth',
+      provider: 'anthropic',
+      runtimeBackend: 'claude-compatible-api',
+    });
+  });
+
+  it('should report anthropic provider for claude-compatible-api even if old openai config remains', async () => {
+    fs.writeFileSync(settingsPath, JSON.stringify({
+      runtimeBackend: 'claude-compatible-api',
+      runtimeProvider: 'anthropic',
+      authPriority: 'oauth',
+      apiProvider: 'openai-compatible',
+    }), 'utf-8');
+    mockConfigGet.mockImplementation((key: string) => {
+      if (key === 'apiProvider') return 'openai-compatible';
+      return undefined;
+    });
+    mockGetOAuthConfig.mockReturnValue({
+      accessToken: 'console-oauth-token',
+      subscriptionType: 'console',
+      scopes: ['org:create_api_key', 'user:profile'],
+      oauthApiKey: 'sk-ant-oauthkey-console',
+    });
+
+    const { webAuth } = await import('../../../src/web/server/web-auth.js');
+    expect(webAuth.getProvider()).toBe('anthropic');
+    expect(webAuth.getStatus()).toEqual({
+      authenticated: true,
+      type: 'oauth',
+      provider: 'anthropic',
+      runtimeBackend: 'claude-compatible-api',
+    });
+  });
+
+  it('should use apiBaseUrl for claude-compatible-api backend', async () => {
+    // Non-subscription backends should still use apiBaseUrl
+    fs.writeFileSync(settingsPath, JSON.stringify({
+      runtimeBackend: 'claude-compatible-api',
+      runtimeProvider: 'anthropic',
+      authPriority: 'apiKey',
+      apiBaseUrl: 'https://proxy.example.com/v1',
+      apiKey: 'sk-proxy-key',
+    }), 'utf-8');
+
+    const { webAuth } = await import('../../../src/web/server/web-auth.js');
+    const creds = webAuth.getCredentials();
+
+    expect(creds.baseUrl).toBe('https://proxy.example.com/v1');
+    expect(creds.apiKey).toBe('sk-proxy-key');
   });
 });

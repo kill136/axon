@@ -12,6 +12,7 @@ export interface ConversationClientConfig {
   accountId?: string;
   debug?: boolean;
   customModelName?: string;
+  identityVariant?: 'main' | 'sdk' | 'agent';
 }
 
 export interface ConversationMessageResponse {

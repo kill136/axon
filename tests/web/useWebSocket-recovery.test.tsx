@@ -54,8 +54,18 @@ class MockWebSocket {
   }
 }
 
-function HookHarness() {
-  useWebSocket('ws://localhost:3456/ws');
+function HookHarness({ receivedMessages }: { receivedMessages?: unknown[] }) {
+  const { addMessageHandler } = useWebSocket('ws://localhost:3456/ws');
+
+  ClientReact.useEffect(() => {
+    if (!receivedMessages) {
+      return;
+    }
+    return addMessageHandler((message) => {
+      receivedMessages.push(message);
+    });
+  }, [addMessageHandler, receivedMessages]);
+
   return null;
 }
 
@@ -156,5 +166,62 @@ describe('useWebSocket recovery', () => {
     ));
 
     expect(freshSessionRequests).toHaveLength(1);
+  });
+
+  it('should suppress stale restore errors from app message handlers', () => {
+    localStorage.setItem(SESSION_ID_STORAGE_KEY, 'stale-session');
+    const receivedMessages: unknown[] = [];
+
+    ClientReact.act(() => {
+      root.render(ClientReact.createElement(HookHarness, { receivedMessages }));
+    });
+
+    const ws = MockWebSocket.instances[0];
+
+    ClientReact.act(() => {
+      ws.emitOpen();
+      ws.emitMessage({
+        type: 'connected',
+        payload: { sessionId: 'temporary-session', model: 'opus' },
+      });
+      vi.advanceTimersByTime(100);
+      ws.emitMessage({
+        type: 'error',
+        payload: { message: 'Session does not exist or failed to load' },
+      });
+    });
+
+    expect(receivedMessages.some((message) => (
+      typeof message === 'object'
+      && message !== null
+      && (message as { type?: string }).type === 'error'
+    ))).toBe(false);
+  });
+
+  it('should still forward normal errors to app message handlers', () => {
+    const receivedMessages: unknown[] = [];
+
+    ClientReact.act(() => {
+      root.render(ClientReact.createElement(HookHarness, { receivedMessages }));
+    });
+
+    const ws = MockWebSocket.instances[0];
+
+    ClientReact.act(() => {
+      ws.emitOpen();
+      ws.emitMessage({
+        type: 'connected',
+        payload: { sessionId: 'temporary-session', model: 'opus' },
+      });
+      ws.emitMessage({
+        type: 'error',
+        payload: { message: 'Failed to switch session' },
+      });
+    });
+
+    expect(receivedMessages).toContainEqual({
+      type: 'error',
+      payload: { message: 'Failed to switch session' },
+    });
   });
 });
