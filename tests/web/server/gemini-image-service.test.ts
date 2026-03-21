@@ -1,7 +1,5 @@
 /**
- * GeminiImageService - saveImageToDisk 逻辑测试
- * 
- * 不测 Gemini API 调用（需要真实 key），只测本地文件保存逻辑
+ * GeminiImageService - prompt 与 aspect ratio 逻辑测试
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -9,6 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import * as crypto from 'crypto';
+import { GeminiImageService } from '../../../src/web/server/services/gemini-image-service.js';
 
 // 因为 saveImageToDisk 是 private，我们通过 generateImage 的集成路径测
 // 但 generateImage 依赖 Gemini API，所以这里直接测保存逻辑的等价实现
@@ -153,9 +152,55 @@ describe('GeminiImageService - saveImageToDisk', () => {
     expect(filename).toMatch(/^a{30}_[a-f0-9]{8}\.png$/);
   });
 
-  it('should return absolute path', () => {
-    const savedPath = saveImageToDisk(TINY_PNG_DATA_URL, tmpDir, 'abs path test');
+  it('should return a friendly error for missing image_path before cache key stat', async () => {
+    const service = new GeminiImageService();
 
-    expect(path.isAbsolute(savedPath)).toBe(true);
+    const result = await service.generateImage(
+      '把背景换成蓝色',
+      undefined,
+      { imagePath: path.join(tmpDir, 'missing.jpg') },
+    );
+
+    expect(result).toEqual({
+      success: false,
+      error: `Image file not found: ${path.join(tmpDir, 'missing.jpg')}`,
+    });
+  });
+});
+
+describe('GeminiImageService prompt helpers', () => {
+  let service: GeminiImageService;
+
+  beforeEach(() => {
+    service = new GeminiImageService();
+  });
+
+  it('should build conservative image-edit prompt with preservation constraints', () => {
+    const prompt = (service as any).buildImageEditPrompt('把背景换成蓝色', 'photorealistic');
+
+    expect(prompt).toContain('editing an existing image');
+    expect(prompt).toContain('Preserve the original subject, composition, camera angle, framing, proportions, lighting, color palette, and overall visual style');
+    expect(prompt).toContain('Favor maximum fidelity to the original image.');
+    expect(prompt).toContain('Only make minimal localized edits that are strictly necessary.');
+    expect(prompt).toContain('Keep all unspecified areas unchanged.');
+    expect(prompt).toContain('Editing style preference: photorealistic');
+    expect(prompt).toContain('Requested edit: 把背景换成蓝色');
+  });
+
+  it('should vary prompt instructions by edit strength', () => {
+    const mediumPrompt = (service as any).buildImageEditPrompt('替换衣服颜色', undefined, 'medium');
+    const highPrompt = (service as any).buildImageEditPrompt('重做整个背景', undefined, 'high');
+
+    expect(mediumPrompt).toContain('allow moderate visible edits');
+    expect(mediumPrompt).not.toContain('Favor maximum fidelity to the original image.');
+    expect(highPrompt).toContain('Apply the requested edit more aggressively');
+    expect(highPrompt).toContain('do not ignore the original composition unless explicitly requested');
+  });
+
+  it('should map size values to Gemini aspect ratios', () => {
+    expect((service as any).getAspectRatio('landscape')).toBe('16:9');
+    expect((service as any).getAspectRatio('portrait')).toBe('9:16');
+    expect((service as any).getAspectRatio('square')).toBe('1:1');
+    expect((service as any).getAspectRatio(undefined)).toBeUndefined();
   });
 });

@@ -14,6 +14,7 @@ import { webAuth } from './web-auth.js';
 import { oauthManager } from './oauth-manager.js';
 import { CheckpointManager } from './checkpoint-manager.js';
 import type { ClientMessage, ServerMessage, Attachment, AgentDebugPayload } from '../shared/types.js';
+import type { WebThinkingConfig } from '../shared/thinking-config.js';
 import { changeLocale, getCurrentLocale } from '../../i18n/index.js';
 import { configManager } from '../../config/index.js';
 import { promptSnippetsManager, type PromptSnippetCreateInput, type PromptSnippetUpdateInput } from './prompt-snippets.js';
@@ -33,6 +34,11 @@ import { logger } from '../../utils/logger.js';
 import { errorWatcher } from '../../utils/error-watcher.js';
 // Git 管理器
 import { GitManager } from './git-manager.js';
+import {
+  buildImageAttachmentPathHints,
+  saveBase64AttachmentToTempFile,
+  type UploadedImageAttachment,
+} from './image-attachments.js';
 import {
   getDefaultWebModelForBackend,
   normalizeWebRuntimeModelForBackend,
@@ -1501,7 +1507,13 @@ async function handleClientMessage(
         }
         // prepareChatSession: 初始化会话并返回闭包需要的上下文
         // 这里完成所有需要互斥保护的操作：读取 sessionId、创建持久化会话、更新 client.sessionId
-        const ctx = await prepareChatSession(client, message.payload.content, message.payload.attachments || message.payload.images, conversationManager);
+        const ctx = await prepareChatSession(
+          client,
+          message.payload.content,
+          message.payload.attachments || message.payload.images,
+          conversationManager,
+          message.payload.thinkingConfig,
+        );
         return ctx;
       });
       // Phase 2: 在锁外执行流式 chat（chatContext 中的 chatSessionId 已是闭包安全值）
@@ -2377,11 +2389,7 @@ async function handleClientMessage(
 /**
  * 媒体附件信息（仅图片，直接传递给 Claude API）
  */
-interface MediaAttachment {
-  data: string;
-  mimeType: string;
-  type: 'image';
-}
+type MediaAttachment = UploadedImageAttachment;
 
 /**
  * 文件附件信息（非图片类型，保存为临时文件后传路径给模型）
@@ -2405,6 +2413,7 @@ interface ChatSessionContext {
   mediaAttachments: MediaAttachment[] | undefined;
   permissionMode: string | undefined;
   runtimeBackend: string;
+  thinkingConfig?: WebThinkingConfig;
   getActiveWs: () => WebSocket;
 }
 
@@ -2417,6 +2426,7 @@ async function prepareChatSession(
   content: string,
   attachments: Attachment[] | string[] | undefined,
   conversationManager: ConversationManager,
+  thinkingConfig?: WebThinkingConfig,
 ): Promise<ChatSessionContext | null> {
   const { ws, model, projectPath } = client;
   let { sessionId } = client;
@@ -2434,7 +2444,7 @@ async function prepareChatSession(
 
   // 检查是否为斜杠命令
   if (isSlashCommand(content)) {
-    await handleSlashCommand(client, content, conversationManager);
+    await handleSlashCommand(client, content, conversationManager, thinkingConfig);
     return null;
   }
 
@@ -2488,7 +2498,7 @@ async function prepareChatSession(
     }
   }
 
-  // 处理附件：图片直接传递给 Claude API，其他文件保存为临时文件传路径
+  // 处理附件：图片传递给模型视觉输入，同时也落盘为稳定的临时文件引用
   let mediaAttachments: MediaAttachment[] | undefined;
   let fileAttachments: FileAttachment[] | undefined;
   let enhancedContent = content;
@@ -2497,14 +2507,39 @@ async function prepareChatSession(
     if (attachments.length > 0 && typeof attachments[0] === 'object') {
       const typedAttachments = attachments as Attachment[];
 
-      // 提取图片附件（直接传递给 Claude API）
+      // 提取图片附件（视觉输入 + 稳定临时文件路径）
       mediaAttachments = typedAttachments
         .filter(att => att.type === 'image')
-        .map(att => ({
-          data: att.data,
-          mimeType: att.mimeType || 'image/png',
-          type: 'image' as const,
-        }));
+        .map(att => {
+          const imageAttachment: MediaAttachment = {
+            name: att.name,
+            data: att.data,
+            mimeType: att.mimeType || 'image/png',
+            type: 'image' as const,
+          };
+
+          try {
+            imageAttachment.filePath = saveBase64AttachmentToTempFile(att.name, att.data);
+            console.log('[WebSocket] Image attachment saved to temp file: ' + imageAttachment.filePath);
+          } catch (error) {
+            console.warn(`[WebSocket] Failed to persist image attachment ${att.name}:`, error);
+          }
+
+          return imageAttachment;
+        });
+
+      const imagePathHints = buildImageAttachmentPathHints(mediaAttachments);
+      if (imagePathHints.length > 0) {
+        enhancedContent = `Uploaded image files:\n${imagePathHints.join('\n')}\nUse the exact local image path above if you call ImageGen for one of these uploads.${enhancedContent ? `\n\n${enhancedContent}` : ''}`;
+      }
+
+      // 将图片编辑偏好显式注入到本轮文本上下文，降低模型忽略附件元数据的概率
+      const imageEditHints = typedAttachments
+        .filter(att => att.type === 'image' && att.imageEditStrength)
+        .map(att => `- ${att.name}: preferred image edit strength = ${att.imageEditStrength}`);
+      if (imageEditHints.length > 0) {
+        enhancedContent = `Image attachment edit preferences:\n${imageEditHints.join('\n')}${enhancedContent ? `\n\n${enhancedContent}` : ''}`;
+      }
 
       // 所有非图片附件统一保存为临时文件（包括 pdf/docx/xlsx/pptx/text/file 等任意格式）
       fileAttachments = typedAttachments
@@ -2516,11 +2551,28 @@ async function prepareChatSession(
         }));
     } else {
       // 旧格式：直接是 base64 字符串数组（默认图片 png）
-      mediaAttachments = (attachments as string[]).map(data => ({
-        data,
-        mimeType: 'image/png',
-        type: 'image' as const,
-      }));
+      mediaAttachments = (attachments as string[]).map((data, index) => {
+        const imageAttachment: MediaAttachment = {
+          name: `uploaded-image-${index + 1}.png`,
+          data,
+          mimeType: 'image/png',
+          type: 'image' as const,
+        };
+
+        try {
+          imageAttachment.filePath = saveBase64AttachmentToTempFile(imageAttachment.name, data);
+          console.log('[WebSocket] Legacy image attachment saved to temp file: ' + imageAttachment.filePath);
+        } catch (error) {
+          console.warn(`[WebSocket] Failed to persist legacy image attachment ${imageAttachment.name}:`, error);
+        }
+
+        return imageAttachment;
+      });
+
+      const imagePathHints = buildImageAttachmentPathHints(mediaAttachments);
+      if (imagePathHints.length > 0) {
+        enhancedContent = `Uploaded image files:\n${imagePathHints.join('\n')}\nUse the exact local image path above if you call ImageGen for one of these uploads.${enhancedContent ? `\n\n${enhancedContent}` : ''}`;
+      }
     }
   }
 
@@ -2563,6 +2615,7 @@ async function prepareChatSession(
     mediaAttachments,
     permissionMode: client.permissionMode,
     runtimeBackend: client.runtimeBackend,
+    thinkingConfig,
     getActiveWs,
   };
 }
@@ -2576,7 +2629,7 @@ async function executeChatStreaming(
   conversationManager: ConversationManager,
   userMessageId?: string,
 ): Promise<void> {
-  const { chatSessionId, model, enhancedContent, mediaAttachments, getActiveWs } = ctx;
+  const { chatSessionId, model, enhancedContent, mediaAttachments, thinkingConfig, getActiveWs } = ctx;
   const messageId = randomUUID();
 
   // 始终发送流式消息到 WebSocket，不做服务端门控
@@ -2761,7 +2814,7 @@ async function executeChatStreaming(
           });
         }
       },
-    }, ctx.projectPath, getActiveWs(), ctx.permissionMode, userMessageId);  // 传入动态 ws、权限模式和前端消息 ID，确保跨会话持久化
+    }, ctx.projectPath, getActiveWs(), ctx.permissionMode, userMessageId, thinkingConfig);  // 传入动态 ws、权限模式和前端消息 ID，确保跨会话持久化
   } catch (error) {
     console.error('[WebSocket] Chat handling error:', error);
     sendMessage(getActiveWs(), {
@@ -2781,7 +2834,8 @@ async function executeChatStreaming(
 async function handleSlashCommand(
   client: ClientConnection,
   command: string,
-  conversationManager: ConversationManager
+  conversationManager: ConversationManager,
+  thinkingConfig?: WebThinkingConfig,
 ): Promise<void> {
   const { ws, sessionId, model, projectPath } = client;
 
@@ -2831,7 +2885,13 @@ async function handleSlashCommand(
 
     // 如果命令返回 chatPrompt，将其作为聊天消息发送给 AI（用于 /init 等命令）
     if (result.success && result.data?.chatPrompt) {
-      const ctx = await withSessionMutex(client, () => prepareChatSession(client, result.data.chatPrompt, undefined, conversationManager));
+      const ctx = await withSessionMutex(client, () => prepareChatSession(
+        client,
+        result.data.chatPrompt,
+        undefined,
+        conversationManager,
+        thinkingConfig,
+      ));
       if (ctx) await executeChatStreaming(ctx, conversationManager);
       return;
     }
@@ -2861,7 +2921,13 @@ async function handleSlashCommand(
         }
         const messageContent = `[Skill: ${skill.skillName}]\n\n${skillContent}`;
         console.log(`[WebSocket] Executing skill ${skill.skillName}, content length: ${skillContent.length}`);
-        const skillCtx = await withSessionMutex(client, () => prepareChatSession(client, messageContent, undefined, conversationManager));
+        const skillCtx = await withSessionMutex(client, () => prepareChatSession(
+          client,
+          messageContent,
+          undefined,
+          conversationManager,
+          thinkingConfig,
+        ));
         if (skillCtx) await executeChatStreaming(skillCtx, conversationManager);
         return;
       }

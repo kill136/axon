@@ -327,6 +327,7 @@ export interface Attachment {
   type: AttachmentType;
   mimeType: string;
   data: string;
+  imageEditStrength?: 'low' | 'medium' | 'high';
 }
 
 // WebSocket 消息类型

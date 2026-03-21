@@ -18,6 +18,7 @@ export interface ImageGenInput {
   image_mime_type?: string;
   style?: string;
   size?: 'landscape' | 'portrait' | 'square';
+  edit_strength?: 'low' | 'medium' | 'high';
   output_path?: string;
 }
 
@@ -38,6 +39,7 @@ export class ImageGenTool extends BaseTool<ImageGenInput, ToolResult> {
 - image_mime_type: MIME type for raw image_base64 input, defaults to image/png (optional)
 - style: Style hint like "modern", "minimalist", "photorealistic" (optional)
 - size: Aspect ratio: 'landscape', 'portrait', or 'square' (optional, text-to-image only)
+- edit_strength: How strongly to modify the original image: 'low', 'medium', or 'high' (optional, image-to-image only; default: 'low')
 - output_path: Directory to save the generated image file (optional). When provided, the image is saved as a PNG file in the specified directory and the file path is returned. This makes the image available as a reusable file resource (e.g. for game assets, documents, etc.)
 
 ## Notes
@@ -74,6 +76,11 @@ export class ImageGenTool extends BaseTool<ImageGenInput, ToolResult> {
           type: 'string',
           enum: ['landscape', 'portrait', 'square'],
           description: 'Image aspect ratio (optional, text-to-image only)',
+        },
+        edit_strength: {
+          type: 'string',
+          enum: ['low', 'medium', 'high'],
+          description: 'How strongly to modify the original image (optional, image-to-image only; default: low)',
         },
         output_path: {
           type: 'string',

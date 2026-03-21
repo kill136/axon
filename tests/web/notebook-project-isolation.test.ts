@@ -8,6 +8,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import * as crypto from 'crypto';
 import { NotebookManager, initNotebookManager, getNotebookManagerForProject, resetNotebookManager } from '../../src/memory/notebook.js';
 
 describe('Notebook project isolation', () => {
@@ -15,6 +16,14 @@ describe('Notebook project isolation', () => {
   let projectA: string;
   let projectB: string;
   const originalConfigDir = process.env.AXON_CONFIG_DIR;
+
+  function getProjectSlug(projectPath: string): string {
+    const hash = crypto.createHash('md5').update(projectPath).digest('hex').slice(0, 12);
+    const projectName = path.basename(projectPath)
+      .replace(/[^a-zA-Z0-9_-]/g, '_')
+      .slice(0, 30);
+    return `${projectName}-${hash}`;
+  }
 
   beforeEach(() => {
     // 创建临时配置目录和项目目录
@@ -72,6 +81,47 @@ describe('Notebook project isolation', () => {
 
     expect(mgrA.read('project')).toBe('# Project A Knowledge');
     expect(mgrB.read('project')).toBe('# Project B Knowledge');
+  });
+
+  it('falls back to user ~/.axon when AXON_CONFIG_DIR points at project-local .axon', () => {
+    process.env.AXON_CONFIG_DIR = path.join(projectA, '.axon');
+
+    const mgr = new NotebookManager(projectA);
+    const projectPath = mgr.getPath('project');
+    const profilePath = mgr.getPath('profile');
+    const expectedProjectPath = path.join(
+      os.homedir(),
+      '.axon',
+      'memory',
+      'projects',
+      getProjectSlug(projectA),
+      'project.md',
+    );
+
+    expect(projectPath).toBe(expectedProjectPath);
+    expect(profilePath).toBe(path.join(os.homedir(), '.axon', 'memory', 'profile.md'));
+  });
+
+  it('migrates legacy project-local notebook data into user ~/.axon when needed', () => {
+    process.env.AXON_CONFIG_DIR = path.join(projectA, '.axon');
+
+    const legacyProjectPath = path.join(
+      projectA,
+      '.axon',
+      'memory',
+      'projects',
+      getProjectSlug(projectA),
+      'project.md',
+    );
+    fs.mkdirSync(path.dirname(legacyProjectPath), { recursive: true });
+    fs.writeFileSync(legacyProjectPath, '# Legacy Project Memory', 'utf-8');
+
+    const mgr = new NotebookManager(projectA);
+
+    expect(mgr.read('project')).toBe('# Legacy Project Memory');
+    expect(fs.existsSync(mgr.getPath('project'))).toBe(true);
+    expect(fs.readFileSync(mgr.getPath('project'), 'utf-8')).toBe('# Legacy Project Memory');
+    expect(fs.existsSync(legacyProjectPath)).toBe(true);
   });
 
   it('getNotebookManagerForProject returns correct manager', () => {

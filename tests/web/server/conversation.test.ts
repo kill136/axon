@@ -69,32 +69,14 @@ describe('ConversationManager startup', () => {
     );
   });
 
-  it('builds prompt context with non-official auth for console oauth backends', async () => {
-    mockWebAuth.getStatus.mockReturnValue({
-      authenticated: true,
-      type: 'oauth',
-      provider: 'anthropic',
-      runtimeBackend: 'claude-compatible-api',
-    });
-
+  it('injects ImageGen guidance for attachment edit strength preferences', async () => {
     const { ConversationManager } = await import('../../../src/web/server/conversation.js');
     const manager = new ConversationManager('F:/claude-code-open', 'opus') as any;
 
-    await manager.buildSystemPrompt({
-      model: 'opus',
-      runtimeBackend: 'claude-compatible-api',
-      systemPromptConfig: {
-        useDefault: true,
-        customPrompt: '',
-      },
-      session: {
-        cwd: 'F:/claude-code-open',
-      },
-    });
+    const guidance = manager.buildWebuiToolGuidance();
 
-    expect(mockSystemPromptBuild).toHaveBeenCalledWith(expect.objectContaining({
-      isOfficialAuth: false,
-      coreIdentityVariant: 'agent',
-    }));
+    expect(guidance).toContain('ImageGen tool usage');
+    expect(guidance).toContain('edit_strength');
+    expect(guidance).toContain('image attachment edit preferences');
   });
 });

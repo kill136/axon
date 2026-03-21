@@ -65,9 +65,17 @@ import { resolveRuntimeSelection } from './runtime/runtime-selection.js';
 import type { ConversationClient, ConversationClientConfig } from './runtime/types.js';
 import { normalizeToolInputForWebRuntime } from './runtime/tool-input-normalizer.js';
 import {
+  resolveImageGenSource,
+  type UploadedImageAttachment,
+} from './image-attachments.js';
+import {
   getProviderForRuntimeBackend,
   type WebRuntimeBackend,
 } from '../shared/model-catalog.js';
+import {
+  mapThinkingConfigToRuntimeOptions,
+  type WebThinkingConfig,
+} from '../shared/thinking-config.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -467,6 +475,8 @@ interface SessionState {
   lastCompactedUuid?: string;
   /** 标记：处理中 WebSocket 被刷新替换，完成后需要重发 history */
   needsHistoryResend?: boolean;
+  /** Most recent uploaded user images available for ImageGen follow-up calls. */
+  latestImageAttachments: UploadedImageAttachment[];
   /** 上次持久化时的消息数量（用于判断是否需要持久化，避免磁盘读取） */
   lastPersistedMessageCount: number;
   /** 用于取消正在执行的工具（如 Bash 命令）的 AbortController */
@@ -1173,6 +1183,7 @@ export class ConversationManager {
       processingGeneration: 0,
       lastActualInputTokens: 0,
       messagesLenAtLastApiCall: 0,
+      latestImageAttachments: [],
       lastPersistedMessageCount: 0,
       credentialsFingerprint: this.getCredentialsFingerprint(runtimeBackend),
     };
@@ -1495,13 +1506,14 @@ export class ConversationManager {
   async chat(
     sessionId: string,
     content: string,
-    mediaAttachments: Array<{ data: string; mimeType: string; type: 'image' }> | undefined,
+    mediaAttachments: UploadedImageAttachment[] | undefined,
     model: string,
     callbacks: StreamCallbacks,
     projectPath?: string,
     ws?: WebSocket,
     permissionMode?: string,
-    messageId?: string
+    messageId?: string,
+    thinkingConfig?: WebThinkingConfig,
   ): Promise<void> {
     const state = await this.getOrCreateSession(sessionId, model, projectPath, permissionMode);
 
@@ -1552,6 +1564,10 @@ export class ConversationManager {
         // 增强失败不影响主流程
       }
 
+      if (mediaAttachments && mediaAttachments.length > 0) {
+        state.latestImageAttachments = mediaAttachments.map(attachment => ({ ...attachment }));
+      }
+
       // 构建用户消息
       const userMessage: Message = {
         role: 'user',
@@ -1588,6 +1604,7 @@ export class ConversationManager {
               media_type: attachment.mimeType,
               data: attachment.data,
             },
+            fileName: attachment.name,
           });
         }
       }
@@ -1611,7 +1628,7 @@ export class ConversationManager {
       // 使用工作目录上下文包裹对话循环（与 CLI loop.ts 保持一致）
       // 确保所有工具执行都在正确的工作目录上下文中
       await runWithCwd(state.session.cwd, async () => {
-        await this.conversationLoop(state, callbacks, sessionId);
+        await this.conversationLoop(state, callbacks, sessionId, thinkingConfig);
       });
 
     } catch (error) {
@@ -1648,7 +1665,8 @@ export class ConversationManager {
   private async conversationLoop(
     state: SessionState,
     callbacks: StreamCallbacks,
-    sessionId?: string
+    sessionId?: string,
+    thinkingConfig?: WebThinkingConfig,
   ): Promise<void> {
     let continueLoop = true;
     let totalInputTokens = 0;
@@ -1958,15 +1976,22 @@ export class ConversationManager {
       }
 
       try {
-        // 调用 Claude API（使用 createMessageStream，默认开启 Extended Thinking）
+        const thinkingOptions = mapThinkingConfigToRuntimeOptions(
+          state.runtimeBackend,
+          state.model,
+          thinkingConfig,
+        );
+
+        // 调用运行时 API（思考能力由前端 per-message 配置映射到真实 runtime 选项）
         // 传递 abort signal，取消时可直接中止 HTTP 流（对齐官方 CLI）
         const stream = state.client.createMessageStream(
           cleanedMessages,
           tools,
           systemPrompt.content,
           {
-            enableThinking: true,
-            thinkingBudget: 10000,
+            enableThinking: thinkingOptions.enableThinking,
+            thinkingBudget: thinkingOptions.thinkingBudget,
+            reasoningEffort: thinkingOptions.reasoningEffort,
             signal: state.currentAbortController?.signal,
             promptBlocks: systemPrompt.blocks,
             toolSearchEnabled: hasToolSearch,
@@ -3423,14 +3448,29 @@ export class ConversationManager {
         const input = normalizedToolUse.input as any;
 
         try {
-          const { prompt, style, image_path, image_base64, image_mime_type, output_path } = input;
+          const { prompt, style, size, edit_strength, image_path, image_base64, image_mime_type, output_path } = input;
           console.log(`[Tool] ImageGen: ${image_path || image_base64 ? 'image-to-image' : 'text-to-image'} - ${prompt.substring(0, 50)}...`);
 
+          const resolvedImageSource = resolveImageGenSource(
+            {
+              image_path,
+              image_base64,
+              image_mime_type,
+            },
+            state.latestImageAttachments,
+          );
+
+          if (image_path && resolvedImageSource.imagePath && resolvedImageSource.imagePath !== image_path) {
+            console.log(`[Tool] ImageGen: remapped uploaded image_path "${image_path}" -> "${resolvedImageSource.imagePath}"`);
+          } else if (image_path && resolvedImageSource.imageBase64) {
+            console.log(`[Tool] ImageGen: fell back to uploaded image base64 for "${image_path}"`);
+          }
+
           const result = await geminiImageService.generateImage(prompt, style, {
-            imagePath: image_path,
-            imageBase64: image_base64,
-            imageMimeType: image_mime_type,
-          }, output_path);
+            imagePath: resolvedImageSource.imagePath,
+            imageBase64: resolvedImageSource.imageBase64,
+            imageMimeType: resolvedImageSource.imageMimeType,
+          }, output_path, size, edit_strength);
 
           if (!result.success) {
             const error = result.error || 'Image generation failed';
@@ -4450,6 +4490,14 @@ ${appLines}`);
       // AppManager 未初始化时忽略
     }
 
+    // ImageGen 使用约束
+    sections.push(`## ImageGen tool usage
+- When the user provides an image attachment and asks to edit or transform that image, prefer calling ImageGen instead of only describing edits in text.
+- If the conversation context includes image attachment edit preferences, copy that preference into the ImageGen tool call as \`edit_strength\` ('low' | 'medium' | 'high').
+- For conservative/local edits, prefer \`edit_strength: 'low'\`.
+- For broader but still recognizable edits, prefer \`edit_strength: 'medium'\` or \`edit_strength: 'high'\` as appropriate.
+- When editing an uploaded image, pass the image through \`image_base64\` (or \`image_path\` if you truly have a file path) and keep the tool prompt focused on the requested change.`);
+
     if (sections.length === 0) {
       return null;
     }
@@ -4964,6 +5012,7 @@ Guidelines:
         processingGeneration: 0,
         lastActualInputTokens: 0,
         messagesLenAtLastApiCall: 0,
+        latestImageAttachments: [],
         lastPersistedMessageCount: sessionData.messages.length, // 从磁盘加载时，初始化为当前消息数
         credentialsFingerprint: this.getCredentialsFingerprint(runtimeBackend),
       };

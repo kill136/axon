@@ -18,6 +18,7 @@
 import * as crypto from 'crypto';
 import type { ConversationManager, StreamCallbacks } from '../conversation.js';
 import type { ChannelAdapter, ChannelConfig, InboundMessage, ChannelServerMessage, PairingRequest, SendOptions } from './types.js';
+import type { UploadedImageAttachment } from '../image-attachments.js';
 
 // ============================================================================
 // Draft Stream Loop（智能节流流式发送循环）
@@ -496,7 +497,8 @@ export class IMBridge {
     };
 
     // 构建图片附件
-    const mediaAttachments = msg.images?.map(img => ({
+    const mediaAttachments: UploadedImageAttachment[] | undefined = msg.images?.map((img, index) => ({
+      name: `channel-image-${index + 1}.${img.mimeType.split('/')[1] || 'png'}`,
       data: img.data,
       mimeType: img.mimeType,
       type: 'image' as const,

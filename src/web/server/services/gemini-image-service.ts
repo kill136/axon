@@ -45,6 +45,9 @@ export interface GenerateImageResult {
   generatedText?: string;
 }
 
+export type GenerateImageSize = 'landscape' | 'portrait' | 'square';
+export type GenerateImageEditStrength = 'low' | 'medium' | 'high';
+
 export function parseImageBase64Input(imageBase64: string, imageMimeType?: string): { mimeType: string; data: string } {
   const trimmed = imageBase64.trim();
   const dataUrlMatch = trimmed.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
@@ -318,21 +321,88 @@ Generate a complete system interface design showing the overall layout and main 
     }
   }
 
+  private buildImageEditPrompt(prompt: string, style?: string, editStrength: GenerateImageEditStrength = 'low'): string {
+    const normalizedPrompt = prompt.trim();
+    const normalizedStyle = style?.trim();
+
+    const strengthInstructions: Record<GenerateImageEditStrength, string[]> = {
+      low: [
+        'Favor maximum fidelity to the original image.',
+        'Only make minimal localized edits that are strictly necessary.',
+      ],
+      medium: [
+        'Preserve the original image identity, but allow moderate visible edits where the request requires them.',
+        'Keep the overall scene recognizable and avoid unnecessary redesign.',
+      ],
+      high: [
+        'Apply the requested edit more aggressively, but still keep the original image recognizable.',
+        'You may make broader changes when required, but do not ignore the original composition unless explicitly requested.',
+      ],
+    };
+
+    const instructions = [
+      'You are editing an existing image, not creating a completely new one.',
+      'Use the provided image as the primary source of truth.',
+      'Preserve the original subject, composition, camera angle, framing, proportions, lighting, color palette, and overall visual style unless the user explicitly asks to change them.',
+      ...strengthInstructions[editStrength],
+      'Keep all unspecified areas unchanged.',
+      'Do not replace the whole scene, redesign the image, or introduce unrelated new elements.',
+      'The output must look like an edited version of the same original image.',
+    ];
+
+    if (normalizedStyle) {
+      instructions.push(`Editing style preference: ${normalizedStyle}. Only apply this style when it does not conflict with preserving the original image.`);
+    }
+
+    instructions.push(`Requested edit: ${normalizedPrompt}`);
+
+    return instructions.join('\n');
+  }
+
+  private getAspectRatio(size?: GenerateImageSize): string | undefined {
+    switch (size) {
+      case 'landscape':
+        return '16:9';
+      case 'portrait':
+        return '9:16';
+      case 'square':
+        return '1:1';
+      default:
+        return undefined;
+    }
+  }
+
   /**
    * 通用图片生成方法
    * 直接使用 prompt 调用 Gemini API
    */
-  async generateImage(prompt: string, style?: string, imageSource?: GenerateImageSource, outputDir?: string): Promise<GenerateImageResult> {
+  async generateImage(
+    prompt: string,
+    style?: string,
+    imageSource?: GenerateImageSource,
+    outputDir?: string,
+    size?: GenerateImageSize,
+    editStrength: GenerateImageEditStrength = 'low',
+  ): Promise<GenerateImageResult> {
     try {
-      this.initClient();
+      const { imagePath, imageBase64, imageMimeType } = imageSource ?? {};
 
-      // 构建完整提示词（如果有 style，追加到 prompt 末尾）
-      let fullPrompt = prompt;
-      if (style) {
-        fullPrompt = `${prompt}\n\nStyle: ${style}`;
+      if (imagePath && imageBase64) {
+        return { success: false, error: 'Provide either image_path or image_base64, not both' };
       }
 
-      const { imagePath, imageBase64, imageMimeType } = imageSource ?? {};
+      if (imagePath && !fs.existsSync(imagePath)) {
+        return { success: false, error: `Image file not found: ${imagePath}` };
+      }
+
+      this.initClient();
+
+      const isImageToImage = Boolean(imagePath || imageBase64);
+
+      // 本地输入校验要早于远端初始化，避免 API key 错误掩盖真正的参数问题。
+      const fullPrompt = isImageToImage
+        ? this.buildImageEditPrompt(prompt, style, editStrength)
+        : (style ? `${prompt}\n\nStyle: ${style}` : prompt);
 
       // 检查缓存（图生图时把输入图片身份也算进缓存 key）
       const cacheInput = imagePath
@@ -353,15 +423,8 @@ Generate a complete system interface design showing the overall layout and main 
       // 构建 parts：文生图只有 text，图生图先传图片再传 prompt
       const parts: any[] = [];
 
-      if (imagePath && imageBase64) {
-        return { success: false, error: 'Provide either image_path or image_base64, not both' };
-      }
-
       if (imagePath) {
         // 图生图：读取图片文件
-        if (!fs.existsSync(imagePath)) {
-          return { success: false, error: `Image file not found: ${imagePath}` };
-        }
         const imageBuffer = fs.readFileSync(imagePath);
         const ext = path.extname(imagePath).toLowerCase().slice(1);
         const mimeMap: Record<string, string> = {
@@ -395,6 +458,7 @@ Generate a complete system interface design showing the overall layout and main 
         ],
         config: {
           responseModalities: ['IMAGE', 'TEXT'],
+          ...(this.getAspectRatio(size) ? { aspectRatio: this.getAspectRatio(size)! } : {}),
         },
       });
 

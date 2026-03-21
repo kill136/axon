@@ -17,11 +17,18 @@ import type { CompactState } from '../components/ContextBar';
 import type { Project } from '../contexts/ProjectContext';
 import { useVoiceRecognition } from './useVoiceRecognition';
 import type { VoiceState } from './useVoiceRecognition';
+import {
+  getResolvedWebThinkingConfig,
+  type WebThinkingConfig,
+} from '../../../shared/thinking-config';
+import type { WebRuntimeBackend } from '../../../shared/model-catalog';
 
 interface UseChatInputParams {
   connected: boolean;
   send: (msg: any) => void;
   model: string;
+  runtimeBackend: WebRuntimeBackend;
+  thinkingConfig: WebThinkingConfig;
   status: Status;
   setStatus: React.Dispatch<React.SetStateAction<Status>>;
   messages: ChatMessage[];
@@ -56,6 +63,7 @@ interface UseChatInputReturn {
   handleKeyDown: (e: React.KeyboardEvent) => void;
   handlePaste: (e: React.ClipboardEvent) => void;
   handleFileSelect: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  handleImageEditStrengthChange: (id: string, value: 'low' | 'medium' | 'high') => void;
   handleRemoveAttachment: (id: string) => void;
   handleCommandSelect: (command: SlashCommand) => void;
   handleCancel: () => void;
@@ -83,6 +91,8 @@ export function useChatInput({
   connected,
   send,
   model,
+  runtimeBackend,
+  thinkingConfig,
   status,
   setStatus,
   messages,
@@ -111,12 +121,14 @@ export function useChatInput({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const conversationModeRef = useRef(false);
+  const resolvedThinkingConfig = getResolvedWebThinkingConfig(runtimeBackend, model, thinkingConfig);
 
   // 压缩期间排队的消息（避免 cancel 打断压缩）
   const queuedMessageRef = useRef<{
     input: string;
     attachments: Attachment[];
     projectPath: string;
+    thinkingConfig: WebThinkingConfig;
   } | null>(null);
 
   // Keep ref in sync
@@ -217,6 +229,7 @@ export function useChatInput({
               type: 'image',
               mimeType: file.type,
               data: event.target?.result as string,
+              imageEditStrength: 'low',
             },
           ]);
         };
@@ -242,6 +255,14 @@ export function useChatInput({
       e.target.value = '';
     }
   };
+
+  const handleImageEditStrengthChange = useCallback((id: string, value: 'low' | 'medium' | 'high') => {
+    setAttachments(prev => prev.map(att => (
+      att.id === id && att.type === 'image'
+        ? { ...att, imageEditStrength: value }
+        : att
+    )));
+  }, []);
 
   const handleRemoveAttachment = (id: string) => {
     setAttachments(prev => prev.filter(a => a.id !== id));
@@ -280,6 +301,7 @@ export function useChatInput({
               type: isImage ? 'image' : 'file',
               mimeType: file.type || 'application/octet-stream',
               data: event.target?.result as string,
+              ...(isImage ? { imageEditStrength: 'low' as const } : {}),
             },
           ]);
         };
@@ -318,6 +340,7 @@ export function useChatInput({
         input: input,
         attachments: [...attachments],
         projectPath: effectiveProjectPath,
+        thinkingConfig: resolvedThinkingConfig,
       };
       setInput('');
       setAttachments([]);
@@ -352,6 +375,7 @@ export function useChatInput({
         payload: {
           content: trimmedInput,
           projectPath: effectiveProjectPath,
+          thinkingConfig: resolvedThinkingConfig,
         },
       });
       setInput('');
@@ -408,8 +432,10 @@ export function useChatInput({
           type: att.type,
           mimeType: att.mimeType,
           data: att.data.includes(',') ? att.data.split(',')[1] : att.data,
+          imageEditStrength: att.imageEditStrength,
         })),
         projectPath: effectiveProjectPath,
+        thinkingConfig: resolvedThinkingConfig,
       },
     });
 
@@ -474,8 +500,10 @@ export function useChatInput({
             type: att.type,
             mimeType: att.mimeType,
             data: att.data.includes(',') ? att.data.split(',')[1] : att.data,
+            imageEditStrength: att.imageEditStrength,
           })),
           projectPath: queued.projectPath,
+          thinkingConfig: queued.thinkingConfig,
         },
       });
       setStatus('thinking');
@@ -501,6 +529,7 @@ export function useChatInput({
       payload: {
         content: command.name,
         projectPath: effectiveProjectPath,
+        thinkingConfig: resolvedThinkingConfig,
       },
     });
     setInput('');
@@ -636,6 +665,7 @@ export function useChatInput({
     handleKeyDown,
     handlePaste,
     handleFileSelect,
+    handleImageEditStrengthChange,
     handleRemoveAttachment,
     handleCommandSelect,
     handleCancel,
