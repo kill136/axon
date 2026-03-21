@@ -28,3 +28,4 @@
 - ImageGen 参数校验规则：`generateImage()` 必须先校验 `image_path` 是否存在、以及 `image_path/image_base64` 是否互斥，再初始化 Gemini client；否则本地输入错误会被 `GEMINI_API_KEY` 缺失这种远端前置条件掩盖，用户看不到真正可操作的报错。回归覆盖在 `tests/web/server/gemini-image-service.test.ts`。
 - npm 发包规则：生产态 Web Server 运行时会从包内读取 `src/web/client/dist`；因此 npm 包的 `files` 必须显式包含该目录，且 `prepublishOnly` 必须先构建前端再发布，否则 `axon-web` 安装后只会返回 “Frontend Not Built”。回归覆盖在 `tests/release/npm-package-manifest.test.ts`。
 - 发版决策：`v2.4.0` 之后已经累计了运行时配置、Web 会话隔离、思考配置透传、ImageGen 附图映射等一组新能力，不适合继续走补丁号；后续若基于这批改动发版，默认从 `2.4.x` 升到 `2.5.0`，并同步 `package.json`、`package-lock.json`、`electron/package.json` 三处版本源。
+- 发布流水线踩坑：`.gitignore` 里的敏感信息规则 `**/*token*` 会误伤正常源码文件；`src/core/max-tokens.ts` 本地存在但未被 git 跟踪，导致 Windows 本机 `tsc` 能过、GitHub Actions 在干净检出上却报 `Cannot find module './max-tokens.js'`。修复规则：对确需保留的源码文件加精确白名单（当前为 `!src/core/max-tokens.ts`），并用发布回归测试同时检查白名单存在、文件已被 git 跟踪；基于已推送失败的 `v2.5.0` 改正时，优先发补丁版 `v2.5.1`，不要改写已公开 tag 历史。

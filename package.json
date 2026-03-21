@@ -1,6 +1,6 @@
 {
   "name": "axon-code",
-  "version": "2.5.0",
+  "version": "2.5.1",
   "description": "AI coding assistant with Web IDE, multi-agent system, and self-evolution",
   "type": "module",
   "main": "electron/main.cjs",

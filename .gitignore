@@ -17,6 +17,7 @@ release/
 **/*password*
 **/*token*
 !src/utils/token-estimate.ts
+!src/core/max-tokens.ts
 __tests__/*
 # Video generation intermediate files
 demo-screenshots/video-frames/
