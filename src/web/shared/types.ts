@@ -3,6 +3,8 @@
  * 前后端通用的类型
  */
 
+import type { WebThinkingConfig } from './thinking-config.js';
+
 // ============ 日志相关类型 ============
 
 /**
@@ -45,6 +47,7 @@ export interface Attachment {
   type: AttachmentType;
   mimeType: string;
   data: string; // base64 for images and files, text content for legacy text type
+  imageEditStrength?: 'low' | 'medium' | 'high';
 }
 
 // ============ 认证相关类型 ============
@@ -87,7 +90,17 @@ export interface AuthStatusPayload {
  * 客户端发送的消息类型
  */
 export type ClientMessage =
-  | { type: 'chat'; payload: { content: string; messageId?: string; images?: string[]; attachments?: Attachment[]; projectPath?: string | null } }
+  | {
+      type: 'chat';
+      payload: {
+        content: string;
+        messageId?: string;
+        images?: string[];
+        attachments?: Attachment[];
+        projectPath?: string | null;
+        thinkingConfig?: WebThinkingConfig;
+      };
+    }
   | { type: 'cancel' }
   | { type: 'ping' }
   | { type: 'get_history' }

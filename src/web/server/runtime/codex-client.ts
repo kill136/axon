@@ -1,4 +1,3 @@
-import type { PromptBlock } from '../../../prompt/index.js';
 import type {
   ContentBlock,
   Message,
@@ -9,6 +8,7 @@ import type {
   ConversationClient,
   ConversationClientConfig,
   ConversationMessageResponse,
+  ConversationRequestOptions,
   ConversationStreamEvent,
 } from './types.js';
 
@@ -155,6 +155,81 @@ function parseResponsesApiResult(value: string | undefined): ResponsesApiResult 
   }
 }
 
+function collapseWhitespace(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
+function truncateForError(value: string, maxLength = 240): string {
+  if (value.length <= maxLength) {
+    return value;
+  }
+  return `${value.slice(0, maxLength - 3)}...`;
+}
+
+function looksLikeHtmlPayload(value: string | undefined): boolean {
+  const trimmed = value?.trim().toLowerCase() || '';
+  return trimmed.startsWith('<!doctype html') || trimmed.startsWith('<html');
+}
+
+function extractErrorDetail(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const parsed = safeJsonParse<any>(trimmed, null);
+  if (parsed && typeof parsed === 'object') {
+    if (typeof parsed.message === 'string' && parsed.message.trim()) {
+      return collapseWhitespace(parsed.message);
+    }
+
+    const nestedError = parsed.error;
+    if (typeof nestedError === 'string' && nestedError.trim()) {
+      return collapseWhitespace(nestedError);
+    }
+    if (nestedError && typeof nestedError === 'object') {
+      if (typeof nestedError.message === 'string' && nestedError.message.trim()) {
+        return collapseWhitespace(nestedError.message);
+      }
+      if (typeof nestedError.type === 'string' && nestedError.type.trim()) {
+        return collapseWhitespace(nestedError.type);
+      }
+    }
+  }
+
+  if (looksLikeHtmlPayload(trimmed)) {
+    const titleMatch = trimmed.match(/<title>\s*([^<]+?)\s*<\/title>/i);
+    if (titleMatch?.[1]) {
+      return collapseWhitespace(titleMatch[1]);
+    }
+    return 'upstream proxy returned an HTML error page';
+  }
+
+  return collapseWhitespace(trimmed);
+}
+
+function formatHttpErrorMessage(
+  transportName: string,
+  response: Pick<Response, 'status' | 'statusText'>,
+  payload: string | undefined,
+): string {
+  const detail = extractErrorDetail(payload);
+  const statusParts: string[] = [];
+  if (response.status) {
+    statusParts.push(`HTTP ${response.status}`);
+  }
+  if (response.statusText) {
+    statusParts.push(response.statusText);
+  }
+
+  const statusSuffix = statusParts.length > 0 ? ` (${statusParts.join(' ')})` : '';
+  if (!detail) {
+    return `${transportName} request failed${statusSuffix}`;
+  }
+
+  return `${transportName} request failed${statusSuffix}: ${truncateForError(detail)}`;
+}
+
 function buildResponsesEndpoint(baseUrl: string): string {
   const normalized = baseUrl.replace(/\/+$/, '');
 
@@ -203,9 +278,22 @@ function isCustomResponsesEndpoint(baseUrl: string): boolean {
   return !/chatgpt\.com\/backend-api\/codex$/i.test(normalized);
 }
 
-function shouldFallbackToChatCompletions(errorText: string | undefined): boolean {
+function shouldFallbackToChatCompletions(
+  response: Pick<Response, 'status' | 'headers'>,
+  errorText: string | undefined,
+): boolean {
   const normalized = errorText?.toLowerCase() || '';
-  return normalized.includes('convert_request_failed') || normalized.includes('not implemented');
+  if (normalized.includes('convert_request_failed') || normalized.includes('not implemented')) {
+    return true;
+  }
+
+  const contentType = response.headers.get('content-type') || '';
+  const isHtmlError = /text\/html/i.test(contentType) || looksLikeHtmlPayload(errorText);
+  return response.status >= 500 && isHtmlError;
+}
+
+function shouldIncludeThinkingHistory(options?: ConversationRequestOptions): boolean {
+  return options?.enableThinking !== false && options?.reasoningEffort !== 'none';
 }
 
 export class CodexConversationClient implements ConversationClient {
@@ -231,13 +319,7 @@ export class CodexConversationClient implements ConversationClient {
     messages: Message[],
     tools?: ToolDefinition[],
     systemPrompt?: string,
-    options?: {
-      enableThinking?: boolean;
-      thinkingBudget?: number;
-      toolChoice?: { type: 'auto' } | { type: 'any' } | { type: 'tool'; name: string };
-      promptBlocks?: PromptBlock[];
-      toolSearchEnabled?: boolean;
-    }
+    options?: ConversationRequestOptions,
   ): Promise<ConversationMessageResponse> {
     if (this.shouldUseChatCompletionsTransport()) {
       const response = await this.callChatCompletionsApi(messages, tools, systemPrompt, options, false);
@@ -264,14 +346,7 @@ export class CodexConversationClient implements ConversationClient {
     messages: Message[],
     tools?: ToolDefinition[],
     systemPrompt?: string,
-    options?: {
-      enableThinking?: boolean;
-      thinkingBudget?: number;
-      signal?: AbortSignal;
-      toolChoice?: { type: 'auto' } | { type: 'any' } | { type: 'tool'; name: string };
-      promptBlocks?: PromptBlock[];
-      toolSearchEnabled?: boolean;
-    }
+    options?: ConversationRequestOptions,
   ): AsyncGenerator<ConversationStreamEvent> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(new Error('Codex request timed out')), this.timeout);
@@ -292,18 +367,20 @@ export class CodexConversationClient implements ConversationClient {
       signal: controller.signal,
     });
 
-    clearTimeout(timeoutId);
-    yield { type: 'response_headers', headers: response.headers };
-
     if (!response.ok) {
       const text = await response.text();
-      if (isCustomResponsesEndpoint(this.baseUrl) && shouldFallbackToChatCompletions(text)) {
+      if (isCustomResponsesEndpoint(this.baseUrl) && shouldFallbackToChatCompletions(response, text)) {
         yield* this.createChatCompletionsStream(messages, tools, systemPrompt, options);
         return;
       }
-      yield { type: 'error', error: `Codex request failed: ${text || response.statusText}` };
+      clearTimeout(timeoutId);
+      yield { type: 'response_headers', headers: response.headers };
+      yield { type: 'error', error: formatHttpErrorMessage('Codex', response, text) };
       return;
     }
+
+    clearTimeout(timeoutId);
+    yield { type: 'response_headers', headers: response.headers };
 
     const contentType = response.headers.get('content-type') || '';
     if (!/text\/event-stream/i.test(contentType)) {
@@ -312,7 +389,7 @@ export class CodexConversationClient implements ConversationClient {
       if (!apiResponse) {
         yield {
           type: 'error',
-          error: `Codex request returned a non-stream payload that could not be parsed: ${text || 'empty response'}`,
+          error: `Codex request returned a non-stream payload that could not be parsed: ${truncateForError(extractErrorDetail(text) || 'empty response')}`,
         };
         return;
       }
@@ -446,15 +523,7 @@ export class CodexConversationClient implements ConversationClient {
     messages: Message[],
     tools: ToolDefinition[] | undefined,
     systemPrompt: string | undefined,
-    options:
-      | {
-          enableThinking?: boolean;
-          thinkingBudget?: number;
-          toolChoice?: { type: 'auto' } | { type: 'any' } | { type: 'tool'; name: string };
-          promptBlocks?: PromptBlock[];
-          toolSearchEnabled?: boolean;
-        }
-      | undefined,
+    options: ConversationRequestOptions | undefined,
     stream: boolean
   ): Promise<ResponsesApiResult> {
     const controller = new AbortController();
@@ -471,14 +540,19 @@ export class CodexConversationClient implements ConversationClient {
 
       if (!response.ok) {
         const text = await response.text();
-        if (isCustomResponsesEndpoint(this.baseUrl) && shouldFallbackToChatCompletions(text)) {
+        if (isCustomResponsesEndpoint(this.baseUrl) && shouldFallbackToChatCompletions(response, text)) {
           const fallback = await this.callChatCompletionsApi(messages, tools, systemPrompt, options, stream);
           return this.mapChatCompletionApiResultToResponses(fallback);
         }
-        throw new Error(text || response.statusText);
+        throw new Error(formatHttpErrorMessage('Codex', response, text));
       }
 
       return await response.json() as ResponsesApiResult;
+    } catch (error) {
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error(`Codex request failed: ${String(error)}`);
     } finally {
       clearTimeout(timeoutId);
     }
@@ -488,15 +562,7 @@ export class CodexConversationClient implements ConversationClient {
     messages: Message[],
     tools: ToolDefinition[] | undefined,
     systemPrompt: string | undefined,
-    options:
-      | {
-          enableThinking?: boolean;
-          thinkingBudget?: number;
-          toolChoice?: { type: 'auto' } | { type: 'any' } | { type: 'tool'; name: string };
-          promptBlocks?: PromptBlock[];
-          toolSearchEnabled?: boolean;
-        }
-      | undefined,
+    options: ConversationRequestOptions | undefined,
     stream: boolean,
   ): Promise<ChatCompletionsApiResult> {
     const controller = new AbortController();
@@ -513,10 +579,15 @@ export class CodexConversationClient implements ConversationClient {
 
       if (!response.ok) {
         const text = await response.text();
-        throw new Error(text || response.statusText);
+        throw new Error(formatHttpErrorMessage('OpenAI-compatible', response, text));
       }
 
       return await response.json() as ChatCompletionsApiResult;
+    } catch (error) {
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error(`OpenAI-compatible request failed: ${String(error)}`);
     } finally {
       clearTimeout(timeoutId);
     }
@@ -526,16 +597,7 @@ export class CodexConversationClient implements ConversationClient {
     messages: Message[],
     tools: ToolDefinition[] | undefined,
     systemPrompt: string | undefined,
-    options:
-      | {
-          enableThinking?: boolean;
-          thinkingBudget?: number;
-          signal?: AbortSignal;
-          toolChoice?: { type: 'auto' } | { type: 'any' } | { type: 'tool'; name: string };
-          promptBlocks?: PromptBlock[];
-          toolSearchEnabled?: boolean;
-        }
-      | undefined,
+    options: ConversationRequestOptions | undefined,
   ): AsyncGenerator<ConversationStreamEvent> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(new Error('OpenAI-compatible request timed out')), this.timeout);
@@ -556,7 +618,7 @@ export class CodexConversationClient implements ConversationClient {
 
     if (!response.ok) {
       const text = await response.text();
-      yield { type: 'error', error: `OpenAI-compatible request failed: ${text || response.statusText}` };
+      yield { type: 'error', error: formatHttpErrorMessage('OpenAI-compatible', response, text) };
       return;
     }
 
@@ -678,21 +740,16 @@ export class CodexConversationClient implements ConversationClient {
     messages: Message[],
     tools: ToolDefinition[] | undefined,
     systemPrompt: string | undefined,
-    options:
-      | {
-          enableThinking?: boolean;
-          thinkingBudget?: number;
-          signal?: AbortSignal;
-          toolChoice?: { type: 'auto' } | { type: 'any' } | { type: 'tool'; name: string };
-          promptBlocks?: PromptBlock[];
-          toolSearchEnabled?: boolean;
-        }
-      | undefined,
+    options: ConversationRequestOptions | undefined,
     stream: boolean,
   ): Record<string, any> {
     const body: Record<string, any> = {
       model: this.resolveModelName(),
-      messages: this.convertMessagesToChatCompletions(messages, systemPrompt),
+      messages: this.convertMessagesToChatCompletions(
+        messages,
+        systemPrompt,
+        shouldIncludeThinkingHistory(options),
+      ),
       stream,
     };
 
@@ -725,7 +782,11 @@ export class CodexConversationClient implements ConversationClient {
     return body;
   }
 
-  private convertMessagesToChatCompletions(messages: Message[], systemPrompt?: string): any[] {
+  private convertMessagesToChatCompletions(
+    messages: Message[],
+    systemPrompt?: string,
+    includeThinkingHistory = true,
+  ): any[] {
     const openAiMessages: any[] = [];
 
     if (systemPrompt?.trim()) {
@@ -755,7 +816,7 @@ export class CodexConversationClient implements ConversationClient {
             continue;
           }
 
-          if (isThinkingBlock(block)) {
+          if (includeThinkingHistory && isThinkingBlock(block)) {
             const normalizedThinking = block.thinking.trim();
             if (normalizedThinking) {
               reasoningParts.push(normalizedThinking);
@@ -784,7 +845,7 @@ export class CodexConversationClient implements ConversationClient {
         const reasoningContent = reasoningParts.join('\n').trim();
         if (reasoningContent) {
           assistantMessage.reasoning_content = reasoningContent;
-        } else if (toolCalls.length > 0) {
+        } else if (includeThinkingHistory && toolCalls.length > 0) {
           // 一些 OpenAI-compatible 网关在 assistant tool_calls 历史里强制要求该字段存在，
           // 即使当前无法恢复完整 reasoning trace，也至少补空字符串避免恢复会话时报错。
           assistantMessage.reasoning_content = '';
@@ -960,15 +1021,7 @@ export class CodexConversationClient implements ConversationClient {
     messages: Message[],
     tools: ToolDefinition[] | undefined,
     systemPrompt: string | undefined,
-    options:
-      | {
-          enableThinking?: boolean;
-          thinkingBudget?: number;
-          toolChoice?: { type: 'auto' } | { type: 'any' } | { type: 'tool'; name: string };
-          promptBlocks?: PromptBlock[];
-          toolSearchEnabled?: boolean;
-        }
-      | undefined,
+    options: ConversationRequestOptions | undefined,
     stream: boolean
   ): Record<string, any> {
     const input = this.convertMessages(messages);
@@ -1002,11 +1055,18 @@ export class CodexConversationClient implements ConversationClient {
       }
     }
 
-    if (options?.enableThinking && this.supportsReasoning(resolvedModel)) {
-      body.reasoning = {
-        effort: 'medium',
-        summary: 'auto',
-      };
+    if (this.supportsReasoning(resolvedModel)) {
+      const reasoningEffort =
+        options?.enableThinking === false
+          ? 'none'
+          : options?.reasoningEffort || (options?.enableThinking ? 'medium' : undefined);
+
+      if (reasoningEffort) {
+        body.reasoning = {
+          effort: reasoningEffort,
+          summary: 'auto',
+        };
+      }
     }
 
     return body;

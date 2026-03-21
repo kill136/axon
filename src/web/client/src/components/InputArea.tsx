@@ -16,6 +16,13 @@ import {
   type WebRuntimeBackend,
   type WebRuntimeProvider,
 } from '../../../shared/model-catalog';
+import {
+  getSupportedWebThinkingLevels,
+  getResolvedWebThinkingConfig,
+  supportsWebThinkingConfig,
+  type WebThinkingConfig,
+  type WebThinkingLevel,
+} from '../../../shared/thinking-config';
 
 
 interface InputAreaProps {
@@ -30,6 +37,7 @@ interface InputAreaProps {
   // 附件
   attachments: Attachment[];
   onRemoveAttachment: (id: string) => void;
+  onImageEditStrengthChange: (id: string, value: 'low' | 'medium' | 'high') => void;
   onFileSelect: (e: React.ChangeEvent<HTMLInputElement>) => void;
 
   // 命令面板
@@ -45,6 +53,9 @@ interface InputAreaProps {
   runtimeProvider: WebRuntimeProvider;
   runtimeBackend: WebRuntimeBackend;
   onModelChange: (model: string) => void;
+  thinkingConfig: WebThinkingConfig;
+  onThinkingEnabledChange: (enabled: boolean) => void;
+  onThinkingLevelChange: (level: WebThinkingLevel) => void;
   permissionMode: PermissionMode;
   activePresetId: string;
   onPresetChange: (presetId: string) => void;
@@ -120,6 +131,7 @@ export function InputArea({
   fileInputRef,
   attachments,
   onRemoveAttachment,
+  onImageEditStrengthChange,
   onFileSelect,
   showCommandPalette,
   onCommandSelect,
@@ -131,6 +143,9 @@ export function InputArea({
   runtimeProvider,
   runtimeBackend,
   onModelChange,
+  thinkingConfig,
+  onThinkingEnabledChange,
+  onThinkingLevelChange,
   permissionMode,
   activePresetId,
   onPresetChange,
@@ -169,6 +184,9 @@ export function InputArea({
   const { t } = useLanguage();
   const modelOptions = getWebModelOptionsForBackend(runtimeBackend, model, model, availableModels);
   const selectedModel = normalizeWebRuntimeModelForBackend(runtimeBackend, model, model, availableModels);
+  const supportsThinking = supportsWebThinkingConfig(runtimeBackend, selectedModel);
+  const resolvedThinkingConfig = getResolvedWebThinkingConfig(runtimeBackend, selectedModel, thinkingConfig);
+  const supportedThinkingLevels = getSupportedWebThinkingLevels(runtimeBackend, selectedModel);
 
   // 动态 placeholder 轮播：给用户灵感，展示可以怎么说
   const PLACEHOLDER_KEYS = [
@@ -302,6 +320,20 @@ export function InputArea({
                 {att.type === 'image' ? '🖼️' : '📎'}
               </span>
               <span className="file-name">{att.name}</span>
+              {att.type === 'image' && (
+                <label className="attachment-edit-strength">
+                  <span>{t('input.imageEditStrength')}</span>
+                  <select
+                    aria-label={`${t('input.imageEditStrength')} ${att.name}`}
+                    value={att.imageEditStrength || 'low'}
+                    onChange={(e) => onImageEditStrengthChange(att.id, e.target.value as 'low' | 'medium' | 'high')}
+                  >
+                    <option value="low">{t('input.imageEditStrength.low')}</option>
+                    <option value="medium">{t('input.imageEditStrength.medium')}</option>
+                    <option value="high">{t('input.imageEditStrength.high')}</option>
+                  </select>
+                </label>
+              )}
               <button className="remove-btn" onClick={() => onRemoveAttachment(att.id)}>
                 {'✕'}
               </button>
@@ -393,6 +425,36 @@ export function InputArea({
             >
               {modelOptions.map(option => (
                 <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className={`thinking-toggle-btn${resolvedThinkingConfig.enabled ? ' active' : ''}`}
+              onClick={() => onThinkingEnabledChange(!resolvedThinkingConfig.enabled)}
+              disabled={status !== 'idle' || !supportsThinking}
+              title={
+                !supportsThinking
+                  ? t('input.thinkingUnsupported')
+                  : resolvedThinkingConfig.enabled
+                    ? t('input.thinkingDisable')
+                    : t('input.thinkingEnable')
+              }
+              aria-label={t('input.thinkingToggle')}
+              aria-pressed={resolvedThinkingConfig.enabled}
+            >
+              <span className="thinking-toggle-btn__icon">🧠</span>
+              <span>{t('input.thinkingToggleShort')}</span>
+            </button>
+            <select
+              className="thinking-level-selector"
+              value={resolvedThinkingConfig.level}
+              onChange={(e) => onThinkingLevelChange(e.target.value as WebThinkingLevel)}
+              disabled={status !== 'idle' || !supportsThinking || !resolvedThinkingConfig.enabled}
+              title={!supportsThinking ? t('input.thinkingUnsupported') : t('input.thinkingLevel')}
+              aria-label={t('input.thinkingLevel')}
+            >
+              {supportedThinkingLevels.map(level => (
+                <option key={level} value={level}>{t(`input.thinkingLevel.${level}`)}</option>
               ))}
             </select>
             <select

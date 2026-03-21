@@ -1,6 +1,6 @@
 {
   "name": "axon-code",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "description": "AI coding assistant with Web IDE, multi-agent system, and self-evolution",
   "type": "module",
   "main": "electron/main.cjs",
@@ -19,12 +19,14 @@
   },
   "files": [
     "dist",
+    "src/web/client/dist",
     "scripts/postinstall.js",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
     "build": "tsc && node -e \"const{cpSync,mkdirSync}=require('fs');cpSync('src/browser/extension','dist/browser/extension',{recursive:true});cpSync('src/skills/builtin','dist/skills/builtin',{recursive:true});mkdirSync('dist/eye',{recursive:true});cpSync('src/eye/camera.py','dist/eye/camera.py')\"",
+    "build:web:client": "npm --prefix src/web/client run build",
     "start": "node dist/cli.js",
     "dev": "tsx src/cli.ts",
     "dev:watch": "tsx watch src/cli.ts --continue",
@@ -50,7 +52,7 @@
     "test:e2e:session": "tsx tests/e2e/cli-session.test.ts",
     "test:e2e:tools": "tsx tests/e2e/cli-tools.test.ts",
     "postinstall": "node scripts/postinstall.js || true",
-    "prepublishOnly": "npm run build",
+    "prepublishOnly": "npm run build && npm run build:web:client",
     "pkg": "pkg dist/web-cli.js --compress GZip --target node18-win-x64 --output release/axon-web.exe",
     "pkg:cli": "pkg dist/cli.js --compress GZip --target node18-win-x64 --output release/axon.exe",
     "electron": "electron .",

@@ -203,6 +203,133 @@ describe('CodexConversationClient', () => {
     });
   });
 
+  it('should forward high reasoning effort to Codex responses requests', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        model: 'gpt-5-codex',
+        output: [
+          {
+            type: 'message',
+            content: [{ type: 'output_text', text: 'done' }],
+          },
+        ],
+        usage: {
+          input_tokens: 4,
+          output_tokens: 2,
+        },
+      }),
+    });
+
+    const client = new CodexConversationClient({
+      provider: 'codex',
+      model: 'gpt-5-codex',
+      apiKey: 'sk-test',
+    });
+
+    await client.createMessage([
+      {
+        role: 'user',
+        content: [{ type: 'text', text: '深度思考一下' }],
+      },
+    ], undefined, undefined, {
+      enableThinking: true,
+      reasoningEffort: 'high',
+    });
+
+    const [, request] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(String(request.body));
+    expect(body.reasoning).toEqual({
+      effort: 'high',
+      summary: 'auto',
+    });
+  });
+
+  it('should forward xhigh reasoning effort to GPT-5.4 requests', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        model: 'gpt-5.4',
+        output: [
+          {
+            type: 'message',
+            content: [{ type: 'output_text', text: 'done' }],
+          },
+        ],
+        usage: {
+          input_tokens: 4,
+          output_tokens: 2,
+        },
+      }),
+    });
+
+    const client = new CodexConversationClient({
+      provider: 'codex',
+      model: 'gpt-5.4',
+      apiKey: 'sk-test',
+      baseUrl: 'https://api.chatbi.site/v1',
+    });
+
+    await client.createMessage([
+      {
+        role: 'user',
+        content: [{ type: 'text', text: '多想一点' }],
+      },
+    ], undefined, undefined, {
+      enableThinking: true,
+      reasoningEffort: 'xhigh',
+    });
+
+    const [, request] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(String(request.body));
+    expect(body.reasoning).toEqual({
+      effort: 'xhigh',
+      summary: 'auto',
+    });
+  });
+
+  it('should forward none reasoning effort when thinking is disabled', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        model: 'gpt-5-codex',
+        output: [
+          {
+            type: 'message',
+            content: [{ type: 'output_text', text: 'done' }],
+          },
+        ],
+        usage: {
+          input_tokens: 4,
+          output_tokens: 2,
+        },
+      }),
+    });
+
+    const client = new CodexConversationClient({
+      provider: 'codex',
+      model: 'gpt-5-codex',
+      apiKey: 'sk-test',
+    });
+
+    await client.createMessage([
+      {
+        role: 'user',
+        content: [{ type: 'text', text: '不要思考' }],
+      },
+    ], undefined, undefined, {
+      enableThinking: false,
+      reasoningEffort: 'none',
+    });
+
+    const [, request] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(String(request.body));
+    expect(body.reasoning).toEqual({
+      effort: 'none',
+      summary: 'auto',
+    });
+  });
+
   it('should send default instructions and fallback model for Claude aliases', async () => {
     fetchSpy.mockResolvedValueOnce({
       ok: true,
@@ -459,6 +586,83 @@ describe('CodexConversationClient', () => {
       },
       { type: 'stop', stopReason: 'end_turn' },
     ]);
+  });
+
+  it('should fall back to chat completions when a custom Responses endpoint returns an HTML timeout page', async () => {
+    fetchSpy
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 524,
+        statusText: 'A timeout occurred',
+        headers: new Headers({
+          'content-type': 'text/html',
+        }),
+        text: async () => '<!DOCTYPE html><html><head><title>openai-next.com | 524: A timeout occurred</title></head><body>timeout</body></html>',
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          model: 'gpt-5.4',
+          choices: [
+            {
+              message: {
+                role: 'assistant',
+                content: 'fallback ok',
+              },
+              finish_reason: 'stop',
+            },
+          ],
+          usage: {
+            prompt_tokens: 9,
+            completion_tokens: 4,
+          },
+        }),
+      });
+
+    const client = new CodexConversationClient({
+      provider: 'codex',
+      model: 'gpt-5.4',
+      apiKey: 'sk-test',
+      baseUrl: 'https://api.openai-next.com',
+    });
+
+    const response = await client.createMessage([
+      {
+        role: 'user',
+        content: [{ type: 'text', text: 'summarize this conversation' }],
+      },
+    ]);
+
+    expect(response.content).toEqual([{ type: 'text', text: 'fallback ok' }]);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe('https://api.openai-next.com/v1/responses');
+    expect(fetchSpy.mock.calls[1]?.[0]).toBe('https://api.openai-next.com/v1/chat/completions');
+  });
+
+  it('should collapse HTML error pages into a concise chat completions error', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: false,
+      status: 524,
+      statusText: 'A timeout occurred',
+      headers: new Headers({
+        'content-type': 'text/html',
+      }),
+      text: async () => '<!DOCTYPE html><html><head><title>openai-next.com | 524: A timeout occurred</title></head><body>timeout</body></html>',
+    });
+
+    const client = new CodexConversationClient({
+      provider: 'codex',
+      model: 'kimi-k2.5',
+      apiKey: 'sk-test',
+      baseUrl: 'https://api.openai-next.com',
+    });
+
+    await expect(client.createMessage([
+      {
+        role: 'user',
+        content: [{ type: 'text', text: 'ping' }],
+      },
+    ])).rejects.toThrow('OpenAI-compatible request failed (HTTP 524 A timeout occurred): openai-next.com | 524: A timeout occurred');
   });
 
   it('should recover when a proxy ends the stream with a raw JSON payload instead of SSE frames', async () => {
@@ -796,6 +1000,76 @@ describe('CodexConversationClient', () => {
         content: 'README 内容',
       },
     ]);
+  });
+
+  it('should omit reasoning_content history when thinking is disabled for chat completions transport', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        model: 'kimi-k2.5',
+        choices: [
+          {
+            message: {
+              content: '继续处理。',
+            },
+            finish_reason: 'stop',
+          },
+        ],
+        usage: {
+          prompt_tokens: 9,
+          completion_tokens: 3,
+        },
+      }),
+    });
+
+    const client = new CodexConversationClient({
+      provider: 'codex',
+      model: 'kimi-k2.5',
+      apiKey: 'sk-test',
+      baseUrl: 'https://api.chatbi.site',
+    });
+
+    await client.createMessage([
+      {
+        role: 'assistant',
+        content: [
+          { type: 'thinking', thinking: '先读取 README。' } as any,
+          { type: 'tool_use', id: 'call_3', name: 'Read', input: { file_path: 'README.md' } },
+        ],
+      },
+      {
+        role: 'user',
+        content: [{ type: 'tool_result', tool_use_id: 'call_3', content: 'README 内容' }],
+      },
+    ], undefined, undefined, {
+      enableThinking: false,
+      reasoningEffort: 'none',
+    });
+
+    const [, request] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(String(request.body));
+    expect(body.messages).toEqual([
+      {
+        role: 'assistant',
+        content: null,
+        tool_calls: [
+          {
+            id: 'call_3',
+            type: 'function',
+            function: {
+              name: 'Read',
+              arguments: JSON.stringify({ file_path: 'README.md' }),
+            },
+          },
+        ],
+      },
+      {
+        role: 'tool',
+        tool_call_id: 'call_3',
+        content: 'README 内容',
+      },
+    ]);
+    expect(body.messages[0]).not.toHaveProperty('reasoning_content');
   });
 
   it('should parse chat completions streaming payloads for custom non-codex models', async () => {

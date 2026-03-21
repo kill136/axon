@@ -523,7 +523,8 @@ body {
   padding: 4px 12px 8px;
 }
 
-.model-selector-compact {
+.model-selector-compact,
+.thinking-level-selector {
   padding: 2px 6px;
   height: 26px;
   background: var(--bg-secondary);
@@ -536,20 +537,27 @@ body {
   outline: none;
 }
 
-.model-selector-compact option {
+.model-selector-compact option,
+.thinking-level-selector option {
   background: var(--bg-secondary);
   color: var(--text-primary);
 }
 
-.model-selector-compact:hover {
+.model-selector-compact:hover,
+.thinking-level-selector:hover {
   background: rgba(255, 255, 255, 0.05);
   color: var(--text-primary);
 }
 
-.model-selector-compact:disabled {
+.model-selector-compact:disabled,
+.thinking-level-selector:disabled {
   opacity: 0.5;
   cursor: not-allowed;
   pointer-events: none;
+}
+
+.thinking-level-selector {
+  min-width: 68px;
 }
 
 /* =========================================
@@ -602,6 +610,43 @@ body {
 .permission-mode-selector.mode-plan {
   border-color: rgba(14, 165, 233, 0.3);
   color: #38bdf8;
+}
+
+.thinking-toggle-btn {
+  width: auto !important;
+  min-width: 54px;
+  height: 26px !important;
+  padding: 0 8px !important;
+  background: var(--bg-secondary);
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s var(--ease-smooth);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.thinking-toggle-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+}
+
+.thinking-toggle-btn.active {
+  color: #fbbf24;
+  border-color: rgba(245, 158, 11, 0.35);
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.thinking-toggle-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.thinking-toggle-btn__icon {
+  font-size: 11px;
+  line-height: 1;
 }
 
 /* Terminal Toggle Button */
@@ -1789,7 +1834,25 @@ body {
   border-radius: var(--radius-sm);
   font-size: 13px;
   color: var(--text-secondary);
-  max-width: 200px;
+  max-width: 320px;
+}
+
+.attachment-edit-strength {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.attachment-edit-strength select {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 4px 6px;
+  font-size: 12px;
 }
 
 .attachment-item .file-icon {
@@ -3335,10 +3398,15 @@ body {
   }
 
   .model-selector-compact,
+  .thinking-level-selector,
   .permission-mode-selector {
     height: 28px;
     font-size: 11px;
     padding: 2px 6px;
+  }
+
+  .thinking-toggle-btn {
+    height: 28px !important;
   }
 
   /* 隐藏「探针」文字标签，只保留图标 */
@@ -3401,10 +3469,17 @@ body {
   }
 
   .model-selector-compact,
+  .thinking-level-selector,
   .permission-mode-selector {
     height: 26px;
     font-size: 11px;
     padding: 1px 4px;
+  }
+
+  .thinking-toggle-btn {
+    min-width: 50px;
+    height: 26px !important;
+    padding: 0 6px !important;
   }
 
   .attach-btn {

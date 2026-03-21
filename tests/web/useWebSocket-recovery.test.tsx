@@ -224,4 +224,82 @@ describe('useWebSocket recovery', () => {
       payload: { message: 'Failed to switch session' },
     });
   });
+
+  it('should drop streaming messages from non-active sessions before they reach app handlers', () => {
+    const receivedMessages: unknown[] = [];
+
+    ClientReact.act(() => {
+      root.render(ClientReact.createElement(HookHarness, { receivedMessages }));
+    });
+
+    const ws = MockWebSocket.instances[0];
+
+    ClientReact.act(() => {
+      ws.emitOpen();
+      ws.emitMessage({
+        type: 'connected',
+        payload: { sessionId: 'active-session', model: 'opus' },
+      });
+      ws.emitMessage({
+        type: 'text_delta',
+        payload: { sessionId: 'background-session', text: 'background token' },
+      });
+      ws.emitMessage({
+        type: 'tool_use_start',
+        payload: { sessionId: 'background-session', toolUseId: 'tool-1', toolName: 'Read' },
+      });
+      ws.emitMessage({
+        type: 'text_delta',
+        payload: { sessionId: 'active-session', text: 'foreground token' },
+      });
+    });
+
+    expect(receivedMessages).toContainEqual({
+      type: 'text_delta',
+      payload: { sessionId: 'active-session', text: 'foreground token' },
+    });
+    expect(receivedMessages).not.toContainEqual({
+      type: 'text_delta',
+      payload: { sessionId: 'background-session', text: 'background token' },
+    });
+    expect(receivedMessages).not.toContainEqual({
+      type: 'tool_use_start',
+      payload: { sessionId: 'background-session', toolUseId: 'tool-1', toolName: 'Read' },
+    });
+  });
+
+  it('should keep forwarding cross-session status and permission signals', () => {
+    const receivedMessages: unknown[] = [];
+
+    ClientReact.act(() => {
+      root.render(ClientReact.createElement(HookHarness, { receivedMessages }));
+    });
+
+    const ws = MockWebSocket.instances[0];
+
+    ClientReact.act(() => {
+      ws.emitOpen();
+      ws.emitMessage({
+        type: 'connected',
+        payload: { sessionId: 'active-session', model: 'opus' },
+      });
+      ws.emitMessage({
+        type: 'status',
+        payload: { sessionId: 'background-session', status: 'thinking' },
+      });
+      ws.emitMessage({
+        type: 'permission_request',
+        payload: { sessionId: 'background-session', requestId: 'perm-1', tool: 'Bash' },
+      });
+    });
+
+    expect(receivedMessages).toContainEqual({
+      type: 'status',
+      payload: { sessionId: 'background-session', status: 'thinking' },
+    });
+    expect(receivedMessages).toContainEqual({
+      type: 'permission_request',
+      payload: { sessionId: 'background-session', requestId: 'perm-1', tool: 'Bash' },
+    });
+  });
 });

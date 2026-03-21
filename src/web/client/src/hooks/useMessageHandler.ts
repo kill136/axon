@@ -106,6 +106,7 @@ export function useMessageHandler({
 
   const currentMessageRef = useRef<ChatMessage | null>(null);
   const sessionIdRef = useRef<string | null>(sessionId);
+  const compactStateRef = useRef<CompactState>(compactState);
   // 修复竞态条件：不在 render body 中同步覆盖 sessionIdRef.current
   // 原因：message handler 中直接设置 sessionIdRef.current = persistentId（同步），
   // 但 React 的 setSessionId 是异步批量更新。如果其他 state 变更触发了中间 render，
@@ -114,6 +115,7 @@ export function useMessageHandler({
   // 改用 useEffect：只在 React state 真正更新后才同步 ref，避免中间 render 覆盖。
   const permissionModeRef = useRef<PermissionMode>(permissionMode);
   permissionModeRef.current = permissionMode;
+  compactStateRef.current = compactState;
   // 稳定 refreshSessions 引用：App.tsx 传入的是内联箭头函数，每次 render 都变，
   // 如果放在 useEffect deps 中会导致 handler 频繁重新注册，增加竞态风险。
   // 用 ref 包裹，useEffect deps 中改用稳定的 ref callback。
@@ -169,6 +171,23 @@ export function useMessageHandler({
           playNotificationSound('attention');
         }
         return;
+      }
+
+      const shouldRecoverStaleCompactState = compactStateRef.current.phase === 'compacting' && [
+        'message_start',
+        'text_delta',
+        'thinking_start',
+        'thinking_delta',
+        'tool_use_start',
+        'tool_use_input_ready',
+        'tool_use_delta',
+        'tool_result',
+        'message_complete',
+        'error',
+      ].includes(msg.type);
+
+      if (shouldRecoverStaleCompactState) {
+        setCompactState({ phase: 'idle' });
       }
 
       // 兜底：孤立流式事件自动创建消息上下文

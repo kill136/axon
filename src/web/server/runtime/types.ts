@@ -1,6 +1,7 @@
 import type { PromptBlock } from '../../../prompt/index.js';
 import type { ContentBlock, Message, ToolDefinition } from '../../../types/index.js';
 import type { ThinkingResult } from '../../../models/index.js';
+import type { WebReasoningEffort } from '../../shared/thinking-config.js';
 
 export interface ConversationClientConfig {
   provider: 'anthropic' | 'codex';
@@ -51,30 +52,27 @@ export type ConversationStreamEvent =
   | { type: 'error'; error?: string }
   | { type: 'response_headers'; headers?: Headers };
 
+export interface ConversationRequestOptions {
+  enableThinking?: boolean;
+  thinkingBudget?: number;
+  reasoningEffort?: WebReasoningEffort;
+  signal?: AbortSignal;
+  toolChoice?: { type: 'auto' } | { type: 'any' } | { type: 'tool'; name: string };
+  promptBlocks?: PromptBlock[];
+  toolSearchEnabled?: boolean;
+}
+
 export interface ConversationClient {
   createMessage(
     messages: Message[],
     tools?: ToolDefinition[],
     systemPrompt?: string,
-    options?: {
-      enableThinking?: boolean;
-      thinkingBudget?: number;
-      toolChoice?: { type: 'auto' } | { type: 'any' } | { type: 'tool'; name: string };
-      promptBlocks?: PromptBlock[];
-      toolSearchEnabled?: boolean;
-    }
+    options?: ConversationRequestOptions,
   ): Promise<ConversationMessageResponse>;
   createMessageStream(
     messages: Message[],
     tools?: ToolDefinition[],
     systemPrompt?: string,
-    options?: {
-      enableThinking?: boolean;
-      thinkingBudget?: number;
-      signal?: AbortSignal;
-      toolChoice?: { type: 'auto' } | { type: 'any' } | { type: 'tool'; name: string };
-      promptBlocks?: PromptBlock[];
-      toolSearchEnabled?: boolean;
-    }
+    options?: ConversationRequestOptions,
   ): AsyncGenerator<ConversationStreamEvent>;
 }

@@ -21,6 +21,55 @@ const SESSION_ID_STORAGE_KEY = 'claude-code-current-session-id';
 // BroadcastChannel 用于跨标签页实时同步会话切换
 const SESSION_BROADCAST_CHANNEL = 'claude-code-session-sync';
 
+// 这些消息对当前激活会话强绑定；如果来自后台会话，继续分发只会让
+// App / TTS / 调试面板等 handler 做无意义工作，导致切换运行中会话时明显卡顿。
+// 会话真正切回来时，session_switched 会用 history + 恢复逻辑补齐 UI。
+const ACTIVE_SESSION_ONLY_MESSAGE_TYPES = new Set([
+  'message_start',
+  'text_delta',
+  'thinking_start',
+  'thinking_delta',
+  'thinking_complete',
+  'tool_use_start',
+  'tool_use_input_ready',
+  'tool_use_delta',
+  'tool_result',
+  'message_complete',
+  'error',
+  'history',
+  'context_update',
+  'rate_limit_update',
+  'context_compact',
+  'task_status',
+  'subagent_tool_start',
+  'subagent_tool_end',
+  'schedule_countdown',
+]);
+
+function getMessageSessionId(message: WSMessage): string | null {
+  const payload = message.payload;
+  if (!payload || typeof payload !== 'object') {
+    return null;
+  }
+
+  const sessionId = (payload as { sessionId?: unknown }).sessionId;
+  return typeof sessionId === 'string' && sessionId.length > 0 ? sessionId : null;
+}
+
+function shouldDispatchToHandlers(message: WSMessage, currentSessionId: string | null): boolean {
+  const messageSessionId = getMessageSessionId(message);
+
+  if (!messageSessionId || !currentSessionId || messageSessionId === currentSessionId) {
+    return true;
+  }
+
+  if (message.type.startsWith('continuous_dev:')) {
+    return false;
+  }
+
+  return !ACTIVE_SESSION_ONLY_MESSAGE_TYPES.has(message.type);
+}
+
 function isSessionRestoreFailureMessage(message: string): boolean {
   const errorMsg = message.toLowerCase();
   return errorMsg.includes('会话不存在')
@@ -151,7 +200,9 @@ export function useWebSocket(url: string): UseWebSocketReturn {
           }
         }
 
-        messageHandlersRef.current.forEach(handler => handler(message));
+        if (shouldDispatchToHandlers(message, sessionIdRef.current)) {
+          messageHandlersRef.current.forEach(handler => handler(message));
+        }
 
         if (message.type === 'connected') {
           const payload = message.payload as { sessionId: string; model: string; runtimeBackend?: string; serverStartTime?: number };

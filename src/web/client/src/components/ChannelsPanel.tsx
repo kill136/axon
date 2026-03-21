@@ -154,16 +154,42 @@ export default function ChannelsPanel({ onClose, onSendMessage, addMessageHandle
     onSendMessage?.({ type: 'channel:stop', payload: { channelId } });
   }, [onSendMessage]);
 
+  const handleEnable = useCallback((channelId: string) => {
+    setLoading(channelId);
+    setError(null);
+    onSendMessage?.({
+      type: 'channel:config_update',
+      payload: {
+        channelId,
+        config: { enabled: true },
+      },
+    });
+  }, [onSendMessage]);
+
+  const handleDisable = useCallback((channelId: string) => {
+    setLoading(channelId);
+    setError(null);
+    onSendMessage?.({
+      type: 'channel:config_update',
+      payload: {
+        channelId,
+        config: { enabled: false },
+      },
+    });
+  }, [onSendMessage]);
+
   const handleSaveConfig = useCallback((channelId: string) => {
     setLoading(channelId);
     setError(null);
+    const currentChannel = channels.find(ch => ch.id === channelId);
+    const shouldEnable = currentChannel?.configured ? currentChannel.enabled : true;
     // 只发送用户实际填写了的凭据字段，空字段不发（保留已有值）
     const filledCredentials: Record<string, string> = {};
     for (const [k, v] of Object.entries(configForm)) {
       if (v?.trim()) filledCredentials[k] = v.trim();
     }
     const config: Record<string, any> = {
-      enabled: true,
+      enabled: shouldEnable,
       ...(Object.keys(filledCredentials).length > 0 ? { credentials: filledCredentials } : {}),
       allowGroups,
       dmPolicy,
@@ -175,7 +201,7 @@ export default function ChannelsPanel({ onClose, onSendMessage, addMessageHandle
     }
     onSendMessage?.({ type: 'channel:config_update', payload: { channelId, config } });
     setSelectedChannel(null);
-  }, [onSendMessage, configForm, allowList, allowGroups, dmPolicy, groupTrigger, fixedSessionId]);
+  }, [onSendMessage, channels, configForm, allowList, allowGroups, dmPolicy, groupTrigger, fixedSessionId]);
 
   const handleApprovePairing = useCallback((channel: string, code: string) => {
     onSendMessage?.({ type: 'channel:pairing_approve', payload: { channel, code } });
@@ -191,6 +217,7 @@ export default function ChannelsPanel({ onClose, onSendMessage, addMessageHandle
     const meta = CHANNEL_META[ch.id];
     if (!meta) return null;
 
+    const isDisabled = ch.configured && !ch.enabled;
     const statusColor = {
       connected: '#4ade80',
       connecting: '#facc15',
@@ -206,6 +233,8 @@ export default function ChannelsPanel({ onClose, onSendMessage, addMessageHandle
     }[ch.status];
 
     const isLoading = loading === ch.id;
+    const displayStatusColor = isDisabled ? '#9ca3af' : statusColor;
+    const displayStatusLabel = isDisabled ? 'Disabled' : statusLabel;
 
     return (
       <div key={ch.id} style={{
@@ -226,9 +255,9 @@ export default function ChannelsPanel({ onClose, onSendMessage, addMessageHandle
               display: 'inline-block',
               width: 8, height: 8,
               borderRadius: '50%',
-              background: statusColor,
+              background: displayStatusColor,
             }} />
-            <span style={{ fontSize: 12, color: statusColor }}>{statusLabel}</span>
+            <span style={{ fontSize: 12, color: displayStatusColor }}>{displayStatusLabel}</span>
           </div>
         </div>
 
@@ -252,8 +281,8 @@ export default function ChannelsPanel({ onClose, onSendMessage, addMessageHandle
         )}
 
         {/* Actions */}
-        <div style={{ display: 'flex', gap: 8 }}>
-          {ch.status === 'connected' ? (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {ch.configured && ch.enabled && (ch.status === 'connected' ? (
             <button
               onClick={() => handleStop(ch.id)}
               disabled={isLoading}
@@ -261,7 +290,7 @@ export default function ChannelsPanel({ onClose, onSendMessage, addMessageHandle
             >
               {isLoading ? 'Stopping...' : 'Stop'}
             </button>
-          ) : ch.configured ? (
+          ) : (
             <button
               onClick={() => handleStart(ch.id)}
               disabled={isLoading}
@@ -269,7 +298,25 @@ export default function ChannelsPanel({ onClose, onSendMessage, addMessageHandle
             >
               {isLoading ? 'Starting...' : 'Start'}
             </button>
-          ) : null}
+          ))}
+          {ch.configured && !ch.enabled && (
+            <button
+              onClick={() => handleEnable(ch.id)}
+              disabled={isLoading}
+              style={btnStyle('#3b82f6')}
+            >
+              {isLoading ? 'Enabling...' : 'Enable'}
+            </button>
+          )}
+          {ch.configured && ch.enabled && (
+            <button
+              onClick={() => handleDisable(ch.id)}
+              disabled={isLoading}
+              style={btnStyle('#f59e0b')}
+            >
+              {isLoading ? 'Disabling...' : 'Disable'}
+            </button>
+          )}
           <button
             onClick={() => {
               setSelectedChannel(ch.id);
@@ -309,6 +356,9 @@ export default function ChannelsPanel({ onClose, onSendMessage, addMessageHandle
     // 获取已保存配置用于 placeholder 提示
     const currentChannel = channels.find(ch => ch.id === selectedChannel);
     const savedCreds = currentChannel?.savedConfig?.credentials;
+    const saveButtonLabel = currentChannel?.configured && !currentChannel.enabled
+      ? 'Save'
+      : 'Save & Connect';
 
     return (
       <div style={{
@@ -458,7 +508,7 @@ export default function ChannelsPanel({ onClose, onSendMessage, addMessageHandle
               disabled={!meta.fields.every(f => configForm[f.key]?.trim() || savedCreds?.[f.key])}
               style={btnStyle('#3b82f6')}
             >
-              Save & Connect
+              {saveButtonLabel}
             </button>
           </div>
         </div>

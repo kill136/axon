@@ -57,9 +57,30 @@ export interface NotebookStats {
 // 工具函数
 // ============================================================================
 
-/** 获取 ~/.claude 目录 */
-function getClaudeDir(): string {
-  return process.env.AXON_CONFIG_DIR || path.join(os.homedir(), '.axon');
+/** 获取用户级 .axon 目录 */
+function getUserAxonDir(): string {
+  return path.join(os.homedir(), '.axon');
+}
+
+/**
+ * 获取 notebook 存储根目录。
+ * Notebook 是长期记忆，不应因为项目级 .axon 配置目录而分叉。
+ */
+function getNotebookStorageDir(projectPath?: string): string {
+  const configuredDir = process.env.AXON_CONFIG_DIR;
+  if (!configuredDir) {
+    return getUserAxonDir();
+  }
+
+  if (projectPath) {
+    const normalizedConfigured = path.resolve(configuredDir);
+    const normalizedProjectAxonDir = path.resolve(path.join(projectPath, '.axon'));
+    if (normalizedConfigured === normalizedProjectAxonDir) {
+      return getUserAxonDir();
+    }
+  }
+
+  return configuredDir;
 }
 
 /** 将项目路径转为安全的目录名 */
@@ -147,21 +168,60 @@ export class NotebookManager {
 
   /** 获取笔记本文件路径 */
   getPath(type: NotebookType): string {
-    const claudeDir = getClaudeDir();
-    const projectDir = path.join(claudeDir, 'memory', 'projects', sanitizeProjectPath(this.projectPath));
+    const storageDir = getNotebookStorageDir(this.projectPath);
+    const projectDir = path.join(storageDir, 'memory', 'projects', sanitizeProjectPath(this.projectPath));
 
     switch (type) {
       case 'profile':
-        return path.join(claudeDir, 'memory', 'profile.md');
+        return path.join(storageDir, 'memory', 'profile.md');
       case 'experience':
-        return path.join(claudeDir, 'memory', 'experience.md');
+        return path.join(storageDir, 'memory', 'experience.md');
       case 'project':
         return path.join(projectDir, 'project.md');
       case 'identity':
-        return path.join(claudeDir, 'memory', 'identity.md');
+        return path.join(storageDir, 'memory', 'identity.md');
       case 'tools-notes':
-        return path.join(claudeDir, 'memory', 'tools-notes.md');
+        return path.join(storageDir, 'memory', 'tools-notes.md');
     }
+  }
+
+  /** 获取旧的项目级 .axon notebook 路径（用于迁移历史数据） */
+  private getLegacyProjectLocalPath(type: NotebookType): string {
+    const legacyRoot = path.join(this.projectPath, '.axon');
+    const legacyProjectDir = path.join(legacyRoot, 'memory', 'projects', sanitizeProjectPath(this.projectPath));
+
+    switch (type) {
+      case 'profile':
+        return path.join(legacyRoot, 'memory', 'profile.md');
+      case 'experience':
+        return path.join(legacyRoot, 'memory', 'experience.md');
+      case 'project':
+        return path.join(legacyProjectDir, 'project.md');
+      case 'identity':
+        return path.join(legacyRoot, 'memory', 'identity.md');
+      case 'tools-notes':
+        return path.join(legacyRoot, 'memory', 'tools-notes.md');
+    }
+  }
+
+  /**
+   * 迁移旧的项目级 .axon notebook。
+   * 仅在目标文件不存在时迁移，避免覆盖已有的用户级 notebook。
+   */
+  private migrateLegacyProjectLocalNotebook(type: NotebookType): void {
+    const targetPath = this.getPath(type);
+    const legacyPath = this.getLegacyProjectLocalPath(type);
+
+    if (path.resolve(targetPath) === path.resolve(legacyPath)) {
+      return;
+    }
+
+    if (fs.existsSync(targetPath) || !fs.existsSync(legacyPath)) {
+      return;
+    }
+
+    ensureDir(path.dirname(targetPath));
+    fs.copyFileSync(legacyPath, targetPath);
   }
 
   // --------------------------------------------------------------------------
@@ -172,6 +232,7 @@ export class NotebookManager {
   read(type: NotebookType): string {
     const filePath = this.getPath(type);
     try {
+      this.migrateLegacyProjectLocalNotebook(type);
       if (fs.existsSync(filePath)) {
         return fs.readFileSync(filePath, 'utf-8');
       }
@@ -222,6 +283,8 @@ export class NotebookManager {
     const filePath = this.getPath(type);
     const maxTokens = MAX_TOKENS[type];
     const tokens = estimateTokens(content);
+
+    this.migrateLegacyProjectLocalNotebook(type);
 
     if (tokens > maxTokens) {
       return {

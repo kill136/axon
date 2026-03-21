@@ -1625,6 +1625,7 @@ export class ClaudeClient {
     options?: {
       enableThinking?: boolean;
       thinkingBudget?: number;
+      reasoningEffort?: 'none' | 'low' | 'medium' | 'high' | 'xhigh';
       toolChoice?: { type: 'auto' } | { type: 'any' } | { type: 'tool'; name: string };
       promptBlocks?: PromptBlock[];
       toolSearchEnabled?: boolean;
@@ -1781,6 +1782,7 @@ export class ClaudeClient {
     options?: {
       enableThinking?: boolean;
       thinkingBudget?: number;
+      reasoningEffort?: 'none' | 'low' | 'medium' | 'high' | 'xhigh';
       signal?: AbortSignal;
       toolChoice?: { type: 'auto' } | { type: 'any' } | { type: 'tool'; name: string };
       promptBlocks?: PromptBlock[];

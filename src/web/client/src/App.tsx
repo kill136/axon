@@ -35,6 +35,11 @@ import {
   type WebRuntimeBackend,
   type WebRuntimeProvider,
 } from '../../shared/model-catalog';
+import {
+  getResolvedWebThinkingConfig,
+  normalizeWebThinkingConfig,
+  type WebThinkingConfig,
+} from '../../shared/thinking-config';
 
 // 获取 WebSocket URL
 function getWebSocketUrl(): string {
@@ -141,6 +146,7 @@ function AppContent({
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null); // null = 加载中
   const [runtimeProvider, setRuntimeProvider] = useState<WebRuntimeProvider>('anthropic');
   const [runtimeBackend, setRuntimeBackend] = useState<WebRuntimeBackend>('claude-compatible-api');
+  const [thinkingConfig, setThinkingConfig] = useState<WebThinkingConfig>(() => normalizeWebThinkingConfig());
   const availableModels = useRuntimeModelCatalog({
     connected,
     runtimeBackend,
@@ -320,6 +326,8 @@ function AppContent({
     connected,
     send,
     model,
+    runtimeBackend,
+    thinkingConfig,
     status,
     setStatus,
     messages,
@@ -669,9 +677,10 @@ function AppContent({
         content: text.trim(),
         messageId: userMessage.id,
         projectPath: currentProjectPath,
+        thinkingConfig: getResolvedWebThinkingConfig(runtimeBackend, model, thinkingConfig),
       },
     });
-  }, [send, connected, currentProjectPath, setMessages, setStatus]);
+  }, [send, connected, currentProjectPath, model, runtimeBackend, setMessages, setStatus, thinkingConfig]);
 
   // ========================================================================
 
@@ -820,6 +829,7 @@ function AppContent({
               fileInputRef={chatInput.fileInputRef}
               attachments={chatInput.attachments}
               onRemoveAttachment={chatInput.handleRemoveAttachment}
+              onImageEditStrengthChange={chatInput.handleImageEditStrengthChange}
               onFileSelect={chatInput.handleFileSelect}
               showCommandPalette={chatInput.showCommandPalette}
               onCommandSelect={chatInput.handleCommandSelect}
@@ -831,6 +841,9 @@ function AppContent({
               runtimeProvider={runtimeProvider}
               runtimeBackend={runtimeBackend}
               onModelChange={setModel}
+              thinkingConfig={thinkingConfig}
+              onThinkingEnabledChange={(enabled) => setThinkingConfig(prev => ({ ...prev, enabled }))}
+              onThinkingLevelChange={(level) => setThinkingConfig(prev => ({ ...prev, level }))}
               permissionMode={permissionMode}
               activePresetId={activePresetId}
               onPresetChange={chatInput.handlePresetChange}
