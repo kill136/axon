@@ -223,6 +223,14 @@ jobs:
     name: Build Windows Desktop (Setup .exe + Portable .zip)
     runs-on: windows-latest
     needs: release
+    env:
+      TENCENT_COS_SECRET_ID: ${{ secrets.TENCENT_COS_SECRET_ID }}
+      TENCENT_COS_SECRET_KEY: ${{ secrets.TENCENT_COS_SECRET_KEY }}
+      TENCENT_COS_BUCKET: ${{ secrets.TENCENT_COS_BUCKET }}
+      TENCENT_COS_REGION: ${{ secrets.TENCENT_COS_REGION }}
+      TENCENT_COS_PUBLIC_BASE_URL: ${{ secrets.TENCENT_COS_PUBLIC_BASE_URL }}
+      TENCENT_COS_OBJECT_KEY: ${{ secrets.TENCENT_COS_OBJECT_KEY }}
+      TENCENT_COS_CACHE_CONTROL: ${{ secrets.TENCENT_COS_CACHE_CONTROL }}
 
     steps:
       - name: Checkout
@@ -276,20 +284,12 @@ jobs:
 
       - name: Upload Setup.exe to Tencent COS
         id: tencent_cos_mirror
-        if: ${{ secrets.TENCENT_COS_SECRET_ID != '' && secrets.TENCENT_COS_SECRET_KEY != '' && secrets.TENCENT_COS_BUCKET != '' && secrets.TENCENT_COS_REGION != '' }}
+        if: ${{ env.TENCENT_COS_SECRET_ID != '' && env.TENCENT_COS_SECRET_KEY != '' && env.TENCENT_COS_BUCKET != '' && env.TENCENT_COS_REGION != '' }}
         shell: pwsh
-        env:
-          TENCENT_COS_SECRET_ID: ${{ secrets.TENCENT_COS_SECRET_ID }}
-          TENCENT_COS_SECRET_KEY: ${{ secrets.TENCENT_COS_SECRET_KEY }}
-          TENCENT_COS_BUCKET: ${{ secrets.TENCENT_COS_BUCKET }}
-          TENCENT_COS_REGION: ${{ secrets.TENCENT_COS_REGION }}
-          TENCENT_COS_PUBLIC_BASE_URL: ${{ secrets.TENCENT_COS_PUBLIC_BASE_URL }}
-          TENCENT_COS_OBJECT_KEY: ${{ secrets.TENCENT_COS_OBJECT_KEY }}
-          TENCENT_COS_CACHE_CONTROL: ${{ secrets.TENCENT_COS_CACHE_CONTROL }}
         run: node scripts/upload-tencent-cos-installer.cjs Axon-Setup.exe
 
       - name: Summarize skipped Tencent COS mirror upload
-        if: ${{ !(secrets.TENCENT_COS_SECRET_ID != '' && secrets.TENCENT_COS_SECRET_KEY != '' && secrets.TENCENT_COS_BUCKET != '' && secrets.TENCENT_COS_REGION != '') }}
+        if: ${{ !(env.TENCENT_COS_SECRET_ID != '' && env.TENCENT_COS_SECRET_KEY != '' && env.TENCENT_COS_BUCKET != '' && env.TENCENT_COS_REGION != '') }}
         shell: pwsh
         run: |
           @(

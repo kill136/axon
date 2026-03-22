@@ -132,8 +132,8 @@ describe('download-proxy route', () => {
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({
-          tag_name: 'v2.6.0',
-          name: 'v2.6.0',
+          tag_name: 'v2.6.1',
+          name: 'v2.6.1',
           published_at: '2026-03-22T00:00:00.000Z',
           assets: [
             {

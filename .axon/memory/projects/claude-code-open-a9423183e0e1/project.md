@@ -95,3 +95,4 @@
 - 腾讯云 COS 接入规则：GitHub Actions 额外支持 `TENCENT_COS_SECRET_ID/TENCENT_COS_SECRET_KEY/TENCENT_COS_BUCKET/TENCENT_COS_REGION` 自动上传 `Axon-Setup.exe` 到固定对象键；若未显式配置 `TENCENT_COS_PUBLIC_BASE_URL`，默认直接用 `https://<BucketName-APPID>.cos.<Region>.myqcloud.com/` 作为稳定下载地址。回归覆盖在 `tests/release/tencent-cos-utils.test.ts`。
 - COS 权限规则：为了减少手工操作，上传脚本默认把 `Axon-Setup.exe` 对象 ACL 设为 `public-read`；这样即便存储桶维持“私有读写”，稳定安装包对象也能直接作为 Railway 的国内镜像直链。
 - 下载镜像收敛决策：既然生产已经切到腾讯云 COS 并验证通过，仓库里不再保留七牛 Kodo 的双方案代码、依赖、workflow 和文档，避免后续发布时再次出现“代码一套、线上另一套”的维护分叉。
+- GitHub Actions 解析陷阱：`secrets.*` 不能直接写进 workflow 的 `if:` 条件；哪怕 YAML 语法本身合法，GitHub 也会在解析阶段把整条 workflow 直接判成 invalid，表现为 run `0s` 失败且没有任何 job。修复规则：先把 secrets 映射到 job/step `env`，再在 `if:` 里判断 `env.*`；如果已公开 tag 因此发版失败，优先发补丁版，不要重写旧 tag。
