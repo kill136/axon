@@ -12,7 +12,7 @@ import { systemPromptBuilder, type PromptContext, type PromptBlock } from '../..
 import { modelConfig } from '../../models/index.js';
 import { configManager } from '../../config/index.js';
 import { createOAuthApiKey } from '../../auth/index.js';
-import type { Message, ContentBlock, ToolUseBlock, TextBlock } from '../../types/index.js';
+import type { Message, ContentBlock, ThinkingBlock, ToolUseBlock, TextBlock } from '../../types/index.js';
 import type { ChatMessage, ChatContent, ToolResultData, PermissionConfigPayload, PermissionRequestPayload, SystemPromptConfig, SystemPromptGetPayload, DebugMessagesPayload } from '../shared/types.js';
 import { UserInteractionHandler } from './user-interaction.js';
 import { PermissionHandler, type PermissionConfig, type PermissionRequest, type PermissionDestination } from './permission-handler.js';
@@ -959,14 +959,15 @@ export class ConversationManager {
     model: string | undefined,
     runtimeBackend: WebRuntimeBackend = this.getRuntimeBackend(),
   ) {
-    return resolveRuntimeSelection({
-      runtimeBackend,
-      model,
-      defaultModelByBackend: webAuth.getDefaultModelByBackend(),
-      codexModelName: webAuth.getCodexModelName(),
-      customModelName: webAuth.getCustomModelName(),
-    });
-  }
+      return resolveRuntimeSelection({
+        runtimeBackend,
+        model,
+        defaultModelByBackend: webAuth.getDefaultModelByBackend(),
+        customModelCatalogByBackend: webAuth.getCustomModelCatalogByBackend(),
+        codexModelName: webAuth.getCodexModelName(),
+        customModelName: webAuth.getCustomModelName(),
+      });
+    }
 
   private getRuntimeProvider(runtimeBackend: WebRuntimeBackend = this.getRuntimeBackend()) {
     return this.getRuntimeSelection(undefined, runtimeBackend).provider;
@@ -1938,10 +1939,18 @@ export class ConversationManager {
 
       // 将流式状态变量提升到 try 外，以便 catch 中断流自愈时可以访问
       const assistantContent: ContentBlock[] = [];
+      let currentThinkingContent = '';
       let currentTextContent = '';
       let currentToolUse: { id: string; name: string; inputJson: string } | null = null;
       let stopReason: string | null = null;
       let thinkingStarted = false;
+      const flushThinkingContent = () => {
+        if (!currentThinkingContent) {
+          return;
+        }
+        assistantContent.push({ type: 'thinking', thinking: currentThinkingContent } as ThinkingBlock);
+        currentThinkingContent = '';
+      };
 
       // 对齐官方 v2.1.70：检查是否有 ToolSearch 工具（Mcp），决定是否启用 deferred tools
       const hasToolSearch = tools.some(t => t.name === 'Mcp');
@@ -2008,6 +2017,7 @@ export class ConversationManager {
                 thinkingStarted = true;
               }
               if (event.thinking) {
+                currentThinkingContent += event.thinking;
                 // 追踪 thinking 内容（用于浏览器刷新恢复）
                 if (state.streamingContent) {
                   state.streamingContent.thinkingText += event.thinking;
@@ -2021,6 +2031,7 @@ export class ConversationManager {
                 callbacks.onThinkingComplete?.();
                 thinkingStarted = false;
               }
+              flushThinkingContent();
               if (event.text) {
                 hasStreamedContent = true;
                 currentTextContent += event.text;
@@ -2033,6 +2044,11 @@ export class ConversationManager {
               break;
 
             case 'tool_use_start':
+              if (thinkingStarted) {
+                callbacks.onThinkingComplete?.();
+                thinkingStarted = false;
+              }
+              flushThinkingContent();
               hasStreamedContent = true;
               // 保存之前的文本内容
               if (currentTextContent) {
@@ -2106,6 +2122,11 @@ export class ConversationManager {
             }
 
             case 'stop':
+              if (thinkingStarted) {
+                callbacks.onThinkingComplete?.();
+                thinkingStarted = false;
+              }
+              flushThinkingContent();
               // 完成当前文本块
               if (currentTextContent) {
                 assistantContent.push({ type: 'text', text: currentTextContent } as TextBlock);
@@ -2207,6 +2228,7 @@ export class ConversationManager {
         justForceCompacted = false;
 
         // 中断或正常结束时，保存未完成的文本内容
+        flushThinkingContent();
         if (currentTextContent) {
           assistantContent.push({ type: 'text', text: currentTextContent } as TextBlock);
           currentTextContent = '';
@@ -2858,11 +2880,7 @@ export class ConversationManager {
         {
           model: task.model || 'sonnet',
           workingDirectory: task.workingDir,
-          clientConfig: {
-            apiKey: mainClientConfig.apiKey,
-            authToken: mainClientConfig.authToken,
-            baseUrl: mainClientConfig.baseUrl,
-          },
+          clientConfig: mainClientConfig,
         }
       );
 
@@ -3082,11 +3100,7 @@ export class ConversationManager {
               model: input.model || state.model,
               parentMessages: state.messages,
               workingDirectory: state.session.cwd,
-              clientConfig: {
-                apiKey: mainClientConfig.apiKey,
-                authToken: mainClientConfig.authToken,
-                baseUrl: mainClientConfig.baseUrl,
-              },
+              clientConfig: mainClientConfig,
               toolUseId: normalizedToolUse.id,
               maxTurns: input.max_turns,
             }
@@ -5159,6 +5173,8 @@ Guidelines:
         for (const block of msg.content) {
           if (block.type === 'text') {
             chatMsg.content.push({ type: 'text', text: (block as TextBlock).text });
+          } else if (block.type === 'thinking') {
+            chatMsg.content.push({ type: 'thinking', text: (block as ThinkingBlock).thinking });
           } else if (block.type === 'image') {
             // 保留图片内容以便刷新后回显
             const imgBlock = block as any;

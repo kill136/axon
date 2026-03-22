@@ -3,10 +3,10 @@
  * 
  * 仓库私有化后，GitHub Releases 下载链接对未登录用户不可用。
  * 此函数通过 GitHub API 获取 asset 的临时下载 URL（S3 签名链接），
- * 然后 302 重定向，用户浏览器直接从 S3 下载，不经过 Vercel。
+ * 然后 302 重定向；如果已配置国内镜像，则优先跳转到镜像。
  * 
  * 路由:
- *   GET /api/download?file=Axon-Setup.exe  → 302 重定向到临时下载 URL
+ *   GET /api/download?file=Axon-Setup.exe  → 302 重定向到镜像或临时下载 URL
  *   GET /api/download?info=1               → 返回最新 release 信息
  * 
  * 环境变量 (Vercel Dashboard 中配置):
@@ -14,19 +14,12 @@
  */
 
 const GITHUB_REPO = 'kill136/axon';
-
-const ALLOWED_FILES = [
-  /^Axon-Setup\.exe$/,
-  /^Axon-Setup\.dmg$/,
-  /^Axon-Setup\.AppImage$/,
-  /^Axon-Windows-Portable-v[\d.]+\.zip$/,
-  /^axon-(windows|linux|macos)-(x64|arm64)-v[\d.]+\.(zip|tar\.gz)$/,
-  /^install\.(bat|ps1)$/,
-];
-
-function isAllowed(filename) {
-  return ALLOWED_FILES.some(p => p.test(filename));
-}
+const {
+  detectDownloadRegion,
+  isAllowed,
+  listMirrorOnlyAssets,
+  resolveDownloadTarget,
+} = require('../download-utils.cjs');
 
 module.exports = async function handler(req, res) {
   // CORS
@@ -39,28 +32,59 @@ module.exports = async function handler(req, res) {
 
   const token = process.env.GITHUB_TOKEN;
   if (!token) {
-    res.status(503).json({ error: 'Download proxy not configured' });
-    return;
+    const requestedRegion = detectDownloadRegion(req);
+
+    if (req.query?.info) {
+      const mirrorAssets = listMirrorOnlyAssets(process.env, requestedRegion);
+      if (mirrorAssets.length > 0) {
+        res.status(200).json({
+          version: null,
+          name: 'mirror-only',
+          published_at: null,
+          preferred_region: requestedRegion,
+          assets: mirrorAssets,
+        });
+        return;
+      }
+    }
   }
 
   const { file, info } = req.query;
+  const preferredRegion = detectDownloadRegion(req);
 
   // GET /api/download?info=1 → 返回 release 信息
   if (info) {
+    if (!token) {
+      res.status(503).json({ error: 'Download proxy not configured' });
+      return;
+    }
+
     try {
       const release = await fetchLatestRelease(token);
       res.status(200).json({
         version: release.tag_name,
         name: release.name,
         published_at: release.published_at,
+        preferred_region: preferredRegion,
         assets: release.assets
           .filter(a => isAllowed(a.name))
-          .map(a => ({
-            name: a.name,
-            size: a.size,
-            download_count: a.download_count,
-            url: `/api/download?file=${encodeURIComponent(a.name)}`,
-          })),
+          .map(a => {
+            const target = resolveDownloadTarget({
+              filename: a.name,
+              req,
+              env: process.env,
+              region: preferredRegion,
+            });
+
+            return {
+              name: a.name,
+              size: a.size,
+              download_count: a.download_count,
+              url: `/api/download?file=${encodeURIComponent(a.name)}&region=${preferredRegion}`,
+              direct_url: target.type === 'mirror' ? target.redirectUrl : null,
+              source: target.source,
+            };
+          }),
       });
     } catch (err) {
       res.status(500).json({ error: 'Failed to fetch release info', detail: err.message });
@@ -84,6 +108,20 @@ module.exports = async function handler(req, res) {
   }
 
   try {
+    const target = resolveDownloadTarget({ filename: file, req, env: process.env, region: preferredRegion });
+    if (target.type === 'mirror') {
+      res.redirect(302, target.redirectUrl);
+      return;
+    }
+
+    if (!token) {
+      res.status(503).json({
+        error: 'Download proxy not configured and no mirror available',
+        preferred_region: target.region,
+      });
+      return;
+    }
+
     const release = await fetchLatestRelease(token);
     const asset = release.assets.find(a => a.name === file);
 

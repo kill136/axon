@@ -7,6 +7,7 @@ import { randomUUID } from 'crypto';
 import { ConversationLoop, type LoopOptions } from '../../core/loop.js';
 import type { Message } from '../../types/index.js';
 import type { WebSocket } from 'ws';
+import type { ConversationClientConfig } from './runtime/types.js';
 import {
   getAgentTypeDefinition,
   getAllActiveAgents,
@@ -85,7 +86,7 @@ interface TaskExecutionContext {
   loop?: ConversationLoop;
   abortController?: AbortController;
   /** 主 agent 的认证信息，供子 agent 复用 */
-  clientConfig?: { apiKey?: string; authToken?: string; baseUrl?: string };
+  clientConfig?: ConversationClientConfig;
   /** 禁用的工具列表（防止子 agent 递归调用特定工具） */
   disallowedTools?: string[];
   /** 用户指定的最大轮次 */
@@ -263,7 +264,7 @@ export class TaskManager {
       parentMessages?: Message[];
       workingDirectory?: string;
       /** 主 agent 的认证信息，传递给子 agent 复用 */
-      clientConfig?: { apiKey?: string; authToken?: string; baseUrl?: string };
+      clientConfig?: ConversationClientConfig;
       /** 对应的 Claude API tool_use block ID，用于前端精确匹配多个 Task */
       toolUseId?: string;
       /** 用户指定的最大轮次 */
@@ -488,10 +489,9 @@ export class TaskManager {
         isSubAgent: true,
         mcpTools: [],
         allowedSubagentTypes: childAllowedSubagentTypes,
-        // 传递主 agent 的认证信息，让子 agent 复用（避免子 agent 自己 initAuth 拿到不同凭证）
-        apiKey: context.clientConfig?.apiKey,
-        authToken: context.clientConfig?.authToken,
-        baseUrl: context.clientConfig?.baseUrl,
+        // 传递主 agent 的完整 runtime client 配置，确保 GPT/OpenAI-compatible
+        // 子 agent 不会退回到 ClaudeClient 协议栈。
+        conversationClientConfig: context.clientConfig,
         // 禁用指定工具（防止递归调度等问题）
         disallowedTools: context.disallowedTools,
       };
@@ -511,6 +511,7 @@ export class TaskManager {
 
       // 收集文本输出
       const textChunks: string[] = [];
+      let streamFailure: string | undefined;
 
       // 使用流式执行，实时推送子 agent 进度
       for await (const event of loop.processMessageStream(task.prompt)) {
@@ -556,6 +557,10 @@ export class TaskManager {
             break;
 
           case 'tool_end':
+            if (!event.toolName && event.toolError) {
+              streamFailure = event.toolError;
+              break;
+            }
             // 工具执行结束
             // 按 toolName 反查仍在 running 的最早同名工具（因为并行执行同名工具时需要按顺序匹配）
             if (event.toolName) {
@@ -612,6 +617,10 @@ export class TaskManager {
             await runSubagentStopHooks(task.id, task.agentType);
             return;
         }
+      }
+
+      if (streamFailure) {
+        throw new Error(streamFailure);
       }
 
       // 任务完成
@@ -696,7 +705,7 @@ export class TaskManager {
     options: {
       model?: string;
       workingDirectory?: string;
-      clientConfig?: { apiKey?: string; authToken?: string; baseUrl?: string };
+      clientConfig?: ConversationClientConfig;
     }
   ): Promise<{ success: boolean; output?: string; error?: string; taskId: string; durationMs: number }> {
     const taskId = await this.createTask(
@@ -757,7 +766,7 @@ export class TaskManager {
       parentMessages?: Message[];
       workingDirectory?: string;
       /** 主 agent 的认证信息，传递给子 agent 复用 */
-      clientConfig?: { apiKey?: string; authToken?: string; baseUrl?: string };
+      clientConfig?: ConversationClientConfig;
       /** 对应的 Claude API tool_use block ID，用于前端精确匹配多个 Task */
       toolUseId?: string;
       /** 用户指定的最大轮次 */

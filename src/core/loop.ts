@@ -3,7 +3,7 @@
  * 处理用户输入、工具调用和响应
  */
 
-import { ClaudeClient, type ClientConfig, formatSystemPrompt } from './client.js';
+import { ClaudeClient, type ClientConfig, createClientWithModel, formatSystemPrompt } from './client.js';
 import { Session, setCurrentSessionId } from './session.js';
 import { toolRegistry } from '../tools/index.js';
 import { runWithCwd, runGeneratorWithCwd } from './cwd-context.js';
@@ -77,7 +77,13 @@ import { configManager } from '../config/index.js';
 import { accountUsageManager } from '../ratelimit/index.js';
 import { initNotebookManager, getNotebookManager } from '../memory/notebook.js';
 import { initMemorySearchManager, getMemorySearchManager } from '../memory/memory-search.js';
+import { getResolvedModelContextWindow } from '../models/model-limits.js';
 import { startCacheKeepalive, stopCacheKeepalive } from './cache-keepalive.js';
+import { createConversationClient } from '../web/server/runtime/factory.js';
+import type {
+  ConversationClient,
+  ConversationClientConfig,
+} from '../web/server/runtime/types.js';
 import { estimateTokens } from '../utils/token-estimate.js';
 import { loadActiveGoals } from '../goals/index.js';
 import {
@@ -890,6 +896,11 @@ function calculateTotalTokens(messages: Message[]): number {
  * @returns 上下文窗口大小（tokens）
  */
 export function getContextWindowSize(model: string): number {
+  const resolvedContextWindow = getResolvedModelContextWindow(model);
+  if (resolvedContextWindow !== undefined) {
+    return resolvedContextWindow;
+  }
+
   // 检查是否是 1M 模型（带 [1m] 标记）
   if (model.includes('[1m]')) {
     return 1000000;
@@ -1487,7 +1498,7 @@ export function extractImagesFromMessages(messages: Message[]): AnyContentBlock[
  */
 async function tryConversationSummary(
   messages: Message[],
-  client: ClaudeClient,
+  client: ConversationClient,
   customInstructions?: string
 ): Promise<{
   success: boolean;
@@ -1627,7 +1638,7 @@ async function tryConversationSummary(
 async function autoCompact(
   messages: Message[],
   model: string,
-  client: ClaudeClient,
+  client: ConversationClient,
   session?: Session,
   planMode?: boolean
 ): Promise<{ wasCompacted: boolean; messages: Message[]; boundaryUuid?: string }> {
@@ -1893,6 +1904,8 @@ export interface LoopOptions {
    * 用于在前端显示对话框并等待用户响应
    */
   askUserHandler?: (input: AskUserQuestionHandlerInput) => Promise<AskUserQuestionHandlerResult>;
+  /** 直接指定运行时对话客户端配置（Web 子 agent 复用主会话 provider/client） */
+  conversationClientConfig?: ConversationClientConfig;
 }
 
 /**
@@ -1921,7 +1934,7 @@ export interface AskUserQuestionHandlerResult {
 }
 
 export class ConversationLoop {
-  private client: ClaudeClient;
+  private client: ConversationClient;
   private session: Session;
   private options: LoopOptions;
   private tools: ToolDefinition[];
@@ -1945,6 +1958,12 @@ export class ConversationLoop {
 
   /** 是否通过构造函数传入了认证信息（跳过 ensureAuthenticated） */
   private hasExternalAuth: boolean = false;
+  /** 自动记忆后台任务，避免同一时刻重复提取 */
+  private autoMemorizePromise: Promise<void> | null = null;
+  /** 最近一次尝试提取时看到的可记忆对话消息数，避免同一批消息重复调度 */
+  private lastAutoMemorizeAttemptedMessageCount: number = 0;
+  /** 最近一次成功处理完成的可记忆对话消息数，作为增量提取游标 */
+  private lastAutoMemorizedMessageCount: number = 0;
 
   /**
    * 获取当前权限模式 - 官方 v2.1.2 响应式实现
@@ -2031,6 +2050,64 @@ export class ConversationLoop {
    */
   private resetToolCallHistory(): void {
     this.toolCallHistory = [];
+  }
+
+  private createLoopClient(
+    resolvedModel: string,
+    options: LoopOptions,
+  ): ConversationClient {
+    if (options.conversationClientConfig) {
+      if (options.conversationClientConfig.apiKey || options.conversationClientConfig.authToken) {
+        this.hasExternalAuth = true;
+      }
+      return createConversationClient({
+        ...options.conversationClientConfig,
+        model: options.conversationClientConfig.model || resolvedModel,
+      });
+    }
+
+    const clientConfig: ClientConfig = {
+      model: resolvedModel,
+      maxTokens: options.maxTokens,
+      fallbackModel: options.fallbackModel,
+      thinking: options.thinking,
+      debug: options.debug,
+      timeout: 300000,
+    };
+
+    if (options.apiKey || options.authToken) {
+      this.hasExternalAuth = true;
+      if (options.apiKey) {
+        clientConfig.apiKey = options.apiKey;
+      }
+      if (options.authToken) {
+        clientConfig.authToken = options.authToken;
+      }
+      if (options.baseUrl) {
+        clientConfig.baseUrl = options.baseUrl;
+      }
+    } else {
+      initAuth();
+      const auth = getAuth();
+
+      if (auth) {
+        if (auth.type === 'api_key' && auth.apiKey) {
+          clientConfig.apiKey = auth.apiKey;
+        } else if (auth.type === 'oauth') {
+          const scopes = auth.scopes || auth.scope || [];
+          const hasInferenceScope = scopes.includes('user:inference');
+          const oauthToken = auth.authToken || auth.accessToken;
+
+          if (hasInferenceScope && oauthToken) {
+            clientConfig.authToken = oauthToken;
+          } else if (auth.oauthApiKey) {
+            clientConfig.apiKey = auth.oauthApiKey;
+          }
+        }
+      }
+    }
+
+    return new ClaudeClient(clientConfig);
   }
 
   /**
@@ -2181,7 +2258,7 @@ export class ConversationLoop {
 
   constructor(options: LoopOptions = {}) {
     // 解析模型别名
-    const resolvedModel = modelConfig.resolveAlias(options.model || 'sonnet');
+    const resolvedModel = options.conversationClientConfig?.model || modelConfig.resolveAlias(options.model || 'sonnet');
 
     // 只有在没有明确指定 isSubAgent 的情况下才设置父模型上下文
     // Sub-agent 不应该覆盖全局的父模型上下文
@@ -2189,55 +2266,7 @@ export class ConversationLoop {
       setParentModelContext(resolvedModel);
     }
 
-    // 构建 ClaudeClient 配置
-    const clientConfig: ClientConfig = {
-      model: resolvedModel,
-      maxTokens: options.maxTokens,
-      fallbackModel: options.fallbackModel,
-      thinking: options.thinking,
-      debug: options.debug,
-      timeout: 300000,  // 5分钟 API 请求超时
-    };
-
-    // 如果外部传入了认证信息（如 WebUI 子 agent 复用主 agent 的认证），直接使用
-    if (options.apiKey || options.authToken) {
-      this.hasExternalAuth = true;  // 标记为外部认证，跳过 ensureAuthenticated
-      if (options.apiKey) {
-        clientConfig.apiKey = options.apiKey;
-      }
-      if (options.authToken) {
-        clientConfig.authToken = options.authToken;
-      }
-      if (options.baseUrl) {
-        clientConfig.baseUrl = options.baseUrl;
-      }
-    } else {
-      // 默认路径：从本地凭证文件/环境变量初始化认证
-      initAuth();
-      const auth = getAuth();
-
-      // 根据认证类型设置凭据
-      if (auth) {
-        if (auth.type === 'api_key' && auth.apiKey) {
-          clientConfig.apiKey = auth.apiKey;
-        } else if (auth.type === 'oauth') {
-          // 检查是否有 user:inference scope (Claude.ai 订阅用户)
-          const scopes = auth.scopes || auth.scope || [];
-          const hasInferenceScope = scopes.includes('user:inference');
-
-          // 获取 OAuth token（可能是 authToken 或 accessToken）
-          const oauthToken = auth.authToken || auth.accessToken;
-
-          if (hasInferenceScope && oauthToken) {
-            clientConfig.authToken = oauthToken;
-          } else if (auth.oauthApiKey) {
-            clientConfig.apiKey = auth.oauthApiKey;
-          }
-        }
-      }
-    }
-
-    this.client = new ClaudeClient(clientConfig);
+    this.client = this.createLoopClient(resolvedModel, options);
 
     this.session = new Session();
     this.options = options;
@@ -2612,6 +2641,68 @@ export class ConversationLoop {
   }
 
   /**
+   * 从用户输入中提取可用于长期记忆召回的自然语言查询
+   */
+  private extractRecallQuery(userInput: string | AnyContentBlock[]): string | null {
+    if (typeof userInput === 'string') {
+      const text = userInput.trim();
+      return text.length > 0 ? text : null;
+    }
+
+    if (!Array.isArray(userInput)) {
+      return null;
+    }
+
+    const text = userInput
+      .filter((block: any) => block?.type === 'text' && typeof block.text === 'string')
+      .map((block: any) => block.text.trim())
+      .filter(Boolean)
+      .join('\n')
+      .trim();
+
+    return text.length > 0 ? text : null;
+  }
+
+  /**
+   * 刷新 prompt 里依赖长期记忆的动态上下文
+   */
+  private async refreshPromptMemoryContext(userInput: string | AnyContentBlock[]): Promise<void> {
+    try {
+      const notebookMgr = getNotebookManager() || initNotebookManager(this.promptContext.workingDir);
+      const freshSummary = notebookMgr.getNotebookSummaryForPrompt();
+      this.promptContext.notebookSummary = freshSummary || undefined;
+    } catch {
+      // 笔记本加载失败不影响主流程
+    }
+
+    const recallQuery = this.extractRecallQuery(userInput);
+    if (!recallQuery || recallQuery.trim().length < 3) {
+      this.promptContext.memoryRecall = undefined;
+      return;
+    }
+
+    try {
+      const memSearchMgr = getMemorySearchManager();
+      if (!memSearchMgr) {
+        this.promptContext.memoryRecall = undefined;
+        return;
+      }
+
+      const memoryRecall = await memSearchMgr.recall(recallQuery, 3, {
+        source: 'notebook',
+        mode: 'keyword',
+      });
+
+      this.promptContext.memoryRecall = memoryRecall || undefined;
+    } catch (error) {
+      if (this.options.debug || process.env.AXON_DEBUG) {
+        console.warn('[MemoryRecall] Failed to refresh prompt memory context:', error);
+      }
+      this.promptContext.memoryRecall = undefined;
+    }
+  }
+
+  /**
    * 检查是否为 Git 仓库
    */
   private checkIsGitRepo(dir: string): boolean {
@@ -2789,9 +2880,8 @@ export class ConversationLoop {
     // 解析模型别名（在循环外部，避免重复解析）
     const resolvedModel = modelConfig.resolveAlias(this.options.model || 'sonnet');
 
-    // autoRecall 已移除：信噪比太低，占 200-500 tokens 但回忆的碎片几乎没有参考价值。
-    // 真正有用的记忆已在 Notebook 中，需要搜索时用户可主动调用 MemorySearch 工具。
-    this.promptContext.memoryRecall = undefined;
+    // 在构建 prompt 前刷新 notebook / recall，确保上一轮刚写入的长期记忆能立刻生效
+    await this.refreshPromptMemoryContext(userInput);
 
     // 构建系统提示词
     let systemPrompt: string;
@@ -2813,20 +2903,6 @@ export class ConversationLoop {
         console.warn('Failed to build system prompt, using default:', error);
         systemPrompt = this.getDefaultSystemPrompt();
       }
-    }
-
-    // Agent 笔记本：每轮刷新笔记本内容到 promptContext
-    // 确保 agent 在对话中写入的笔记能在下一轮 system prompt 中体现
-    try {
-      const nbMgr = getNotebookManager();
-      if (nbMgr) {
-        const freshSummary = nbMgr.getNotebookSummaryForPrompt();
-        if (freshSummary) {
-          this.promptContext.notebookSummary = freshSummary;
-        }
-      }
-    } catch {
-      // 笔记本加载失败不影响主流程
     }
 
     while (turns < maxTurns) {
@@ -2959,12 +3035,15 @@ export class ConversationLoop {
       // 并行执行所有工具（对齐官方 KM5 函数：Promise.all(toolUseBlocks.map(...))）
       if (toolUseBlocks.length > 0) {
         // Cache Keepalive：工具执行期间保持 prompt cache 活跃
-        const stopKeepalive = startCacheKeepalive({
-          client: this.client.getAnthropicClient(),
-          model: this.client.getModel(),
-          formattedSystem: formatSystemPrompt(systemPrompt, this.client.getIsOAuth(), promptBlocks),
-          debug: this.options.debug || this.options.verbose,
-        });
+        const anthropicClient = this.client.getAnthropicClient();
+        const stopKeepalive = anthropicClient
+          ? startCacheKeepalive({
+              client: anthropicClient,
+              model: this.client.getModel(),
+              formattedSystem: formatSystemPrompt(systemPrompt, this.client.getIsOAuth(), promptBlocks),
+              debug: this.options.debug || this.options.verbose,
+            })
+          : () => {};
 
         const execResults = await Promise.all(toolUseBlocks.map(async (block) => {
           const toolBlock = block as any;
@@ -3165,6 +3244,103 @@ Guidelines:
         console.error('Failed to auto-save session:', err);
       }
     }
+
+    this.scheduleAutoMemorize();
+  }
+
+  /**
+   * 提取单条消息中的自然语言文本，用于自动记忆。
+   * 跳过 tool_use/tool_result 等结构化块，避免把工具噪音当成用户画像。
+   */
+  private extractAutoMemoryText(message: Message): string | null {
+    if ((message as any).isMeta) return null;
+    if (message.role !== 'user' && message.role !== 'assistant') return null;
+
+    if (typeof message.content === 'string') {
+      const text = message.content.trim();
+      return text ? text : null;
+    }
+
+    if (Array.isArray(message.content)) {
+      const texts = message.content
+        .filter((block: any) => block.type === 'text' && typeof block.text === 'string' && block.text.trim())
+        .map((block: any) => block.text.trim());
+      return texts.length > 0 ? texts.join(' ') : null;
+    }
+
+    return null;
+  }
+
+  /**
+   * 统计适合自动记忆的对话消息数。
+   * 只统计真正的人类/助手自然语言内容，不统计工具结果。
+   */
+  private getAutoMemorizeMessageCount(): number {
+    return this.session.getMessages().reduce((count, message) => {
+      return this.extractAutoMemoryText(message) ? count + 1 : count;
+    }, 0);
+  }
+
+  /**
+   * 后台调度自动记忆，避免阻塞用户拿到回复。
+   */
+  private scheduleAutoMemorize(): void {
+    if (this.options.isSubAgent || this.autoMemorizePromise) {
+      return;
+    }
+
+    const messageCount = this.getAutoMemorizeMessageCount();
+    if (messageCount < 4 || messageCount <= this.lastAutoMemorizeAttemptedMessageCount) {
+      return;
+    }
+
+    const startMessageCount = this.lastAutoMemorizedMessageCount;
+    const endMessageCount = messageCount;
+
+    this.autoMemorizePromise = this.maybeAutoMemorize(startMessageCount, endMessageCount)
+      .catch((error) => {
+        console.error(chalk.gray('[AutoMemory] Background scheduling failed:', error instanceof Error ? error.message : String(error)));
+      })
+      .finally(() => {
+        this.autoMemorizePromise = null;
+      });
+  }
+
+  /**
+   * 仅对新增对话消息执行一次自动记忆。
+   */
+  private async maybeAutoMemorize(startMessageCount: number, endMessageCount: number): Promise<void> {
+    if (endMessageCount <= this.lastAutoMemorizeAttemptedMessageCount) {
+      return;
+    }
+
+    this.lastAutoMemorizeAttemptedMessageCount = endMessageCount;
+    await this.autoMemorize({
+      startMessageCount,
+      endMessageCount,
+      updateSuccessCursor: true,
+    });
+  }
+
+  /**
+   * 为自动记忆创建轻量客户端，尽量使用 Haiku 降本。
+   */
+  private createAutoMemoryClient(): ClaudeClient {
+    const haikuModel = modelConfig.resolveAlias('haiku');
+
+    if (this.options.apiKey || this.options.authToken || this.options.baseUrl) {
+      return new ClaudeClient({
+        model: haikuModel,
+        apiKey: this.options.apiKey,
+        authToken: this.options.authToken,
+        baseUrl: this.options.baseUrl,
+        timeout: 120000,
+        maxTokens: 4096,
+        debug: this.options.debug,
+      });
+    }
+
+    return createClientWithModel(haikuModel);
   }
 
   /**
@@ -3234,6 +3410,9 @@ Guidelines:
       // 使用响应式状态获取最新的权限模式
       const currentMode = this.getCurrentPermissionMode();
       this.promptContext.permissionMode = currentMode;
+
+      // 每个 turn 开始前刷新 notebook / recall，确保工具刚写入的长期记忆能进入下一轮推理
+      await this.refreshPromptMemoryContext(userInput);
 
       // 每个 turn 重新构建系统提示词 - 支持运行时权限模式切换 (官方 v2.1.2 Shift+Tab)
       let systemPrompt: string;
@@ -3359,6 +3538,12 @@ Guidelines:
             const tool = toolCalls.get(currentToolId);
             if (tool && !tool.isServerTool) {
               tool.input += event.input || '';
+            }
+          } else if (event.type === 'tool_use_complete') {
+            const completedToolId = event.id || currentToolId;
+            const tool = toolCalls.get(completedToolId);
+            if (tool && !tool.isServerTool) {
+              tool.input = JSON.stringify(event.input || {});
             }
           } else if (event.type === 'web_search_result') {
             // web_search_tool_result 从 finalMessage 中提取，收集搜索结果
@@ -3553,12 +3738,15 @@ Guidelines:
 
       // 第三步：并行执行所有工具（核心修复）
       // Cache Keepalive：工具执行期间保持 prompt cache 活跃
-      const stopKeepalive = startCacheKeepalive({
-        client: this.client.getAnthropicClient(),
-        model: this.client.getModel(),
-        formattedSystem: formatSystemPrompt(systemPrompt, this.client.getIsOAuth(), promptBlocks),
-        debug: this.options.debug || this.options.verbose,
-      });
+      const anthropicClient = this.client.getAnthropicClient();
+      const stopKeepalive = anthropicClient
+        ? startCacheKeepalive({
+            client: anthropicClient,
+            model: this.client.getModel(),
+            formattedSystem: formatSystemPrompt(systemPrompt, this.client.getIsOAuth(), promptBlocks),
+            debug: this.options.debug || this.options.verbose,
+          })
+        : () => {};
 
       type ToolExecResult = {
         id: string;
@@ -3780,6 +3968,9 @@ Guidelines:
 
   setSession(session: Session): void {
     this.session = session;
+    this.lastAutoMemorizeAttemptedMessageCount = 0;
+    this.lastAutoMemorizedMessageCount = 0;
+    this.autoMemorizePromise = null;
     // v2.1.27: 设置全局会话 ID 以供工具使用（如 gh pr create 自动链接）
     setCurrentSessionId(session.sessionId);
   }
@@ -3869,21 +4060,37 @@ Guidelines:
    * - 使用 haiku 模型降低成本，只提取结构化信息
    * - 静默失败，不影响退出流程
    */
-  async autoMemorize(): Promise<void> {
+  async autoMemorize(options?: {
+    startMessageCount?: number;
+    endMessageCount?: number;
+    updateSuccessCursor?: boolean;
+  }): Promise<boolean> {
     try {
       const nbMgr = getNotebookManager();
-      if (!nbMgr) return;
+      if (!nbMgr) return false;
 
       const messages = this.session.getMessages();
-      // 对话太短（少于4条消息 = 2轮对话），没什么可提取的
-      if (messages.length < 4) return;
+      const meaningfulMessages = messages.filter((message) => this.extractAutoMemoryText(message));
+      const endMessageCount = Math.min(options?.endMessageCount ?? meaningfulMessages.length, meaningfulMessages.length);
+      const startMessageCount = Math.max(0, Math.min(options?.startMessageCount ?? this.lastAutoMemorizedMessageCount, endMessageCount));
+      const messagesToSummarize = meaningfulMessages.slice(startMessageCount, endMessageCount);
+      const shouldAdvanceSuccessCursor = options?.updateSuccessCursor ?? true;
+
+      // 对话太短（少于4条有效文本消息 = 2轮对话），没什么可提取的
+      if (endMessageCount < 4 || messagesToSummarize.length === 0) return false;
 
       // 读取当前笔记本内容
+      const currentProfile = nbMgr.read('profile');
       const currentExperience = nbMgr.read('experience');
       const currentProject = nbMgr.read('project');
+      const today = new Date().toISOString().slice(0, 10);
 
       // 构造提取 prompt
       const extractionPrompt = `你是一个记忆提取器。分析以下对话，提取值得跨会话记住的信息。
+今天日期：${today}
+
+当前 profile 笔记本内容：
+${currentProfile || '(空)'}
 
 当前 experience 笔记本内容：
 ${currentExperience || '(空)'}
@@ -3893,18 +4100,44 @@ ${currentProject || '(空)'}
 
 规则：
 1. 只提取真正有长期价值的信息，忽略一次性的技术细节
-2. experience 笔记本记录：用户偏好、工作模式、个人信息、跨项目经验教训
-3. project 笔记本记录：项目特有的陷阱、隐藏依赖、重要架构决策、踩过的坑
-4. 如果没有新信息值得记录，返回 NO_UPDATE
-5. 如果有更新，返回完整的笔记本内容（不是增量，是完整替换）
-6. experience 不超过 4000 tokens，project 不超过 8000 tokens
-7. 保留原有内容，只追加或修改有变化的部分
-8. 特别关注用户纠正你的内容（如用户说"不对""错了""不是这样"等），这些纠正意味着你之前的理解有误，是最高优先级的记忆
-9. 特别注意提取决策链——即"尝试了A方案→发现问题→最终选择B方案"这种过程。记录最终决策及其原因，而不是中间的探索过程
+2. profile 笔记本记录：稳定的用户画像，如身份背景、长期偏好、表达风格、沟通习惯、价值取向
+3. experience 笔记本记录：如何与用户协作更顺畅的跨项目经验，如工作模式、常见要求、反复纠正点、偏好的做事方式
+4. project 笔记本记录：项目特有的陷阱、隐藏依赖、重要架构决策、踩过的坑
+5. profile 只记“相对稳定、以后大概率还成立”的信息；短期状态、临时任务、一次性情绪不要写进 profile
+6. 如果用户明确纠正了你对他/她的理解，这类纠正优先写入 profile 或 experience
+7. 如果没有新信息值得记录，返回 NO_UPDATE
+8. 如果有更新，返回完整的笔记本内容（不是增量，是完整替换）
+9. profile 不超过 2000 tokens，experience 不超过 4000 tokens，project 不超过 8000 tokens
+10. 保留原有内容，但要主动合并同义 bullet；如果新证据推翻旧理解，必须改写或删除旧 bullet，不能把互相冲突的理解一起保留
+11. 不要编造用户信息；必须来自对话证据。没有证据支撑的内容，不要写进事实 section
+12. 特别注意提取决策链，即“偏好什么 / 讨厌什么 / 会如何表达不满 / 遇到什么最在意”
+13. 不要输出解释，不要输出 markdown code fence，只输出指定格式
+14. 如需更新 profile，必须使用以下固定结构和标题，顺序不要变；未知 section 可以留空，但不要删除标题：
+# User Profile
+
+## Basic Info
+## Stable Preferences
+## Communication Style
+## Working Style
+## Decision Signals
+## Values & Motivations
+## Do Not Assume / Open Questions
+15. profile 里的每条 bullet 尽量只表达一个稳定信号，避免把多种偏好揉成一条长句
+16. profile 的 bullet 优先使用这个轻量格式：- 信号 [updated: YYYY-MM-DD; evidence: 简短证据]
+17. evidence 只需简短说明证据来源，例如 “user stated directly” / “explicit correction about tone” / “repeatedly requested concise Chinese replies”
+18. 优先修改已有 bullet，避免同义重复和越写越散
+19. “Do Not Assume / Open Questions” 只放高相关但仍未确认的信息；一旦对话里已确认，就从 open questions 里删掉，不要继续保留
+20. experience 更偏“怎么配合这个用户工作”，不要重复 profile 里的稳定画像
+21. project 只写当前项目相关内容，不要把通用人格特征写进 project
 
 输出格式（严格遵守）：
 如果无需更新：
 NO_UPDATE
+
+如果需要更新 profile：
+===PROFILE===
+(完整的 profile 笔记本内容)
+===END_PROFILE===
 
 如果需要更新 experience：
 ===EXPERIENCE===
@@ -3916,35 +4149,26 @@ NO_UPDATE
 (完整的 project 笔记本内容)
 ===END_PROJECT===
 
-可以同时更新两个，也可以只更新一个。
-8. 在笔记本末尾维护一行统计："<!-- autoMemorize: 更新于 {YYYY-MM-DD}, 累计 N 次 -->"，每次更新时 N+1`;
+可以同时更新三个，也可以只更新其中一个或两个。`;
 
       // 将对话消息精简为文本摘要（只取用户和助手的文本内容，忽略工具调用细节）
-      const conversationSummary = messages
-        .filter((m: Message) => m.role === 'user' || m.role === 'assistant')
+      const conversationSummary = messagesToSummarize
         .map((m: Message) => {
+          const text = this.extractAutoMemoryText(m);
+          if (!text) return null;
           const role = m.role === 'user' ? '用户' : '助手';
-          if (typeof m.content === 'string') {
-            return `${role}: ${m.content.substring(0, m.role === 'user' ? 1000 : 800)}`;
-          }
-          if (Array.isArray(m.content)) {
-            const textBlocks = m.content
-              .filter((b: any) => b.type === 'text' && b.text)
-              .map((b: any) => b.text.substring(0, m.role === 'user' ? 1000 : 800));
-            if (textBlocks.length > 0) {
-              return `${role}: ${textBlocks.join(' ')}`;
-            }
-          }
-          return null;
+          const limit = m.role === 'user' ? 1000 : 800;
+          return `${role}: ${text.substring(0, limit)}`;
         })
         .filter(Boolean)
         .join('\n');
 
       // 如果对话内容太少，跳过
-      if (conversationSummary.length < 100) return;
+      if (conversationSummary.length < 100) return false;
 
       // 使用轻量模型调用 API
-      const response = await this.client.createMessage(
+      const autoMemoryClient = this.createAutoMemoryClient();
+      const response = await autoMemoryClient.createMessage(
         [
           { role: 'user', content: `${extractionPrompt}\n\n===对话内容===\n${conversationSummary.substring(0, 20000)}` },
         ],
@@ -3958,7 +4182,21 @@ NO_UPDATE
         .map((b: ContentBlock) => (b as any).text)
         .join('');
 
-      if (!responseText || responseText.includes('NO_UPDATE')) return;
+      if (!responseText || responseText.includes('NO_UPDATE')) {
+        if (shouldAdvanceSuccessCursor) {
+          this.lastAutoMemorizedMessageCount = endMessageCount;
+        }
+        return true;
+      }
+
+      // 提取并写入 profile
+      const profileMatch = responseText.match(/===PROFILE===\n([\s\S]*?)\n===END_PROFILE===/);
+      if (profileMatch && profileMatch[1].trim()) {
+        const result = nbMgr.write('profile', profileMatch[1].trim());
+        if (result.success) {
+          console.error(chalk.gray('[AutoMemory] profile notebook updated'));
+        }
+      }
 
       // 提取并写入 experience
       const expMatch = responseText.match(/===EXPERIENCE===\n([\s\S]*?)\n===END_EXPERIENCE===/);
@@ -3983,9 +4221,16 @@ NO_UPDATE
       if (memSearchMgr) {
         memSearchMgr.markDirty();
       }
+
+      if (shouldAdvanceSuccessCursor) {
+        this.lastAutoMemorizedMessageCount = endMessageCount;
+      }
+
+      return true;
     } catch (error) {
       // 非静默失败，记录错误信息
       console.error(chalk.gray('[AutoMemory] Memory extraction failed:', error instanceof Error ? error.message : String(error)));
+      return false;
     }
   }
 

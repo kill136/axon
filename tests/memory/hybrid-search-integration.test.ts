@@ -65,14 +65,21 @@ describe('MemorySearchTool hybrid search integration', () => {
 
     await tool.execute({
       query: 'test',
-      source: 'session',
+      source: 'notebook',
       maxResults: 5,
     });
 
     expect(mockHybridSearch).toHaveBeenCalledWith('test', {
-      source: 'session',
+      source: 'notebook',
       maxResults: 5,
     });
+  });
+
+  it('should expose notebook in the input schema enum', () => {
+    const schema = tool.getInputSchema();
+    const sourceProperty = schema.properties?.source as { enum?: string[] } | undefined;
+
+    expect(sourceProperty?.enum).toContain('notebook');
   });
 
   it('should return no results message when hybridSearch returns empty', async () => {

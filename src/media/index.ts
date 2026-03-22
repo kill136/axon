@@ -59,6 +59,9 @@ export {
   documentToHtml,
   documentToText,
   getSearchableText,
+  renderPresentationToImages,
+  MAX_RENDERED_PRESENTATION_PAGES,
+  type PresentationRenderResult,
   editDocument,
   clearDocumentCache,
   type EditDocumentResult,
@@ -217,8 +220,8 @@ export const BINARY_FILE_BLACKLIST = new Set([
   'dat', 'db', 'sqlite', 'sqlite3', 'mdb', 'idx',
 
   // Office 文档（旧格式，不支持解析）
-  'doc', 'xls', 'ppt', 'odt', 'ods', 'odp',
-  // 注意：docx/xlsx/pptx 已移出黑名单，由 office.ts 模块处理
+  'doc', 'xls', 'odt', 'ods', 'odp',
+  // 注意：docx/xlsx/ppt/pptx 已移出黑名单，由 office.ts 模块处理
 
   // 字体文件
   'ttf', 'otf', 'woff', 'woff2', 'eot',

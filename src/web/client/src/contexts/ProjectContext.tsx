@@ -244,6 +244,17 @@ export interface ProjectProviderProps {
   children: ReactNode;
 }
 
+export function pickInitialProject(savedProject: Project | null, recentProjects: Project[]): Project | null {
+  if (savedProject) {
+    const matchedProject = recentProjects.find(project => project && project.id === savedProject.id);
+    if (matchedProject) {
+      return matchedProject;
+    }
+  }
+
+  return recentProjects[0] || null;
+}
+
 export function ProjectProvider({ children }: ProjectProviderProps) {
   const [state, dispatch] = useReducer(projectReducer, initialState);
   
@@ -516,46 +527,32 @@ export function ProjectProvider({ children }: ProjectProviderProps) {
         const projects = await fetchRecentProjects();
         dispatch({ type: 'SET_RECENT_PROJECTS', payload: projects });
 
-        // 2. 尝试恢复上次选中的项目
+        // 2. 优先恢复上次选中的项目；否则自动打开最近一次使用的项目
         const savedProject = loadSavedProject();
-        let projectRestored = false;
-        if (savedProject) {
-          // 验证保存的项目是否仍在列表中
-          const exists = projects.some(p => p && p.id === savedProject.id);
-          if (exists) {
-            // 重新打开项目以获取最新蓝图信息
-            try {
-              const { project, blueprint, hasAxonMd } = await openProjectApi(savedProject.path);
-              dispatch({
-                type: 'OPEN_PROJECT_SUCCESS',
-                payload: { project, blueprint },
-              });
-              emitProjectChangeEvent(project, blueprint);
-              projectRestored = true;
-            } catch (error) {
-              console.warn('[ProjectContext] 恢复保存的项目失败，使用缓存数据:', error);
-              dispatch({ type: 'SET_CURRENT_PROJECT', payload: savedProject });
-              projectRestored = true;
-            }
-          } else {
-            // 保存的项目已不存在，清除
-            saveProjectToStorage(null);
-          }
+        const initialProject = pickInitialProject(savedProject, projects);
+
+        if (savedProject && (!initialProject || initialProject.id !== savedProject.id)) {
+          saveProjectToStorage(null);
         }
 
-        // 3. 如果没有恢复任何项目，使用 server 的工作目录作为默认项目
-        if (!projectRestored) {
+        if (initialProject) {
           try {
-            const defaultProject = await fetchCurrentProject();
-            if (defaultProject) {
-              dispatch({ type: 'SET_CURRENT_PROJECT', payload: defaultProject });
-              dispatch({ type: 'ADD_PROJECT', payload: defaultProject });
-              saveProjectToStorage(defaultProject);
-              emitProjectChangeEvent(defaultProject, null);
-              console.log('[ProjectContext] 使用默认工作目录:', defaultProject.path);
-            }
+            const { project, blueprint } = await openProjectApi(initialProject.path);
+            dispatch({
+              type: 'OPEN_PROJECT_SUCCESS',
+              payload: { project, blueprint },
+            });
+            saveProjectToStorage(project);
+            emitProjectChangeEvent(project, blueprint);
           } catch (error) {
-            console.warn('[ProjectContext] 获取默认工作目录失败:', error);
+            if (savedProject && savedProject.id === initialProject.id) {
+              console.warn('[ProjectContext] 恢复保存的项目失败，使用缓存数据:', error);
+              dispatch({ type: 'SET_CURRENT_PROJECT', payload: savedProject });
+              saveProjectToStorage(savedProject);
+              emitProjectChangeEvent(savedProject, null);
+            } else {
+              console.warn('[ProjectContext] 打开最近项目失败，保留无项目欢迎态:', error);
+            }
           }
         }
 
@@ -569,7 +566,7 @@ export function ProjectProvider({ children }: ProjectProviderProps) {
     };
 
     initialize();
-  }, [fetchRecentProjects, openProjectApi, fetchCurrentProject]);
+  }, [fetchRecentProjects, openProjectApi]);
 
   // ========================================
   // Context 值

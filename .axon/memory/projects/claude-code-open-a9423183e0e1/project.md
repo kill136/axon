@@ -86,12 +86,12 @@
 - 落地页下载提速决策：`/download/:filename` 不能再把“中国大陆提速”寄托在 Railway/GitHub 302 链路上；真正有效的方案是“国内镜像直链优先，GitHub Release 代理只做兜底”。实现上统一收敛到 `landing-page/download-utils.cjs`，由 Railway `server.js` 和 Vercel `api/download.js` 共用同一套区域识别、镜像优先级和 fallback 规则。
 - 下载镜像配置规则：优先级固定为 `DOWNLOAD_MIRROR_CN_<FILE>_URL` → `DOWNLOAD_MIRROR_CN_BASE_URL` → `DOWNLOAD_MIRROR_<FILE>_URL` → `DOWNLOAD_MIRROR_BASE_URL` → GitHub 代理；如果某个镜像 URL 配错，不要静默跳过，直接报配置错误，避免“看似能下载，实际一直没走国内镜像”的假修复。
 - 发版同步规则：想让中国用户真正变快，镜像端必须始终保留稳定文件名 `Axon-Setup.exe` / `Axon-Setup.dmg` / `Axon-Setup.AppImage`；只上传带版本号的产物而不维护稳定别名，落地页即使命中国内镜像也会直接 404。部署说明写在 `docs/landing-page-download-mirror.md`，回归覆盖在 `tests/landing-page/download-utils.test.ts`。
-- 七牛 Kodo 镜像决策：放弃 `uniCloud`，因为这次目标是“最少部署动作、发版后自动覆盖稳定下载地址”，而不是再引入一套云函数/云对象发布流程。当前方案收敛成 GitHub Actions 直接把 `Axon-Setup.exe` 上传到七牛固定对象键 `Axon-Setup.exe`，随后刷新 CDN；落地页只要配置 `DOWNLOAD_MIRROR_CN_AXON_SETUP_EXE_URL` 或 `DOWNLOAD_MIRROR_CN_BASE_URL` 即可。
-- 七牛实现规则：上传逻辑集中在 `scripts/qiniu-kodo-utils.cjs` 和 `scripts/upload-qiniu-installer.cjs`，必须输出 `public_url/public_base_url/object_key/sha256` 给 Actions summary，失败直接让工作流报错，不做静默降级。回归覆盖在 `tests/release/qiniu-kodo-utils.test.ts`。
+- 七牛尝试结论：曾短暂评估过七牛 Kodo 自动上传链路，但由于私有空间直链受限、自定义域名 HTTPS 额外折腾，最终没有作为长期生产方案保留。
 - 生产下载链路陷阱：`office site / website` 这个 Railway 服务实际跑的是根目录 `Dockerfile` 构建出来的 Web Server，真正生效的下载路由是 `src/web/server/routes/download-proxy.ts`，不是 `landing-page/server.js`。如果只改落地页目录却不改这条 Express 路由，线上 `/download/:filename` 仍会继续直跳 GitHub。
 - 生产镜像接入规则：真实生产路由也必须复用与落地页一致的区域识别和镜像优先级，并在 `GITHUB_TOKEN` 缺失时返回 mirror-only 资产列表；回归覆盖在 `tests/web/server/download-proxy.test.ts`。
 - 七牛私有空间实测结论：`axon2` 当前是私有空间，测试域名 `tcadyhd1n.hd-bkt.clouddn.com` 会被七牛拦截 `exe/dmg/html/apk/ipa` 等应用下载，不能拿来做生产直链。
-- 七牛正确接法：当前必须走“自定义域名 + 服务端实时签名 URL”。`cdn.chatbi.site` 的签名 URL 已验证可用，所以中国区镜像 fallback 现已支持 `QINIU_ACCESS_KEY/QINIU_SECRET_KEY/QINIU_PUBLIC_BASE_URL` 动态签名；但如果自定义域名 HTTPS 没开，不要把生产 `https://www.chatbi.site/download/...` 直接切到这个 HTTP 镜像，否则浏览器可能拦截混合内容下载。
+- 七牛技术限制结论：即便服务端实时签名 URL 可用，只要自定义域名 HTTPS 没落好，生产下载仍会遇到混合内容或浏览器拦截问题，因此最终还是切回腾讯云 COS 默认 HTTPS 域名。
 - 免费镜像决策：如果目标是“尽量不折腾证书、国内直接 HTTPS 下载、发版自动覆盖稳定文件名”，优先补腾讯云 COS 默认 HTTPS 域名方案，而不是继续在七牛私有空间上绕签名 + 自定义域名 HTTPS。
 - 腾讯云 COS 接入规则：GitHub Actions 额外支持 `TENCENT_COS_SECRET_ID/TENCENT_COS_SECRET_KEY/TENCENT_COS_BUCKET/TENCENT_COS_REGION` 自动上传 `Axon-Setup.exe` 到固定对象键；若未显式配置 `TENCENT_COS_PUBLIC_BASE_URL`，默认直接用 `https://<BucketName-APPID>.cos.<Region>.myqcloud.com/` 作为稳定下载地址。回归覆盖在 `tests/release/tencent-cos-utils.test.ts`。
 - COS 权限规则：为了减少手工操作，上传脚本默认把 `Axon-Setup.exe` 对象 ACL 设为 `public-read`；这样即便存储桶维持“私有读写”，稳定安装包对象也能直接作为 Railway 的国内镜像直链。
+- 下载镜像收敛决策：既然生产已经切到腾讯云 COS 并验证通过，仓库里不再保留七牛 Kodo 的双方案代码、依赖、workflow 和文档，避免后续发布时再次出现“代码一套、线上另一套”的维护分叉。

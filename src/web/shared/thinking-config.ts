@@ -1,6 +1,6 @@
-import { modelConfig } from '../../models/config.js';
 import {
   getProviderForRuntimeBackend,
+  isAnthropicCompatibleModel,
   isCodexCompatibleModel,
   type WebRuntimeBackend,
 } from './model-catalog.js';
@@ -45,11 +45,20 @@ function supportsCodexXHighThinking(model?: string): boolean {
 }
 
 function supportsAnthropicThinking(model?: string): boolean {
-  const normalizedModel = model?.trim();
-  if (!normalizedModel) {
+  const normalizedModel = model?.trim().toLowerCase();
+  if (!normalizedModel || !isAnthropicCompatibleModel(normalizedModel)) {
     return false;
   }
-  return modelConfig.supportsExtendedThinking(normalizedModel);
+
+  if (normalizedModel === 'opus' || normalizedModel === 'sonnet') {
+    return true;
+  }
+
+  if (normalizedModel === 'haiku') {
+    return false;
+  }
+
+  return normalizedModel.includes('opus-4') || normalizedModel.includes('sonnet-4');
 }
 
 export function normalizeWebThinkingConfig(

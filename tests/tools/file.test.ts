@@ -3,12 +3,28 @@
  * Tests file operations, validation, and error handling
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { ReadTool, WriteTool, EditTool } from '../../src/tools/file.js';
 import { runWithCwd } from '../../src/core/cwd-context.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+
+const mockRenderPresentationToImages = vi.fn();
+const mockDocumentToText = vi.fn();
+const mockExtractDocumentVisuals = vi.fn();
+const mockCompressExtractedImages = vi.fn();
+
+vi.mock('../../src/media/index.js', async () => {
+  const actual = await vi.importActual<typeof import('../../src/media/index.js')>('../../src/media/index.js');
+  return {
+    ...actual,
+    renderPresentationToImages: (...args: any[]) => mockRenderPresentationToImages(...args),
+    documentToText: (...args: any[]) => mockDocumentToText(...args),
+    extractDocumentVisuals: (...args: any[]) => mockExtractDocumentVisuals(...args),
+    compressExtractedImages: (...args: any[]) => mockCompressExtractedImages(...args),
+  };
+});
 
 describe('ReadTool', () => {
   let readTool: ReadTool;
@@ -16,6 +32,7 @@ describe('ReadTool', () => {
   let testFile: string;
 
   beforeEach(() => {
+    vi.clearAllMocks();
     readTool = new ReadTool();
     testDir = fs.mkdtempSync(path.join(os.tmpdir(), 'read-test-'));
     testFile = path.join(testDir, 'test.txt');
@@ -57,12 +74,95 @@ describe('ReadTool', () => {
       expect(result.output).toMatch(/\d+\t/); // Should have line numbers
     });
 
-    it('should handle empty files', async () => {
-      fs.writeFileSync(testFile, '');
+    it('should render PPTX slides as page images before embedded media fallback', async () => {
+      const pptxFile = path.join(testDir, 'deck.pptx');
+      const outputDir = path.join(testDir, 'rendered-slides');
+      fs.mkdirSync(outputDir);
+      fs.writeFileSync(pptxFile, 'fake pptx content');
+      fs.writeFileSync(path.join(outputDir, 'slide-1.jpg'), Buffer.from('jpg1'));
+      fs.writeFileSync(path.join(outputDir, 'slide-2.jpg'), Buffer.from('jpg2'));
 
-      const result = await runWithCwd(testDir, () => readTool.execute({ file_path: testFile }));
+      mockRenderPresentationToImages.mockResolvedValue({
+        file: {
+          filePath: pptxFile,
+          originalSize: fs.statSync(pptxFile).size,
+          count: 2,
+          totalCount: 7,
+          outputDir,
+          truncated: false,
+        },
+      });
+      mockDocumentToText.mockResolvedValue('[Slide 1] Title\n[Slide 2] Result');
+
+      const result = await runWithCwd(testDir, () => readTool.execute({ file_path: pptxFile }));
+
       expect(result.success).toBe(true);
-      expect(result.lineCount).toBe(1);
+      expect(mockRenderPresentationToImages).toHaveBeenCalledWith(pptxFile);
+      expect(result.output).toContain('Slides rendered: 2 page image(s) of 7');
+      expect(result.output).toContain('[Slide 1] Title');
+      expect(result.newMessages).toHaveLength(1);
+      expect(result.newMessages?.[0].content).toHaveLength(2);
+      expect(mockExtractDocumentVisuals).not.toHaveBeenCalled();
+    });
+
+    it('should render PPT slides as page images using the same path as PPTX', async () => {
+      const pptFile = path.join(testDir, 'legacy.ppt');
+      const outputDir = path.join(testDir, 'legacy-rendered-slides');
+      fs.mkdirSync(outputDir);
+      fs.writeFileSync(pptFile, 'fake ppt content');
+      fs.writeFileSync(path.join(outputDir, 'slide-1.jpg'), Buffer.from('jpg1'));
+
+      mockRenderPresentationToImages.mockResolvedValue({
+        file: {
+          filePath: pptFile,
+          originalSize: fs.statSync(pptFile).size,
+          count: 1,
+          totalCount: 1,
+          outputDir,
+          truncated: false,
+        },
+      });
+      mockDocumentToText.mockRejectedValue(new Error('legacy ppt text extraction unsupported'));
+      mockExtractDocumentVisuals.mockResolvedValue({
+        type: 'pptx',
+        slides: [],
+        unassociatedImages: [],
+        fullText: '',
+        totalImages: 0,
+      });
+
+      const result = await runWithCwd(testDir, () => readTool.execute({ file_path: pptFile }));
+
+      expect(result.success).toBe(true);
+      expect(mockRenderPresentationToImages).toHaveBeenCalledWith(pptFile);
+      expect(result.output).toContain('Slides rendered: 1 page image(s) of 1');
+      expect(result.newMessages).toHaveLength(1);
+      expect(result.newMessages?.[0].content).toHaveLength(1);
+      expect(mockExtractDocumentVisuals).not.toHaveBeenCalled();
+    });
+
+    it('should fall back to embedded media extraction when PPTX rendering fails', async () => {
+      const pptxFile = path.join(testDir, 'fallback.pptx');
+      fs.writeFileSync(pptxFile, 'fake pptx content');
+
+      mockRenderPresentationToImages.mockRejectedValue(new Error('soffice unavailable'));
+      mockExtractDocumentVisuals.mockResolvedValue({
+        type: 'pptx',
+        slides: [],
+        unassociatedImages: [{ zipPath: 'ppt/media/image1.png', data: Buffer.from('png'), mimeType: 'image/png' }],
+        fullText: '[Slide 1] fallback text',
+        totalImages: 1,
+      });
+      mockCompressExtractedImages.mockResolvedValue([
+        { base64: Buffer.from('compressed').toString('base64'), mimeType: 'image/png', size: 10, zipPath: 'ppt/media/image1.png' },
+      ]);
+
+      const result = await runWithCwd(testDir, () => readTool.execute({ file_path: pptxFile }));
+
+      expect(result.success).toBe(true);
+      expect(mockExtractDocumentVisuals).toHaveBeenCalledWith(pptxFile);
+      expect(result.output).toContain('Images: 1 embedded image(s) extracted');
+      expect(result.output).toContain('[Slide 1] fallback text');
     });
   });
 
@@ -277,6 +377,14 @@ describe('EditTool', () => {
       expect(schema.properties).toHaveProperty('new_string');
       expect(schema.properties).toHaveProperty('replace_all');
       expect(schema.required).toContain('file_path');
+      expect(schema.required).not.toContain('old_string');
+      expect(schema.required).not.toContain('new_string');
+      expect(schema).not.toHaveProperty('anyOf');
+      expect(schema).not.toHaveProperty('oneOf');
+      expect(schema).not.toHaveProperty('allOf');
+      expect(schema.properties.batch_edits).toMatchObject({
+        type: 'array',
+      });
     });
   });
 
@@ -381,6 +489,60 @@ describe('EditTool', () => {
       const content = fs.readFileSync(testFile, 'utf-8');
       expect(content).toBe(original); // Should be unchanged
     });
+
+    it('should ignore empty top-level placeholders when batch_edits are present', async () => {
+      fs.writeFileSync(testFile, 'Line 1\nLine 2');
+
+      const result = await runWithCwd(testDir, () => editTool.execute({
+        file_path: testFile,
+        old_string: '',
+        new_string: '',
+        batch_edits: [
+          { old_string: 'Line 1', new_string: 'First' },
+          { old_string: 'Line 2', new_string: 'Second' },
+        ],
+        show_diff: false,
+      }));
+
+      expect(result.success).toBe(true);
+      expect(fs.readFileSync(testFile, 'utf-8')).toBe('First\nSecond');
+    });
+
+    it('should ignore unused placeholder values when batch_edits are present', async () => {
+      fs.writeFileSync(testFile, 'Alpha\nBeta');
+
+      const result = await runWithCwd(testDir, () => editTool.execute({
+        file_path: testFile,
+        old_string: 'unused',
+        new_string: 'placeholder',
+        batch_edits: [
+          { old_string: 'Alpha', new_string: 'A' },
+          { old_string: 'Beta', new_string: 'B' },
+        ],
+        show_diff: false,
+      }));
+
+      expect(result.success).toBe(true);
+      expect(fs.readFileSync(testFile, 'utf-8')).toBe('A\nB');
+    });
+
+    it('should reject meaningful top-level edit fields when batch_edits are present', async () => {
+      fs.writeFileSync(testFile, 'Line 1\nLine 2');
+
+      const result = await runWithCwd(testDir, () => editTool.execute({
+        file_path: testFile,
+        old_string: 'Line 1',
+        new_string: 'First',
+        batch_edits: [
+          { old_string: 'Line 2', new_string: 'Second' },
+        ],
+        show_diff: false,
+      }));
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Cannot combine batch_edits');
+      expect(fs.readFileSync(testFile, 'utf-8')).toBe('Line 1\nLine 2');
+    });
   });
 
   describe('Diff Preview', () => {
@@ -415,6 +577,17 @@ describe('EditTool', () => {
   });
 
   describe('Error Handling', () => {
+    it('should fail when neither single edit fields nor batch_edits are provided', async () => {
+      fs.writeFileSync(testFile, 'Hello World');
+
+      const result = await runWithCwd(testDir, () => editTool.execute({
+        file_path: testFile,
+      } as any));
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('requires either batch_edits');
+    });
+
     it('should fail on non-existent file', async () => {
       const result = await runWithCwd(testDir, () => editTool.execute({
         file_path: path.join(testDir, 'nonexistent.txt'),

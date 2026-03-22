@@ -1,6 +1,6 @@
 {
   "name": "axon-code",
-  "version": "2.5.1",
+  "version": "2.6.0",
   "description": "AI coding assistant with Web IDE, multi-agent system, and self-evolution",
   "type": "module",
   "main": "electron/main.cjs",
@@ -52,7 +52,6 @@
     "test:e2e:session": "tsx tests/e2e/cli-session.test.ts",
     "test:e2e:tools": "tsx tests/e2e/cli-tools.test.ts",
     "mirror:upload:cos": "node scripts/upload-tencent-cos-installer.cjs",
-    "mirror:upload:qiniu": "node scripts/upload-qiniu-installer.cjs",
     "postinstall": "node scripts/postinstall.js || true",
     "prepublishOnly": "npm run build && npm run build:web:client",
     "pkg": "pkg dist/web-cli.js --compress GZip --target node18-win-x64 --output release/axon-web.exe",
@@ -187,7 +186,6 @@
     "pg": "^8.16.0",
     "playwright-core": "^1.58.2",
     "proxy-from-env": "^1.1.0",
-    "qiniu": "^7.15.1",
     "qrcode-terminal": "^0.12.0",
     "react": "^18.2.0",
     "react-i18next": "^16.5.6",

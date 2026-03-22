@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback } from 'react';
+import { memo, useRef, useEffect, useCallback } from 'react';
 import { marked, Renderer } from 'marked';
 import hljs from 'highlight.js';
 import { sanitizeHtml } from '../utils/sanitize';
@@ -154,7 +154,7 @@ function createFileAwareRenderer(): Renderer {
 /** 用于助手消息的 renderer（检测文件路径） */
 const fileAwareRenderer = createFileAwareRenderer();
 
-export function MarkdownContent({ content, isUserMessage = false, onCodeRefClick }: MarkdownContentProps) {
+function MarkdownContentComponent({ content, isUserMessage = false, onCodeRefClick }: MarkdownContentProps) {
   const ref = useRef<HTMLDivElement>(null);
   const callbackRef = useRef(onCodeRefClick);
   callbackRef.current = onCodeRefClick;
@@ -198,3 +198,5 @@ export function MarkdownContent({ content, isUserMessage = false, onCodeRefClick
 
   return <div ref={ref} className="message-content" onClick={handleClick} />;
 }
+
+export const MarkdownContent = memo(MarkdownContentComponent);

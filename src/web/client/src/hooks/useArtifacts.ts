@@ -1,5 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import type { ChatMessage, ToolStatus } from '../types';
+import { getEditOperations, getToolResultText } from '../utils/editTool';
+import type { EditOperation } from '../utils/editTool';
 
 export interface FileArtifact {
   id: string;
@@ -12,6 +14,8 @@ export interface FileArtifact {
   oldString?: string;
   newString?: string;
   content?: string;
+  editOperations?: EditOperation[];
+  resultText?: string;
 }
 
 export interface ArtifactGroup {
@@ -24,6 +28,48 @@ function normalizePath(p: string): string {
   return p.replace(/\\/g, '/').replace(/^\.\//, '');
 }
 
+function normalizeToolStatus(status: string): ToolStatus {
+  if (status === 'running') return 'running';
+  if (status === 'error') return 'error';
+  return 'completed';
+}
+
+function createEditArtifact({
+  id,
+  input,
+  messageId,
+  resultText,
+  status,
+  timestamp,
+  toolName,
+  toolUseId,
+}: {
+  id: string;
+  input: any;
+  messageId: string;
+  resultText?: string;
+  status: ToolStatus;
+  timestamp: number;
+  toolName: 'Edit' | 'MultiEdit';
+  toolUseId: string;
+}): FileArtifact {
+  const editOperations = getEditOperations(input);
+
+  return {
+    id,
+    filePath: normalizePath(input.file_path),
+    toolName,
+    timestamp,
+    messageId,
+    toolUseId,
+    status,
+    oldString: typeof input?.old_string === 'string' ? input.old_string : undefined,
+    newString: typeof input?.new_string === 'string' ? input.new_string : undefined,
+    editOperations: editOperations.length > 0 ? editOperations : undefined,
+    resultText: resultText || undefined,
+  };
+}
+
 export function useArtifacts(messages: ChatMessage[]) {
   const artifacts = useMemo(() => {
     const result: FileArtifact[] = [];
@@ -34,19 +80,19 @@ export function useArtifacts(messages: ChatMessage[]) {
 
         const toolUse = block as any;
         const input = toolUse.input as any;
+        const resultText = getToolResultText(toolUse.result);
 
-        if (toolUse.name === 'Edit' && input?.file_path) {
-          result.push({
+        if ((toolUse.name === 'Edit' || toolUse.name === 'MultiEdit') && input?.file_path) {
+          result.push(createEditArtifact({
             id: `${msg.id}-${toolUse.id}`,
-            filePath: normalizePath(input.file_path),
-            toolName: 'Edit',
-            timestamp: msg.timestamp,
+            input,
             messageId: msg.id,
-            toolUseId: toolUse.id,
+            resultText,
             status: toolUse.status,
-            oldString: input.old_string,
-            newString: input.new_string,
-          });
+            timestamp: msg.timestamp,
+            toolName: toolUse.name,
+            toolUseId: toolUse.id,
+          }));
         } else if (toolUse.name === 'Write' && input?.file_path) {
           result.push({
             id: `${msg.id}-${toolUse.id}`,
@@ -58,16 +104,6 @@ export function useArtifacts(messages: ChatMessage[]) {
             status: toolUse.status,
             content: input.content,
           });
-        } else if (toolUse.name === 'MultiEdit' && input?.file_path) {
-          result.push({
-            id: `${msg.id}-${toolUse.id}`,
-            filePath: normalizePath(input.file_path),
-            toolName: 'MultiEdit',
-            timestamp: msg.timestamp,
-            messageId: msg.id,
-            toolUseId: toolUse.id,
-            status: toolUse.status,
-          });
         }
 
         // 递归扫描 Task / ScheduleTask 工具的 subagentToolCalls
@@ -75,19 +111,20 @@ export function useArtifacts(messages: ChatMessage[]) {
           for (const sub of toolUse.subagentToolCalls) {
             const subInput = sub.input as any;
             if (!subInput?.file_path) continue;
+            const subStatus = normalizeToolStatus(sub.status);
+            const subResultText = getToolResultText(sub.result) || (typeof sub.error === 'string' ? sub.error : '');
 
-            if (sub.name === 'Edit') {
-              result.push({
+            if (sub.name === 'Edit' || sub.name === 'MultiEdit') {
+              result.push(createEditArtifact({
                 id: `${msg.id}-${sub.id}`,
-                filePath: normalizePath(subInput.file_path),
-                toolName: 'Edit',
-                timestamp: sub.startTime || msg.timestamp,
+                input: subInput,
                 messageId: msg.id,
+                resultText: subResultText,
+                status: subStatus,
+                timestamp: sub.startTime || msg.timestamp,
+                toolName: sub.name,
                 toolUseId: sub.id,
-                status: sub.status === 'running' ? 'running' : sub.status === 'error' ? 'error' : 'completed',
-                oldString: subInput.old_string,
-                newString: subInput.new_string,
-              });
+              }));
             } else if (sub.name === 'Write') {
               result.push({
                 id: `${msg.id}-${sub.id}`,
@@ -96,7 +133,7 @@ export function useArtifacts(messages: ChatMessage[]) {
                 timestamp: sub.startTime || msg.timestamp,
                 messageId: msg.id,
                 toolUseId: sub.id,
-                status: sub.status === 'running' ? 'running' : sub.status === 'error' ? 'error' : 'completed',
+                status: subStatus,
                 content: subInput.content,
               });
             }

@@ -429,6 +429,12 @@
   display: flex;
 }
 
+.artifacts-diff-separator {
+  height: 10px;
+  border-top: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(0, 0, 0, 0.12);
+}
+
 .artifacts-diff-cell {
   flex: 1;
   padding: 1px 8px;
@@ -465,6 +471,21 @@
 
 .artifacts-diff-cell-text {
   min-width: 0;
+}
+
+.artifacts-diff-fallback {
+  margin: 0;
+  padding: 14px 16px;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.artifacts-diff-fallback--empty {
+  color: var(--text-muted);
 }
 
 /* =========================================

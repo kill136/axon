@@ -311,7 +311,13 @@ function RootContent() {
         onClose={() => setShowCreateApp(false)}
         onSubmit={handleCreateAppSubmit}
       />
-      {needSetup && <SetupWizard onComplete={completeSetup} />}
+      {needSetup && (
+        <SetupWizard
+          onComplete={completeSetup}
+          onOpenFolder={openFolder}
+          currentProjectName={projectState.currentProject?.name ?? null}
+        />
+      )}
     </div>
   );
 }

@@ -11,8 +11,13 @@ import {
   getRuntimeBackendOptions,
   getWebModelOptionsForBackend,
   normalizeWebRuntimeModelForBackend,
+  supportsDynamicModelCatalogForBackend,
   type WebRuntimeBackend,
 } from '../../../../shared/model-catalog';
+import {
+  getRuntimeBackendAuthSpec,
+  normalizeRuntimeConfigShape,
+} from '../../../../shared/setup-runtime';
 
 /**
  * API 配置接口
@@ -44,6 +49,8 @@ interface ApiConfig {
   defaultModelByBackend?: Partial<Record<WebRuntimeBackend, string>>;
   /** 按运行方式保存的自定义模型目录 */
   customModelCatalogByBackend?: Partial<Record<WebRuntimeBackend, string[]>>;
+  /** 按模型 ID 覆盖上下文窗口 */
+  modelContextWindowById?: Record<string, number>;
   /** Gemini API Key（图片生成） */
   geminiApiKey?: string;
   /** Ollama 服务地址 */
@@ -106,6 +113,62 @@ function validateConfig(config: ApiConfig, t: (key: string, params?: Record<stri
   return null;
 }
 
+function formatModelContextWindowOverrides(modelContextWindowById?: Record<string, number>): string {
+  if (!modelContextWindowById || Object.keys(modelContextWindowById).length === 0) {
+    return '';
+  }
+
+  return JSON.stringify(modelContextWindowById, null, 2);
+}
+
+function parseModelContextWindowOverrides(
+  rawValue: string,
+  t: (key: string, params?: Record<string, string | number>) => string,
+): { value?: Record<string, number>; error?: string } {
+  const trimmed = rawValue.trim();
+  if (!trimmed) {
+    return { value: undefined };
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return { error: t('apiConfig.modelContextWindowById.error') };
+    }
+
+    const normalized: Record<string, number> = {};
+    for (const [modelId, contextWindow] of Object.entries(parsed)) {
+      if (!modelId.trim() || !Number.isInteger(contextWindow) || contextWindow <= 0) {
+        return { error: t('apiConfig.modelContextWindowById.error') };
+      }
+      normalized[modelId.trim()] = contextWindow;
+    }
+
+    return {
+      value: Object.keys(normalized).length > 0 ? normalized : undefined,
+    };
+  } catch {
+    return { error: t('apiConfig.modelContextWindowById.error') };
+  }
+}
+
+function normalizeRuntimeModelCatalog(models?: string[]): string[] {
+  const values = new Set<string>();
+  const normalized: string[] = [];
+
+  for (const model of models || []) {
+    const trimmed = model?.trim();
+    if (!trimmed || values.has(trimmed)) {
+      continue;
+    }
+
+    values.add(trimmed);
+    normalized.push(trimmed);
+  }
+
+  return normalized;
+}
+
 /**
  * API 配置面板组件
  */
@@ -124,6 +187,7 @@ export function ApiConfigPanel({ onSave, onClose }: ApiConfigPanelProps) {
     runtimeProvider: 'anthropic',
     defaultModelByBackend: {},
     customModelCatalogByBackend: {},
+    modelContextWindowById: undefined,
     customModelName: '',
     authPriority: 'auto',
     geminiApiKey: '',
@@ -134,6 +198,7 @@ export function ApiConfigPanel({ onSave, onClose }: ApiConfigPanelProps) {
   // 跟踪 apiKey 是否被用户手动修改过（防止掩码值或空值覆盖已有 key）
   const [apiKeyDirty, setApiKeyDirty] = useState(false);
   const [geminiKeyDirty, setGeminiKeyDirty] = useState(false);
+  const [modelContextWindowJson, setModelContextWindowJson] = useState('');
 
   // 加载状态
   const [loading, setLoading] = useState(false);
@@ -154,16 +219,62 @@ export function ApiConfigPanel({ onSave, onClose }: ApiConfigPanelProps) {
   const [ollamaTestSuccess, setOllamaTestSuccess] = useState<string | null>(null);
   const [ollamaTestError, setOllamaTestError] = useState<string | null>(null);
   const runtimeBackend = config.runtimeBackend || 'claude-compatible-api';
-  const backendOptions = getRuntimeBackendOptions().filter(option => option.value !== 'axon-cloud');
+  const backendOptions = getRuntimeBackendOptions().filter(
+    option => getRuntimeBackendAuthSpec(option.value).authMode !== 'axon-cloud',
+  );
+  const runtimeAuthSpec = getRuntimeBackendAuthSpec(runtimeBackend);
   const selectedModel = normalizeWebRuntimeModelForBackend(
     runtimeBackend,
     config.defaultModelByBackend?.[runtimeBackend] || config.customModelName,
     config.defaultModelByBackend?.[runtimeBackend] || config.customModelName,
+    config.customModelCatalogByBackend?.[runtimeBackend],
   );
-  const modelOptions = getWebModelOptionsForBackend(runtimeBackend, selectedModel, selectedModel);
-  const isApiBackend = runtimeBackend === 'claude-compatible-api' || runtimeBackend === 'openai-compatible-api';
-  const isOauthBackend = runtimeBackend === 'claude-subscription' || runtimeBackend === 'codex-subscription';
-  const supportsConnectionTest = runtimeBackend === 'claude-compatible-api';
+  const modelOptions = getWebModelOptionsForBackend(
+    runtimeBackend,
+    selectedModel,
+    selectedModel,
+    config.customModelCatalogByBackend?.[runtimeBackend],
+  );
+  const isApiBackend = runtimeAuthSpec.authMode === 'api-key';
+  const supportsConnectionTest = runtimeAuthSpec.testConnection;
+
+  const applyRuntimeModelCatalog = (backend: WebRuntimeBackend, models?: string[]) => {
+    const normalizedModels = normalizeRuntimeModelCatalog(models);
+    if (normalizedModels.length === 0) {
+      return;
+    }
+
+    setConfig(prev => ({
+      ...prev,
+      customModelCatalogByBackend: {
+        ...(prev.customModelCatalogByBackend || {}),
+        [backend]: normalizedModels,
+      },
+    }));
+  };
+
+  const hydrateRuntimeModelCatalog = async (backend: WebRuntimeBackend) => {
+    if (!supportsDynamicModelCatalogForBackend(backend)) {
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/models');
+      const data = await response.json();
+      if (data.runtimeBackend !== backend || !Array.isArray(data.models)) {
+        return;
+      }
+
+      applyRuntimeModelCatalog(
+        backend,
+        data.models
+          .map((model: { modelId?: unknown }) => typeof model?.modelId === 'string' ? model.modelId : '')
+          .filter(Boolean),
+      );
+    } catch {
+      // 忽略目录拉取失败，继续使用本地/推荐模型
+    }
+  };
 
   /**
    * 加载当前配置
@@ -180,6 +291,7 @@ export function ApiConfigPanel({ onSave, onClose }: ApiConfigPanelProps) {
       const response = await fetch('/api/config/api');
       const data = await response.json();
       if (data.success && data.data) {
+        const loadedBackend = (data.data.runtimeBackend || 'claude-compatible-api') as WebRuntimeBackend;
         setConfig(prev => ({
           ...prev,
           ...data.data,
@@ -188,6 +300,11 @@ export function ApiConfigPanel({ onSave, onClose }: ApiConfigPanelProps) {
           apiKey: data.data.apiKey || '',
           geminiApiKey: data.data.geminiApiKey || '',
         }));
+        setModelContextWindowJson(formatModelContextWindowOverrides(data.data.modelContextWindowById));
+
+        if (supportsDynamicModelCatalogForBackend(loadedBackend)) {
+          void hydrateRuntimeModelCatalog(loadedBackend);
+        }
       }
     } catch (err) {
       setError(t('apiConfig.loadFailed', { error: err instanceof Error ? err.message : String(err) }));
@@ -210,8 +327,15 @@ export function ApiConfigPanel({ onSave, onClose }: ApiConfigPanelProps) {
     setError(null);
 
     try {
+      const parsedOverrides = parseModelContextWindowOverrides(modelContextWindowJson, t);
+      if (parsedOverrides.error) {
+        setValidationError(parsedOverrides.error);
+        return;
+      }
+
       // 如果 apiKey 没被用户修改过，不发送（避免掩码值覆盖真实 key）
       const payload = { ...config };
+      payload.modelContextWindowById = parsedOverrides.value;
       if (!apiKeyDirty) {
         delete payload.apiKey;
       }
@@ -227,7 +351,7 @@ export function ApiConfigPanel({ onSave, onClose }: ApiConfigPanelProps) {
       const data = await response.json();
 
       if (data.success) {
-        onSave?.(config);
+        onSave?.({ ...config, modelContextWindowById: parsedOverrides.value });
         setError(null);
         setApiKeyDirty(false);
         setGeminiKeyDirty(false);
@@ -257,29 +381,38 @@ export function ApiConfigPanel({ onSave, onClose }: ApiConfigPanelProps) {
   };
 
   const syncBackendModel = (backend: WebRuntimeBackend, modelValue?: string) => {
-    const normalized = normalizeWebRuntimeModelForBackend(backend, modelValue, modelValue);
-    setConfig(prev => ({
-      ...prev,
-      runtimeBackend: backend,
-      runtimeProvider: backend === 'codex-subscription' || backend === 'openai-compatible-api' ? 'codex' : 'anthropic',
-      apiProvider:
-        backend === 'openai-compatible-api' || backend === 'codex-subscription'
-          ? 'openai-compatible'
-          : backend === 'axon-cloud'
-            ? 'axon-cloud'
-            : 'anthropic',
-      authPriority:
-        backend === 'claude-subscription' || backend === 'codex-subscription'
-          ? 'oauth'
-          : backend === 'axon-cloud'
-            ? 'auto'
-            : 'apiKey',
-      customModelName: normalized,
-      defaultModelByBackend: {
-        ...(prev.defaultModelByBackend || {}),
-        [backend]: normalized,
-      },
-    }));
+    setConfig(prev => {
+      const normalizedRuntime = normalizeRuntimeConfigShape({
+        current: {
+          runtimeBackend: prev.runtimeBackend,
+          runtimeProvider: prev.runtimeProvider,
+          apiProvider: prev.apiProvider,
+          authPriority: prev.authPriority,
+        },
+        updates: {
+          runtimeBackend: backend,
+        },
+      });
+      const normalized = normalizeWebRuntimeModelForBackend(
+        normalizedRuntime.runtimeBackend,
+        modelValue,
+        modelValue,
+        prev.customModelCatalogByBackend?.[normalizedRuntime.runtimeBackend],
+      );
+
+      return {
+        ...prev,
+        runtimeBackend: normalizedRuntime.runtimeBackend,
+        runtimeProvider: normalizedRuntime.runtimeProvider,
+        apiProvider: normalizedRuntime.apiProvider,
+        authPriority: normalizedRuntime.authPriority,
+        customModelName: normalized,
+        defaultModelByBackend: {
+          ...(prev.defaultModelByBackend || {}),
+          [normalizedRuntime.runtimeBackend]: normalized,
+        },
+      };
+    });
     setValidationError(null);
     setTestSuccess(null);
     setTestError(null);
@@ -322,12 +455,15 @@ export function ApiConfigPanel({ onSave, onClose }: ApiConfigPanelProps) {
           apiBaseUrl: config.apiBaseUrl || '',
           apiKey: config.apiKey,
           customModelName: config.customModelName || '',
+          runtimeBackend,
+          apiProvider: config.apiProvider,
         }),
       });
 
       const data = await response.json();
 
       if (data.success) {
+        applyRuntimeModelCatalog(runtimeBackend, data.data?.availableModels);
         setTestSuccess(t('apiConfig.testSuccess', { model: data.data.model, baseUrl: data.data.baseUrl }));
         setTestError(null);
       } else {
@@ -583,6 +719,26 @@ export function ApiConfigPanel({ onSave, onClose }: ApiConfigPanelProps) {
             </label>
             <span className="help-text">
               {t('apiConfig.customModel.help')}
+            </span>
+          </div>
+
+          <div className="mcp-form-group">
+            <label>
+              {t('apiConfig.modelContextWindowById.label')}
+              <textarea
+                className="mcp-form-input"
+                rows={8}
+                placeholder={t('apiConfig.modelContextWindowById.placeholder')}
+                value={modelContextWindowJson}
+                onChange={(e) => {
+                  setModelContextWindowJson(e.target.value);
+                  setValidationError(null);
+                  setSaveSuccess(null);
+                }}
+              />
+            </label>
+            <span className="help-text">
+              {t('apiConfig.modelContextWindowById.help')}
             </span>
           </div>
 

@@ -34,4 +34,12 @@ describe('npm package manifest', () => {
     const trackedResult = runGit(['ls-files', '--error-unmatch', 'src/core/max-tokens.ts']);
     expect(trackedResult.status).toBe(0);
   });
+
+  it('keeps release regression tests visible to git despite the release/ ignore rule', () => {
+    expect(gitignoreContents).toContain('!tests/release/**/*.test.ts');
+
+    const ignoredResult = runGit(['check-ignore', '-v', '--no-index', 'tests/release/tencent-cos-utils.test.ts']);
+    expect(ignoredResult.status).toBe(0);
+    expect(ignoredResult.stdout).toContain('!tests/release/**/*.test.ts');
+  });
 });

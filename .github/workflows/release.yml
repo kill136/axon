@@ -274,19 +274,6 @@ jobs:
             exit 1
           }
 
-      - name: Upload Setup.exe to Qiniu Kodo
-        id: qiniu_mirror
-        if: ${{ secrets.QINIU_ACCESS_KEY != '' && secrets.QINIU_SECRET_KEY != '' && secrets.QINIU_BUCKET != '' && secrets.QINIU_PUBLIC_BASE_URL != '' }}
-        shell: pwsh
-        env:
-          QINIU_ACCESS_KEY: ${{ secrets.QINIU_ACCESS_KEY }}
-          QINIU_SECRET_KEY: ${{ secrets.QINIU_SECRET_KEY }}
-          QINIU_BUCKET: ${{ secrets.QINIU_BUCKET }}
-          QINIU_PUBLIC_BASE_URL: ${{ secrets.QINIU_PUBLIC_BASE_URL }}
-          QINIU_REGION: ${{ secrets.QINIU_REGION }}
-          QINIU_OBJECT_KEY: ${{ secrets.QINIU_OBJECT_KEY }}
-        run: node scripts/upload-qiniu-installer.cjs Axon-Setup.exe
-
       - name: Upload Setup.exe to Tencent COS
         id: tencent_cos_mirror
         if: ${{ secrets.TENCENT_COS_SECRET_ID != '' && secrets.TENCENT_COS_SECRET_KEY != '' && secrets.TENCENT_COS_BUCKET != '' && secrets.TENCENT_COS_REGION != '' }}
@@ -300,35 +287,6 @@ jobs:
           TENCENT_COS_OBJECT_KEY: ${{ secrets.TENCENT_COS_OBJECT_KEY }}
           TENCENT_COS_CACHE_CONTROL: ${{ secrets.TENCENT_COS_CACHE_CONTROL }}
         run: node scripts/upload-tencent-cos-installer.cjs Axon-Setup.exe
-
-      - name: Summarize skipped Qiniu mirror upload
-        if: ${{ !(secrets.QINIU_ACCESS_KEY != '' && secrets.QINIU_SECRET_KEY != '' && secrets.QINIU_BUCKET != '' && secrets.QINIU_PUBLIC_BASE_URL != '') }}
-        shell: pwsh
-        run: |
-          @(
-            '## Qiniu Kodo mirror'
-            ''
-            'Skipped because one or more required GitHub secrets are missing:'
-            '- QINIU_ACCESS_KEY'
-            '- QINIU_SECRET_KEY'
-            '- QINIU_BUCKET'
-            '- QINIU_PUBLIC_BASE_URL'
-          ) | Add-Content -Path $env:GITHUB_STEP_SUMMARY
-
-      - name: Summarize Qiniu mirror upload
-        if: ${{ steps.qiniu_mirror.outcome == 'success' }}
-        shell: pwsh
-        run: |
-          @(
-            '## Qiniu Kodo mirror'
-            ''
-            "- Mirror object URL: ${{ steps.qiniu_mirror.outputs.public_url }}"
-            "- Mirror base URL: ${{ steps.qiniu_mirror.outputs.public_base_url }}"
-            "- Object key: ${{ steps.qiniu_mirror.outputs.object_key }}"
-            "- SHA256: ${{ steps.qiniu_mirror.outputs.sha256 }}"
-            ''
-            '> axon2 is currently a private bucket. Production downloads should use the app''s signed /download route, not this unsigned object URL directly.'
-          ) | Add-Content -Path $env:GITHUB_STEP_SUMMARY
 
       - name: Summarize skipped Tencent COS mirror upload
         if: ${{ !(secrets.TENCENT_COS_SECRET_ID != '' && secrets.TENCENT_COS_SECRET_KEY != '' && secrets.TENCENT_COS_BUCKET != '' && secrets.TENCENT_COS_REGION != '') }}

@@ -12,6 +12,11 @@ import { useLanguage } from '../i18n';
 import './AuthDialog.css';
 import type { WebRuntimeBackend } from '../../../shared/model-catalog';
 import { getRuntimeBackendLabel } from '../../../shared/model-catalog';
+import {
+  buildRuntimeBackendConfigPayload,
+  getGroupedSetupRuntimeOptions,
+  getRuntimeBackendAuthSpec,
+} from '../../../shared/setup-runtime';
 
 interface AuthDialogProps {
   isOpen: boolean;
@@ -20,45 +25,6 @@ interface AuthDialogProps {
 }
 
 type AuthTab = WebRuntimeBackend;
-
-interface ProviderOption {
-  id: string;
-  name: string;
-  icon: string;
-  defaultBaseUrl: string;
-}
-
-const PROVIDERS: ProviderOption[] = [
-  { id: 'anthropic', name: 'Anthropic', icon: '🤖', defaultBaseUrl: 'https://api.anthropic.com' },
-  { id: 'openai', name: 'OpenAI', icon: '🧠', defaultBaseUrl: 'https://api.openai.com/v1' },
-  { id: 'openrouter', name: 'OpenRouter', icon: '🌐', defaultBaseUrl: 'https://openrouter.ai/api/v1' },
-  { id: 'custom', name: 'Custom', icon: '⚙️', defaultBaseUrl: '' },
-];
-
-const AUTH_BACKENDS: Array<{
-  id: WebRuntimeBackend;
-  icon: string;
-}> = [
-  { id: 'axon-cloud', icon: '☁️' },
-  { id: 'claude-subscription', icon: '🔐' },
-  { id: 'codex-subscription', icon: '🧠' },
-  { id: 'claude-compatible-api', icon: '🔑' },
-  { id: 'openai-compatible-api', icon: '🌐' },
-];
-
-const BACKEND_GROUPS: Array<{
-  id: 'managed' | 'api';
-  items: WebRuntimeBackend[];
-}> = [
-  {
-    id: 'managed',
-    items: ['axon-cloud', 'claude-subscription', 'codex-subscription'],
-  },
-  {
-    id: 'api',
-    items: ['claude-compatible-api', 'openai-compatible-api'],
-  },
-];
 
 export function AuthDialog({ isOpen, onClose, onSuccess }: AuthDialogProps) {
   const { t } = useLanguage();
@@ -72,6 +38,8 @@ export function AuthDialog({ isOpen, onClose, onSuccess }: AuthDialogProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+  const runtimeGroups = getGroupedSetupRuntimeOptions();
+  const activeAuthSpec = getRuntimeBackendAuthSpec(activeTab);
 
   const handleSuccess = () => {
     onSuccess?.();
@@ -88,20 +56,19 @@ export function AuthDialog({ isOpen, onClose, onSuccess }: AuthDialogProps) {
     setActiveTab(tab);
     setError(null);
     setTestResult('idle');
-    if (tab === 'claude-compatible-api') {
-      setSelectedProvider('anthropic');
-    } else if (tab === 'openai-compatible-api' && selectedProvider === 'anthropic') {
-      setSelectedProvider('openai');
+    const firstProviderId = getRuntimeBackendAuthSpec(tab).providerOptions[0]?.id;
+    if (firstProviderId) {
+      setSelectedProvider(firstProviderId);
     }
   };
 
-  const providerChoices = activeTab === 'openai-compatible-api'
-    ? PROVIDERS.filter(p => p.id !== 'anthropic')
-    : PROVIDERS.filter(p => p.id === 'anthropic');
+  const providerChoices = activeAuthSpec.providerOptions;
   const provider = providerChoices.find(p => p.id === selectedProvider) || providerChoices[0];
-  const isApiBackend = activeTab === 'claude-compatible-api' || activeTab === 'openai-compatible-api';
-  const canTestConnection = activeTab === 'claude-compatible-api';
-  const activeBackendMeta = AUTH_BACKENDS.find(item => item.id === activeTab) || AUTH_BACKENDS[0];
+  const isApiBackend = activeAuthSpec.authMode === 'api-key';
+  const canTestConnection = activeAuthSpec.testConnection;
+  const activeBackendMeta = runtimeGroups
+    .flatMap(group => group.items)
+    .find(item => item.backend === activeTab) || runtimeGroups[0].items[0];
   const runtimeDescriptions: Record<WebRuntimeBackend, string> = {
     'axon-cloud': t('auth.runtime.axonCloudDesc'),
     'claude-subscription': t('auth.runtime.claudeSubscriptionDesc'),
@@ -150,8 +117,16 @@ export function AuthDialog({ isOpen, onClose, onSuccess }: AuthDialogProps) {
     setTestResult('testing');
     setError(null);
     try {
-      const payload: any = { apiKey };
-      if (apiBaseUrl) payload.apiBaseUrl = apiBaseUrl;
+      const payload: any = {
+        apiKey,
+        runtimeBackend: activeTab,
+        apiProvider: activeAuthSpec.apiProvider,
+      };
+      if (apiBaseUrl) {
+        payload.apiBaseUrl = apiBaseUrl;
+      } else if (provider.defaultBaseUrl) {
+        payload.apiBaseUrl = provider.defaultBaseUrl;
+      }
       const response = await fetch('/api/config/api/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -182,18 +157,10 @@ export function AuthDialog({ isOpen, onClose, onSuccess }: AuthDialogProps) {
     setSaving(true);
     setError(null);
     try {
-      const payload: any = {
+      const payload = buildRuntimeBackendConfigPayload(activeTab, {
         apiKey,
-        apiProvider: activeTab === 'claude-compatible-api' ? 'anthropic' : 'openai-compatible',
-        runtimeBackend: activeTab,
-        runtimeProvider: activeTab === 'claude-compatible-api' ? 'anthropic' : 'codex',
-        authPriority: 'apiKey',
-      };
-      if (apiBaseUrl) {
-        payload.apiBaseUrl = apiBaseUrl;
-      } else if (provider.defaultBaseUrl) {
-        payload.apiBaseUrl = provider.defaultBaseUrl;
-      }
+        apiBaseUrl: apiBaseUrl || provider.defaultBaseUrl || undefined,
+      });
 
       const response = await fetch('/api/config/api', {
         method: 'PUT',
@@ -208,7 +175,7 @@ export function AuthDialog({ isOpen, onClose, onSuccess }: AuthDialogProps) {
         return;
       }
 
-      setCurrentRuntimeBackend(payload.runtimeBackend);
+      setCurrentRuntimeBackend(activeTab);
       handleSuccess();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -229,7 +196,7 @@ export function AuthDialog({ isOpen, onClose, onSuccess }: AuthDialogProps) {
 
         <div className="auth-dialog-body">
           <aside className="auth-dialog-sidebar">
-            {BACKEND_GROUPS.map(group => (
+            {runtimeGroups.map(group => (
               <section key={group.id} className="auth-sidebar-group">
                 <div className="auth-sidebar-group-header">
                   <div className="auth-sidebar-group-title">
@@ -240,8 +207,8 @@ export function AuthDialog({ isOpen, onClose, onSuccess }: AuthDialogProps) {
                   </div>
                 </div>
                 <div className="auth-sidebar-list">
-                  {group.items.map(backend => {
-                    const tab = AUTH_BACKENDS.find(item => item.id === backend)!;
+                  {group.items.map(option => {
+                    const backend = option.backend;
                     const isActive = activeTab === backend;
                     const isCurrent = currentRuntimeBackend === backend;
                     return (
@@ -253,7 +220,7 @@ export function AuthDialog({ isOpen, onClose, onSuccess }: AuthDialogProps) {
                       >
                         <div className="auth-sidebar-card-top">
                           <div className="auth-sidebar-card-title-wrap">
-                            <span className="tab-icon">{tab.icon}</span>
+                            <span className="tab-icon">{option.icon}</span>
                             <span className="tab-label">{getRuntimeBackendLabel(backend)}</span>
                           </div>
                           {isCurrent && (

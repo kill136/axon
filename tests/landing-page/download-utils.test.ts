@@ -1,4 +1,3 @@
-import { createHmac } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -34,16 +33,6 @@ const {
     mirrorRegion: string;
   } | null;
 };
-
-function buildExpectedQiniuSignedUrl(filename: string, nowMs: number, ttlSeconds = 300) {
-  const deadline = Math.floor(nowMs / 1000) + ttlSeconds;
-  const baseToSign = `http://cdn.chatbi.site/${filename}?e=${deadline}`;
-  const token = `test-ak:${String(
-    createHmac('sha1', 'test-sk').update(baseToSign).digest('base64'),
-  ).replace(/\//g, '_').replace(/\+/g, '-')}`;
-
-  return `${baseToSign}&token=${token}`;
-}
 
 describe('landing-page download utils', () => {
   afterEach(() => {
@@ -116,50 +105,6 @@ describe('landing-page download utils', () => {
     const target = resolveDownloadTarget({
       filename: 'Axon-Setup.exe',
       env: {},
-      region: 'cn',
-    });
-
-    expect(target).toEqual({
-      type: 'github-proxy',
-      region: 'cn',
-      redirectUrl: null,
-      source: 'github-proxy',
-      mirrorRegion: null,
-    });
-  });
-
-  it('builds a signed qiniu mirror url for cn stable downloads when static mirrors are absent', () => {
-    const nowMs = Date.parse('2026-03-22T08:00:00.000Z');
-    vi.useFakeTimers();
-    vi.setSystemTime(nowMs);
-
-    const target = resolveDownloadTarget({
-      filename: 'Axon-Setup.exe',
-      env: {
-        QINIU_ACCESS_KEY: 'test-ak',
-        QINIU_SECRET_KEY: 'test-sk',
-        QINIU_PUBLIC_BASE_URL: 'http://cdn.chatbi.site',
-      },
-      region: 'cn',
-    });
-
-    expect(target).toEqual({
-      type: 'mirror',
-      region: 'cn',
-      redirectUrl: buildExpectedQiniuSignedUrl('Axon-Setup.exe', nowMs),
-      source: 'QINIU_SIGNED_URL',
-      mirrorRegion: 'cn',
-    });
-  });
-
-  it('does not sign versioned archives through qiniu when only stable aliases should use the mirror', () => {
-    const target = resolveDownloadTarget({
-      filename: 'axon-windows-x64-v2.5.1.zip',
-      env: {
-        QINIU_ACCESS_KEY: 'test-ak',
-        QINIU_SECRET_KEY: 'test-sk',
-        QINIU_PUBLIC_BASE_URL: 'http://cdn.chatbi.site',
-      },
       region: 'cn',
     });
 

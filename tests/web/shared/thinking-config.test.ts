@@ -99,5 +99,47 @@ describe('web thinking config', () => {
       enableThinking: false,
       reasoningEffort: 'none',
     });
+
+    expect(
+      getResolvedWebThinkingConfig('claude-subscription', 'haiku', {
+        enabled: true,
+        level: 'high',
+      }),
+    ).toEqual({
+      enabled: false,
+      level: 'high',
+    });
+
+    expect(
+      getResolvedWebThinkingConfig('claude-subscription', 'claude-3-5-sonnet-20241022', {
+        enabled: true,
+        level: 'high',
+      }),
+    ).toEqual({
+      enabled: false,
+      level: 'high',
+    });
+  });
+
+  it('should keep anthropic thinking enabled for Claude 4 aliases and ids', () => {
+    expect(
+      getResolvedWebThinkingConfig('claude-subscription', 'sonnet', {
+        enabled: true,
+        level: 'medium',
+      }),
+    ).toEqual({
+      enabled: true,
+      level: 'medium',
+    });
+
+    expect(
+      getResolvedWebThinkingConfig('claude-subscription', 'claude-sonnet-4-20250514', {
+        enabled: true,
+        level: 'high',
+      }),
+    ).toEqual({
+      enabled: true,
+      level: 'high',
+    });
   });
 });

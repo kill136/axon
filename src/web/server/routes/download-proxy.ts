@@ -12,7 +12,6 @@
  *   GET /api/download/latest - 返回最新 release 信息
  */
 
-import { createHmac } from 'node:crypto';
 import { Router, Request, Response } from 'express';
 
 const router = Router();
@@ -38,7 +37,6 @@ const STABLE_MIRROR_FILES = [
 
 type DownloadRegion = 'auto' | 'cn' | 'global';
 type MirrorRegion = Exclude<DownloadRegion, 'auto'>;
-type StableMirrorFile = (typeof STABLE_MIRROR_FILES)[number];
 
 function isAllowed(filename: string): boolean {
   return ALLOWED_FILES.some(p => p.test(filename));
@@ -142,53 +140,6 @@ function resolveConfiguredUrl(rawUrl: string, envName: string): string {
   }
 }
 
-function isStableMirrorFile(filename: string): filename is StableMirrorFile {
-  return (STABLE_MIRROR_FILES as readonly string[]).includes(filename);
-}
-
-function base64ToUrlSafe(value: string): string {
-  return String(value).replace(/\//g, '_').replace(/\+/g, '-');
-}
-
-function normalizeQiniuSignedUrlTtlSeconds(value: string | null, fallback = 300): number {
-  const parsed = Number.parseInt(String(value ?? ''), 10);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return fallback;
-  }
-
-  return parsed;
-}
-
-function buildQiniuSignedUrl(
-  filename: string,
-  env: NodeJS.ProcessEnv = process.env,
-  nowMs = Date.now(),
-): string | null {
-  if (!isStableMirrorFile(filename)) {
-    return null;
-  }
-
-  const accessKey = readEnv(env, 'QINIU_ACCESS_KEY');
-  const secretKey = readEnv(env, 'QINIU_SECRET_KEY');
-  const baseUrl = readEnv(env, 'QINIU_PUBLIC_BASE_URL');
-  if (!accessKey || !secretKey || !baseUrl) {
-    return null;
-  }
-
-  const ttlSeconds = normalizeQiniuSignedUrlTtlSeconds(
-    readEnv(env, 'QINIU_SIGNED_URL_TTL_SECONDS'),
-  );
-  const deadline = Math.floor(nowMs / 1000) + ttlSeconds;
-  const objectUrl = buildMirrorUrl(baseUrl, filename, 'QINIU_PUBLIC_BASE_URL');
-  const separator = objectUrl.includes('?') ? '&' : '?';
-  const baseToSign = `${objectUrl}${separator}e=${deadline}`;
-  const token = `${accessKey}:${base64ToUrlSafe(
-    createHmac('sha1', secretKey).update(baseToSign).digest('base64'),
-  )}`;
-
-  return `${baseToSign}&token=${token}`;
-}
-
 function resolveMirrorUrl(
   filename: string,
   env: NodeJS.ProcessEnv = process.env,
@@ -278,19 +229,6 @@ function resolveDownloadTarget(input: {
       source: mirror.source,
       mirrorRegion: mirror.mirrorRegion,
     };
-  }
-
-  if (preferredRegion === 'cn') {
-    const signedUrl = buildQiniuSignedUrl(input.filename, input.env);
-    if (signedUrl) {
-      return {
-        type: 'mirror',
-        region: preferredRegion,
-        redirectUrl: signedUrl,
-        source: 'QINIU_SIGNED_URL',
-        mirrorRegion: 'cn',
-      };
-    }
   }
 
   return {

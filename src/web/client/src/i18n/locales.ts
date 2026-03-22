@@ -137,6 +137,7 @@ const en: Translations = {
 
   // UserQuestionDialog
   'question.defaultHeader': 'Please answer the question',
+  'question.missingPrompt': 'The question text did not load correctly. Answer from context, or choose Skip.',
   'question.placeholder': 'Enter your answer...',
   'question.skip': 'Skip',
   'question.submit': 'Submit',
@@ -2060,6 +2061,7 @@ const zh: Translations = {
   'message.showLess': '收起',
   // UserQuestionDialog
   'question.defaultHeader': '请回答以下问题',
+  'question.missingPrompt': '问题内容未正确显示，请根据上下文回答，或点击 Skip 跳过。',
   'question.placeholder': '输入你的回答...',
   'question.skip': 'Skip',
   'question.submit': '提交',

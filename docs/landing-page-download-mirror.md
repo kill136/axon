@@ -17,12 +17,9 @@
 
 - 腾讯云 COS 默认 HTTPS 域名
 - 阿里云 OSS + CDN
-- 七牛云 Kodo
 - Cloudflare R2 + 国内可访问 CDN
 
 如果你想少折腾证书，当前最省事的是腾讯云 COS 默认域名方案，可以看 [docs/tencent-cos-download-mirror.md](/f:/claude-code-open/docs/tencent-cos-download-mirror.md)。
-
-如果你直接使用七牛 Kodo，可以看 [docs/qiniu-download-mirror.md](/f:/claude-code-open/docs/qiniu-download-mirror.md)。
 
 ## 环境变量
 

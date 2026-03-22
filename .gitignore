@@ -2,6 +2,8 @@ node_modules/
 .node/
 dist/
 release/
+!tests/release/
+!tests/release/**/*.test.ts
 *.log
 .DS_Store
 .env

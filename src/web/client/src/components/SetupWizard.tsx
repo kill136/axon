@@ -1,9 +1,9 @@
 /**
  * 首次启动引导 Setup Wizard
- * 4 步：语言 → 选择运行方式 → 配置认证 → 完成
+ * 4 步：语言 → 选择运行方式 → 配置认证 → 使用引导
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLanguage } from '../i18n';
 import type { Locale } from '../i18n';
 import { OAuthLogin } from './auth/OAuthLogin';
@@ -21,12 +21,18 @@ const SETUP_DONE_KEY = 'axon_setup_done';
 
 interface SetupWizardProps {
   onComplete: () => void;
+  onOpenFolder?: () => Promise<unknown> | unknown;
+  currentProjectName?: string | null;
 }
 
-type WizardStep = 'language' | 'runtime' | 'auth' | 'done';
-const STEPS: WizardStep[] = ['language', 'runtime', 'auth', 'done'];
+type WizardStep = 'language' | 'runtime' | 'auth' | 'usage';
+const STEPS: WizardStep[] = ['language', 'runtime', 'auth', 'usage'];
 
-export function SetupWizard({ onComplete }: SetupWizardProps) {
+export function SetupWizard({
+  onComplete,
+  onOpenFolder,
+  currentProjectName = null,
+}: SetupWizardProps) {
   const { locale, setLocale, t } = useLanguage();
   const [step, setStep] = useState<WizardStep>('language');
   const [selectedBackend, setSelectedBackend] = useState<WebRuntimeBackend>('axon-cloud');
@@ -41,17 +47,36 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+  const [openingFolder, setOpeningFolder] = useState(false);
+  const [folderError, setFolderError] = useState<string | null>(null);
 
   const currentStepIndex = STEPS.indexOf(step);
   const runtimeOptions = getSetupRuntimeOptions();
   const authSpec = getRuntimeBackendAuthSpec(selectedBackend);
   const providerChoices = authSpec.providerOptions;
   const provider = providerChoices.find(option => option.id === selectedApiProvider) || providerChoices[0];
-  const showOpenAiCompatibleHint = step === 'auth' && selectedBackend === 'openai-compatible-api';
-  const showUnsupportedTestHint = step === 'auth' && !authSpec.testConnection && !showOpenAiCompatibleHint;
+  const runtimeDescriptionKey = `setupWizard.runtime.${selectedBackend}.desc`;
+  const isAxonCloudAuthStep = step === 'auth' && authSpec.authMode === 'axon-cloud';
+  const isOauthAuthStep = step === 'auth' && authSpec.authMode === 'oauth';
+  const isApiAuthStep = step === 'auth' && authSpec.authMode === 'api-key';
+  const showOpenAiCompatibleHint =
+    isApiAuthStep
+    && authSpec.runtimeProvider === 'codex'
+    && providerChoices.length > 1;
+  const showUnsupportedTestHint = isApiAuthStep && !authSpec.testConnection && !showOpenAiCompatibleHint;
+  const hasSelectedProject = !!currentProjectName;
+
+  useEffect(() => {
+    if (currentProjectName) {
+      setFolderError(null);
+    }
+  }, [currentProjectName]);
 
   const goNext = () => {
-    // 其他步骤正常前进
+    setError(null);
+    setTestResult('idle');
+    setFolderError(null);
+
     const nextIndex = currentStepIndex + 1;
     if (nextIndex < STEPS.length) {
       setStep(STEPS[nextIndex]);
@@ -63,45 +88,41 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
       setStep('runtime');
       setError(null);
       setTestResult('idle');
+      setFolderError(null);
       return;
     }
 
-    // 其他步骤正常后退
     const prevIndex = currentStepIndex - 1;
     if (prevIndex >= 0) {
       setStep(STEPS[prevIndex]);
       setError(null);
       setTestResult('idle');
+      setFolderError(null);
     }
   };
 
-  // 进入 auth 步骤时，重置 auth 相关状态
   const goToAuth = () => {
     setError(null);
     setTestResult('idle');
+    setFolderError(null);
     setApiKey('');
     setApiBaseUrl('');
     setSelectedApiProvider(authSpec.providerOptions[0]?.id || 'openai');
     setStep('auth');
   };
 
-  // OAuth 登录成功回调
   const handleOAuthSuccess = () => {
     saveConfig().then(() => {
-      localStorage.setItem(SETUP_DONE_KEY, 'true');
       goNext();
     });
   };
 
-  // Axon Cloud 认证成功回调
   const handleAxonCloudSuccess = async (data: { username: string; quota: number }) => {
     await saveConfig();
     setAxonCloudUser(data);
-    localStorage.setItem(SETUP_DONE_KEY, 'true');
-    setStep('done');
+    setStep('usage');
   };
 
-  // 保存配置
   const saveConfig = async () => {
     try {
       const payload = buildRuntimeBackendConfigPayload(selectedBackend);
@@ -115,7 +136,6 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
     }
   };
 
-  // API Key 模式 - 测试连接
   const handleTestConnection = async () => {
     if (!authSpec.testConnection) {
       return;
@@ -123,8 +143,16 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
     setTestResult('testing');
     setError(null);
     try {
-      const payload: any = { apiKey };
-      if (apiBaseUrl) payload.apiBaseUrl = apiBaseUrl;
+      const payload: any = {
+        apiKey,
+        runtimeBackend: selectedBackend,
+        apiProvider: authSpec.apiProvider,
+      };
+      if (apiBaseUrl) {
+        payload.apiBaseUrl = apiBaseUrl;
+      } else if (provider?.defaultBaseUrl) {
+        payload.apiBaseUrl = provider.defaultBaseUrl;
+      }
       const response = await fetch('/api/config/api/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -143,7 +171,6 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
     }
   };
 
-  // API Key 模式 - 保存并完成
   const handleSaveApiKey = async () => {
     setSaving(true);
     setError(null);
@@ -166,12 +193,28 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
         return;
       }
 
-      localStorage.setItem(SETUP_DONE_KEY, 'true');
       goNext();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleUsageOpenFolder = async () => {
+    if (!onOpenFolder || openingFolder) {
+      return;
+    }
+
+    setOpeningFolder(true);
+    setFolderError(null);
+
+    try {
+      await onOpenFolder();
+    } catch (err) {
+      setFolderError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setOpeningFolder(false);
     }
   };
 
@@ -185,13 +228,6 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
     onComplete();
   };
 
-  const isOauthAuthStep =
-    step === 'auth'
-    && (selectedBackend === 'claude-subscription' || selectedBackend === 'codex-subscription');
-  const isApiAuthStep =
-    step === 'auth'
-    && (selectedBackend === 'claude-compatible-api' || selectedBackend === 'openai-compatible-api');
-
   const modalClassName = [
     'setup-wizard-modal',
     step === 'runtime' ? 'runtime-step' : '',
@@ -204,7 +240,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
       <div className={modalClassName}>
         {/* Progress bar */}
         <div className="setup-wizard-progress">
-          {STEPS.slice(0, -1).map((s, i) => (
+          {STEPS.map((s, i) => (
             <div
               key={s}
               className={`setup-wizard-progress-dot ${i <= currentStepIndex ? 'active' : ''} ${i < currentStepIndex ? 'completed' : ''}`}
@@ -261,10 +297,10 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
           )}
 
           {/* Step 3: Runtime Auth */}
-          {step === 'auth' && selectedBackend === 'axon-cloud' && (
+          {isAxonCloudAuthStep && (
             <div className="setup-wizard-step">
               <h2>{getRuntimeBackendLabel(selectedBackend)}</h2>
-              <p className="setup-wizard-desc">{t('setupWizard.runtime.axon-cloud.desc')}</p>
+              <p className="setup-wizard-desc">{t(runtimeDescriptionKey)}</p>
               <AxonCloudAuth
                 onSuccess={handleAxonCloudSuccess}
                 onError={(err) => setError(err)}
@@ -272,36 +308,30 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
             </div>
           )}
 
-          {step === 'auth' && selectedBackend === 'claude-subscription' && (
+          {isOauthAuthStep && (
             <div className="setup-wizard-step">
               <h2>{getRuntimeBackendLabel(selectedBackend)}</h2>
-              <p className="setup-wizard-desc">{t('setupWizard.runtime.claude-subscription.desc')}</p>
+              <p className="setup-wizard-desc">{t(runtimeDescriptionKey)}</p>
               <div className="setup-wizard-oauth-embed">
-                <OAuthLogin
-                  onSuccess={handleOAuthSuccess}
-                  onError={(err) => setError(err)}
-                />
+                {authSpec.runtimeProvider === 'codex' ? (
+                  <CodexLogin
+                    onSuccess={handleOAuthSuccess}
+                    onError={(err) => setError(err)}
+                  />
+                ) : (
+                  <OAuthLogin
+                    onSuccess={handleOAuthSuccess}
+                    onError={(err) => setError(err)}
+                  />
+                )}
               </div>
             </div>
           )}
 
-          {step === 'auth' && selectedBackend === 'codex-subscription' && (
+          {isApiAuthStep && (
             <div className="setup-wizard-step">
               <h2>{getRuntimeBackendLabel(selectedBackend)}</h2>
-              <p className="setup-wizard-desc">{t('setupWizard.runtime.codex-subscription.desc')}</p>
-              <div className="setup-wizard-oauth-embed">
-                <CodexLogin
-                  onSuccess={handleOAuthSuccess}
-                  onError={(err) => setError(err)}
-                />
-              </div>
-            </div>
-          )}
-
-          {step === 'auth' && (selectedBackend === 'claude-compatible-api' || selectedBackend === 'openai-compatible-api') && (
-            <div className="setup-wizard-step">
-              <h2>{getRuntimeBackendLabel(selectedBackend)}</h2>
-              <p className="setup-wizard-desc">{t(`setupWizard.runtime.${selectedBackend}.desc`)}</p>
+              <p className="setup-wizard-desc">{t(runtimeDescriptionKey)}</p>
 
               <div className="setup-wizard-apikey-form">
                 {providerChoices.length > 1 && (
@@ -374,24 +404,68 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
             </div>
           )}
 
-          {/* Step 5: Done */}
-          {step === 'done' && (
-            <div className="setup-wizard-step setup-wizard-done">
+          {/* Step 4: Usage onboarding */}
+          {step === 'usage' && (
+            <div className="setup-wizard-step setup-wizard-done setup-wizard-usage">
               <div className="done-icon">✨</div>
-              <h2>{t('setupWizard.done.title')}</h2>
-              {axonCloudUser ? (
-                <p className="setup-wizard-desc">
-                  {t('axonCloud.welcome', { username: axonCloudUser.username })}
-                  <br />
-                  {t('axonCloud.balance')}: {axonCloudUser.quota}
-                </p>
-              ) : (
-                <p className="setup-wizard-desc">{t('setupWizard.done.desc')}</p>
+              <h2>{t('setupWizard.usage.title')}</h2>
+              {axonCloudUser && (
+                <div className="setup-wizard-usage-account">
+                  <span>{t('axonCloud.welcome', { username: axonCloudUser.username })}</span>
+                  <span>{t('axonCloud.balance')}: {axonCloudUser.quota}</span>
+                </div>
               )}
-              <div className="setup-wizard-done-tips">
-                <div className="done-tip">💡 {t('setupWizard.done.tip1')}</div>
-                <div className="done-tip">🔍 {t('setupWizard.done.tip2')}</div>
-                <div className="done-tip">📋 {t('setupWizard.done.tip3')}</div>
+              <p className="setup-wizard-desc">{t('setupWizard.usage.desc')}</p>
+
+              <div className="setup-wizard-usage-list">
+                <div className={`setup-wizard-usage-card ${hasSelectedProject ? 'completed' : ''}`}>
+                  <div className="setup-wizard-usage-index">1</div>
+                  <div className="setup-wizard-usage-body">
+                    <h3>{t('setupWizard.usage.project.title')}</h3>
+                    <p>{t('setupWizard.usage.project.desc')}</p>
+                    {hasSelectedProject ? (
+                      <div className="setup-wizard-usage-status ready">
+                        {t('setupWizard.usage.projectReadyLabel')} <strong>{currentProjectName}</strong>
+                      </div>
+                    ) : (
+                      <div className="setup-wizard-usage-status">
+                        {t('setupWizard.usage.projectPending')}
+                      </div>
+                    )}
+                    {folderError && <div className="setup-wizard-error">{folderError}</div>}
+                  </div>
+                  {onOpenFolder && (
+                    <button
+                      className="setup-wizard-usage-action"
+                      onClick={handleUsageOpenFolder}
+                      disabled={openingFolder}
+                    >
+                      {openingFolder
+                        ? t('setupWizard.usage.projectOpening')
+                        : hasSelectedProject
+                          ? t('setupWizard.usage.changeFolder')
+                          : t('setupWizard.usage.openFolder')}
+                    </button>
+                  )}
+                </div>
+
+                <div className="setup-wizard-usage-card">
+                  <div className="setup-wizard-usage-index">2</div>
+                  <div className="setup-wizard-usage-body">
+                    <h3>{t('setupWizard.usage.chat.title')}</h3>
+                    <p>{t('setupWizard.usage.chat.desc')}</p>
+                    <div className="setup-wizard-usage-note">{t('setupWizard.usage.chat.example')}</div>
+                  </div>
+                </div>
+
+                <div className="setup-wizard-usage-card">
+                  <div className="setup-wizard-usage-index">3</div>
+                  <div className="setup-wizard-usage-body">
+                    <h3>{t('setupWizard.usage.workspace.title')}</h3>
+                    <p>{t('setupWizard.usage.workspace.desc')}</p>
+                    <div className="setup-wizard-usage-note">{t('setupWizard.usage.workspace.note')}</div>
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -399,14 +473,14 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
 
         {/* Footer buttons */}
         <div className="setup-wizard-footer">
-          {step !== 'done' && (
+          {step !== 'usage' && (
             <button className="setup-wizard-skip-btn" onClick={handleSkip}>
               {t('setupWizard.skip')}
             </button>
           )}
 
           <div className="setup-wizard-nav-buttons">
-            {currentStepIndex > 0 && step !== 'done' && (
+            {currentStepIndex > 0 && (
               <button className="setup-wizard-back-btn" onClick={goBack}>
                 {t('setupWizard.back')}
               </button>
@@ -439,13 +513,13 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
               null
             )}
 
-            {step === 'auth' && selectedBackend === 'axon-cloud' && (
+            {step === 'auth' && authSpec.authMode === 'axon-cloud' && (
               // Axon Cloud 模式由 AxonCloudAuth 组件成功回调推进
               null
             )}
 
-            {step === 'done' && (
-              <button className="setup-wizard-next-btn primary" onClick={handleFinish}>
+            {step === 'usage' && (
+              <button className="setup-wizard-next-btn primary" onClick={handleFinish} disabled={openingFolder}>
                 {t('setupWizard.startUsing')}
               </button>
             )}

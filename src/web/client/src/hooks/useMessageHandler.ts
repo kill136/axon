@@ -16,6 +16,7 @@ import type { ContextUsage, CompactState } from '../components/ContextBar';
 import type { SlashCommandResult } from '../components/SlashCommandDialog';
 import { playNotificationSound } from './useNotificationSound';
 import { createAssistantMessage } from '../utils/assistantMessage';
+import { normalizeUserQuestionPayload } from '../utils/userQuestion';
 
 export type Status = 'idle' | 'thinking' | 'streaming' | 'tool_executing';
 export type PermissionMode = 'default' | 'bypassPermissions' | 'acceptEdits' | 'plan';
@@ -162,10 +163,11 @@ export function useMessageHandler({
           });
           playNotificationSound('warning');
         } else if (msg.type === 'user_question') {
+          const normalizedQuestion = normalizeUserQuestionPayload(payload);
           setCrossSessionNotification({
             sessionId: msgSessionId,
             type: 'user_question',
-            questionHeader: (payload as any).header,
+            questionHeader: normalizedQuestion?.header,
             timestamp: Date.now(),
           });
           playNotificationSound('attention');
@@ -277,17 +279,32 @@ export function useMessageHandler({
         case 'tool_use_start':
           if (currentMessageRef.current) {
             const currentMsg = currentMessageRef.current;
-            const newContent = [
-              ...currentMsg.content,
-              {
-                type: 'tool_use' as const,
-                id: payload.toolUseId as string,
-                name: payload.toolName as string,
-                input: payload.input,
-                status: 'running' as const,
-                toolCategory: payload.toolCategory as string | undefined,
-              },
-            ];
+            const existingToolUseIndex = currentMsg.content.findIndex(
+              c => c.type === 'tool_use' && c.id === payload.toolUseId
+            );
+            const newToolUse = {
+              type: 'tool_use' as const,
+              id: payload.toolUseId as string,
+              name: payload.toolName as string,
+              input: payload.input,
+              status: 'running' as const,
+              toolCategory: payload.toolCategory as string | undefined,
+            };
+            const newContent = existingToolUseIndex === -1
+              ? [...currentMsg.content, newToolUse]
+              : currentMsg.content.map((item, index) => {
+                  if (index !== existingToolUseIndex || item.type !== 'tool_use') {
+                    return item;
+                  }
+
+                  return {
+                    ...item,
+                    name: payload.toolName as string || item.name,
+                    input: payload.input ?? item.input,
+                    status: 'running' as const,
+                    toolCategory: (payload.toolCategory as string | undefined) ?? item.toolCategory,
+                  };
+                });
             const updatedMsg = { ...currentMsg, content: newContent };
             currentMessageRef.current = updatedMsg;
             setMessages(prev => {
@@ -496,7 +513,7 @@ export function useMessageHandler({
           break;
 
         case 'user_question':
-          setUserQuestion(payload as unknown as UserQuestion);
+          setUserQuestion(normalizeUserQuestionPayload(payload));
           break;
 
         case 'session_list_response':

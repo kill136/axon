@@ -5,6 +5,7 @@
  */
 
 import { configManager } from '../config/index.js';
+import { getResolvedModelOutputTokenLimits } from '../models/model-limits.js';
 
 /**
  * 获取模型的 max_tokens 默认值和上限
@@ -14,6 +15,11 @@ import { configManager } from '../config/index.js';
  */
 export function getModelOutputTokenLimits(model: string): { default: number; upperLimit: number } {
   const normalized = model.toLowerCase();
+  const resolvedLimits = getResolvedModelOutputTokenLimits(model);
+
+  if (resolvedLimits) {
+    return resolvedLimits;
+  }
 
   // 对齐官方 oa() 逻辑
   if (normalized.includes('opus-4-5') || normalized.includes('opus-4-6') ||

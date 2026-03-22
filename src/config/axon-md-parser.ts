@@ -13,6 +13,25 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { createClaudeMdTemplate } from '../rules/index.js';
 
+function getSafeProcessEnv(key: string): string | undefined {
+  if (typeof process === 'undefined' || !process?.env) {
+    return undefined;
+  }
+  return process.env[key];
+}
+
+function getSafeCurrentWorkingDir(fallback = '.'): string {
+  if (typeof process === 'undefined' || typeof process?.cwd !== 'function') {
+    return fallback;
+  }
+
+  try {
+    return process.cwd();
+  } catch {
+    return fallback;
+  }
+}
+
 /**
  * 允许的文本文件扩展名集合 (从官方源码提取)
  * 只有这些扩展名的文件才能被 @include
@@ -74,7 +93,7 @@ export class AxonMdParser {
   private additionalDirectories: string[] = [];
 
   constructor(workingDir?: string, additionalDirectories?: string[]) {
-    this.workingDir = workingDir || process.cwd();
+    this.workingDir = workingDir || getSafeCurrentWorkingDir();
     this.axonMdPath = path.join(this.workingDir, 'AXON.md');
     this.additionalDirectories = additionalDirectories || [];
   }
@@ -93,7 +112,7 @@ export class AxonMdParser {
    * 检查是否启用额外目录 AXON.md 加载 (v2.1.20+)
    */
   private isAdditionalAxonMdEnabled(): boolean {
-    const envValue = process.env.AXON_ADDITIONAL_DIRECTORIES_AXON_MD;
+    const envValue = getSafeProcessEnv('AXON_ADDITIONAL_DIRECTORIES_AXON_MD');
     return envValue === '1' || envValue === 'true';
   }
 
@@ -199,7 +218,7 @@ export class AxonMdParser {
    */
   private resolveIncludePath(includePath: string): string {
     if (includePath.startsWith('~/')) {
-      const homeDir = process.env.HOME || process.env.USERPROFILE || '';
+      const homeDir = getSafeProcessEnv('HOME') || getSafeProcessEnv('USERPROFILE') || '';
       return path.join(homeDir, includePath.slice(2));
     }
     if (includePath.startsWith('/')) {
@@ -439,7 +458,7 @@ ${info.content}
       return false;
     }
 
-    const projectName = path.basename(process.cwd());
+    const projectName = path.basename(this.workingDir || getSafeCurrentWorkingDir());
     const template = content || AxonMdParser.createTemplate(projectName);
 
     try {

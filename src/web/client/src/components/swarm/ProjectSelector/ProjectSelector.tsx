@@ -10,7 +10,7 @@ export type { Project } from '../../../contexts/ProjectContext';
  * ProjectSelector 组件属性
  */
 export interface ProjectSelectorProps {
-  /** 请求打开文件夹回调（现为"导入历史作品"） */
+  /** 请求打开文件夹回调 */
   onOpenFolder?: () => void;
   /** 创建作品回调（AI 帮我做） */
   onCreateApp?: () => void;
@@ -34,7 +34,7 @@ export default function ProjectSelector({
   const selectorRef = useRef<HTMLDivElement>(null);
 
   const displayName = currentProject?.name || t('projectSelector.noProject');
-  const displayIcon = currentProject?.icon || (currentProject ? '📁' : '✨');
+  const displayIcon = currentProject?.icon || (currentProject ? '📁' : '📂');
 
   // 点击外部关闭
   useEffect(() => {
@@ -82,7 +82,7 @@ export default function ProjectSelector({
       {isOpen && (
         <div className={styles.dropdown} role="listbox">
 
-          {/* AI 帮我做 + 导入历史作品 */}
+          {/* AI 帮我做 + 打开文件夹 */}
           <div className={styles.actionRow}>
             <button className={styles.actionButton} onClick={() => { onCreateApp?.(); close(); }}>
               <span className={styles.actionIcon}>✨</span>
@@ -90,7 +90,7 @@ export default function ProjectSelector({
             </button>
             <button className={styles.actionButton} onClick={() => { onOpenFolder?.(); close(); }}>
               <span className={styles.actionIcon}>📂</span>
-              <span>{t('projectSelector.importWorks')}</span>
+              <span>{t('projectSelector.openFolder')}</span>
             </button>
           </div>
 
@@ -108,6 +108,7 @@ export default function ProjectSelector({
               <div className={styles.emptyState}>
                 <div className={styles.emptyIcon}>📂</div>
                 <p>{t('projectSelector.noRecentProjects')}</p>
+                <p className={styles.emptyHint}>{t('projectSelector.noRecentProjectsHint')}</p>
               </div>
             ) : (
               recentProjects.map((project) => (

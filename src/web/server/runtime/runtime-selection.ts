@@ -9,6 +9,7 @@ export interface RuntimeSelectionOptions {
   runtimeBackend: WebRuntimeBackend;
   model?: string;
   defaultModelByBackend?: Partial<Record<WebRuntimeBackend, string>>;
+  customModelCatalogByBackend?: Partial<Record<WebRuntimeBackend, string[]>>;
   codexModelName?: string;
   customModelName?: string;
 }
@@ -37,8 +38,9 @@ export function getConfiguredRuntimeModelName(
 
   switch (runtimeBackend) {
     case 'codex-subscription':
-    case 'openai-compatible-api':
       return trimToUndefined(codexModelName);
+    case 'openai-compatible-api':
+      return trimToUndefined(codexModelName) || trimToUndefined(customModelName);
     case 'axon-cloud':
       return trimToUndefined(codexModelName) || trimToUndefined(customModelName);
     case 'claude-subscription':
@@ -49,6 +51,7 @@ export function getConfiguredRuntimeModelName(
 }
 
 export function resolveRuntimeSelection(options: RuntimeSelectionOptions): RuntimeSelectionResult {
+  const availableModels = options.customModelCatalogByBackend?.[options.runtimeBackend];
   const customModelName = getConfiguredRuntimeModelName(
     options.runtimeBackend,
     options.defaultModelByBackend,
@@ -59,10 +62,11 @@ export function resolveRuntimeSelection(options: RuntimeSelectionOptions): Runti
     options.runtimeBackend,
     options.model,
     customModelName,
+    availableModels,
   );
   const provider = getProviderForRuntimeBackend(
     options.runtimeBackend,
-    customModelName || normalizedModel,
+    normalizedModel,
   );
 
   return {

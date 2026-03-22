@@ -9,16 +9,6 @@ type HttpResponse = {
   body: string;
 };
 
-function escapeRegex(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function expectQiniuSignedLocation(value: string | string[] | undefined, filename: string) {
-  expect(value).toEqual(expect.stringMatching(
-    new RegExp(`^http://cdn\\.chatbi\\.site/${escapeRegex(filename)}\\?e=\\d+&token=test-ak:[A-Za-z0-9_\\-=]+$`),
-  ));
-}
-
 async function startServer() {
   const { default: router } = await import('../../../src/web/server/routes/download-proxy.js');
   const app = express();
@@ -83,10 +73,6 @@ describe('download-proxy route', () => {
     delete process.env.DOWNLOAD_MIRROR_CN_BASE_URL;
     delete process.env.DOWNLOAD_MIRROR_AXON_SETUP_EXE_URL;
     delete process.env.DOWNLOAD_MIRROR_BASE_URL;
-    delete process.env.QINIU_ACCESS_KEY;
-    delete process.env.QINIU_SECRET_KEY;
-    delete process.env.QINIU_PUBLIC_BASE_URL;
-    delete process.env.QINIU_SIGNED_URL_TTL_SECONDS;
   });
 
   afterEach(() => {
@@ -122,20 +108,6 @@ describe('download-proxy route', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('redirects China traffic to a qiniu signed mirror when no static mirror is configured', async () => {
-    const fetchMock = vi.fn();
-    vi.stubGlobal('fetch', fetchMock);
-    process.env.QINIU_ACCESS_KEY = 'test-ak';
-    process.env.QINIU_SECRET_KEY = 'test-sk';
-    process.env.QINIU_PUBLIC_BASE_URL = 'http://cdn.chatbi.site';
-
-    const response = await request('/download/Axon-Setup.exe?region=cn');
-
-    expect(response.statusCode).toBe(302);
-    expectQiniuSignedLocation(response.headers.location, 'Axon-Setup.exe');
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
   it('returns mirror-only metadata when GitHub token is missing but mirrors are configured', async () => {
     process.env.DOWNLOAD_MIRROR_CN_AXON_SETUP_EXE_URL = 'https://mirror.example.com/Axon-Setup.exe';
 
@@ -154,34 +126,14 @@ describe('download-proxy route', () => {
     ]));
   });
 
-  it('returns qiniu signed mirror metadata when GitHub token is missing and qiniu signing is configured', async () => {
-    process.env.QINIU_ACCESS_KEY = 'test-ak';
-    process.env.QINIU_SECRET_KEY = 'test-sk';
-    process.env.QINIU_PUBLIC_BASE_URL = 'http://cdn.chatbi.site';
-
-    const response = await request('/api/download/latest?region=cn');
-    const body = JSON.parse(response.body);
-    const exeAsset = body.assets.find((asset: { name: string }) => asset.name === 'Axon-Setup.exe');
-
-    expect(response.statusCode).toBe(200);
-    expect(body.preferred_region).toBe('cn');
-    expect(exeAsset).toEqual(expect.objectContaining({
-      name: 'Axon-Setup.exe',
-      url: '/download/Axon-Setup.exe?region=cn',
-      source: 'QINIU_SIGNED_URL',
-      region: 'cn',
-    }));
-    expectQiniuSignedLocation(exeAsset?.direct_url, 'Axon-Setup.exe');
-  });
-
   it('falls back to GitHub release redirects when no mirror is configured', async () => {
     process.env.GITHUB_TOKEN = 'gh-token';
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({
-          tag_name: 'v2.5.1',
-          name: 'v2.5.1',
+          tag_name: 'v2.6.0',
+          name: 'v2.6.0',
           published_at: '2026-03-22T00:00:00.000Z',
           assets: [
             {

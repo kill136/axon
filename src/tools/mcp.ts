@@ -20,6 +20,7 @@ import { MAX_MCP_OUTPUT_TOKENS, truncateMcpOutput } from '../utils/index.js';
 import { persistLargeOutputSync } from './output-persistence.js';
 import { t } from '../i18n/index.js';
 import { VERSION } from '../version.js';
+import { getResolvedModelContextWindow } from '../models/model-limits.js';
 
 // MCP 服务器状态管理
 interface McpServerState {
@@ -910,6 +911,11 @@ export type McpMode = 'tst' | 'tst-auto' | 'mcp-cli' | 'standard';
  * @returns 上下文窗口大小（tokens）
  */
 export function getContextWindowSize(model: string, betas?: string[]): number {
+  const resolvedContextWindow = getResolvedModelContextWindow(model);
+  if (resolvedContextWindow !== undefined) {
+    return resolvedContextWindow;
+  }
+
   // 检查是否是 1M 模型
   if (model.includes('[1m]') || (betas?.includes('max-tokens-1m') && model.includes('claude-sonnet-4-5'))) {
     return LARGE_CONTEXT_WINDOW;

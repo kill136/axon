@@ -36,6 +36,21 @@ export interface TokenInfo {
   remain_quota: number;
 }
 
+export interface AxonCloudTopupProduct {
+  productId: string;
+  name?: string;
+  description?: string;
+  price?: number;
+  amount?: number;
+  currency?: string;
+  bonus?: number;
+}
+
+export interface AxonCloudTopupInfo {
+  enableCreemTopup: boolean;
+  creemProducts: AxonCloudTopupProduct[];
+}
+
 export interface AxonCloudSession {
   accessToken: string;
   userId: string;
@@ -163,6 +178,48 @@ export class AxonCloudService {
     };
   }
 
+  private getResultMessage(result: any, fallback: string): string {
+    if (typeof result?.message === 'string' && result.message.trim()) {
+      return result.message;
+    }
+    if (typeof result?.error === 'string' && result.error.trim()) {
+      return result.error;
+    }
+    return fallback;
+  }
+
+  private normalizeOptionalNumber(value: unknown): number | undefined {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === 'string') {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+    return undefined;
+  }
+
+  private normalizeTopupProducts(value: unknown): any[] {
+    if (Array.isArray(value)) {
+      return value;
+    }
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (!trimmed) {
+        return [];
+      }
+      try {
+        const parsed = JSON.parse(trimmed);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  }
+
   /**
    * 获取用户信息
    */
@@ -274,6 +331,67 @@ export class AxonCloudService {
   async getBalance(accessToken: string, userId: string): Promise<{ quota: number; used: number }> {
     const userInfo = await this.getUserInfo(accessToken, userId);
     return { quota: userInfo.quota, used: userInfo.usedQuota };
+  }
+
+  /**
+   * 获取充值信息和可用的 Creem 套餐
+   */
+  async getTopupInfo(accessToken: string, userId: string): Promise<AxonCloudTopupInfo> {
+    const res = await fetch(`${this.NEWAPI_BASE}/api/user/topup/info`, {
+      headers: this.authHeaders(accessToken, userId),
+    });
+
+    const result = await res.json() as any;
+    if (!result.success) {
+      throw new Error(this.getResultMessage(result, 'Failed to get top-up info'));
+    }
+
+    const data = result.data || {};
+    const rawProducts = this.normalizeTopupProducts(data.creem_products ?? data.creemProducts);
+
+    return {
+      enableCreemTopup: Boolean(data.enable_creem_topup ?? data.enableCreemTopup),
+      creemProducts: rawProducts
+        .map((product: any) => ({
+          productId: String(product?.product_id ?? product?.productId ?? product?.id ?? '').trim(),
+          name: typeof product?.name === 'string' ? product.name : undefined,
+          description: typeof product?.description === 'string' ? product.description : undefined,
+          price: this.normalizeOptionalNumber(product?.price),
+          amount: this.normalizeOptionalNumber(product?.amount),
+          currency: typeof product?.currency === 'string' ? product.currency : undefined,
+          bonus: this.normalizeOptionalNumber(product?.bonus ?? product?.gift_amount ?? product?.giftAmount),
+        }))
+        .filter((product: AxonCloudTopupProduct) => !!product.productId),
+    };
+  }
+
+  /**
+   * 创建 Creem Checkout，会返回最终支付页 URL
+   */
+  async createCreemCheckout(accessToken: string, userId: string, productId: string): Promise<string> {
+    const res = await fetch(`${this.NEWAPI_BASE}/api/user/creem/pay`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...this.authHeaders(accessToken, userId),
+      },
+      body: JSON.stringify({
+        product_id: productId,
+        payment_method: 'creem',
+      }),
+    });
+
+    const result = await res.json() as any;
+    if (!result.success) {
+      throw new Error(this.getResultMessage(result, 'Failed to create Creem checkout'));
+    }
+
+    const checkoutUrl = result.data?.checkout_url || result.data?.checkoutUrl;
+    if (!checkoutUrl || typeof checkoutUrl !== 'string') {
+      throw new Error('Creem checkout URL missing from response');
+    }
+
+    return checkoutUrl;
   }
 }
 

@@ -722,6 +722,153 @@ describe('CodexConversationClient', () => {
     ]);
   });
 
+  it('should emit reasoning when Responses streams summary done events', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      headers: new Headers({
+        'content-type': 'text/event-stream',
+      }),
+      body: {
+        async *[Symbol.asyncIterator]() {
+          yield new TextEncoder().encode(
+            `event: message\ndata: ${JSON.stringify({
+              type: 'response.reasoning_summary.done',
+              item_id: 'rs_1',
+              output_index: 0,
+              summary_index: 0,
+              text: '先检查模型配置，再输出结论。',
+            })}\n\n`,
+          );
+          yield new TextEncoder().encode(
+            `event: message\ndata: ${JSON.stringify({
+              type: 'response.completed',
+              response: {
+                model: 'gpt-5-codex',
+                output: [
+                  {
+                    id: 'rs_1',
+                    type: 'reasoning',
+                    summary: [{ text: '先检查模型配置，再输出结论。' }],
+                  },
+                  {
+                    type: 'message',
+                    content: [{ type: 'output_text', text: '已经处理好了。' }],
+                  },
+                ],
+                usage: {
+                  input_tokens: 8,
+                  output_tokens: 4,
+                  reasoning_tokens: 3,
+                },
+              },
+            })}\n\n`,
+          );
+        },
+      },
+    });
+
+    const client = new CodexConversationClient({
+      provider: 'codex',
+      model: 'gpt-5-codex',
+      apiKey: 'sk-test',
+      baseUrl: 'https://chatgpt.com/backend-api/codex',
+    });
+
+    const events = await collectStreamEvents(client, [
+      {
+        role: 'user',
+        content: [{ type: 'text', text: '帮我检查一下当前配置' }],
+      },
+    ]);
+
+    expect(events).toEqual([
+      expect.objectContaining({ type: 'response_headers' }),
+      { type: 'thinking', thinking: '先检查模型配置，再输出结论。' },
+      { type: 'text', text: '已经处理好了。' },
+      {
+        type: 'usage',
+        usage: {
+          inputTokens: 8,
+          outputTokens: 4,
+          thinkingTokens: 3,
+        },
+      },
+      { type: 'stop', stopReason: 'end_turn' },
+    ]);
+  });
+
+  it('should emit reasoning from output_item.done snapshots when no deltas are present', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      headers: new Headers({
+        'content-type': 'text/event-stream',
+      }),
+      body: {
+        async *[Symbol.asyncIterator]() {
+          yield new TextEncoder().encode(
+            `event: message\ndata: ${JSON.stringify({
+              type: 'response.output_item.done',
+              output_index: 0,
+              item: {
+                id: 'rs_2',
+                type: 'reasoning',
+                summary: [{ text: '先读取会话，再归纳思路。' }],
+              },
+            })}\n\n`,
+          );
+          yield new TextEncoder().encode(
+            `event: message\ndata: ${JSON.stringify({
+              type: 'response.completed',
+              response: {
+                model: 'gpt-5.4',
+                output: [
+                  {
+                    id: 'rs_2',
+                    type: 'reasoning',
+                    summary: [{ text: '先读取会话，再归纳思路。' }],
+                  },
+                ],
+                usage: {
+                  input_tokens: 6,
+                  output_tokens: 2,
+                  reasoning_tokens: 2,
+                },
+              },
+            })}\n\n`,
+          );
+        },
+      },
+    });
+
+    const client = new CodexConversationClient({
+      provider: 'codex',
+      model: 'gpt-5.4',
+      apiKey: 'sk-test',
+      baseUrl: 'https://api.chatbi.site/v1',
+    });
+
+    const events = await collectStreamEvents(client, [
+      {
+        role: 'user',
+        content: [{ type: 'text', text: '总结一下刚才的会话' }],
+      },
+    ]);
+
+    expect(events).toEqual([
+      expect.objectContaining({ type: 'response_headers' }),
+      { type: 'thinking', thinking: '先读取会话，再归纳思路。' },
+      {
+        type: 'usage',
+        usage: {
+          inputTokens: 6,
+          outputTokens: 2,
+          thinkingTokens: 2,
+        },
+      },
+      { type: 'stop', stopReason: 'end_turn' },
+    ]);
+  });
+
   it('should not replay streamed Responses tool calls from response.completed', async () => {
     const args = {
       questions: [
@@ -806,6 +953,206 @@ describe('CodexConversationClient', () => {
         usage: {
           inputTokens: 8,
           outputTokens: 3,
+          thinkingTokens: 0,
+        },
+      },
+      { type: 'stop', stopReason: 'tool_use' },
+    ]);
+  });
+
+  it('should keep a single canonical tool id when Responses stream mixes item id and call_id', async () => {
+    const editArgs = {
+      file_path: 'src/core/loop.ts',
+      old_string: 'before',
+      new_string: 'after',
+    };
+
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      headers: new Headers({
+        'content-type': 'text/event-stream',
+      }),
+      body: {
+        async *[Symbol.asyncIterator]() {
+          yield new TextEncoder().encode(
+            `event: message\ndata: ${JSON.stringify({
+              type: 'response.output_item.added',
+              item: {
+                type: 'function_call',
+                id: 'fc_edit_1',
+                name: 'Edit',
+              },
+            })}\n\n`,
+          );
+          yield new TextEncoder().encode(
+            `event: message\ndata: ${JSON.stringify({
+              type: 'response.function_call_arguments.done',
+              call_id: 'call_edit_1',
+              arguments: JSON.stringify(editArgs),
+            })}\n\n`,
+          );
+          yield new TextEncoder().encode(
+            `event: message\ndata: ${JSON.stringify({
+              type: 'response.completed',
+              response: {
+                model: 'gpt-5.4',
+                output: [
+                  {
+                    type: 'function_call',
+                    id: 'fc_edit_1',
+                    call_id: 'call_edit_1',
+                    name: 'Edit',
+                    arguments: JSON.stringify(editArgs),
+                  },
+                ],
+                usage: {
+                  input_tokens: 12,
+                  output_tokens: 3,
+                },
+              },
+            })}\n\n`,
+          );
+        },
+      },
+    });
+
+    const client = new CodexConversationClient({
+      provider: 'codex',
+      model: 'gpt-5.4',
+      apiKey: 'sk-test',
+      baseUrl: 'https://api.chatbi.site/v1',
+    });
+
+    const events = await collectStreamEvents(client, [
+      {
+        role: 'user',
+        content: [{ type: 'text', text: '修一下 loop.ts' }],
+      },
+    ]);
+
+    expect(events).toEqual([
+      expect.objectContaining({ type: 'response_headers' }),
+      { type: 'tool_use_start', id: 'fc_edit_1', name: 'Edit' },
+      { type: 'tool_use_complete', id: 'fc_edit_1', input: editArgs },
+      {
+        type: 'usage',
+        usage: {
+          inputTokens: 12,
+          outputTokens: 3,
+          thinkingTokens: 0,
+        },
+      },
+      { type: 'stop', stopReason: 'tool_use' },
+    ]);
+  });
+
+  it('should dedupe fallback chat completions tool calls when a gateway replays the same call', async () => {
+    const fallbackArgs = {
+      file_path: 'src/core/loop.ts',
+      old_string: 'foo',
+      new_string: 'bar',
+    };
+
+    fetchSpy.mockResolvedValueOnce({
+      ok: false,
+      status: 501,
+      statusText: 'Not Implemented',
+      headers: new Headers({
+        'content-type': 'application/json',
+      }),
+      text: async () => JSON.stringify({ message: 'convert_request_failed' }),
+    });
+
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      headers: new Headers({
+        'content-type': 'text/event-stream',
+      }),
+      body: {
+        async *[Symbol.asyncIterator]() {
+          yield new TextEncoder().encode(
+            `data: ${JSON.stringify({
+              choices: [
+                {
+                  delta: {
+                    tool_calls: [
+                      {
+                        index: 0,
+                        id: 'call_edit_2',
+                        function: {
+                          name: 'Edit',
+                          arguments: '{"file_path":"src/core/loop.ts"',
+                        },
+                      },
+                    ],
+                  },
+                },
+              ],
+            })}\n\n`,
+          );
+          yield new TextEncoder().encode(
+            `data: ${JSON.stringify({
+              choices: [
+                {
+                  delta: {
+                    tool_calls: [
+                      {
+                        index: 1,
+                        id: 'call_edit_2',
+                        function: {
+                          name: 'Edit',
+                          arguments: JSON.stringify(fallbackArgs),
+                        },
+                      },
+                    ],
+                  },
+                },
+              ],
+            })}\n\n`,
+          );
+          yield new TextEncoder().encode(
+            `data: ${JSON.stringify({
+              choices: [
+                {
+                  finish_reason: 'tool_calls',
+                },
+              ],
+              usage: {
+                prompt_tokens: 14,
+                completion_tokens: 5,
+              },
+            })}\n\n`,
+          );
+          yield new TextEncoder().encode('data: [DONE]\n\n');
+        },
+      },
+    });
+
+    const client = new CodexConversationClient({
+      provider: 'codex',
+      model: 'gpt-5.4',
+      apiKey: 'sk-test',
+      baseUrl: 'https://api.chatbi.site/v1',
+    });
+
+    const events = await collectStreamEvents(client, [
+      {
+        role: 'user',
+        content: [{ type: 'text', text: '修一下 edit 逻辑' }],
+      },
+    ]);
+
+    expect(events).toEqual([
+      expect.objectContaining({ type: 'response_headers' }),
+      { type: 'tool_use_start', id: 'call_edit_2', name: 'Edit' },
+      { type: 'tool_use_delta', id: 'call_edit_2', input: '{"file_path":"src/core/loop.ts"' },
+      { type: 'tool_use_delta', id: 'call_edit_2', input: ',"old_string":"foo","new_string":"bar"}' },
+      { type: 'tool_use_complete', id: 'call_edit_2', input: fallbackArgs },
+      {
+        type: 'usage',
+        usage: {
+          inputTokens: 14,
+          outputTokens: 5,
           thinkingTokens: 0,
         },
       },

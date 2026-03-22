@@ -1389,6 +1389,10 @@ export interface ApiStatusPayload {
   connected: boolean;
   /** Provider 类型 */
   provider: 'anthropic' | 'bedrock' | 'vertex' | 'codex';
+  /** 当前 runtime backend */
+  runtimeBackend?: string;
+  /** 当前 runtime model */
+  runtimeModel?: string;
   /** API Base URL */
   baseUrl: string;
   /** 可用模型列表 */
@@ -1426,6 +1430,10 @@ export interface ProviderInfo {
   type: 'anthropic' | 'bedrock' | 'vertex' | 'codex';
   /** Provider 名称 */
   name: string;
+  /** 当前 runtime backend */
+  runtimeBackend?: string;
+  /** 当前 runtime model */
+  runtimeModel?: string;
   /** 区域（Bedrock/Vertex） */
   region?: string;
   /** 项目 ID（Vertex） */

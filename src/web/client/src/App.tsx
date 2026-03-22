@@ -5,6 +5,7 @@ import { useSessionManager } from './hooks/useSessionManager';
 import { useChatInput } from './hooks/useChatInput';
 import { useArtifacts } from './hooks/useArtifacts';
 import { useScheduleArtifacts } from './hooks/useScheduleArtifacts';
+import { useProgressiveMessageRendering } from './hooks/useProgressiveMessageRendering';
 import {
   Message,
   WelcomeScreen,
@@ -411,13 +412,6 @@ function AppContent({
     return () => container.removeEventListener('scroll', handleScroll);
   }, []);
 
-  // 仅在用户处于底部附近时自动滚动
-  useEffect(() => {
-    if (isNearBottomRef.current && chatContainerRef.current) {
-      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
-    }
-  }, [messages]);
-
   // 上报会话数据给 Root
   useEffect(() => {
     onSessionsChange?.(sessionManager.sessions);
@@ -546,6 +540,19 @@ function AppContent({
   }, [messages, isTranscriptMode, activeMessages]);
 
   const hasCompactBoundary = useMemo(() => compactBoundaryIdx !== -1, [compactBoundaryIdx]);
+  const {
+    renderedMessages,
+    hiddenMessageCount: progressivelyHiddenMessageCount,
+    isHydratingHistory,
+    revealAllMessages,
+  } = useProgressiveMessageRendering(visibleMessages, sessionId ?? null);
+
+  // 仅在用户处于底部附近时自动滚动
+  useEffect(() => {
+    if (isNearBottomRef.current && chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+  }, [renderedMessages]);
 
   // ========================================================================
   // Rewind 功能
@@ -759,11 +766,25 @@ function AppContent({
                     )}
                   </div>
                 )}
-                {visibleMessages.flatMap((msg, idx) => {
+                {progressivelyHiddenMessageCount > 0 && (
+                  <div className="progressive-history-banner">
+                    <div className="progressive-history-banner__content">
+                      <span className={`progressive-history-banner__dot ${isHydratingHistory ? 'is-loading' : ''}`} />
+                      <span>{t('message.loadingEarlierCount', { count: progressivelyHiddenMessageCount })}</span>
+                    </div>
+                    <button
+                      className="progressive-history-banner__button"
+                      onClick={revealAllMessages}
+                    >
+                      {t('message.showAllNow')}
+                    </button>
+                  </div>
+                )}
+                {renderedMessages.flatMap((msg, idx) => {
                   const elements: React.ReactNode[] = [];
                   // 4 分钟时间分隔线
                   if (idx > 0) {
-                    const prev = visibleMessages[idx - 1];
+                    const prev = renderedMessages[idx - 1];
                     const gap = msg.timestamp - prev.timestamp;
                     if (gap >= 4 * 60 * 1000) {
                       elements.push(

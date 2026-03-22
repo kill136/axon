@@ -6,10 +6,8 @@
 import { ConfigManager, UserConfig, ConfigSource, ConfigSourceInfo, ConfigKeySource, EnterprisePolicyConfig, configManager as globalConfigManager } from '../../../config/index.js';
 import type { McpServerConfig } from '../../../types/index.js';
 import { webAuth } from '../web-auth.js';
-import {
-  getProviderForRuntimeBackend,
-  type WebRuntimeBackend,
-} from '../../shared/model-catalog.js';
+import type { WebRuntimeBackend } from '../../shared/model-catalog.js';
+import { normalizeRuntimeConfigShape } from '../../shared/setup-runtime.js';
 
 // ============ 类型定义 ============
 
@@ -35,6 +33,7 @@ export interface ApiConfig {
   runtimeBackend?: WebRuntimeBackend;
   defaultModelByBackend?: Partial<Record<WebRuntimeBackend, string>>;
   customModelCatalogByBackend?: Partial<Record<WebRuntimeBackend, string[]>>;
+  modelContextWindowById?: Record<string, number>;
   // Gemini API Key（用于图片生成）
   geminiApiKey?: string;
   // Ollama / 本地模型配置
@@ -312,6 +311,7 @@ export class WebConfigService {
         runtimeBackend: webAuth.getRuntimeBackend(),
         defaultModelByBackend: webAuth.getDefaultModelByBackend(),
         customModelCatalogByBackend: webAuth.getCustomModelCatalogByBackend(),
+        modelContextWindowById: config.modelContextWindowById,
         geminiApiKey: maskedGeminiKey,
         ollamaUrl: (config as any).ollamaUrl || 'http://localhost:11434',
         ollamaModel: (config as any).ollamaModel || '',
@@ -461,23 +461,27 @@ export class WebConfigService {
   async updateApiConfig(config: Partial<ApiConfig>): Promise<boolean> {
     try {
       const updates = { ...config } as Record<string, any>;
-      const requestedRuntimeBackend = updates.runtimeBackend as WebRuntimeBackend | undefined;
-      let runtimeBackend = requestedRuntimeBackend || webAuth.getRuntimeBackend();
+      const currentConfig = this.configManager.getAll() as ApiConfig;
+      const normalizedRuntime = normalizeRuntimeConfigShape({
+        current: {
+          runtimeBackend: webAuth.getRuntimeBackend(),
+          runtimeProvider: webAuth.getRuntimeProvider(),
+          apiProvider: currentConfig.apiProvider,
+          authPriority: currentConfig.authPriority,
+        },
+        updates: {
+          runtimeBackend: updates.runtimeBackend,
+          runtimeProvider: updates.runtimeProvider,
+          apiProvider: updates.apiProvider,
+          authPriority: updates.authPriority,
+        },
+      });
+      const runtimeBackend = normalizedRuntime.runtimeBackend;
 
-      if (updates.runtimeProvider === 'codex') {
-        runtimeBackend = 'codex-subscription';
-      } else if (updates.authPriority === 'oauth') {
-        runtimeBackend = runtimeBackend === 'codex-subscription' ? runtimeBackend : 'claude-subscription';
-      } else if (updates.authPriority === 'apiKey') {
-        runtimeBackend = requestedRuntimeBackend === 'axon-cloud'
-          ? 'axon-cloud'
-          : updates.apiProvider === 'openai-compatible'
-            ? 'openai-compatible-api'
-            : 'claude-compatible-api';
-      }
-
-      updates.runtimeBackend = runtimeBackend;
-      updates.runtimeProvider = getProviderForRuntimeBackend(runtimeBackend);
+      updates.runtimeBackend = normalizedRuntime.runtimeBackend;
+      updates.runtimeProvider = normalizedRuntime.runtimeProvider;
+      updates.apiProvider = normalizedRuntime.apiProvider;
+      updates.authPriority = normalizedRuntime.authPriority;
 
       // apiKey 特殊处理：空值或掩码值不覆盖已有 key
       if ('apiKey' in updates) {
@@ -523,6 +527,13 @@ export class WebConfigService {
       }
 
       updates.defaultModelByBackend = existingModelMap;
+
+      if ('modelContextWindowById' in updates) {
+        const modelContextWindowById = updates.modelContextWindowById;
+        if (!modelContextWindowById || Object.keys(modelContextWindowById).length === 0) {
+          updates.modelContextWindowById = undefined;
+        }
+      }
 
       // 保存其余配置
       if (Object.keys(updates).length > 0) {

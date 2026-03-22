@@ -1,10 +1,13 @@
-export type WebRuntimeProvider = 'anthropic' | 'codex';
-export type WebRuntimeBackend =
-  | 'axon-cloud'
-  | 'claude-subscription'
-  | 'claude-compatible-api'
-  | 'codex-subscription'
-  | 'openai-compatible-api';
+import {
+  getDefaultAssistantDisplayNameForRuntimeBackend,
+  getRuntimeBackendCapabilities,
+  getRuntimeProviderRouting,
+  supportsDynamicModelCatalogForBackend as supportsDynamicModelCatalogForBackendFromCapabilities,
+  type WebRuntimeBackend,
+  type WebRuntimeProvider,
+} from './runtime-capabilities.js';
+
+export type { WebRuntimeBackend, WebRuntimeProvider } from './runtime-capabilities.js';
 
 export interface WebModelOption {
   value: string;
@@ -85,6 +88,7 @@ function getDynamicBackendDefaultModel(
   currentModel?: string,
   customModelName?: string,
   availableModels?: string[],
+  fallbackModel: string = 'opus',
 ): string {
   const catalog = normalizeDynamicModelCatalog(availableModels);
   const trimmedCurrent = currentModel?.trim();
@@ -106,7 +110,7 @@ function getDynamicBackendDefaultModel(
     return catalog[0];
   }
 
-  return trimmedCurrent || trimmedCustom || 'opus';
+  return trimmedCurrent || trimmedCustom || fallbackModel;
 }
 
 function createDynamicModelOptions(
@@ -116,6 +120,7 @@ function createDynamicModelOptions(
   currentDescription?: string,
   configuredDescription?: string,
   catalogDescription?: string,
+  providerResolver: (model: string) => WebRuntimeProvider = model => inferWebRuntimeProvider(model),
 ): WebModelOption[] {
   const catalog = normalizeDynamicModelCatalog(availableModels);
   const values = new Set<string>();
@@ -137,7 +142,7 @@ function createDynamicModelOptions(
       value: normalized,
       label: getDynamicLabel(normalized),
       description,
-      provider: inferWebRuntimeProvider(normalized),
+      provider: providerResolver(normalized),
     });
   };
 
@@ -196,20 +201,16 @@ export function getProviderForRuntimeBackend(
   backend: WebRuntimeBackend,
   model?: string,
 ): WebRuntimeProvider {
-  switch (backend) {
-    case 'codex-subscription':
-    case 'openai-compatible-api':
-      return 'codex';
-    case 'axon-cloud':
-      if (!model?.trim()) {
-        return 'anthropic';
-      }
-      return isAnthropicCompatibleModel(model) ? 'anthropic' : 'codex';
-    case 'claude-subscription':
-    case 'claude-compatible-api':
-    default:
-      return 'anthropic';
+  const providerRouting = getRuntimeProviderRouting(backend);
+  if (providerRouting === 'anthropic' || providerRouting === 'codex') {
+    return providerRouting;
   }
+
+  const capability = getRuntimeBackendCapabilities(backend);
+  if (!model?.trim()) {
+    return capability.defaultProvider;
+  }
+  return isAnthropicCompatibleModel(model) ? 'anthropic' : 'codex';
 }
 
 export function getRuntimeBackendLabel(backend: WebRuntimeBackend): string {
@@ -264,6 +265,10 @@ export function getRuntimeBackendOptions(): WebRuntimeBackendOption[] {
   ];
 }
 
+export function supportsDynamicModelCatalogForBackend(backend: WebRuntimeBackend): boolean {
+  return supportsDynamicModelCatalogForBackendFromCapabilities(backend);
+}
+
 export function getDefaultWebModelForBackend(
   backend: WebRuntimeBackend,
   customModelName?: string,
@@ -273,7 +278,12 @@ export function getDefaultWebModelForBackend(
     case 'codex-subscription':
       return isCodexCompatibleModel(customModelName) ? customModelName!.trim() : DEFAULT_CODEX_MODEL;
     case 'openai-compatible-api':
-      return customModelName?.trim() || DEFAULT_OPENAI_MODEL;
+      return getDynamicBackendDefaultModel(
+        undefined,
+        customModelName,
+        availableModels,
+        DEFAULT_OPENAI_MODEL,
+      );
     case 'axon-cloud':
       return getDynamicBackendDefaultModel(undefined, customModelName, availableModels);
     case 'claude-subscription':
@@ -322,9 +332,12 @@ export function normalizeWebRuntimeModelForBackend(
   }
 
   if (backend === 'openai-compatible-api') {
-    return model?.trim()
-      || customModelName?.trim()
-      || getDefaultWebModelForBackend(backend, customModelName, availableModels);
+    return getDynamicBackendDefaultModel(
+      model,
+      customModelName,
+      availableModels,
+      DEFAULT_OPENAI_MODEL,
+    );
   }
 
   const provider = getProviderForRuntimeBackend(backend);
@@ -374,19 +387,10 @@ export function getAssistantDisplayName(
   model?: string,
   runtimeBackend?: WebRuntimeBackend,
 ): string {
-  switch (runtimeBackend) {
-    case 'openai-compatible-api':
-      return 'OpenAI';
-    case 'codex-subscription':
-      return 'Codex';
-    case 'axon-cloud':
-      return 'Axon';
-    case 'claude-subscription':
-    case 'claude-compatible-api':
-      return 'Claude';
-    default:
-      return resolveWebRuntimeProvider(model) === 'codex' ? 'Codex' : 'Claude';
+  if (runtimeBackend) {
+    return getDefaultAssistantDisplayNameForRuntimeBackend(runtimeBackend);
   }
+  return resolveWebRuntimeProvider(model) === 'codex' ? 'Codex' : 'Claude';
 }
 
 export function getWebModelOptions(
@@ -445,6 +449,7 @@ export function getWebModelOptionsForBackend(
       currentModel ? '当前会话正在使用的 Axon Cloud 模型' : undefined,
       customModelName ? '当前配置里指定的 Axon Cloud 模型' : undefined,
       'Axon Cloud / NewAPI 返回的可用模型',
+      model => getProviderForRuntimeBackend('axon-cloud', model),
     );
     if (options.length > 0) {
       return options;
@@ -452,15 +457,28 @@ export function getWebModelOptionsForBackend(
   }
 
   if (backend === 'openai-compatible-api') {
+    const options = createDynamicModelOptions(
+      availableModels,
+      currentModel,
+      customModelName,
+      currentModel ? '当前会话正在使用的 OpenAI 兼容模型' : undefined,
+      customModelName ? '当前配置里指定的 OpenAI 兼容模型' : undefined,
+      'OpenAI 兼容接口返回的可用模型',
+      model => getProviderForRuntimeBackend('openai-compatible-api', model),
+    );
+    if (options.length > 0) {
+      return options;
+    }
+
     const values = new Set<string>();
-    const options: WebModelOption[] = [];
+    const fallbackOptions: WebModelOption[] = [];
     const push = (model?: string, description?: string) => {
       const normalized = model?.trim();
       if (!normalized || values.has(normalized)) {
         return;
       }
       values.add(normalized);
-      options.push({
+      fallbackOptions.push({
         value: normalized,
         label: getWebModelLabel(normalized, 'codex'),
         description,
@@ -474,7 +492,7 @@ export function getWebModelOptionsForBackend(
       push(model, '推荐的 OpenAI 兼容模型');
     }
     push(DEFAULT_OPENAI_MODEL, '默认的 OpenAI 兼容模型');
-    return options;
+    return fallbackOptions;
   }
 
   return getWebModelOptions(

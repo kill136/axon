@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mockWebAuth = {
   getRuntimeBackend: vi.fn(),
   getDefaultModelByBackend: vi.fn(),
+  getCustomModelCatalogByBackend: vi.fn(),
   getCodexModelName: vi.fn(),
   getCustomModelName: vi.fn(),
   getCredentials: vi.fn(),
@@ -26,6 +27,7 @@ describe('utility client backend defaults', () => {
     mockWebAuth.getDefaultModelByBackend.mockReturnValue({
       'openai-compatible-api': 'gpt-5.4',
     });
+    mockWebAuth.getCustomModelCatalogByBackend.mockReturnValue({});
     mockWebAuth.getCodexModelName.mockReturnValue(undefined);
     mockWebAuth.getCustomModelName.mockReturnValue('sonnet');
     mockWebAuth.getCredentials.mockReturnValue({
@@ -48,6 +50,25 @@ describe('utility client backend defaults', () => {
       provider: 'codex',
       model: 'gpt-5.4',
       customModelName: 'gpt-5.4',
+    }));
+  });
+
+  it('uses the stored dynamic model catalog when no backend default is configured', async () => {
+    mockWebAuth.getDefaultModelByBackend.mockReturnValue({});
+    mockWebAuth.getCustomModelCatalogByBackend.mockReturnValue({
+      'openai-compatible-api': ['deepseek-v3', 'qwen-max'],
+    });
+    mockWebAuth.getCodexModelName.mockReturnValue(undefined);
+    mockWebAuth.getCustomModelName.mockReturnValue(undefined);
+
+    const { createUtilityClient, getUtilityModel } = await import('../../../src/web/server/runtime/utility-client.js');
+
+    expect(getUtilityModel('haiku')).toBe('deepseek-v3');
+    createUtilityClient('haiku');
+
+    expect(mockCreateConversationClient).toHaveBeenCalledWith(expect.objectContaining({
+      provider: 'codex',
+      model: 'deepseek-v3',
     }));
   });
 });

@@ -4,6 +4,7 @@ const mockSystemPromptBuild = vi.fn();
 const mockWebAuth = {
   getRuntimeBackend: vi.fn(),
   getDefaultModelByBackend: vi.fn(),
+  getCustomModelCatalogByBackend: vi.fn(),
   getCodexModelName: vi.fn(),
   getCustomModelName: vi.fn(),
   getStatus: vi.fn(),
@@ -25,6 +26,7 @@ describe('ConversationManager startup', () => {
     vi.clearAllMocks();
     mockWebAuth.getRuntimeBackend.mockReturnValue('codex-subscription');
     mockWebAuth.getDefaultModelByBackend.mockReturnValue({});
+    mockWebAuth.getCustomModelCatalogByBackend.mockReturnValue({});
     mockWebAuth.getCodexModelName.mockReturnValue(undefined);
     mockWebAuth.getCustomModelName.mockReturnValue('sonnet');
     mockWebAuth.getStatus.mockReturnValue({
@@ -78,5 +80,26 @@ describe('ConversationManager startup', () => {
     expect(guidance).toContain('ImageGen tool usage');
     expect(guidance).toContain('edit_strength');
     expect(guidance).toContain('image attachment edit preferences');
+  });
+
+  it('maps assistant thinking blocks into Web chat history', async () => {
+    const { ConversationManager } = await import('../../../src/web/server/conversation.js');
+    const manager = new ConversationManager('F:/claude-code-open', 'opus') as any;
+
+    const history = manager.convertMessagesToChatHistory([
+      {
+        role: 'assistant',
+        content: [
+          { type: 'thinking', thinking: '先核对模型配置，再决定是否调用工具。' },
+          { type: 'text', text: '我先检查一下。' },
+        ],
+      },
+    ], 'codex-subscription');
+
+    expect(history).toHaveLength(1);
+    expect(history[0].content).toEqual([
+      { type: 'thinking', text: '先核对模型配置，再决定是否调用工具。' },
+      { type: 'text', text: '我先检查一下。' },
+    ]);
   });
 });

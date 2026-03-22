@@ -37,6 +37,8 @@ import {
   clearDocumentCache,
   extractDocumentVisuals,
   compressExtractedImages,
+  renderPresentationToImages,
+  MAX_RENDERED_PRESENTATION_PAGES,
 } from '../media/index.js';
 // 注意：旧的 blueprintContext 已被移除，新架构使用 SmartPlanner
 // 边界检查由 SmartPlanner 在任务规划阶段处理，工具层不再需要
@@ -141,6 +143,28 @@ interface ExtendedFileEditInput extends FileEditInput {
   batch_edits?: BatchEdit[];
   show_diff?: boolean;
   require_confirmation?: boolean;
+}
+
+const IGNORABLE_BATCH_PLACEHOLDER_VALUES = new Set([
+  '',
+  'placeholder',
+  'unused',
+]);
+
+function isIgnorableBatchPlaceholderValue(value: string | undefined): boolean {
+  if (value === undefined) {
+    return true;
+  }
+
+  return IGNORABLE_BATCH_PLACEHOLDER_VALUES.has(value.trim().toLowerCase());
+}
+
+function hasMeaningfulTopLevelBatchEdit(oldString: string | undefined, newString: string | undefined): boolean {
+  if (oldString === undefined && newString === undefined) {
+    return false;
+  }
+
+  return !isIgnorableBatchPlaceholderValue(oldString) || !isIgnorableBatchPlaceholderValue(newString);
 }
 
 /**
@@ -617,6 +641,67 @@ Usage:
       const stat = fs.statSync(filePath);
       const ext = path.extname(filePath).toLowerCase().slice(1);
       const sizeKB = (stat.size / 1024).toFixed(2);
+
+      if (ext === 'ppt' || ext === 'pptx') {
+        try {
+          const rendered = await renderPresentationToImages(filePath);
+          const jpgFiles = fs.readdirSync(rendered.file.outputDir)
+            .filter(f => f.endsWith('.jpg'))
+            .sort();
+
+          if (jpgFiles.length > 0) {
+            const imageBlocks: Array<{
+              type: 'image';
+              source: {
+                type: 'base64';
+                media_type: 'image/jpeg';
+                data: string;
+              };
+            }> = [];
+
+            for (const jpgFile of jpgFiles) {
+              const jpgPath = path.join(rendered.file.outputDir, jpgFile);
+              const base64 = fs.readFileSync(jpgPath).toString('base64');
+              imageBlocks.push({
+                type: 'image' as const,
+                source: {
+                  type: 'base64' as const,
+                  media_type: 'image/jpeg' as const,
+                  data: base64,
+                },
+              });
+            }
+
+            let slideText = '';
+            if (ext === 'pptx') {
+              slideText = await documentToText(filePath);
+            }
+            let textOutput = `[${ext.toUpperCase()} Document: ${filePath}] (${sizeKB} KB)\n`;
+            textOutput += `Slides rendered: ${jpgFiles.length} page image(s)`;
+            if (rendered.file.totalCount !== null) {
+              textOutput += ` of ${rendered.file.totalCount}`;
+            }
+            if (rendered.file.truncated) {
+              textOutput += ` (truncated to first ${MAX_RENDERED_PRESENTATION_PAGES} slides)`;
+            }
+            if (slideText) {
+              textOutput += '\n\n';
+              textOutput += slideText;
+            }
+
+            return {
+              success: true,
+              output: textOutput,
+              newMessages: [{
+                role: 'user' as const,
+                content: imageBlocks as any,
+              }],
+            };
+          }
+        } catch {
+          // PPT 渲染失败时再回退到旧的 embedded image 提取逻辑
+        }
+      }
 
       // 尝试视觉提取（图片 + 文本）
       try {
@@ -1416,11 +1501,11 @@ Usage:
         },
         old_string: {
           type: 'string',
-          description: 'The text to replace',
+          description: 'The text to replace. Required for single-edit mode.',
         },
         new_string: {
           type: 'string',
-          description: 'The text to replace it with (must be different from old_string)',
+          description: 'The text to replace it with (must be different from old_string). Required for single-edit mode.',
         },
         replace_all: {
           type: 'boolean',
@@ -1429,7 +1514,7 @@ Usage:
         },
         batch_edits: {
           type: 'array',
-          description: 'Array of edit operations to perform atomically. If any edit fails, all changes are rolled back.',
+          description: 'Array of edit operations to perform atomically. If any edit fails, all changes are rolled back. When using batch_edits, omit top-level old_string/new_string.',
           items: {
             type: 'object',
             properties: {
@@ -1451,7 +1536,7 @@ Usage:
           default: false,
         },
       },
-      required: ['file_path', 'old_string', 'new_string'],
+      required: ['file_path'],
     };
   }
 
@@ -1465,6 +1550,7 @@ Usage:
       show_diff = true,
       require_confirmation = false,
     } = input;
+    const hasBatchEdits = Array.isArray(batch_edits) && batch_edits.length > 0;
 
     // 解析文件路径（支持相对路径，基于当前工作目录上下文）
     const file_path = resolveFilePath(inputPath);
@@ -1484,6 +1570,20 @@ Usage:
       const hookResult = await runPreToolUseHooks('Edit', input);
       if (!hookResult.allowed) {
         return { success: false, error: hookResult.message || t('file.blockedByHook') };
+      }
+
+      if (hasBatchEdits && hasMeaningfulTopLevelBatchEdit(old_string, new_string)) {
+        return {
+          success: false,
+          error: 'Cannot combine batch_edits with top-level old_string/new_string edits.',
+        };
+      }
+
+      if (!hasBatchEdits && (old_string === undefined || new_string === undefined)) {
+        return {
+          success: false,
+          error: 'Edit requires either batch_edits or top-level old_string/new_string.',
+        };
       }
 
       // 2. 验证文件是否已被读取（如果启用了此检查）
@@ -1560,20 +1660,7 @@ Usage:
         // 这种情况在 Windows 上很常见（linter/prettier 触碰文件），不应该报错
       }
 
-      // 6. 当存在 batch_edits 时，优先按批量编辑处理，避免空顶层字段误触发整文件覆盖
-      const hasBatchEdits = Array.isArray(batch_edits) && batch_edits.length > 0;
-
-      if (hasBatchEdits && (old_string !== undefined || new_string !== undefined)) {
-        const hasMeaningfulTopLevelEdit = (old_string ?? '') !== '' || new_string !== undefined;
-        if (hasMeaningfulTopLevelEdit) {
-          return {
-            success: false,
-            error: 'Cannot combine batch_edits with top-level old_string/new_string edits.',
-          };
-        }
-      }
-
-      // 7. 特殊情况：old_string 为空表示写入/覆盖整个文件（仅单次编辑模式）
+      // 6. 特殊情况：old_string 为空表示写入/覆盖整个文件（仅单次编辑模式）
       if (!hasBatchEdits && old_string === '') {
         const result = this.writeEntireFile(file_path, new_string ?? '', originalContent, show_diff);
         if (result.success) {
@@ -1582,10 +1669,10 @@ Usage:
         return result;
       }
 
-      // 8. 备份原始内容
+      // 7. 备份原始内容
       this.fileBackup.backup(file_path, originalContent);
 
-      // 9. 确定编辑操作列表，并做 token 标准化预处理（对齐官方 sn7）
+      // 8. 确定编辑操作列表，并做 token 标准化预处理（对齐官方 sn7）
       const rawEdits: BatchEdit[] = hasBatchEdits ? batch_edits : [{ old_string: old_string!, new_string: new_string!, replace_all }];
       const edits = rawEdits.map(edit => {
         // 如果 old_string 精确匹配文件内容，无需标准化
@@ -1603,14 +1690,14 @@ Usage:
         return edit;
       });
 
-      // 10. 验证并执行所有编辑操作
+      // 9. 验证并执行所有编辑操作
       let currentContent = originalContent;
       const appliedEdits: string[] = [];
 
       for (let i = 0; i < edits.length; i++) {
         const edit = edits[i];
 
-        // 10.1 智能查找匹配字符串
+        // 9.1 智能查找匹配字符串
         const matchedString = smartFindString(currentContent, edit.old_string);
 
         if (!matchedString) {
@@ -1622,10 +1709,10 @@ Usage:
           };
         }
 
-        // 10.2 计算匹配次数
+        // 9.2 计算匹配次数
         const matchCount = currentContent.split(matchedString).length - 1;
 
-        // 10.3 如果不是 replace_all，检查唯一性
+        // 9.3 如果不是 replace_all，检查唯一性
         if (matchCount > 1 && !edit.replace_all) {
           return {
             success: false,
@@ -1634,12 +1721,12 @@ Usage:
           };
         }
 
-        // 10.4 检查 old_string 和 new_string 是否相同
+        // 9.4 检查 old_string 和 new_string 是否相同
         if (matchedString === edit.new_string) {
           continue; // 跳过无变化的编辑
         }
 
-        // 10.5 检查是否会与之前的 new_string 冲突
+        // 9.5 检查是否会与之前的 new_string 冲突
         for (const prevEdit of appliedEdits) {
           if (matchedString !== '' && prevEdit.includes(matchedString)) {
             return {
@@ -1649,12 +1736,12 @@ Usage:
           }
         }
 
-        // 10.6 应用编辑
+        // 9.6 应用编辑
         currentContent = replaceString(currentContent, matchedString, edit.new_string, edit.replace_all);
         appliedEdits.push(edit.new_string);
       }
 
-      // 11. 检查是否有实际变化
+      // 10. 检查是否有实际变化
       if (currentContent === originalContent) {
         return {
           success: false,
@@ -1664,13 +1751,13 @@ Usage:
 
       const modifiedContent = currentContent;
 
-      // 12. 生成差异预览
+      // 11. 生成差异预览
       let diffPreview: DiffPreview | null = null;
       if (show_diff) {
         diffPreview = generateUnifiedDiff(file_path, originalContent, modifiedContent);
       }
 
-      // 13. 检查是否需要确认
+      // 12. 检查是否需要确认
       if (require_confirmation) {
         return {
           success: false,
@@ -1679,7 +1766,7 @@ Usage:
         };
       }
 
-      // 14. 执行实际的文件写入
+      // 13. 执行实际的文件写入
       try {
         fs.writeFileSync(file_path, modifiedContent, 'utf-8');
 

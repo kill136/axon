@@ -1,3 +1,4 @@
+import type Anthropic from '@anthropic-ai/sdk';
 import type { PromptBlock } from '../../../prompt/index.js';
 import type { ContentBlock, Message, ToolDefinition } from '../../../types/index.js';
 import type { ThinkingResult } from '../../../models/index.js';
@@ -75,4 +76,8 @@ export interface ConversationClient {
     systemPrompt?: string,
     options?: ConversationRequestOptions,
   ): AsyncGenerator<ConversationStreamEvent>;
+  getModel(): string;
+  setModel(model: string): void;
+  getIsOAuth(): boolean;
+  getAnthropicClient(): Anthropic | undefined;
 }

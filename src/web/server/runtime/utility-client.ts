@@ -2,6 +2,7 @@ import type { Message } from '../../../types/index.js';
 import { webAuth } from '../web-auth.js';
 import { resolveRuntimeSelection } from './runtime-selection.js';
 import { normalizeWebRuntimeModelForBackend } from '../../shared/model-catalog.js';
+import { shouldPreferAnthropicUtilityModelForBackend } from '../../shared/runtime-capabilities.js';
 import { createConversationClient } from './factory.js';
 import type { ConversationClient } from './types.js';
 
@@ -10,10 +11,11 @@ export function getUtilityModel(preferredAnthropicModel: string = 'haiku'): stri
   const selection = resolveRuntimeSelection({
     runtimeBackend,
     model:
-      runtimeBackend === 'claude-subscription' || runtimeBackend === 'claude-compatible-api'
+      shouldPreferAnthropicUtilityModelForBackend(runtimeBackend)
         ? preferredAnthropicModel
         : undefined,
     defaultModelByBackend: webAuth.getDefaultModelByBackend(),
+    customModelCatalogByBackend: webAuth.getCustomModelCatalogByBackend(),
     codexModelName: webAuth.getCodexModelName(),
     customModelName: webAuth.getCustomModelName(),
   });
@@ -37,6 +39,7 @@ export function createUtilityClient(preferredAnthropicModel: string = 'haiku'): 
     runtimeBackend,
     model,
     defaultModelByBackend: webAuth.getDefaultModelByBackend(),
+    customModelCatalogByBackend: webAuth.getCustomModelCatalogByBackend(),
     codexModelName: webAuth.getCodexModelName(),
     customModelName: webAuth.getCustomModelName(),
   });

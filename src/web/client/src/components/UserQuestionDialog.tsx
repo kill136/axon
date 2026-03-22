@@ -11,6 +11,7 @@ export function UserQuestionDialog({ question, onAnswer }: UserQuestionDialogPro
   const [answer, setAnswer] = useState('');
   const [selectedOptions, setSelectedOptions] = useState<string[]>([]);
   const { t } = useLanguage();
+  const questionText = question.question.trim() || t('question.missingPrompt');
 
   const handleOptionChange = (optionLabel: string, isMultiSelect?: boolean) => {
     if (isMultiSelect) {
@@ -51,7 +52,7 @@ export function UserQuestionDialog({ question, onAnswer }: UserQuestionDialogPro
           <h3>❓ {question.header || t('question.defaultHeader')}</h3>
         </div>
         <div className="question-content">
-          <p className="question-text">{question.question}</p>
+          <p className="question-text">{questionText}</p>
           {question.options && (
             <div className="question-options">
               {question.options.map((opt, i) => (

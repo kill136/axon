@@ -3,7 +3,9 @@ import { createPortal } from 'react-dom';
 import type { FileArtifact, ArtifactGroup } from '../../hooks/useArtifacts';
 import type { ScheduleArtifact } from '../../hooks/useScheduleArtifacts';
 import { computeSideBySideDiff } from '../../utils/diffUtils';
+import type { DiffRow } from '../../utils/diffUtils';
 import { useLanguage } from '../../i18n';
+import type { EditOperation } from '../../utils/editTool';
 import './ArtifactsPanel.css';
 
 interface ArtifactsPanelProps {
@@ -18,6 +20,10 @@ interface ArtifactsPanelProps {
   selectedScheduleArtifact?: ScheduleArtifact | null;
   onSelectScheduleArtifact?: (id: string | null) => void;
 }
+
+type DetailDiffRow =
+  | { kind: 'separator'; key: string }
+  | { kind: 'diff'; key: string; row: DiffRow };
 
 function getFileName(filePath: string): string {
   const parts = filePath.split('/');
@@ -48,65 +54,116 @@ function getLatestStatus(group: ArtifactGroup): string {
   return 'completed';
 }
 
+function getArtifactEditOperations(artifact: FileArtifact): EditOperation[] {
+  if (artifact.editOperations && artifact.editOperations.length > 0) {
+    return artifact.editOperations;
+  }
+
+  if (typeof artifact.oldString === 'string' && typeof artifact.newString === 'string') {
+    return [{
+      old_string: artifact.oldString,
+      new_string: artifact.newString,
+    }];
+  }
+
+  return [];
+}
+
 /**
  * Diff 详情视图
  */
 function DiffDetailView({ artifact }: { artifact: FileArtifact }) {
-  const oldLines = (artifact.oldString || '').split('\n');
-  const newLines = (artifact.newString || '').split('\n');
-
-  const diffRows = useMemo(
-    () => computeSideBySideDiff(oldLines, newLines),
-    [artifact.oldString, artifact.newString]
+  const { t } = useLanguage();
+  const editOperations = useMemo(
+    () => getArtifactEditOperations(artifact),
+    [artifact.editOperations, artifact.oldString, artifact.newString]
   );
 
-  const removedCount = diffRows.filter(r => r.left && !r.right).length;
-  const addedCount = diffRows.filter(r => !r.left && r.right).length;
+  const diffRows = useMemo<DetailDiffRow[]>(
+    () => editOperations.flatMap((operation, index) => {
+      const rows: DetailDiffRow[] = [];
+      if (index > 0) {
+        rows.push({ kind: 'separator', key: `separator-${index}` });
+      }
+
+      const oldLines = operation.old_string ? operation.old_string.split('\n') : [];
+      const newLines = operation.new_string ? operation.new_string.split('\n') : [];
+      const operationRows = computeSideBySideDiff(oldLines, newLines).map((row, rowIndex) => ({
+        kind: 'diff' as const,
+        key: `diff-${index}-${rowIndex}`,
+        row,
+      }));
+
+      rows.push(...operationRows);
+      return rows;
+    }),
+    [editOperations]
+  );
+
+  const diffEntries = diffRows.filter(
+    (entry): entry is Extract<DetailDiffRow, { kind: 'diff' }> => entry.kind === 'diff'
+  );
+  const removedCount = diffEntries.filter(entry => entry.row.left && !entry.row.right).length;
+  const addedCount = diffEntries.filter(entry => !entry.row.left && entry.row.right).length;
+  const hasRenderableDiff = diffEntries.length > 0;
+  const summaryText = hasRenderableDiff
+    ? t('artifacts.changes', { count: removedCount + addedCount })
+    : (artifact.resultText || t('artifacts.noOutput'));
 
   return (
     <div className="artifacts-diff">
       <div className="artifacts-diff-header">
-        <span style={{ color: 'var(--text-muted)' }}>
-          {removedCount + addedCount} changes
-        </span>
-        <div className="artifacts-diff-stats">
-          {removedCount > 0 && <span className="artifacts-diff-stat-removed">-{removedCount}</span>}
-          {addedCount > 0 && <span className="artifacts-diff-stat-added">+{addedCount}</span>}
-        </div>
+        <span style={{ color: 'var(--text-muted)' }}>{summaryText}</span>
+        {hasRenderableDiff && (
+          <div className="artifacts-diff-stats">
+            {removedCount > 0 && <span className="artifacts-diff-stat-removed">-{removedCount}</span>}
+            {addedCount > 0 && <span className="artifacts-diff-stat-added">+{addedCount}</span>}
+          </div>
+        )}
       </div>
       <div className="artifacts-diff-table">
-        {diffRows.map((row, i) => (
-          <div key={i} className="artifacts-diff-row">
-            <div className={`artifacts-diff-cell ${
-              row.left
-                ? (row.left.type === 'removed' ? 'artifacts-diff-cell--removed' : 'artifacts-diff-cell--unchanged')
-                : 'artifacts-diff-cell--empty'
-            }`}>
-              {row.left && (
-                <>
-                  <span className="artifacts-diff-cell-prefix">
-                    {row.left.type === 'removed' ? '\u2212' : '\u00A0'}
-                  </span>
-                  <span className="artifacts-diff-cell-text">{row.left.text || '\u00A0'}</span>
-                </>
-              )}
-            </div>
-            <div className={`artifacts-diff-cell ${
-              row.right
-                ? (row.right.type === 'added' ? 'artifacts-diff-cell--added' : 'artifacts-diff-cell--unchanged')
-                : 'artifacts-diff-cell--empty'
-            }`}>
-              {row.right && (
-                <>
-                  <span className="artifacts-diff-cell-prefix">
-                    {row.right.type === 'added' ? '+' : '\u00A0'}
-                  </span>
-                  <span className="artifacts-diff-cell-text">{row.right.text || '\u00A0'}</span>
-                </>
-              )}
-            </div>
-          </div>
-        ))}
+        {hasRenderableDiff ? (
+          diffRows.map((entry) => (
+            entry.kind === 'separator' ? (
+              <div key={entry.key} className="artifacts-diff-separator" />
+            ) : (
+              <div key={entry.key} className="artifacts-diff-row">
+                <div className={`artifacts-diff-cell ${
+                  entry.row.left
+                    ? (entry.row.left.type === 'removed' ? 'artifacts-diff-cell--removed' : 'artifacts-diff-cell--unchanged')
+                    : 'artifacts-diff-cell--empty'
+                }`}>
+                  {entry.row.left && (
+                    <>
+                      <span className="artifacts-diff-cell-prefix">
+                        {entry.row.left.type === 'removed' ? '\u2212' : '\u00A0'}
+                      </span>
+                      <span className="artifacts-diff-cell-text">{entry.row.left.text || '\u00A0'}</span>
+                    </>
+                  )}
+                </div>
+                <div className={`artifacts-diff-cell ${
+                  entry.row.right
+                    ? (entry.row.right.type === 'added' ? 'artifacts-diff-cell--added' : 'artifacts-diff-cell--unchanged')
+                    : 'artifacts-diff-cell--empty'
+                }`}>
+                  {entry.row.right && (
+                    <>
+                      <span className="artifacts-diff-cell-prefix">
+                        {entry.row.right.type === 'added' ? '+' : '\u00A0'}
+                      </span>
+                      <span className="artifacts-diff-cell-text">{entry.row.right.text || '\u00A0'}</span>
+                    </>
+                  )}
+                </div>
+              </div>
+            )
+          ))
+        ) : (
+          <pre className={`artifacts-diff-fallback ${artifact.resultText ? '' : 'artifacts-diff-fallback--empty'}`}>
+            <code>{summaryText}</code>
+          </pre>
+        )}
       </div>
     </div>
   );

@@ -121,9 +121,9 @@ describe('Builtin Skills', () => {
       const content = fs.readFileSync(skillTsPath, 'utf-8');
 
       // 验证加载顺序：builtin 在 plugin 之后，user 之前
-      const builtinIdx = content.indexOf("loadSkillsFromDirectory(builtinSkillsDir, 'builtin')");
-      const userIdx = content.indexOf("loadSkillsFromDirectory(userSkillsDir, 'userSettings')");
-      const projectIdx = content.indexOf("loadSkillsFromDirectory(projectSkillsDir, 'projectSettings')");
+      const builtinIdx = content.indexOf("loadSkillsFromDirectory(context.builtinSkillsDir, 'builtin')");
+      const userIdx = content.indexOf("loadSkillsFromDirectory(context.userSkillsDir, 'userSettings')");
+      const projectIdx = content.indexOf("loadSkillsFromDirectory(context.projectSkillsDir, 'projectSettings')");
 
       expect(builtinIdx).toBeGreaterThan(0);
       expect(userIdx).toBeGreaterThan(builtinIdx);

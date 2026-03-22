@@ -145,15 +145,17 @@ export function registerCoreTools(): void {
   toolRegistry.register(new MCPSearchTool());
   toolRegistry.register(new McpResourceTool());
 
-  // 12. NotebookWrite 已移除 — Notebook 系统通过附件自动注入，AI 无需手动管理
+  // 11. NotebookWrite
+  // 用户画像/偏好/显式“记住这件事”必须能落盘，否则 profile notebook 只是摆设。
+  toolRegistry.register(new NotebookWriteTool());
 
-  // 13. Daemon 定时任务工具
+  // 12. Daemon 定时任务工具
   toolRegistry.register(new ScheduleTaskTool());
 
-  // 14. Self-Evolve 自我进化工具（需要 AXON_EVOLVE_ENABLED=1）
+  // 13. Self-Evolve 自我进化工具（需要 AXON_EVOLVE_ENABLED=1）
   toolRegistry.register(new SelfEvolveTool());
 
-  // 15. Browser 浏览器控制工具
+  // 14. Browser 浏览器控制工具
   toolRegistry.register(new BrowserTool());
 
   // 16. MemorySearch 长期记忆搜索工具

@@ -11,6 +11,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { watch, type FSWatcher } from 'chokidar';
 import { BaseTool } from './base.js';
 import type { ToolResult, ToolDefinition } from '../types/index.js';
 import { getCurrentCwd } from '../core/cwd-context.js';
@@ -304,6 +305,30 @@ const invokedSkills = new Map<string, {
 // Skill 注册表
 const skillRegistry = new Map<string, SkillDefinition>();
 let skillsLoaded = false;
+let skillsLoadPromise: Promise<void> | null = null;
+let lastLoadedContext: SkillLoadContext | null = null;
+
+let hotReloadEnabled = false;
+let hotReloadWatcher: FSWatcher | null = null;
+let hotReloadTimer: NodeJS.Timeout | null = null;
+let hotReloadContextKey: string | null = null;
+let hotReloadPathsKey: string | null = null;
+
+interface SkillLoadContext {
+  cwd: string;
+  homeDir: string;
+  claudeDir: string;
+  projectDir: string;
+  userSkillsDir: string;
+  projectSkillsDir: string;
+  nestedSkillsDirs: string[];
+  addDirSkillDirs: string[];
+  additionalDirectories: string[];
+  builtinSkillsDir: string | null;
+  pluginsCacheDir: string;
+  settingsPath: string;
+  contextKey: string;
+}
 
 /**
  * 记录已调用的 skill（对齐官网 KP0 函数）
@@ -958,14 +983,117 @@ function getBuiltinSkillsDir(): string | null {
   }
 }
 
-export async function initializeSkills(): Promise<void> {
-  if (skillsLoaded) return;
+function createSkillLoadContext(
+  cwd: string = getCurrentCwd(),
+  additionalDirectories: string[] = getAdditionalDirectories()
+): SkillLoadContext {
+  const normalizedCwd = path.resolve(cwd);
+  const normalizedAddDirs = additionalDirectories
+    .map(dir => path.resolve(dir))
+    .sort((a, b) => a.localeCompare(b));
 
   const homeDir = process.env.HOME || process.env.USERPROFILE || '';
   const claudeDir = path.join(homeDir, '.axon');
-  const cwd = getCurrentCwd();
-  const projectDir = path.join(cwd, '.axon');
+  const projectDir = path.join(normalizedCwd, '.axon');
+  const userSkillsDir = path.join(claudeDir, 'skills');
+  const projectSkillsDir = path.join(projectDir, 'skills');
+  const nestedSkillsDirs = discoverNestedSkillsDirectories(normalizedCwd)
+    .map(dir => path.resolve(dir))
+    .filter(dir => dir !== path.resolve(projectSkillsDir))
+    .sort((a, b) => a.localeCompare(b));
+  const addDirSkillDirs = normalizedAddDirs
+    .map(dir => path.resolve(path.join(dir, '.axon', 'skills')))
+    .sort((a, b) => a.localeCompare(b));
 
+  return {
+    cwd: normalizedCwd,
+    homeDir,
+    claudeDir,
+    projectDir,
+    userSkillsDir,
+    projectSkillsDir,
+    nestedSkillsDirs,
+    addDirSkillDirs,
+    additionalDirectories: normalizedAddDirs,
+    builtinSkillsDir: getBuiltinSkillsDir(),
+    pluginsCacheDir: path.join(claudeDir, 'plugins', 'cache'),
+    settingsPath: path.join(claudeDir, 'settings.json'),
+    contextKey: JSON.stringify({
+      cwd: normalizedCwd,
+      additionalDirectories: normalizedAddDirs,
+    }),
+  };
+}
+
+function getSkillHotReloadPaths(context: SkillLoadContext): string[] {
+  const paths = new Set<string>();
+
+  paths.add(context.claudeDir);
+  paths.add(context.projectDir);
+  paths.add(context.userSkillsDir);
+  paths.add(context.projectSkillsDir);
+
+  for (const dir of context.nestedSkillsDirs) {
+    paths.add(path.dirname(dir));
+    paths.add(dir);
+  }
+
+  for (const dir of context.addDirSkillDirs) {
+    paths.add(path.dirname(dir));
+    paths.add(dir);
+  }
+
+  if (context.builtinSkillsDir) {
+    paths.add(context.builtinSkillsDir);
+  }
+
+  paths.add(context.pluginsCacheDir);
+  paths.add(context.settingsPath);
+
+  return Array.from(paths).sort((a, b) => a.localeCompare(b));
+}
+
+function shouldIgnoreSkillWatchPath(filePath: string | undefined): boolean {
+  if (!filePath) {
+    return false;
+  }
+
+  const normalized = filePath.replace(/\\/g, '/').toLowerCase();
+  return (
+    normalized.includes('/node_modules/') ||
+    normalized.includes('/.git/') ||
+    normalized.includes('/dist/') ||
+    normalized.endsWith('/.ds_store')
+  );
+}
+
+function shouldReloadSkillsForPath(filePath: string | undefined): boolean {
+  if (!filePath) {
+    return true;
+  }
+
+  if (shouldIgnoreSkillWatchPath(filePath)) {
+    return false;
+  }
+
+  const normalized = filePath.replace(/\\/g, '/').toLowerCase();
+
+  if (normalized.endsWith('/skill.md')) {
+    return true;
+  }
+
+  if (normalized.endsWith('/hooks.json')) {
+    return true;
+  }
+
+  if (normalized.endsWith('/settings.json') && normalized.includes('/.axon/')) {
+    return true;
+  }
+
+  return normalized.includes('/skills/');
+}
+
+async function loadSkillsForContext(context: SkillLoadContext): Promise<void> {
   // 清空注册表
   skillRegistry.clear();
 
@@ -980,40 +1108,32 @@ export async function initializeSkills(): Promise<void> {
 
   // 1.5 加载内置 skills（从 dist/skills/builtin/ 直接加载，优先级在插件和用户级之间）
   // 内置 skills 随版本自动更新，用户可通过 ~/.axon/skills/ 同名 skill 覆盖
-  const builtinSkillsDir = getBuiltinSkillsDir();
   let builtinSkills: SkillDefinition[] = [];
-  if (builtinSkillsDir) {
-    builtinSkills = await loadSkillsFromDirectory(builtinSkillsDir, 'builtin');
+  if (context.builtinSkillsDir) {
+    builtinSkills = await loadSkillsFromDirectory(context.builtinSkillsDir, 'builtin');
     for (const skill of builtinSkills) {
       allSkillsWithPath.push({ skill, filePath: skill.filePath });
     }
   }
 
   // 2. 加载用户级 skills（对齐官网 userSettings）
-  const userSkillsDir = path.join(claudeDir, 'skills');
-  const userSkills = await loadSkillsFromDirectory(userSkillsDir, 'userSettings');
+  const userSkills = await loadSkillsFromDirectory(context.userSkillsDir, 'userSettings');
   for (const skill of userSkills) {
     allSkillsWithPath.push({ skill, filePath: skill.filePath });
   }
 
   // 3. 加载项目级 skills（对齐官网 projectSettings，优先级最高）
-  const projectSkillsDir = path.join(projectDir, 'skills');
-  const projectSkills = await loadSkillsFromDirectory(projectSkillsDir, 'projectSettings');
+  const projectSkills = await loadSkillsFromDirectory(context.projectSkillsDir, 'projectSettings');
   for (const skill of projectSkills) {
     allSkillsWithPath.push({ skill, filePath: skill.filePath });
   }
 
   // 4. v2.1.6+: 发现并加载嵌套的 .axon/skills 目录
-  // 搜索当前工作目录下子目录中的 .axon/skills 目录
-  const nestedSkillsDirs = discoverNestedSkillsDirectories(cwd);
-  for (const nestedDir of nestedSkillsDirs) {
-    // 避免重复加载根目录的 skills
-    if (nestedDir === projectSkillsDir) continue;
-
+  for (const nestedDir of context.nestedSkillsDirs) {
     const nestedSkills = await loadSkillsFromDirectory(nestedDir, 'projectSettings');
     for (const skill of nestedSkills) {
       // 添加子目录路径前缀以区分来源
-      const relativePath = path.relative(cwd, nestedDir);
+      const relativePath = path.relative(context.cwd, nestedDir);
       const parentDir = path.dirname(path.dirname(relativePath)); // 获取 .axon 的父目录
       const prefixedSkillName = parentDir ? `${skill.skillName}@${parentDir}` : skill.skillName;
 
@@ -1029,9 +1149,7 @@ export async function initializeSkills(): Promise<void> {
 
   // 5. v2.1.32: 加载 --add-dir 目录下的 .axon/skills/
   // 官方更新：Skills defined in .axon/skills/ within additional directories (--add-dir) are now loaded automatically.
-  const addDirPaths = getAdditionalDirectories();
-  for (const addDir of addDirPaths) {
-    const addDirSkillsPath = path.join(addDir, '.axon', 'skills');
+  for (const addDirSkillsPath of context.addDirSkillDirs) {
     if (fs.existsSync(addDirSkillsPath)) {
       const addDirSkills = await loadSkillsFromDirectory(addDirSkillsPath, 'projectSettings');
       for (const skill of addDirSkills) {
@@ -1081,8 +1199,119 @@ export async function initializeSkills(): Promise<void> {
   }
 
   skillsLoaded = true;
+  lastLoadedContext = context;
 
-  console.log(`Loaded ${skillRegistry.size} unique skills (builtin: ${builtinSkills.length}, plugin: ${pluginSkills.length}, user: ${userSkills.length}, project: ${projectSkills.length})`);
+  console.log(
+    `Loaded ${skillRegistry.size} unique skills for ${context.cwd} ` +
+    `(builtin: ${builtinSkills.length}, plugin: ${pluginSkills.length}, user: ${userSkills.length}, project: ${projectSkills.length})`
+  );
+}
+
+async function reloadSkillsFromContext(context: SkillLoadContext, reason: string): Promise<void> {
+  if (skillsLoadPromise) {
+    await skillsLoadPromise;
+  }
+
+  console.log(`[Skill] Reloading skills due to ${reason}`);
+
+  skillsLoaded = false;
+  const nextContext = createSkillLoadContext(context.cwd, context.additionalDirectories);
+  const loadPromise = loadSkillsForContext(nextContext);
+  skillsLoadPromise = loadPromise;
+  try {
+    await loadPromise;
+  } finally {
+    if (skillsLoadPromise === loadPromise) {
+      skillsLoadPromise = null;
+    }
+  }
+  if (hotReloadEnabled) {
+    startSkillHotReload(nextContext);
+  }
+}
+
+function scheduleSkillReload(context: SkillLoadContext, reason: string): void {
+  if (!hotReloadEnabled) {
+    return;
+  }
+
+  if (hotReloadTimer) {
+    clearTimeout(hotReloadTimer);
+  }
+
+  hotReloadTimer = setTimeout(() => {
+    reloadSkillsFromContext(context, reason).catch(error => {
+      console.error('[Skill] Failed to hot reload skills:', error);
+    });
+  }, 200);
+}
+
+function startSkillHotReload(context: SkillLoadContext): void {
+  if (!hotReloadEnabled) {
+    return;
+  }
+
+  const watchPaths = getSkillHotReloadPaths(context);
+  const pathsKey = JSON.stringify(watchPaths);
+  if (hotReloadWatcher && hotReloadContextKey === context.contextKey && hotReloadPathsKey === pathsKey) {
+    return;
+  }
+
+  if (hotReloadWatcher) {
+    void hotReloadWatcher.close();
+    hotReloadWatcher = null;
+  }
+
+  hotReloadContextKey = context.contextKey;
+  hotReloadPathsKey = pathsKey;
+
+  hotReloadWatcher = watch(watchPaths, {
+    persistent: true,
+    ignoreInitial: true,
+    ignorePermissionErrors: true,
+    awaitWriteFinish: {
+      stabilityThreshold: 150,
+      pollInterval: 50,
+    },
+  });
+
+  hotReloadWatcher.on('all', (eventName, filePath) => {
+    if (!shouldReloadSkillsForPath(filePath)) {
+      return;
+    }
+
+    scheduleSkillReload(context, `${eventName} ${filePath}`);
+  });
+
+  hotReloadWatcher.on('error', (error) => {
+    console.error('[Skill] Hot reload watcher error:', error);
+  });
+}
+
+export async function initializeSkills(): Promise<void> {
+  const context = createSkillLoadContext();
+
+  if (skillsLoaded && lastLoadedContext?.contextKey === context.contextKey) {
+    return;
+  }
+
+  if (skillsLoadPromise) {
+    await skillsLoadPromise;
+    if (skillsLoaded && lastLoadedContext?.contextKey === context.contextKey) {
+      return;
+    }
+  }
+
+  const loadPromise = loadSkillsForContext(context);
+  skillsLoadPromise = loadPromise;
+
+  try {
+    await loadPromise;
+  } finally {
+    if (skillsLoadPromise === loadPromise) {
+      skillsLoadPromise = null;
+    }
+  }
 
   // 初始化完成后自动启用热重载
   enableSkillHotReload();
@@ -1095,6 +1324,8 @@ export function clearSkillCache(): void {
   skillRegistry.clear();
   invokedSkills.clear();
   skillsLoaded = false;
+  skillsLoadPromise = null;
+  lastLoadedContext = null;
 }
 
 /**
@@ -1459,7 +1690,7 @@ Important:
             return { success: false, error: 'Usage: /skill-hub install <skill-id>' };
           }
           await installSkill(restArgs);
-          return { success: true, output: `Skill "${restArgs}" installed successfully! Restart your session to load it.` };
+          return { success: true, output: `Skill "${restArgs}" installed successfully! It should appear automatically in the current session within a moment.` };
         }
 
         case 'list': {
@@ -1505,22 +1736,31 @@ Important:
   }
 }
 
-/**
- * 启用技能热重载（占位函数）
- *
- * 注：完整的热重载功能需要 chokidar 库支持
- * 这里提供一个占位实现，避免导入错误
- */
 export function enableSkillHotReload(): void {
-  // 热重载功能的占位实现
-  // 完整实现需要监听 ~/.axon/skills 和 .axon/skills 目录
-  console.log('[Skill] Hot reload feature is available');
+  hotReloadEnabled = true;
+
+  const context = lastLoadedContext ?? createSkillLoadContext();
+  startSkillHotReload(context);
+  console.log('[Skill] Hot reload enabled');
 }
 
 /**
  * 禁用技能热重载
  */
 export function disableSkillHotReload(): void {
-  // 占位实现
+  hotReloadEnabled = false;
+
+  if (hotReloadTimer) {
+    clearTimeout(hotReloadTimer);
+    hotReloadTimer = null;
+  }
+
+  if (hotReloadWatcher) {
+    void hotReloadWatcher.close();
+    hotReloadWatcher = null;
+  }
+
+  hotReloadContextKey = null;
+  hotReloadPathsKey = null;
   console.log('[Skill] Hot reload disabled');
 }

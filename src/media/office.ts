@@ -8,15 +8,32 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import * as crypto from 'crypto';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+import { extractPdfPages, type PageRange } from './pdf.js';
 
 // Office 文档扩展名
-export const OFFICE_EXTENSIONS = new Set(['docx', 'xlsx', 'pptx']);
+export const OFFICE_EXTENSIONS = new Set(['docx', 'xlsx', 'ppt', 'pptx']);
 
 // 包含 PDF 的所有可提取文本的文档扩展名
-export const DOCUMENT_EXTENSIONS = new Set(['docx', 'xlsx', 'pptx', 'pdf']);
+export const DOCUMENT_EXTENSIONS = new Set(['docx', 'xlsx', 'ppt', 'pptx', 'pdf']);
 
 // 缓存目录
 const CACHE_DIR = path.join(os.homedir(), '.axon', 'office-cache');
+const execFileAsync = promisify(execFile);
+
+export const MAX_RENDERED_PRESENTATION_PAGES = 20;
+
+export interface PresentationRenderResult {
+  file: {
+    filePath: string;
+    originalSize: number;
+    count: number;
+    totalCount: number | null;
+    outputDir: string;
+    truncated: boolean;
+  };
+}
 
 /**
  * 检查文件是否为 Office 文档
@@ -113,6 +130,271 @@ export async function pptxToHtml(filePath: string): Promise<string> {
 }
 
 /**
+ * 将 PPT/PPTX 渲染为逐页 JPEG 图片。
+ * 优先保留整页视觉语义，而不是只提取嵌入 media。
+ */
+export async function renderPresentationToImages(
+  filePath: string,
+  pageRange?: PageRange,
+): Promise<PresentationRenderResult> {
+  const stat = fs.statSync(filePath);
+  const knownSlideCount = await getPresentationSlideCount(filePath);
+  let powerPointError: Error | null = null;
+
+  if (process.platform === 'win32') {
+    try {
+      return await renderPresentationWithPowerPoint(filePath, stat.size, pageRange);
+    } catch (error) {
+      powerPointError = toError(error);
+    }
+  }
+
+  try {
+    return await renderPresentationWithLibreOffice(filePath, stat.size, knownSlideCount, pageRange);
+  } catch (error) {
+    const sofficeError = toError(error);
+    if (powerPointError) {
+      throw new Error(
+        `PowerPoint COM render failed: ${powerPointError.message}; LibreOffice render failed: ${sofficeError.message}`,
+      );
+    }
+    throw sofficeError;
+  }
+}
+
+async function renderPresentationWithPowerPoint(
+  filePath: string,
+  originalSize: number,
+  pageRange?: PageRange,
+): Promise<PresentationRenderResult> {
+  const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'axon-ppt-com-'));
+  const requestedFirstPage = pageRange?.firstPage ?? 1;
+  const requestedLastPage = pageRange
+    ? (pageRange.lastPage === Infinity ? -1 : pageRange.lastPage)
+    : MAX_RENDERED_PRESENTATION_PAGES;
+
+  const encodedCommand = encodePowerShellCommand(
+    buildPowerPointExportScript(
+      path.resolve(filePath),
+      outputDir,
+      requestedFirstPage,
+      requestedLastPage,
+    ),
+  );
+
+  let rawResult: unknown;
+  try {
+    rawResult = await execFileAsync('powershell', [
+      '-NoProfile',
+      '-NonInteractive',
+      '-EncodedCommand',
+      encodedCommand,
+    ], {
+      timeout: 120000,
+      windowsHide: true,
+    });
+  } catch (error) {
+    const err = toError(error);
+    if ((error as any)?.code === 'ENOENT') {
+      throw new Error('PowerShell is not available for PowerPoint COM rendering.');
+    }
+    throw new Error(`PowerPoint COM export failed: ${err.message}`);
+  }
+
+  const summary = parsePowerPointExportSummary(getExecStdout(rawResult));
+  const jpgFiles = fs.readdirSync(outputDir)
+    .filter(f => f.toLowerCase().endsWith('.jpg'))
+    .sort();
+
+  if (jpgFiles.length === 0 || summary.exportedCount <= 0) {
+    throw new Error('PowerPoint COM export produced no slide images.');
+  }
+
+  return {
+    file: {
+      filePath,
+      originalSize,
+      count: jpgFiles.length,
+      totalCount: summary.totalCount,
+      outputDir,
+      truncated: !pageRange && summary.totalCount > jpgFiles.length,
+    },
+  };
+}
+
+async function renderPresentationWithLibreOffice(
+  filePath: string,
+  originalSize: number,
+  totalCount: number | null,
+  pageRange?: PageRange,
+): Promise<PresentationRenderResult> {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'axon-pptx-'));
+  const pdfPath = path.join(tmpDir, `${path.parse(filePath).name}.pdf`);
+
+  const sofficeEnv = getSofficeEnv();
+  const convertArgs = [
+    '--headless',
+    '--convert-to',
+    'pdf',
+    '--outdir',
+    tmpDir,
+    filePath,
+  ];
+
+  try {
+    await execFileAsync('soffice', convertArgs, { timeout: 30000, env: sofficeEnv });
+  } catch (error) {
+    const reason = (error as any)?.code === 'ENOENT'
+      ? 'LibreOffice (soffice) is not available for PPT/PPTX rendering.'
+      : `PowerPoint to PDF conversion failed: ${toError(error).message}`;
+    throw new Error(reason);
+  }
+
+  if (!fs.existsSync(pdfPath)) {
+    throw new Error('PowerPoint to PDF conversion did not produce a PDF file.');
+  }
+
+  const effectivePageRange = pageRange ?? { firstPage: 1, lastPage: MAX_RENDERED_PRESENTATION_PAGES };
+  const extracted = await extractPdfPages(pdfPath, effectivePageRange);
+  if (extracted.success === false) {
+    throw new Error(extracted.error.message);
+  }
+
+  const count = extracted.data.file.count;
+
+  return {
+    file: {
+      filePath,
+      originalSize,
+      count,
+      totalCount,
+      outputDir: extracted.data.file.outputDir,
+      truncated: !pageRange && totalCount !== null && totalCount > count,
+    },
+  };
+}
+
+interface PowerPointExportSummary {
+  totalCount: number;
+  exportedCount: number;
+}
+
+function buildPowerPointExportScript(
+  filePath: string,
+  outputDir: string,
+  firstPage: number,
+  lastPage: number,
+): string {
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    `$inputPath = '${escapePowerShellString(filePath)}'`,
+    `$outputDir = '${escapePowerShellString(outputDir)}'`,
+    `$startPage = ${firstPage}`,
+    `$requestedEndPage = ${lastPage}`,
+    '$targetWidth = 1600',
+    'New-Item -ItemType Directory -Force -Path $outputDir | Out-Null',
+    '$powerPoint = $null',
+    '$presentation = $null',
+    'try {',
+    '  $powerPoint = New-Object -ComObject PowerPoint.Application',
+    '  $presentation = $powerPoint.Presentations.Open($inputPath, $true, $false, $false)',
+    '  $totalCount = [int]$presentation.Slides.Count',
+    '  $slideWidth = [double]$presentation.PageSetup.SlideWidth',
+    '  $slideHeight = [double]$presentation.PageSetup.SlideHeight',
+    '  if ($slideWidth -gt 0 -and $slideHeight -gt 0) {',
+    '    $targetHeight = [int][Math]::Round($targetWidth * $slideHeight / $slideWidth)',
+    '  } else {',
+    '    $targetHeight = 900',
+    '  }',
+    '  $startPage = [Math]::Max(1, $startPage)',
+    '  $endPage = if ($requestedEndPage -lt 0) { $totalCount } else { [Math]::Min($totalCount, $requestedEndPage) }',
+    '  $exportedCount = 0',
+    '  if ($startPage -le $endPage) {',
+    '    for ($i = $startPage; $i -le $endPage; $i++) {',
+    "      $targetPath = Join-Path $outputDir ('slide-' + $i.ToString('000') + '.jpg')",
+    "      $presentation.Slides.Item($i).Export($targetPath, 'JPG', $targetWidth, $targetHeight)",
+    '      $exportedCount += 1',
+    '    }',
+    '  }',
+    '  @{ totalCount = $totalCount; exportedCount = $exportedCount } | ConvertTo-Json -Compress',
+    '} finally {',
+    '  if ($presentation -ne $null) { $presentation.Close() | Out-Null }',
+    '  if ($powerPoint -ne $null) { $powerPoint.Quit() }',
+    '  [System.GC]::Collect()',
+    '  [System.GC]::WaitForPendingFinalizers()',
+    '}',
+  ].join('\n');
+}
+
+function parsePowerPointExportSummary(stdout: string): PowerPointExportSummary {
+  const lines = stdout
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean);
+
+  for (let i = lines.length - 1; i >= 0; i--) {
+    try {
+      const parsed = JSON.parse(lines[i]) as Partial<PowerPointExportSummary>;
+      if (typeof parsed.totalCount === 'number' && typeof parsed.exportedCount === 'number') {
+        return {
+          totalCount: parsed.totalCount,
+          exportedCount: parsed.exportedCount,
+        };
+      }
+    } catch {
+      // continue scanning backward
+    }
+  }
+
+  throw new Error(`Could not parse PowerPoint COM export output: ${stdout || '(empty stdout)'}`);
+}
+
+function encodePowerShellCommand(command: string): string {
+  return Buffer.from(command, 'utf16le').toString('base64');
+}
+
+function escapePowerShellString(value: string): string {
+  return value.replace(/'/g, "''");
+}
+
+function getExecStdout(result: unknown): string {
+  if (typeof result === 'string') {
+    return result;
+  }
+  if (result && typeof (result as any).stdout !== 'undefined') {
+    return String((result as any).stdout);
+  }
+  return '';
+}
+
+function toError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
+}
+
+async function getPresentationSlideCount(filePath: string): Promise<number | null> {
+  try {
+    const JSZip = (await import('jszip')).default;
+    const buffer = fs.readFileSync(filePath);
+    const zip = await JSZip.loadAsync(buffer);
+    let count = 0;
+    zip.forEach((relativePath) => {
+      if (/^ppt\/slides\/slide\d+\.xml$/i.test(relativePath)) {
+        count += 1;
+      }
+    });
+    return count;
+  } catch {
+    return null;
+  }
+}
+
+function getSofficeEnv(): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  env.SAL_USE_VCLPLUGIN = 'svp';
+  return env;
+}
+
+/**
  * 从 PDF 提取纯文本
  */
 export async function pdfToText(filePath: string): Promise<string> {
@@ -134,6 +416,9 @@ export async function documentToHtml(filePath: string): Promise<string> {
       return docxToHtml(filePath);
     case 'xlsx':
       return xlsxToHtml(filePath);
+    case 'ppt':
+      // legacy .ppt 无法走 XML 解析，读取端应优先走整页渲染路径
+      throw new Error('Legacy .ppt text extraction is not supported via XML parsing.');
     case 'pptx':
       return pptxToHtml(filePath);
     default:
@@ -165,6 +450,9 @@ export async function documentToText(filePath: string): Promise<string> {
       }
       return parts.join('\n');
     }
+    case 'ppt':
+      // legacy .ppt 无法走 XML 解析，读取端应优先走整页渲染路径
+      throw new Error('Legacy .ppt text extraction is not supported via XML parsing.');
     case 'pptx': {
       // pptx 的 HTML 已经足够简单，去掉标签就是纯文本
       const html = await pptxToHtml(filePath);

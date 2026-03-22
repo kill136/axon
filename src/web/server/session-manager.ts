@@ -149,6 +149,52 @@ export class WebSessionManager {
   }
 
   /**
+   * 为持久化会话登记临时 sessionId 别名
+   * 用于前端还没收到 session_created 就遇到强制重启时，后续能用旧临时 ID 找回真实会话
+   */
+  registerTemporarySessionId(sessionId: string, temporarySessionId: string): boolean {
+    if (!temporarySessionId) {
+      return false;
+    }
+
+    const session = this.loadSessionById(sessionId);
+    if (!session) {
+      return false;
+    }
+
+    const existingIds = session.metadata.temporarySessionIds || [];
+    if (existingIds.includes(temporarySessionId)) {
+      return true;
+    }
+
+    session.metadata.temporarySessionIds = [...existingIds, temporarySessionId];
+    return this.saveSession(sessionId);
+  }
+
+  /**
+   * 通过临时 sessionId 查找对应的持久化会话
+   */
+  findSessionIdByTemporarySessionId(temporarySessionId: string): string | null {
+    if (!temporarySessionId) {
+      return null;
+    }
+
+    for (const session of this.sessions.values()) {
+      if (session.metadata.temporarySessionIds?.includes(temporarySessionId)) {
+        return session.metadata.id;
+      }
+    }
+
+    const match = this.listSessions({
+      limit: Number.MAX_SAFE_INTEGER,
+      sortBy: 'updatedAt',
+      sortOrder: 'desc',
+    }).find((session) => session.temporarySessionIds?.includes(temporarySessionId));
+
+    return match?.id || null;
+  }
+
+  /**
    * 删除会话
    */
   deleteSession(sessionId: string): boolean {
