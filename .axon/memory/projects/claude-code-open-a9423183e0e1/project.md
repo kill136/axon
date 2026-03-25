@@ -1,5 +1,16 @@
 # Project Notebook
 
+## 2026-03-24
+
+- 顶部导航折叠决策：`TopNavBar` 不做“第一行/第二行分别折叠”，而是统一做成“展开两行 / 收起一行摘要栏”的单折叠点。收起态必须继续保留项目入口、当前页面、当前会话摘要和设置/认证入口，避免为了省高度把导航能力彻底藏死；折叠状态持久化到 `localStorage['axon.topNavBar.collapsed']`，对应回归在 `src/web/client/src/components/swarm/TopNavBar/TopNavBar.test.tsx`。
+- 顶部导航第二轮压缩决策：仅仅“可折叠”还不够，默认态也要优先节省垂直空间。新规则是默认进入单行紧凑态，并在紧凑态里保留整组 page tabs，确保用户不展开也能直接切页；完整两行只在需要项目/会话详细操作时展开。为了避免旧偏好把新紧凑默认态挡住，折叠状态键升级为 `localStorage['axon.topNavBar.collapsed.v2']`；回归继续落在 `src/web/client/src/components/swarm/TopNavBar/TopNavBar.test.tsx`。
+- 顶部导航 A 方案落地规则：单行紧凑态必须明确分成三组，不再混排。左侧是项目上下文，中间是一级页面导航，右侧是“当前会话/新建/搜索”与账号状态；`新对话` 不能再伪装成导航 tab，搜索也不能再落到账号状态区。后续若继续压缩，只能在组内压缩，不能再次打散这三组边界。
+- 顶部导航最终回退规则：如果用户要的是“点击按钮后上面两行全部不可见”，就不要再做紧凑态折中。正确实现是恢复原本两行结构，并提供一个单独的“隐藏顶部栏”操作；隐藏后顶部栏不占任何布局高度，只保留悬浮恢复按钮。状态单独持久化到 `localStorage['axon.topNavBar.hidden.v1']`，不要复用之前的 collapsed 键。
+- 顶部栏隐藏按钮位置规则：隐藏前后的入口必须保持同侧，不能“右上角隐藏、左上角恢复”来回跳。当前恢复按钮固定在右上角，与原按钮保持同侧，减少视觉跳变和鼠标移动距离。
+- Claude Code 本机登录导入规则：Web 端的 Claude 订阅登录不能再强制用户重复走手动回调；如果当前机器已经登录过官方 Claude Code，必须提供“一键导入本机登录”入口，直接把官方登录态写入 Axon 的 `oauthAccount` 并切到 `claude-subscription`。回归覆盖在 `tests/web/server/routes/auth-anthropic-import-local.test.ts` 和 `tests/web/oauth-login.test.tsx`。
+- 官方 Claude Code 凭据位置坑：不能只假设登录态永远在 `~/.claude/.credentials.json`。官方源码当前会按 OAuth 环境后缀查找 `.credentials{,-custom-oauth,-staging-oauth,-local-oauth}.json`，macOS 上还可能通过 Keychain service `Claude Code*-credentials` 持久化。后续任何“导入 Claude Code 登录”改动都必须同时考虑文件和 Keychain 两条路径。
+- 输入框收敛新规则：下一版 Web `InputArea` 继续参考 Codex 的“单一主输入面”结构，首层只保留附件、模型、思考强度、模式、语音、发送/停止；`新对话 / 锁定 / Probe / Logs / Git / Terminal / Transcript / Context / API usage` 统一进入 `更多` 抽屉或次级状态层，不能再常驻切碎主输入区。
+
 ## 2026-03-20
 
 - `ConversationManager` startup stack overflow root cause: `getRuntimeProvider()` and `getRuntimeCustomModelName()` called each other while the constructor normalized the default model, so Web startup could fail before any session was created.
@@ -96,3 +107,22 @@
 - COS 权限规则：为了减少手工操作，上传脚本默认把 `Axon-Setup.exe` 对象 ACL 设为 `public-read`；这样即便存储桶维持“私有读写”，稳定安装包对象也能直接作为 Railway 的国内镜像直链。
 - 下载镜像收敛决策：既然生产已经切到腾讯云 COS 并验证通过，仓库里不再保留七牛 Kodo 的双方案代码、依赖、workflow 和文档，避免后续发布时再次出现“代码一套、线上另一套”的维护分叉。
 - GitHub Actions 解析陷阱：`secrets.*` 不能直接写进 workflow 的 `if:` 条件；哪怕 YAML 语法本身合法，GitHub 也会在解析阶段把整条 workflow 直接判成 invalid，表现为 run `0s` 失败且没有任何 job。修复规则：先把 secrets 映射到 job/step `env`，再在 `if:` 里判断 `env.*`；如果已公开 tag 因此发版失败，优先发补丁版，不要重写旧 tag。
+
+## 2026-03-23
+
+- Railway 官网部署踩坑：`landing-page/Dockerfile` 的健康检查不能依赖 `curl` 这类基础镜像未必自带的二进制；更稳的规则是直接用 Node 自带 `http` 发本地 `/api/health` 探针，这样镜像升级或 slim 基础镜像裁剪后不会因为“健康检查命令不存在”而把部署判死。
+- Railway 构建优化规则：官网/演示站的 `Dockerfile.railway` 不需要下载 Electron 二进制，构建阶段应显式设置 `ELECTRON_SKIP_BINARY_DOWNLOAD=1`，并优先使用 `npm ci` / `npm --prefix ... ci` 走 lockfile 安装，减少 Railway 自动部署的下载体积、漂移和超时风险。回归覆盖在 `tests/release/railway-dockerfiles.test.ts`。
+- Railway 版本判因规则：如果部署日志里明确打印 `axon-code@2.5.0 build`，同时报 `Cannot find module './max-tokens.js'`，优先判断“Railway 正在构建 2026-03-21 `673db46 fix: release 2.5.1 pipeline` 之前的旧 ref / 旧 tag”，不要误判成当前 `private_web_ui` 分支源码仍然缺 `src/core/max-tokens.ts`。当前仓库里该文件已存在且被 git 跟踪，问题在部署目标版本而不在工作树。
+- Web 会话恢复/回退踩坑：F5 刷新或强制重启后，真正危险的不是单点报错，而是“两条链路叠加”。
+  1. 客户端可能还握着临时 `sessionId`，而服务端真实会话已经持久化成另一个 ID；这时 `rewind` 或下一条 `chat` 如果直接信任客户端 ID，就会出现 `Session not found`，甚至把用户发的“继续”误创建成一个全新会话。
+  2. `ProjectContext` 初始化恢复上次项目时，如果也被 `useSessionManager` 当成“用户主动切项目”，就会在会话恢复过程中额外发一个 `session_new`，把当前会话重新顶成临时会话，进一步放大上面的 alias 问题。
+- 修复规则：WebSocket 侧所有需要操作现有会话的路径（至少 `chat`、`rewind_preview`、`rewind_execute`、`session_resume/session_switch`）都要先把临时 `sessionId` 解析回真实持久化会话；前端项目切换事件必须携带 `createSession/source` 元信息，初始化恢复项目默认 `createSession=false`，只有用户主动切项目时才自动新建会话。回归覆盖在 `tests/web/server/session-alias.test.ts`、`tests/web/server/session-manager.test.ts`、`tests/web/useSessionManager-project-change.test.tsx` 和 `tests/web/useWebSocket-recovery.test.tsx`。
+- Web 当前会话 runtime 规则：认证状态接口返回的是“新会话默认 backend”，不是“当前已打开会话 backend”。如果前端把这两个概念复用成同一份 `runtimeBackend` 状态，切换登录方式后旧会话的输入区/模型选择会先被误切到新 backend，再和 websocket 里的旧会话 runtime 分叉，表现成“新会话正常、当前会话异常/误导”。修复规则：前端必须分离 `defaultRuntimeBackend` 和 `activeSessionRuntimeBackend`，当前 UI 永远优先显示 websocket 会话 runtime，只在会话尚未 ready 时才回退到默认 backend。回归覆盖在 `tests/web/useActiveRuntimeState.test.tsx`。
+- Claude 订阅共享代理风控结论：当前 `src/proxy/server.ts` 的 OAuth 代理会把多个下游客户端折叠到同一个上游代理身份上。它会在进程启动时生成一次 `PROXY_DEVICE_ID` / `PROXY_SESSION_ID`，随后持续重写所有 `/v1/messages` 请求的 `metadata.user_id` 为 `user_<proxy-device>_account_<accountUuid>_session_<proxy-session>`，同时剥离 `x-forwarded-for/x-real-ip/cf-connecting-ip/forwarded/true-client-ip` 等来源 IP 头，只让上游看到代理出口 IP；但又保留下游原始 `User-Agent` / `x-stainless-*` 等客户端特征。结果是“多个真实用户/机器/并发请求”在上游视角被压成“同一账号 + 同一代理设备/会话 + 同一机房出口”，画像高度异常。官方 `@anthropic-ai/claude-code` 的确也会持久化 `userID` 并构造 `user_<device>_account_<account>_session_<session>`，所以风险不在“固定 device id”本身，而在“共享订阅 + 代理身份折叠 + 数据中心出口/区域不稳定 + 多客户端混合特征”这组信号叠加，更容易触发封禁/限制。
+- 代理身份修复规则：共享 OAuth `/v1/messages` 代理不能再无条件重建整个 `metadata.user_id`，也不能在 metadata 缺失时替下游“代造身份”。当前最终规则是：只有下游已经提供合法 `metadata.user_id` 时，代理才允许转发，并且仅补全其中的 `accountUuid`，保留下游原有的 device/session；若 `metadata.user_id` 缺失或格式非法，直接拒绝请求。这样透传的 `User-Agent/x-stainless-*` 与 metadata 始终来自同一个真实客户端，避免共享代理把多客户端重新折叠成单一上游身份。回归覆盖在 `tests/proxy/ip-header-sanitization.test.ts`。
+
+## 2026-03-24
+
+- Web 会话恢复坑：`handleSessionSwitch()` 不能再用“最后一条消息是 `tool_result`”来推断是否需要自动续跑。用户取消、Abort 后的补偿 `tool_result` 也会满足这个条件，结果就是前端点了取消看似停了，F5 刷新又被误判成“应继续执行”。修复规则：续跑必须改成显式持久化标记，只在 SelfEvolve 这类受控场景置位；刷新恢复流式态时还要排除 `cancelled=true` 的收尾中会话。回归覆盖在 `tests/web/server/conversation.test.ts` 和 `tests/web/server/session-manager.test.ts`。
+- Chat 输入区交互决策：底部输入框继续保留“默认折叠控制区”，但主操作区只放最核心的附件/发送/停止；锁定、探针、日志、Git、终端、历史等次级控制统一收进一条可展开的单行命令栏，避免主输入区被一排零散图标切碎。
+- 输入区视觉规则：样式方向统一走“简约、克制、单块玻璃卡片”，不要再把输入框做成多层厚重按钮堆叠；命令栏展开态允许横向滚动，也不要在窄屏上直接换成多行碎布局。回归覆盖在 `src/web/client/src/components/__tests__/InputArea.test.tsx`。

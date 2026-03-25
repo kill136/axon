@@ -30,6 +30,7 @@ const SESSION_DIR = process.env.AXON_SESSION_DIR || path.join(os.homedir(), '.ax
 export interface WebSessionData extends SessionData {
   chatHistory?: ChatMessage[]; // WebUI 聊天历史
   currentModel?: string; // 当前使用的模型
+  pendingContinuationAfterRestore?: boolean; // 仅用于显式恢复续跑，不再从最后一条 tool_result 猜测
 }
 
 /**

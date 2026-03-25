@@ -11,16 +11,17 @@ RUN apt-get update && apt-get install -y --fix-missing \
 
 WORKDIR /app
 
+ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1
+
 COPY package*.json ./
-RUN npm install
+RUN npm ci
 
 COPY . .
 RUN npm run build
 
 # Frontend build
-RUN cd src/web/client && \
-    npm install && \
-    npm run build
+RUN npm --prefix src/web/client ci && \
+    npm --prefix src/web/client run build
 
 # ============================================
 # Stage 2: Production

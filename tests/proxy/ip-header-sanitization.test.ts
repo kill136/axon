@@ -90,6 +90,10 @@ function expectNoClientIpHeaders(headers: http.IncomingHttpHeaders) {
   expect(headers['true-client-ip']).toBeUndefined();
 }
 
+function parseHitBody<T>(hit: UpstreamHit): T {
+  return JSON.parse(hit.body) as T;
+}
+
 describe('Proxy IP header sanitization', () => {
   beforeEach(() => {
     vi.spyOn(console, 'log').mockImplementation(() => undefined);
@@ -168,6 +172,9 @@ describe('Proxy IP header sanitization', () => {
           model: 'claude-sonnet-4-20250514',
           max_tokens: 16,
           stream: false,
+          metadata: {
+            user_id: 'user_striptestdevice_account__session_striptestsession',
+          },
           messages: [{ role: 'user', content: 'hi' }],
         }),
       });
@@ -177,6 +184,185 @@ describe('Proxy IP header sanitization', () => {
       expectNoClientIpHeaders(upstream.hits[0].headers);
       expect(upstream.hits[0].headers.authorization).toBe('Bearer dummy-oauth-token');
       expect(upstream.hits[0].headers['anthropic-dangerous-direct-browser-access']).toBe('true');
+    } finally {
+      await proxy.stop();
+      await upstream.stop();
+    }
+  });
+
+  it('OAuth /v1/messages 会保留下游 metadata 的 device/session，只补全 accountUuid', async () => {
+    const upstream = await startUpstream();
+    const proxy = await startProxy('oauth', upstream.targetBaseUrl);
+    const clientUserAgent = 'claude-cli/2.1.76 (external, proxy-metadata-test)';
+
+    try {
+      const response = await fetch(`http://127.0.0.1:${proxy.port}/v1/messages`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': 'proxy-oauth-key',
+          'user-agent': clientUserAgent,
+          'x-stainless-lang': 'js',
+          ...CLIENT_IP_HEADERS,
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 16,
+          stream: false,
+          metadata: {
+            user_id: 'user_clientdevicea_account__session_clientsessiona',
+            trace_id: 'trace-1',
+          },
+          messages: [{ role: 'user', content: 'hi' }],
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(upstream.hits).toHaveLength(1);
+
+      const body = parseHitBody<{ metadata: { user_id: string; trace_id: string } }>(upstream.hits[0]);
+      expect(body.metadata).toEqual({
+        user_id: 'user_clientdevicea_account_test-account-uuid_session_clientsessiona',
+        trace_id: 'trace-1',
+      });
+      expect(upstream.hits[0].headers['user-agent']).toBe(clientUserAgent);
+      expect(upstream.hits[0].headers['x-stainless-lang']).toBe('js');
+    } finally {
+      await proxy.stop();
+      await upstream.stop();
+    }
+  });
+
+  it('OAuth /v1/messages 不会把不同下游客户端压成同一个 proxy device/session', async () => {
+    const upstream = await startUpstream();
+    const proxy = await startProxy('oauth', upstream.targetBaseUrl);
+
+    try {
+      const requestA = fetch(`http://127.0.0.1:${proxy.port}/v1/messages`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': 'proxy-oauth-key',
+          'user-agent': 'claude-cli/2.1.70 (external, app-a)',
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 16,
+          stream: false,
+          metadata: {
+            user_id: 'user_devicea_account__session_sessiona',
+          },
+          messages: [{ role: 'user', content: 'hi from a' }],
+        }),
+      });
+
+      const requestB = fetch(`http://127.0.0.1:${proxy.port}/v1/messages`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': 'proxy-oauth-key',
+          'user-agent': 'claude-cli/2.1.76 (external, app-b)',
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 16,
+          stream: false,
+          metadata: {
+            user_id: 'user_deviceb_account__session_sessionb',
+          },
+          messages: [{ role: 'user', content: 'hi from b' }],
+        }),
+      });
+
+      const responses = await Promise.all([requestA, requestB]);
+      expect(responses.map((response) => response.status)).toEqual([200, 200]);
+      expect(upstream.hits).toHaveLength(2);
+
+      const firstBody = parseHitBody<{ metadata: { user_id: string } }>(upstream.hits[0]);
+      const secondBody = parseHitBody<{ metadata: { user_id: string } }>(upstream.hits[1]);
+
+      expect(firstBody.metadata.user_id).toBe('user_devicea_account_test-account-uuid_session_sessiona');
+      expect(secondBody.metadata.user_id).toBe('user_deviceb_account_test-account-uuid_session_sessionb');
+      expect(firstBody.metadata.user_id).not.toBe(secondBody.metadata.user_id);
+      expect(upstream.hits[0].headers['user-agent']).toBe('claude-cli/2.1.70 (external, app-a)');
+      expect(upstream.hits[1].headers['user-agent']).toBe('claude-cli/2.1.76 (external, app-b)');
+    } finally {
+      await proxy.stop();
+      await upstream.stop();
+    }
+  });
+
+  it('OAuth /v1/messages 在 metadata 缺失时会直接拒绝转发', async () => {
+    const upstream = await startUpstream();
+    const proxy = await startProxy('oauth', upstream.targetBaseUrl);
+
+    try {
+      const response = await fetch(`http://127.0.0.1:${proxy.port}/v1/messages`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': 'proxy-oauth-key',
+          'user-agent': 'claude-cli/2.1.76 (external, missing-metadata-test)',
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 16,
+          stream: false,
+          messages: [{ role: 'user', content: 'missing metadata' }],
+        }),
+      });
+
+      const body = await response.json() as {
+        error?: {
+          type?: string;
+          message?: string;
+        };
+      };
+
+      expect(response.status).toBe(400);
+      expect(upstream.hits).toHaveLength(0);
+      expect(body.error?.type).toBe('invalid_request_error');
+      expect(body.error?.message).toContain('metadata.user_id');
+    } finally {
+      await proxy.stop();
+      await upstream.stop();
+    }
+  });
+
+  it('OAuth /v1/messages 在 metadata.user_id 非法时会直接拒绝转发', async () => {
+    const upstream = await startUpstream();
+    const proxy = await startProxy('oauth', upstream.targetBaseUrl);
+
+    try {
+      const response = await fetch(`http://127.0.0.1:${proxy.port}/v1/messages`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': 'proxy-oauth-key',
+          'user-agent': 'claude-cli/2.1.76 (external, invalid-metadata-test)',
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 16,
+          stream: false,
+          metadata: {
+            user_id: 'not-a-valid-user-id',
+          },
+          messages: [{ role: 'user', content: 'invalid metadata' }],
+        }),
+      });
+
+      const body = await response.json() as {
+        error?: {
+          type?: string;
+          message?: string;
+        };
+      };
+
+      expect(response.status).toBe(400);
+      expect(upstream.hits).toHaveLength(0);
+      expect(body.error?.type).toBe('invalid_request_error');
+      expect(body.error?.message).toContain('metadata.user_id');
     } finally {
       await proxy.stop();
       await upstream.stop();

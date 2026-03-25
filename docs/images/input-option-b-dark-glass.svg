@@ -1,0 +1,54 @@
+<svg width="1600" height="960" viewBox="0 0 1600 960" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgB" x1="120" y1="120" x2="1480" y2="920" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#08101B"/>
+      <stop offset="1" stop-color="#0F1726"/>
+    </linearGradient>
+    <linearGradient id="glassB" x1="120" y1="640" x2="1480" y2="920" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#141B2C" stop-opacity="0.96"/>
+      <stop offset="1" stop-color="#0F1624" stop-opacity="0.96"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="960" fill="url(#bgB)"/>
+  <circle cx="1180" cy="180" r="240" fill="#7C3AED" opacity="0.08"/>
+  <circle cx="260" cy="760" r="260" fill="#2563EB" opacity="0.08"/>
+
+  <rect x="0" y="0" width="1600" height="88" fill="#0D131D"/>
+  <text x="800" y="220" text-anchor="middle" fill="#F8FAFC" font-family="Georgia, serif" font-size="64" font-weight="700">Option B</text>
+  <text x="800" y="272" text-anchor="middle" fill="#9AA4B5" font-family="Segoe UI, sans-serif" font-size="28" font-weight="500">Dark Glass</text>
+  <text x="800" y="344" text-anchor="middle" fill="#B6C0D2" font-family="Segoe UI, sans-serif" font-size="22" font-weight="500">Stay in the product theme. Keep the composer quiet and integrated.</text>
+
+  <rect x="100" y="640" width="1400" height="228" rx="34" fill="url(#glassB)" stroke="#2F3B53" stroke-width="2"/>
+  <rect x="128" y="668" width="1344" height="116" rx="28" fill="#101827" stroke="#263246"/>
+  <text x="160" y="730" fill="#738198" font-family="Segoe UI, sans-serif" font-size="26" font-weight="500">Ask Axon to debug, implement, review, or explain</text>
+
+  <rect x="128" y="806" width="44" height="44" rx="22" fill="#1A2232" stroke="#314056"/>
+  <path d="M150 819V837" stroke="#C7D2E2" stroke-width="2.4" stroke-linecap="round"/>
+  <path d="M141 828H159" stroke="#C7D2E2" stroke-width="2.4" stroke-linecap="round"/>
+
+  <rect x="188" y="806" width="132" height="44" rx="22" fill="#182131" stroke="#2E3B52"/>
+  <text x="230" y="834" fill="#E2E8F0" font-family="Segoe UI, sans-serif" font-size="18" font-weight="600">gpt-5</text>
+
+  <rect x="334" y="806" width="132" height="44" rx="22" fill="#182131" stroke="#2E3B52"/>
+  <text x="374" y="834" fill="#E2E8F0" font-family="Segoe UI, sans-serif" font-size="18" font-weight="600">Think High</text>
+
+  <rect x="480" y="806" width="118" height="44" rx="22" fill="#182131" stroke="#2E3B52"/>
+  <text x="520" y="834" fill="#E2E8F0" font-family="Segoe UI, sans-serif" font-size="18" font-weight="600">Mode</text>
+
+  <rect x="612" y="806" width="104" height="44" rx="22" fill="#182131" stroke="#2E3B52"/>
+  <text x="648" y="834" fill="#E2E8F0" font-family="Segoe UI, sans-serif" font-size="18" font-weight="600">More</text>
+
+  <rect x="1272" y="804" width="50" height="50" rx="25" fill="#101827" stroke="#3C4A62"/>
+  <path d="M1297 816V840" stroke="#A9B5C8" stroke-width="2.8" stroke-linecap="round"/>
+  <path d="M1287 851C1288 860 1295 867 1304 867C1313 867 1320 860 1321 851" stroke="#A9B5C8" stroke-width="2.8" stroke-linecap="round"/>
+
+  <circle cx="1422" cy="829" r="28" fill="#1FB56C"/>
+  <path d="M1422 815V841" stroke="white" stroke-width="3.2" stroke-linecap="round"/>
+  <path d="M1411 826L1422 815L1433 826" stroke="white" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <rect x="1228" y="612" width="210" height="38" rx="19" fill="#101827" stroke="#2B3850"/>
+  <circle cx="1256" cy="631" r="5" fill="#22C55E"/>
+  <text x="1270" y="637" fill="#E2E8F0" font-family="Segoe UI, sans-serif" font-size="15" font-weight="600">Context healthy</text>
+
+  <text x="118" y="594" fill="#CBD5E1" font-family="Segoe UI, sans-serif" font-size="18" font-weight="600">Best when you want the cleanest visual continuity with the dark AXON shell.</text>
+</svg>

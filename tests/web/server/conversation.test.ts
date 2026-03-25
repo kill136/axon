@@ -102,4 +102,122 @@ describe('ConversationManager startup', () => {
       { type: 'text', text: '我先检查一下。' },
     ]);
   });
+
+  it('requires an explicit continuation marker instead of inferring from trailing tool_result', async () => {
+    const { ConversationManager } = await import('../../../src/web/server/conversation.js');
+    const manager = new ConversationManager('F:/claude-code-open', 'opus') as any;
+
+    manager.sessions.set('session-with-cancelled-tool-result', {
+      session: {},
+      client: {},
+      messages: [
+        {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 'tool-1', name: 'Bash', input: { command: 'sleep 10' } }],
+        },
+        {
+          role: 'user',
+          content: [{
+            type: 'tool_result',
+            tool_use_id: 'tool-1',
+            content: 'Error: Operation cancelled by user',
+            is_error: true,
+          }],
+        },
+      ],
+      model: 'sonnet',
+      runtimeBackend: 'codex-subscription',
+      cancelled: false,
+      chatHistory: [],
+      userInteractionHandler: {},
+      taskManager: {},
+      permissionHandler: {},
+      rewindManager: {},
+      toolFilterConfig: { mode: 'all' },
+      systemPromptConfig: { useDefault: true },
+      isProcessing: false,
+      processingGeneration: 0,
+      lastActualInputTokens: 0,
+      messagesLenAtLastApiCall: 0,
+      pendingContinuationAfterRestore: false,
+      latestImageAttachments: [],
+      lastPersistedMessageCount: 2,
+    });
+
+    expect(manager.needsContinuation('session-with-cancelled-tool-result')).toBe(false);
+
+    manager.sessions.get('session-with-cancelled-tool-result').pendingContinuationAfterRestore = true;
+
+    expect(manager.needsContinuation('session-with-cancelled-tool-result')).toBe(true);
+  });
+
+  it('does not resume streaming on reconnect for sessions already marked cancelled', async () => {
+    const { ConversationManager } = await import('../../../src/web/server/conversation.js');
+    const manager = new ConversationManager('F:/claude-code-open', 'opus') as any;
+
+    manager.sessions.set('cancelling-session', {
+      session: {},
+      client: {},
+      messages: [],
+      model: 'sonnet',
+      runtimeBackend: 'codex-subscription',
+      cancelled: true,
+      chatHistory: [],
+      userInteractionHandler: {},
+      taskManager: {},
+      permissionHandler: {},
+      rewindManager: {},
+      toolFilterConfig: { mode: 'all' },
+      systemPromptConfig: { useDefault: true },
+      isProcessing: true,
+      processingGeneration: 0,
+      lastActualInputTokens: 0,
+      messagesLenAtLastApiCall: 0,
+      pendingContinuationAfterRestore: false,
+      latestImageAttachments: [],
+      lastPersistedMessageCount: 0,
+    });
+
+    expect(manager.shouldResumeStreamingOnReconnect('cancelling-session')).toBe(false);
+  });
+
+  it('consumes the continuation marker and persists the cleared state', async () => {
+    const { ConversationManager } = await import('../../../src/web/server/conversation.js');
+    const manager = new ConversationManager('F:/claude-code-open', 'opus') as any;
+    const persistedSession = { pendingContinuationAfterRestore: true };
+    const saveSession = vi.fn().mockReturnValue(true);
+
+    manager.sessionManager = {
+      loadSessionById: vi.fn().mockReturnValue(persistedSession),
+      saveSession,
+    };
+    manager.sessions.set('pending-session', {
+      session: {},
+      client: {},
+      messages: [],
+      model: 'sonnet',
+      runtimeBackend: 'codex-subscription',
+      cancelled: false,
+      chatHistory: [],
+      userInteractionHandler: {},
+      taskManager: {},
+      permissionHandler: {},
+      rewindManager: {},
+      toolFilterConfig: { mode: 'all' },
+      systemPromptConfig: { useDefault: true },
+      isProcessing: false,
+      processingGeneration: 0,
+      lastActualInputTokens: 0,
+      messagesLenAtLastApiCall: 0,
+      pendingContinuationAfterRestore: true,
+      latestImageAttachments: [],
+      lastPersistedMessageCount: 0,
+    });
+
+    expect(manager.consumePendingContinuation('pending-session')).toBe(true);
+    expect(manager.sessions.get('pending-session').pendingContinuationAfterRestore).toBe(false);
+    expect(persistedSession.pendingContinuationAfterRestore).toBe(false);
+    expect(saveSession).toHaveBeenCalledWith('pending-session');
+    expect(manager.consumePendingContinuation('pending-session')).toBe(false);
+  });
 });

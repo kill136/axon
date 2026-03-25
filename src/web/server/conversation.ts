@@ -475,6 +475,8 @@ interface SessionState {
   lastCompactedUuid?: string;
   /** 标记：处理中 WebSocket 被刷新替换，完成后需要重发 history */
   needsHistoryResend?: boolean;
+  /** 显式标记：恢复会话后需要自动续跑（仅用于 SelfEvolve 等受控场景） */
+  pendingContinuationAfterRestore: boolean;
   /** Most recent uploaded user images available for ImageGen follow-up calls. */
   latestImageAttachments: UploadedImageAttachment[];
   /** 上次持久化时的消息数量（用于判断是否需要持久化，避免磁盘读取） */
@@ -1184,6 +1186,7 @@ export class ConversationManager {
       processingGeneration: 0,
       lastActualInputTokens: 0,
       messagesLenAtLastApiCall: 0,
+      pendingContinuationAfterRestore: false,
       latestImageAttachments: [],
       lastPersistedMessageCount: 0,
       credentialsFingerprint: this.getCredentialsFingerprint(runtimeBackend),
@@ -1336,6 +1339,7 @@ export class ConversationManager {
     const state = this.sessions.get(sessionId);
     if (state) {
       state.cancelled = true;
+      state.pendingContinuationAfterRestore = false;
       // 谁启动的蜂群，谁负责关闭：如果 Planner Agent 正在等待蜂群执行，一并取消
       StartLeadAgentTool.cancelActiveExecution();
       // 取消所有运行中的子 agent（Task 工具启动的后台任务）
@@ -1402,6 +1406,15 @@ export class ConversationManager {
   getStreamingContent(sessionId: string): { thinkingText: string; textContent: string } | undefined {
     const state = this.sessions.get(sessionId);
     return state?.streamingContent;
+  }
+
+  /**
+   * 浏览器刷新后是否应该恢复流式态
+   * 已取消但尚未完全收尾的会话不应继续向新页面表现为“仍在执行”。
+   */
+  shouldResumeStreamingOnReconnect(sessionId: string): boolean {
+    const state = this.sessions.get(sessionId);
+    return Boolean(state?.isProcessing && !state?.cancelled);
   }
 
   /**
@@ -1542,6 +1555,7 @@ export class ConversationManager {
 
     state.cancelled = false;
     state.isProcessing = true;
+    state.pendingContinuationAfterRestore = false;
     const currentGeneration = ++state.processingGeneration;
 
     // 关键修复：确保会话的 WebSocket 已设置
@@ -2379,13 +2393,16 @@ export class ConversationManager {
           // 这样可以确保工具结果已保存，然后在循环结束后的持久化逻辑中触发关闭
           if (isEvolveRestartRequested()) {
             console.log('[ConversationManager] Evolve restart requested, stopping conversation loop after tool persistence.');
+            state.pendingContinuationAfterRestore = true;
             continueLoop = false;
           } else {
             // 继续循环
+            state.pendingContinuationAfterRestore = false;
             continueLoop = true;
           }
         } else {
           // 对话结束
+          state.pendingContinuationAfterRestore = false;
           continueLoop = false;
 
           // 对齐官方：max_tokens 截断时，流式输出错误消息告知用户
@@ -2453,6 +2470,7 @@ export class ConversationManager {
           errMsg.includes('Request aborted by user')
         ) {
           console.log('[ConversationManager] Request cancelled by user');
+          state.pendingContinuationAfterRestore = false;
           continueLoop = false;
           continue;
         }
@@ -2637,6 +2655,7 @@ export class ConversationManager {
     // 取消/中断时 assistant 消息可能已包含 tool_use 块，但缺少对应的 tool_result
     // 这会导致下次 API 调用报错，需要补充 error tool_result
     if (state.cancelled) {
+      state.pendingContinuationAfterRestore = false;
       state.messages = validateToolResults(state.messages);
     }
 
@@ -2683,6 +2702,7 @@ export class ConversationManager {
         sessionData.messages = state.messages;
         sessionData.chatHistory = state.chatHistory;
         sessionData.currentModel = state.model;
+        sessionData.pendingContinuationAfterRestore = state.pendingContinuationAfterRestore;
         sessionData.metadata.runtimeBackend = state.runtimeBackend;
         (sessionData as any).toolFilterConfig = state.toolFilterConfig;
         (sessionData as any).systemPromptConfig = state.systemPromptConfig;
@@ -2703,6 +2723,12 @@ export class ConversationManager {
         triggerGracefulShutdown();
       }, 200);
     }
+
+    if (state.cancelled) {
+      state.needsHistoryResend = false;
+    }
+    state.streamingContent = undefined;
+    state.currentAbortController = undefined;
 
   }
 
@@ -4909,6 +4935,7 @@ Guidelines:
       sessionData.messages = state.messages;
       sessionData.chatHistory = state.chatHistory;
       sessionData.currentModel = state.model;
+      sessionData.pendingContinuationAfterRestore = state.pendingContinuationAfterRestore;
       sessionData.metadata.runtimeBackend = state.runtimeBackend;
       (sessionData as any).toolFilterConfig = state.toolFilterConfig;
       (sessionData as any).systemPromptConfig = state.systemPromptConfig;
@@ -5026,6 +5053,7 @@ Guidelines:
         processingGeneration: 0,
         lastActualInputTokens: 0,
         messagesLenAtLastApiCall: 0,
+        pendingContinuationAfterRestore: sessionData.pendingContinuationAfterRestore === true,
         latestImageAttachments: [],
         lastPersistedMessageCount: sessionData.messages.length, // 从磁盘加载时，初始化为当前消息数
         credentialsFingerprint: this.getCredentialsFingerprint(runtimeBackend),
@@ -5050,21 +5078,32 @@ Guidelines:
   }
 
   /**
-   * 检查恢复的会话是否需要继续对话（最后一条消息是 tool_result）
-   * 典型场景：SelfEvolve 重启后，工具结果已保存但模型还没来得及继续回复
+   * 检查恢复的会话是否需要继续对话
+   * 仅依赖显式续跑标记，避免把用户取消后的 tool_result 误判成“应自动继续”
    */
   needsContinuation(sessionId: string): boolean {
     const state = this.sessions.get(sessionId);
-    if (!state || state.messages.length === 0) return false;
+    return state?.pendingContinuationAfterRestore === true;
+  }
 
-    const lastMsg = state.messages[state.messages.length - 1];
-    if (lastMsg.role !== 'user') return false;
-
-    // 检查最后一条消息是否包含 tool_result
-    if (Array.isArray(lastMsg.content)) {
-      return lastMsg.content.some((block: any) => block.type === 'tool_result');
+  /**
+   * 消费一次“恢复后续跑”标记，并立即落盘，避免页面重复刷新时反复触发。
+   */
+  consumePendingContinuation(sessionId: string): boolean {
+    const state = this.sessions.get(sessionId);
+    if (!state?.pendingContinuationAfterRestore) {
+      return false;
     }
-    return false;
+
+    state.pendingContinuationAfterRestore = false;
+
+    const sessionData = this.sessionManager.loadSessionById(sessionId);
+    if (sessionData) {
+      sessionData.pendingContinuationAfterRestore = false;
+      this.sessionManager.saveSession(sessionId);
+    }
+
+    return true;
   }
 
   /**
@@ -5088,6 +5127,7 @@ Guidelines:
 
     state.cancelled = false;
     state.isProcessing = true;
+    state.pendingContinuationAfterRestore = false;
 
     try {
       console.log(`[ConversationManager] Continuing conversation after resume: ${sessionId}, message count: ${state.messages.length}`);

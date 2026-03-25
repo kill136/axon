@@ -9,6 +9,7 @@ import {
   type AxonCloudSession,
   type AxonCloudTopupInfo,
   type AxonCloudTopupProduct,
+  type AxonCloudPayMethod,
 } from '../services/axon-cloud-service.js';
 import { webConfigService } from '../services/config-service.js';
 import { webAuth } from '../web-auth.js';
@@ -165,20 +166,99 @@ function renderTopupErrorPage(message: string): string {
 </html>`;
 }
 
-function renderTopupPage(info: AxonCloudTopupInfo): string {
-  const productCards = info.creemProducts.map((product) => {
-    const headline = escapeHtml(getProductHeadline(product));
-    const subline = escapeHtml(getProductSubline(product));
+function getPayMethodLabel(method: AxonCloudPayMethod): string {
+  if (method.name?.trim()) {
+    return method.name.trim();
+  }
 
-    return `<form method="POST" action="/api/axon-cloud/topup/checkout" class="card">
-      <input type="hidden" name="productId" value="${escapeHtml(product.productId)}" />
-      <div class="card-content">
-        <h2>${headline}</h2>
-        <p>${subline}</p>
-      </div>
-      <button type="submit">继续到安全支付</button>
-    </form>`;
-  }).join('');
+  if (method.type === 'alipay') {
+    return '支付宝';
+  }
+  if (method.type === 'wxpay') {
+    return '微信支付';
+  }
+
+  return method.type;
+}
+
+function getPayMethodBadge(method: AxonCloudPayMethod): string {
+  if (method.type === 'alipay') {
+    return '易支付 · 支付宝';
+  }
+  if (method.type === 'wxpay') {
+    return '易支付 · 微信支付';
+  }
+  return getPayMethodLabel(method);
+}
+
+function getPayMethodHint(method: AxonCloudPayMethod, amountOptions: number[], minTopup?: number): string {
+  const details: string[] = ['提交后将跳转到官方支付页'];
+  const effectiveMinTopup = method.minTopup ?? minTopup;
+  if (typeof effectiveMinTopup === 'number' && effectiveMinTopup > 0) {
+    details.unshift(`最低充值 ${effectiveMinTopup}`);
+  }
+  if (amountOptions.length > 0) {
+    details.push(`推荐档位：${amountOptions.join(' / ')}`);
+  }
+  return details.join(' · ');
+}
+
+function renderEpayCard(method: AxonCloudPayMethod, amountOptions: number[], defaultAmount?: number): string {
+  const label = escapeHtml(getPayMethodLabel(method));
+  const badge = escapeHtml(getPayMethodBadge(method));
+  const hint = escapeHtml(getPayMethodHint(method, amountOptions, method.minTopup));
+  const amountValue = typeof defaultAmount === 'number' && defaultAmount > 0
+    ? String(defaultAmount)
+    : '';
+  const options = amountOptions.map((amount) =>
+    `<button type="button" data-amount-preset="${amount}">${amount}</button>`
+  ).join('');
+  const amountPicker = options
+    ? `<div class="preset-row">${options}</div>`
+    : '<p class="method-note">请输入充值数量后继续。</p>';
+
+  return `<form method="POST" action="/api/axon-cloud/topup/checkout" class="card card-epay">
+    <input type="hidden" name="paymentMethod" value="${escapeHtml(method.type)}" />
+    <input type="hidden" name="provider" value="epay" />
+    <div class="card-content">
+      <span class="pill">${badge}</span>
+      <h2>${label}</h2>
+      <p>${hint}</p>
+      ${amountPicker}
+      <label class="amount-field">
+        <span>自定义数量</span>
+        <input type="number" name="amount" min="${Math.max(1, Math.floor(method.minTopup ?? 1))}" step="1" value="${amountValue}" placeholder="输入充值数量" />
+      </label>
+    </div>
+    <button type="submit">继续到安全支付</button>
+  </form>`;
+}
+
+function renderCreemCard(product: AxonCloudTopupProduct): string {
+  const headline = escapeHtml(getProductHeadline(product));
+  const subline = escapeHtml(getProductSubline(product));
+
+  return `<form method="POST" action="/api/axon-cloud/topup/checkout" class="card">
+    <input type="hidden" name="productId" value="${escapeHtml(product.productId)}" />
+    <input type="hidden" name="provider" value="creem" />
+    <div class="card-content">
+      <span class="pill">Creem</span>
+      <h2>${headline}</h2>
+      <p>${subline}</p>
+    </div>
+    <button type="submit">继续到安全支付</button>
+  </form>`;
+}
+
+function renderTopupPage(info: AxonCloudTopupInfo): string {
+  const epayMethods = info.enableOnlineTopup
+    ? info.payMethods.filter((method) => method.type === 'alipay' || method.type === 'wxpay')
+    : [];
+  const defaultAmount = info.amountOptions[0] ?? info.minTopup;
+  const productCards = [
+    ...epayMethods.map((method) => renderEpayCard(method, info.amountOptions, defaultAmount)),
+    ...info.creemProducts.map((product) => renderCreemCard(product)),
+  ].join('');
 
   return `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -260,6 +340,57 @@ function renderTopupPage(info: AxonCloudTopupInfo): string {
       line-height: 1.1;
       letter-spacing: -0.03em;
     }
+    .pill {
+      display: inline-flex;
+      align-self: flex-start;
+      margin-bottom: 12px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(27, 26, 23, 0.06);
+      color: #665d50;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .preset-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 16px 0 14px;
+    }
+    .preset-row button {
+      border: 1px solid rgba(27, 26, 23, 0.12);
+      background: rgba(255, 255, 255, 0.92);
+      color: #3c362d;
+      border-radius: 999px;
+      padding: 8px 14px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .amount-field {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 4px;
+      color: #5d554a;
+      font-size: 14px;
+    }
+    .amount-field input {
+      border: 1px solid rgba(27, 26, 23, 0.12);
+      border-radius: 14px;
+      padding: 12px 14px;
+      font-size: 15px;
+      background: rgba(255, 255, 255, 0.92);
+      color: #1b1a17;
+    }
+    .method-note {
+      margin: 16px 0 10px;
+      color: #72695d;
+      font-size: 14px;
+      line-height: 1.6;
+    }
     .card p {
       margin: 0;
       color: #635a4e;
@@ -302,17 +433,40 @@ function renderTopupPage(info: AxonCloudTopupInfo): string {
 <body>
   <main class="shell">
     <section class="hero">
-      <div class="eyebrow">Axon Cloud x Creem</div>
+      <div class="eyebrow">Axon Cloud Payments</div>
       <h1>浏览器已接管充值流程，无需再回 NewAPI 控制台登录。</h1>
-      <p>请选择一个充值档位。提交后，Axon 会直接用你当前的 Axon Cloud 登录态创建 Creem Checkout，并跳转到官方支付页。</p>
+      <p>请选择支付方式与充值档位。Axon 会直接用你当前的 Axon Cloud 登录态创建支付订单，并跳转到官方支付页。</p>
     </section>
     <section class="grid">
       ${productCards}
     </section>
     <p class="hint">支付完成后可以回到 Axon，余额通常会很快刷新。如果当前页面报会话过期，只需要在 Axon 里重新登录一次 Axon Cloud。</p>
   </main>
+  <script>
+    document.querySelectorAll('[data-amount-preset]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const form = button.closest('form');
+        const input = form?.querySelector('input[name="amount"]');
+        const amount = button.getAttribute('data-amount-preset') || '';
+        if (input) {
+          input.value = amount;
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      });
+    });
+  </script>
 </body>
 </html>`;
+}
+
+function getLatestSession(): StoredSession | null {
+  const allSessions = Array.from(sessions.values());
+  if (allSessions.length === 0) {
+    return null;
+  }
+
+  return allSessions.sort((left, right) => right.createdAt - left.createdAt)[0] ?? null;
 }
 
 function resolveCurrentSession(): StoredSession {
@@ -322,18 +476,44 @@ function resolveCurrentSession(): StoredSession {
 
   const credentials = webAuth.getCredentials();
   if (!credentials.apiKey) {
+    const fallbackSession = getLatestSession();
+    if (fallbackSession) {
+      return fallbackSession;
+    }
     throw new AxonCloudRouteError(400, 'No Axon Cloud API key configured');
   }
 
   const session = Array.from(sessions.values()).find((item) => item.apiKey === credentials.apiKey);
-  if (!session) {
-    throw new AxonCloudRouteError(
-      401,
-      'Axon Cloud session expired. Please sign in again inside Axon, then retry top-up.',
-    );
+  if (session) {
+    return session;
   }
 
-  return session;
+  const fallbackSession = getLatestSession();
+  if (fallbackSession) {
+    return fallbackSession;
+  }
+
+  throw new AxonCloudRouteError(
+    401,
+    'Axon Cloud session expired. Please sign in again inside Axon, then retry top-up.',
+  );
+}
+
+function normalizePositiveNumberInput(value: unknown): number {
+  const values = Array.isArray(value) ? value : [value];
+  for (const candidate of values) {
+    const text = String(candidate ?? '').trim();
+    if (!text) {
+      continue;
+    }
+
+    const parsed = Number(text);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+
+  return 0;
 }
 
 function getErrorStatus(error: unknown, fallback = 500): number {
@@ -381,21 +561,51 @@ async function handleAuthSuccess(result: { username: string; quota: number; apiK
 
 router.post('/register', async (req: Request, res: Response) => {
   try {
-    const { username, password, email } = req.body as { username: string; password: string; email: string };
+    const { username, password, email, verificationCode } = req.body as {
+      username: string;
+      password: string;
+      email: string;
+      verificationCode?: string;
+    };
     if (!username || !password || !email) {
       return res.status(400).json({ success: false, error: 'Username, password, and email are required' });
     }
 
-    const result = await axonCloudService.register({ username, password, email });
+    const result = await axonCloudService.register({ username, password, email, verificationCode });
     if (!result.success) {
       return res.status(400).json({ success: false, error: result.error });
     }
 
-    await handleAuthSuccess(result);
-    res.json({ success: true, username: result.username, quota: result.quota, apiKey: result.apiKey });
+    if (!result.requiresLogin) {
+      await handleAuthSuccess(result);
+    }
+
+    res.json({
+      success: true,
+      username: result.username,
+      quota: result.quota,
+      requiresLogin: result.requiresLogin ?? false,
+      message: result.message,
+      apiKey: result.apiKey || undefined,
+    });
   } catch (error) {
     console.error('[AxonCloud] Register error:', error);
     res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Internal server error' });
+  }
+});
+
+router.get('/verification', async (req: Request, res: Response) => {
+  try {
+    const email = String(req.query.email ?? '').trim();
+    if (!email) {
+      return res.status(400).json({ success: false, error: 'Email is required' });
+    }
+
+    await axonCloudService.sendVerificationCode(email);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('[AxonCloud] Send verification code error:', error);
+    res.status(400).json({ success: false, error: error instanceof Error ? error.message : 'Failed to send verification code' });
   }
 });
 
@@ -504,6 +714,10 @@ router.get('/topup/info', async (req: Request, res: Response) => {
       success: true,
       enableCreemTopup: info.enableCreemTopup,
       creemProducts: info.creemProducts,
+      enableOnlineTopup: info.enableOnlineTopup,
+      payMethods: info.payMethods,
+      minTopup: info.minTopup,
+      amountOptions: info.amountOptions,
     });
   } catch (error) {
     console.error('[AxonCloud] Top-up info error:', error);
@@ -519,11 +733,11 @@ router.get('/topup', async (req: Request, res: Response) => {
     const session = resolveCurrentSession();
     const info = await axonCloudService.getTopupInfo(session.accessToken, session.userId);
 
-    if (!info.enableCreemTopup) {
-      throw new AxonCloudRouteError(400, 'Creem top-up is not enabled for this account');
+    if (!info.enableCreemTopup && !info.enableOnlineTopup) {
+      throw new AxonCloudRouteError(400, 'No supported top-up methods are enabled for this account');
     }
-    if (info.creemProducts.length === 0) {
-      throw new AxonCloudRouteError(400, 'No Creem top-up products are available right now');
+    if (info.creemProducts.length === 0 && info.payMethods.length === 0) {
+      throw new AxonCloudRouteError(400, 'No top-up products or payment methods are available right now');
     }
 
     res.send(renderTopupPage(info));
@@ -537,15 +751,45 @@ router.get('/topup', async (req: Request, res: Response) => {
 
 router.post('/topup/checkout', async (req: Request, res: Response) => {
   try {
-    const productId = String((req.body as { productId?: string; product_id?: string }).productId
-      ?? (req.body as { productId?: string; product_id?: string }).product_id
-      ?? '').trim();
+    const body = req.body as {
+      provider?: string;
+      productId?: string;
+      product_id?: string;
+      paymentMethod?: string;
+      payment_method?: string;
+      amount?: string | number | Array<string | number>;
+      total_amount?: string | number | Array<string | number>;
+    };
+    const provider = String(body.provider ?? '').trim().toLowerCase();
+    const productId = String(body.productId ?? body.product_id ?? '').trim();
+    const paymentMethod = String(body.paymentMethod ?? body.payment_method ?? '').trim();
+    const amount = typeof body.amount === 'number'
+      ? body.amount
+      : normalizePositiveNumberInput(body.amount ?? body.total_amount);
+
+    const session = resolveCurrentSession();
+
+    if (provider === 'epay' || paymentMethod) {
+      if (!paymentMethod) {
+        throw new AxonCloudRouteError(400, 'Missing paymentMethod');
+      }
+      if (!Number.isFinite(amount) || amount <= 0) {
+        throw new AxonCloudRouteError(400, 'Missing amount');
+      }
+
+      const checkoutUrl = await axonCloudService.createEpayCheckout(
+        session.accessToken,
+        session.userId,
+        amount,
+        paymentMethod,
+      );
+      return res.redirect(302, checkoutUrl);
+    }
 
     if (!productId) {
       throw new AxonCloudRouteError(400, 'Missing productId');
     }
 
-    const session = resolveCurrentSession();
     const checkoutUrl = await axonCloudService.createCreemCheckout(
       session.accessToken,
       session.userId,

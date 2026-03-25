@@ -1,26 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockConfigSet = vi.fn();
-const mockConfigSave = vi.fn();
-const mockConfigGetAll = vi.fn();
-const mockImportOfficialAuthFile = vi.fn();
-const mockImportOfficialConfigFile = vi.fn();
-const mockActivateCodexLogin = vi.fn();
+const mockSaveOAuthConfig = vi.fn();
 const mockImportOfficialClaudeCodeAuth = vi.fn();
 
 vi.mock('../../../../src/config/index.js', () => ({
   configManager: {
     set: (...args: any[]) => mockConfigSet(...args),
-    save: (...args: any[]) => mockConfigSave(...args),
     get: vi.fn(),
-    getAll: (...args: any[]) => mockConfigGetAll(...args),
+    getAll: vi.fn(() => ({})),
     getConfigPaths: vi.fn(() => ({ userSettings: '/tmp/settings.json' })),
   },
 }));
 
 vi.mock('../../../../src/web/server/oauth-manager.js', () => ({
   oauthManager: {
-    saveOAuthConfig: vi.fn(),
+    saveOAuthConfig: (...args: any[]) => mockSaveOAuthConfig(...args),
     getOAuthConfig: vi.fn(() => null),
   },
 }));
@@ -32,8 +27,6 @@ vi.mock('../../../../src/web/server/codex-auth-manager.js', () => ({
     buildAuthorizationUrl: vi.fn(),
     getAuthConfig: vi.fn(),
     clearAuthConfig: vi.fn(),
-    importOfficialAuthFile: (...args: any[]) => mockImportOfficialAuthFile(...args),
-    importOfficialConfigFile: (...args: any[]) => mockImportOfficialConfigFile(...args),
   },
 }));
 
@@ -44,7 +37,7 @@ vi.mock('../../../../src/web/server/web-auth.js', () => ({
     getCodexStatus: vi.fn(() => ({ authenticated: false })),
     ensureValidToken: vi.fn(),
     isAxonCloudUser: vi.fn(() => false),
-    activateCodexLogin: (...args: any[]) => mockActivateCodexLogin(...args),
+    activateCodexLogin: vi.fn(),
     clearAll: vi.fn(),
     validateApiKey: vi.fn(),
     saveApiKeyLogin: vi.fn(),
@@ -129,7 +122,7 @@ async function driveRoute(app: express.Express, method: 'post' | 'get', path: st
   });
 }
 
-describe('Codex import-local route', () => {
+describe('Anthropic import-local route', () => {
   let app: express.Express;
 
   beforeEach(async () => {
@@ -137,59 +130,47 @@ describe('Codex import-local route', () => {
     vi.resetModules();
     mockImportOfficialClaudeCodeAuth.mockReset();
 
-    mockConfigGetAll.mockReturnValue({
-      defaultModelByBackend: {
-        'claude-subscription': 'sonnet',
-      },
-    });
-
     const authModule = await import('../../../../src/web/server/routes/auth.js');
     app = express();
     app.use(express.json());
     app.use('/api/auth/oauth', authModule.default);
   });
 
-  it('should import auth.json and config.toml together', async () => {
-    mockImportOfficialAuthFile.mockResolvedValueOnce({
-      apiKey: 'sk-codex-local',
-      authMethod: 'api_key',
-      accountId: 'acct_local',
-    });
-    mockImportOfficialConfigFile.mockReturnValueOnce({
-      apiBaseUrl: 'https://proxy.example.com/v1',
-      customModelName: 'gpt-5.4',
-      defaultModelByBackend: {
-        'codex-subscription': 'gpt-5.4',
-      },
-      modelProvider: 'yuncode',
-      wireApi: 'responses',
+  it('imports local Claude Code auth and activates claude-subscription runtime', async () => {
+    mockImportOfficialClaudeCodeAuth.mockReturnValueOnce({
+      accountType: 'claude.ai',
+      accessToken: 'claude-local-access',
+      refreshToken: 'claude-local-refresh',
+      expiresAt: 1_710_000_000_000,
+      scopes: ['user:profile', 'user:inference', 'user:sessions:claude_code'],
+      subscriptionType: 'pro',
+      rateLimitTier: 'default_claude_max_5x',
+      source: 'file',
+      sourcePath: 'C:/Users/test/.claude/.credentials.json',
     });
 
-    const result = await driveRoute(app, 'post', '/api/auth/oauth/codex/import-local');
+    const result = await driveRoute(app, 'post', '/api/auth/oauth/import-local');
 
     expect(result.status).toBe(200);
     expect(result.body.success).toBe(true);
-    expect(mockImportOfficialAuthFile).toHaveBeenCalledTimes(1);
-    expect(mockImportOfficialConfigFile).toHaveBeenCalledTimes(1);
-    expect(mockActivateCodexLogin).toHaveBeenCalledWith({
-      apiKey: 'sk-codex-local',
-      authMethod: 'api_key',
-      accountId: 'acct_local',
+    expect(result.body.auth).toEqual({
+      accountType: 'pro',
+      expiresAt: 1_710_000_000_000,
+      scopes: ['user:profile', 'user:inference', 'user:sessions:claude_code'],
+      source: 'file',
     });
-    expect(mockConfigSave).toHaveBeenCalledWith({
-      apiProvider: 'openai-compatible',
-      apiBaseUrl: 'https://proxy.example.com/v1',
-      customModelName: 'gpt-5.4',
-      defaultModelByBackend: {
-        'claude-subscription': 'sonnet',
-        'codex-subscription': 'gpt-5.4',
-      },
+
+    expect(mockSaveOAuthConfig).toHaveBeenCalledWith({
+      accessToken: 'claude-local-access',
+      refreshToken: 'claude-local-refresh',
+      expiresAt: 1_710_000_000_000,
+      scopes: ['user:profile', 'user:inference', 'user:sessions:claude_code'],
+      subscriptionType: 'pro',
+      rateLimitTier: 'default_claude_max_5x',
     });
-    expect(result.body.importedConfig).toEqual({
-      apiBaseUrl: 'https://proxy.example.com/v1',
-      customModelName: 'gpt-5.4',
-      modelProvider: 'yuncode',
-      wireApi: 'responses',
-    });
+    expect(mockConfigSet).toHaveBeenCalledWith('authPriority', 'oauth');
+    expect(mockConfigSet).toHaveBeenCalledWith('runtimeBackend', 'claude-subscription');
+    expect(mockConfigSet).toHaveBeenCalledWith('runtimeProvider', 'anthropic');
+    expect(mockConfigSet).toHaveBeenCalledWith('apiProvider', 'anthropic');
   });
 });

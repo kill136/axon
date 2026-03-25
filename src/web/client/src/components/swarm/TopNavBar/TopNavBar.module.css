@@ -6,16 +6,22 @@
   flex-shrink: 0;
 }
 
+.hiddenHeaderDock {
+  position: relative;
+  height: 0;
+  flex-shrink: 0;
+}
+
 /* ===================== 第一行：全局上下文行 ===================== */
 .contextRow {
-  height: 40px;
+  height: 34px;
   background: #0f1115;
   border-bottom: 1px solid var(--border-color);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 12px;
-  gap: 12px;
+  padding: 0 10px;
+  gap: 10px;
 }
 
 .contextLeft {
@@ -71,28 +77,28 @@
 
 /* 项目选择器在导航栏中的紧凑样式 */
 .navProjectSelector {
-  min-width: 160px;
-  max-width: 240px;
+  min-width: 144px;
+  max-width: 220px;
 }
 
 /* ===================== 会话选择器组（选择器 + 新建按钮） ===================== */
 .sessionGroup {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
 }
 
 .sessionSelector {
   position: relative;
-  min-width: 180px;
-  max-width: 280px;
+  min-width: 170px;
+  max-width: 260px;
 }
 
 .sessionTrigger {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
+  gap: 6px;
+  padding: 4px 10px;
   background: transparent;
   border: 1px solid var(--border-color);
   border-radius: 6px;
@@ -121,7 +127,7 @@
 }
 
 .sessionName {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -355,8 +361,8 @@
 
 /* 连接状态小圆点 */
 .connectionDot {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: var(--accent-error);
   flex-shrink: 0;
@@ -369,13 +375,15 @@
 
 /* 新建会话按钮 */
 .newSessionButton {
-  padding: 4px 10px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
   background: var(--accent-primary);
   border: none;
   color: #fff;
   cursor: pointer;
   border-radius: 6px;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
   line-height: 1;
   transition: all 0.2s;
@@ -391,7 +399,9 @@
 
 /* 会话搜索按钮 */
 .searchButton {
-  padding: 4px 8px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
   background: transparent;
   border: 1px solid var(--border-color);
   color: var(--text-muted);
@@ -411,7 +421,9 @@
 
 /* 设置按钮 */
 .settingsButton {
-  padding: 6px 10px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
   background: transparent;
   border: 1px solid var(--border-color);
   color: var(--text-muted);
@@ -431,36 +443,102 @@
 
 /* ===================== 第二行：页面导航行 ===================== */
 .navRow {
-  height: 36px;
+  height: 30px;
   background: #0a0a0c;
   border-bottom: 1px solid var(--border-color);
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0 12px;
-  gap: 12px;
+  justify-content: flex-start;
+  padding: 0 10px;
+  gap: 8px;
+}
+
+.headerToggleButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: rgba(99, 102, 241, 0.12);
+  border: 1px solid rgba(99, 102, 241, 0.32);
+  color: var(--accent-light);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, transform 0.2s;
+  flex-shrink: 0;
+}
+
+.headerToggleButton:hover {
+  background: rgba(99, 102, 241, 0.18);
+  border-color: rgba(99, 102, 241, 0.48);
+  transform: translateY(-1px);
+}
+
+.headerToggleIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.headerToggleText {
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.headerToggleGhost {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: transparent;
+  border-color: var(--border-color);
+  color: var(--text-muted);
+}
+
+.headerToggleGhost:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border-color: var(--accent-primary);
+}
+
+.headerRevealButton {
+  position: fixed;
+  top: 3px;
+  right: 12px;
+  z-index: 1200;
+  width: 28px;
+  height: 28px;
+  background: rgba(15, 17, 21, 0.94);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.28);
+}
+
+.headerRevealButton:hover {
+  background: rgba(20, 23, 30, 0.98);
 }
 
 /* 导航标签容器 */
 .navTabs {
   display: flex;
   gap: 2px;
-  flex-shrink: 0;
+  flex: 1;
+  min-width: 0;
 }
 
 /* 单个导航标签 */
 .navTab {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 0 12px;
-  height: 36px;
+  gap: 5px;
+  padding: 0 10px;
+  height: 30px;
   background: transparent;
   border: none;
   border-bottom: 2px solid transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12px;
   transition: all 0.2s;
   font-weight: 500;
   white-space: nowrap;
@@ -541,13 +619,17 @@
 /* ===================== 响应式 ===================== */
 @media (max-width: 900px) {
   .navProjectSelector {
-    min-width: 120px;
-    max-width: 180px;
+    min-width: 112px;
+    max-width: 168px;
   }
 
   .sessionSelector {
     min-width: 120px;
-    max-width: 200px;
+    max-width: 188px;
+  }
+
+  .headerToggleText {
+    display: none;
   }
 }
 
@@ -559,7 +641,7 @@
 
   .navRow {
     padding: 0 8px;
-    gap: 8px;
+    gap: 6px;
   }
 
   .navTab span:not(.icon) {
@@ -590,17 +672,20 @@
   }
 
   .sessionTrigger {
-    padding: 4px 8px;
+    padding: 3px 8px;
     gap: 6px;
   }
 
   .newSessionButton {
-    padding: 4px 8px;
-    font-size: 16px;
+    width: 26px;
+    height: 26px;
+    font-size: 15px;
   }
 
-  .settingsButton {
-    padding: 4px 8px;
+  .settingsButton,
+  .searchButton {
+    width: 26px;
+    height: 26px;
   }
 
   .contextRight {
@@ -613,13 +698,13 @@
   .contextRow {
     padding: 0 6px;
     gap: 6px;
-    height: 36px;
+    height: 32px;
   }
 
   .navRow {
     padding: 0 6px;
     gap: 6px;
-    height: 32px;
+    height: 28px;
   }
 
   .navProjectSelector {
@@ -638,12 +723,15 @@
   }
 
   .newSessionButton {
-    padding: 3px 7px;
+    width: 24px;
+    height: 24px;
     font-size: 14px;
   }
 
-  .settingsButton {
-    padding: 3px 6px;
+  .settingsButton,
+  .searchButton {
+    width: 24px;
+    height: 24px;
   }
 
   .contextRight {
@@ -652,5 +740,12 @@
 
   .navTab {
     padding: 0 8px;
+  }
+
+  .headerRevealButton {
+    top: 4px;
+    right: 8px;
+    width: 24px;
+    height: 24px;
   }
 }

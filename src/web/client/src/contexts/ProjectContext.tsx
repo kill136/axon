@@ -47,6 +47,23 @@ export interface BlueprintInfo {
   version: string;
 }
 
+export type ProjectChangeSource =
+  | 'init'
+  | 'switch'
+  | 'open-folder'
+  | 'remove'
+  | 'create-app';
+
+export interface ProjectChangeMeta {
+  source: ProjectChangeSource;
+  createSession: boolean;
+}
+
+export interface SwitchProjectOptions {
+  source?: ProjectChangeSource;
+  createSession?: boolean;
+}
+
 /**
  * 项目 Context 状态
  */
@@ -86,7 +103,7 @@ export interface ProjectContextValue {
   state: ProjectState;
   dispatch: Dispatch<ProjectAction>;
   /** 切换到指定项目 */
-  switchProject: (project: Project) => Promise<void>;
+  switchProject: (project: Project, options?: SwitchProjectOptions) => Promise<void>;
   /** 打开文件夹选择对话框并打开选中的项目 */
   openFolder: () => Promise<Project | null>;
   /** 移除项目 */
@@ -229,9 +246,13 @@ function saveProjectToStorage(project: Project | null): void {
 /**
  * 发送项目切换全局事件
  */
-function emitProjectChangeEvent(project: Project | null, blueprint: BlueprintInfo | null): void {
+function emitProjectChangeEvent(
+  project: Project | null,
+  blueprint: BlueprintInfo | null,
+  meta: ProjectChangeMeta,
+): void {
   const event = new CustomEvent(PROJECT_CHANGE_EVENT, {
-    detail: { project, blueprint },
+    detail: { project, blueprint, meta },
   });
   window.dispatchEvent(event);
 }
@@ -389,7 +410,7 @@ export function ProjectProvider({ children }: ProjectProviderProps) {
   /**
    * 切换项目
    */
-  const switchProject = useCallback(async (project: Project): Promise<void> => {
+  const switchProject = useCallback(async (project: Project, options?: SwitchProjectOptions): Promise<void> => {
     dispatch({ type: 'SET_LOADING', payload: true });
     dispatch({ type: 'SET_ERROR', payload: null });
 
@@ -408,7 +429,10 @@ export function ProjectProvider({ children }: ProjectProviderProps) {
       saveProjectToStorage(openedProject);
 
       // 发送全局事件
-      emitProjectChangeEvent(openedProject, blueprint);
+      emitProjectChangeEvent(openedProject, blueprint, {
+        source: options?.source || 'switch',
+        createSession: options?.createSession ?? true,
+      });
     } catch (error: any) {
       console.error('[ProjectContext] 切换项目失败:', error);
       dispatch({ type: 'SET_ERROR', payload: error.message });
@@ -446,7 +470,10 @@ export function ProjectProvider({ children }: ProjectProviderProps) {
       saveProjectToStorage(project);
 
       // 发送全局事件
-      emitProjectChangeEvent(project, blueprint);
+      emitProjectChangeEvent(project, blueprint, {
+        source: 'open-folder',
+        createSession: true,
+      });
 
       return project;
     } catch (error: any) {
@@ -467,7 +494,10 @@ export function ProjectProvider({ children }: ProjectProviderProps) {
       // 如果移除的是当前项目，清除 localStorage
       if (state.currentProject?.id === projectId) {
         saveProjectToStorage(null);
-        emitProjectChangeEvent(null, null);
+        emitProjectChangeEvent(null, null, {
+          source: 'remove',
+          createSession: false,
+        });
       }
     } catch (error: any) {
       console.error('[ProjectContext] 移除项目失败:', error);
@@ -543,13 +573,19 @@ export function ProjectProvider({ children }: ProjectProviderProps) {
               payload: { project, blueprint },
             });
             saveProjectToStorage(project);
-            emitProjectChangeEvent(project, blueprint);
+            emitProjectChangeEvent(project, blueprint, {
+              source: 'init',
+              createSession: false,
+            });
           } catch (error) {
             if (savedProject && savedProject.id === initialProject.id) {
               console.warn('[ProjectContext] 恢复保存的项目失败，使用缓存数据:', error);
               dispatch({ type: 'SET_CURRENT_PROJECT', payload: savedProject });
               saveProjectToStorage(savedProject);
-              emitProjectChangeEvent(savedProject, null);
+              emitProjectChangeEvent(savedProject, null, {
+                source: 'init',
+                createSession: false,
+              });
             } else {
               console.warn('[ProjectContext] 打开最近项目失败，保留无项目欢迎态:', error);
             }
@@ -617,11 +653,11 @@ export function useProject(): ProjectContextValue {
  * 监听项目切换事件的 Hook
  */
 export function useProjectChangeListener(
-  callback: (project: Project | null, blueprint: BlueprintInfo | null) => void
+  callback: (project: Project | null, blueprint: BlueprintInfo | null, meta: ProjectChangeMeta) => void
 ): void {
   useEffect(() => {
-    const handler = (event: CustomEvent<{ project: Project | null; blueprint: BlueprintInfo | null }>) => {
-      callback(event.detail.project, event.detail.blueprint);
+    const handler = (event: CustomEvent<{ project: Project | null; blueprint: BlueprintInfo | null; meta: ProjectChangeMeta }>) => {
+      callback(event.detail.project, event.detail.blueprint, event.detail.meta);
     };
 
     window.addEventListener(PROJECT_CHANGE_EVENT, handler as EventListener);

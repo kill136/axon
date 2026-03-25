@@ -179,6 +179,37 @@ export function OAuthLogin({ onSuccess, onError }: OAuthLoginProps) {
   };
 
   /**
+   * 导入当前机器上已有的 Claude Code 登录态
+   */
+  const handleImportLocalAuth = async () => {
+    setLoading(true);
+    setStatusIsError(false);
+    setStatus(t('auth.oauth.importingLocal'));
+
+    try {
+      const response = await fetch('/api/auth/oauth/import-local', {
+        method: 'POST',
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || t('auth.oauth.exchangeFailed'));
+      }
+
+      setStatus(t('auth.oauth.importLocalSuccess'));
+      setLoading(false);
+      onSuccess?.();
+    } catch (error) {
+      setLoading(false);
+      setStatusIsError(true);
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      setStatus(t('auth.oauth.error', { error: errorMsg }));
+      onError?.(errorMsg);
+    }
+  };
+
+  /**
    * 返回选择阶段
    */
   const handleBack = () => {
@@ -237,6 +268,20 @@ export function OAuthLogin({ onSuccess, onError }: OAuthLoginProps) {
               <div className="text">
                 <div className="title">{t('auth.oauth.console')}</div>
                 <div className="subtitle">{t('auth.oauth.consoleDesc')}</div>
+              </div>
+            </div>
+          </button>
+
+          <button
+            className="oauth-button import-local"
+            onClick={handleImportLocalAuth}
+            disabled={loading}
+          >
+            <div className="button-content">
+              <div className="icon">📥</div>
+              <div className="text">
+                <div className="title">{t('auth.oauth.importLocal')}</div>
+                <div className="subtitle">{t('auth.oauth.importLocalDesc')}</div>
               </div>
             </div>
           </button>

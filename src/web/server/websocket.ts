@@ -28,6 +28,7 @@ import { getSwarmLogDB, type WorkerLog, type WorkerStream } from './database/swa
 import { registerE2EAgent, unregisterE2EAgent, getE2EAgent } from '../../blueprint/e2e-agent-registry.js';
 // 终端管理器
 import { TerminalManager } from './terminal-manager.js';
+import { resolveSessionAlias, syncClientSessionAlias } from './session-alias.js';
 // 日志系统
 import { logger } from '../../utils/logger.js';
 // 错误感知
@@ -1649,8 +1650,10 @@ async function handleClientMessage(
 
     case 'rewind_preview':
       try {
+        const resolvedSessionId = syncClientSessionAlias(client, conversationManager);
+        await conversationManager.resumeSession(resolvedSessionId, client.permissionMode);
         const preview = conversationManager.getRewindPreview(
-          client.sessionId,
+          resolvedSessionId,
           message.payload.messageId,
           message.payload.option
         );
@@ -1662,13 +1665,15 @@ async function handleClientMessage(
 
     case 'rewind_execute':
       try {
+        const resolvedSessionId = syncClientSessionAlias(client, conversationManager);
+        await conversationManager.resumeSession(resolvedSessionId, client.permissionMode);
         const result = await conversationManager.rewind(
-          client.sessionId,
+          resolvedSessionId,
           message.payload.messageId,
           message.payload.option
         );
         if (result.success) {
-          const updatedMessages = conversationManager.getHistory(client.sessionId);
+          const updatedMessages = conversationManager.getHistory(resolvedSessionId);
           sendMessage(client.ws, {
             type: 'rewind_success',
             payload: { success: true, result, messages: updatedMessages },
@@ -2429,7 +2434,14 @@ async function prepareChatSession(
   thinkingConfig?: WebThinkingConfig,
 ): Promise<ChatSessionContext | null> {
   const { ws, model, projectPath } = client;
-  let { sessionId } = client;
+  const originalSessionId = client.sessionId;
+  let sessionId = syncClientSessionAlias(client, conversationManager);
+
+  if (sessionId !== originalSessionId) {
+    console.log(`[WebSocket] Resolved chat session alias ${originalSessionId} -> ${sessionId}`);
+  }
+
+  conversationManager.setWebSocket(sessionId, ws);
 
   console.log(`[WebSocket] handleChatMessage - sessionId: ${sessionId}, projectPath: ${projectPath || 'undefined'}`);
 
@@ -3163,20 +3175,6 @@ async function handleSessionNew(
   }
 }
 
-function resolveSessionRestoreTargetId(
-  conversationManager: ConversationManager,
-  requestedSessionId: string,
-): string {
-  const resolvedSessionId = conversationManager.getSessionManager().findSessionIdByTemporarySessionId(requestedSessionId);
-
-  if (resolvedSessionId && resolvedSessionId !== requestedSessionId) {
-    console.log(`[WebSocket] Resolved temporary session ${requestedSessionId} -> ${resolvedSessionId}`);
-    return resolvedSessionId;
-  }
-
-  return requestedSessionId;
-}
-
 /**
  * 处理切换会话请求
  */
@@ -3202,8 +3200,12 @@ async function handleSessionSwitch(
     let success = await conversationManager.resumeSession(targetSessionId, client.permissionMode);
 
     if (!success) {
-      const resolvedSessionId = resolveSessionRestoreTargetId(conversationManager, targetSessionId);
+      const resolvedSessionId = resolveSessionAlias(
+        targetSessionId,
+        conversationManager.getSessionManager(),
+      );
       if (resolvedSessionId !== targetSessionId) {
+        console.log(`[WebSocket] Resolved temporary session ${targetSessionId} -> ${resolvedSessionId}`);
         targetSessionId = resolvedSessionId;
         conversationManager.setWebSocket(targetSessionId, ws);
         success = await conversationManager.resumeSession(targetSessionId, client.permissionMode);
@@ -3225,7 +3227,9 @@ async function handleSessionSwitch(
 
       // 获取会话历史（使用 getLiveHistory：处理中时从 messages 实时构建，确保工具调用中间 turn 不丢失）
       const history = conversationManager.getLiveHistory(targetSessionId);
-      console.log(`[WebSocket] handleSessionSwitch: sessionId=${targetSessionId}, history.length=${history.length}, isProcessing=${conversationManager.isSessionProcessing(targetSessionId)}`);
+      console.log(
+        `[WebSocket] handleSessionSwitch: sessionId=${targetSessionId}, history.length=${history.length}, isProcessing=${conversationManager.isSessionProcessing(targetSessionId)}, shouldResumeStreaming=${conversationManager.shouldResumeStreamingOnReconnect(targetSessionId)}`
+      );
 
       const sessionName = conversationManager.getSessionName(targetSessionId);
       const sessionRuntimeBackend = conversationManager.getSessionRuntimeBackend(targetSessionId) || webAuth.getRuntimeBackend();
@@ -3260,8 +3264,8 @@ async function handleSessionSwitch(
 
       // 如果会话正在处理中（如页面刷新），恢复流式状态
       // 补发 message_start + 已累积的内容，让客户端立即显示已生成的内容
-      const isProcessing = conversationManager.isSessionProcessing(targetSessionId);
-      if (isProcessing) {
+      const shouldResumeStreaming = conversationManager.shouldResumeStreamingOnReconnect(targetSessionId);
+      if (shouldResumeStreaming) {
         const resumeMessageId = `resume-${Date.now()}`;
         // 补发 message_start，客户端收到后会创建 currentMessageRef
         sendMessage(ws, {
@@ -3325,10 +3329,10 @@ async function handleSessionSwitch(
           conversationManager.markPendingUserQuestionDelivered(targetSessionId, q.requestId);
           console.log(`[WebSocket] Resending pending user question: ${q.header} (${q.requestId})`);
         }
-      } else if (conversationManager.needsContinuation(targetSessionId)) {
+      } else if (conversationManager.consumePendingContinuation(targetSessionId)) {
         // SelfEvolve 重启等场景：工具结果已保存但模型还没来得及继续回复
         // 自动触发对话继续，让模型接着上次中断的地方回复
-        console.log(`[WebSocket] Session ${targetSessionId} needs continuation (last message is tool_result), auto-triggering`);
+        console.log(`[WebSocket] Session ${targetSessionId} has pending continuation marker, auto-triggering`);
 
         const continueMessageId = randomUUID();
         const chatSessionId = targetSessionId;
@@ -3676,7 +3680,10 @@ async function handleSessionResume(
     let success = await conversationManager.resumeSession(targetSessionId, client.permissionMode);
 
     if (!success) {
-      const resolvedSessionId = resolveSessionRestoreTargetId(conversationManager, targetSessionId);
+      const resolvedSessionId = resolveSessionAlias(
+        targetSessionId,
+        conversationManager.getSessionManager(),
+      );
       if (resolvedSessionId !== targetSessionId) {
         targetSessionId = resolvedSessionId;
         success = await conversationManager.resumeSession(targetSessionId, client.permissionMode);

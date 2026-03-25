@@ -25,7 +25,7 @@ vi.mock('../SlashCommandPalette', () => ({
   SlashCommandPalette: () => <div data-testid="slash-command-palette" />,
 }));
 
-describe('InputArea thinking controls', () => {
+describe('InputArea compact composer', () => {
   beforeEach(() => {
     useLanguageMock.mockReturnValue({
       locale: 'zh',
@@ -86,7 +86,11 @@ describe('InputArea thinking controls', () => {
     return props;
   }
 
-  it('支持的模型下展示可操作的思考开关和强度选择', () => {
+  function openMorePanel() {
+    fireEvent.click(screen.getByLabelText('toggle input more panel'));
+  }
+
+  it('支持的模型下展示可操作的思考档位选择', () => {
     const props = renderInputArea({
       thinkingConfig: {
         enabled: true,
@@ -94,19 +98,17 @@ describe('InputArea thinking controls', () => {
       },
     });
 
-    const toggle = screen.getByRole('button', { name: 'input.thinkingToggle' }) as HTMLButtonElement;
     const levelSelect = screen.getByRole('combobox', { name: 'input.thinkingLevel' }) as HTMLSelectElement;
 
-    expect(toggle.disabled).toBe(false);
     expect(levelSelect.disabled).toBe(false);
     expect(levelSelect.value).toBe('medium');
     expect(screen.getByRole('option', { name: 'input.thinkingLevel.high' })).toBeTruthy();
 
-    fireEvent.click(toggle);
-    expect(props.onThinkingEnabledChange).toHaveBeenCalledWith(false);
-
     fireEvent.change(levelSelect, { target: { value: 'high' } });
     expect(props.onThinkingLevelChange).toHaveBeenCalledWith('high');
+
+    fireEvent.change(levelSelect, { target: { value: 'off' } });
+    expect(props.onThinkingEnabledChange).toHaveBeenCalledWith(false);
   });
 
   it('GPT-5.4 下展示 xhigh 档位', () => {
@@ -124,7 +126,7 @@ describe('InputArea thinking controls', () => {
     expect(screen.getByRole('option', { name: 'input.thinkingLevel.xhigh' })).toBeTruthy();
   });
 
-  it('不支持的模型下禁用思考控件', () => {
+  it('不支持的模型下禁用思考选择器', () => {
     renderInputArea({
       model: 'kimi-k2.5',
       runtimeBackend: 'openai-compatible-api',
@@ -134,14 +136,11 @@ describe('InputArea thinking controls', () => {
       },
     });
 
-    const toggle = screen.getByRole('button', { name: 'input.thinkingToggle' }) as HTMLButtonElement;
     const levelSelect = screen.getByRole('combobox', { name: 'input.thinkingLevel' }) as HTMLSelectElement;
-
-    expect(toggle.disabled).toBe(true);
     expect(levelSelect.disabled).toBe(true);
   });
 
-  it('关闭思考时仍保留强度值但禁用强度选择', () => {
+  it('关闭思考时首层选择器回到 off', () => {
     renderInputArea({
       thinkingConfig: {
         enabled: false,
@@ -149,32 +148,44 @@ describe('InputArea thinking controls', () => {
       },
     });
 
-    const toggle = screen.getByRole('button', { name: 'input.thinkingToggle' });
     const levelSelect = screen.getByRole('combobox', { name: 'input.thinkingLevel' }) as HTMLSelectElement;
-
-    expect(toggle.getAttribute('aria-pressed')).toBe('false');
-    expect(levelSelect.value).toBe('low');
-    expect(levelSelect.disabled).toBe(true);
+    expect(levelSelect.value).toBe('off');
   });
 
-  it('图片附件展示编辑强度选择并响应变更', () => {
-    const props = renderInputArea({
-      attachments: [
-        {
-          id: 'img-1',
-          name: 'flower.png',
-          type: 'image',
-          mimeType: 'image/png',
-          data: 'data:image/png;base64,abc',
-          imageEditStrength: 'medium',
-        },
-      ],
+  it('默认只展示首层控制，更多抽屉折叠', () => {
+    renderInputArea({
+      input: 'hello',
     });
 
-    const select = screen.getByRole('combobox', { name: 'input.imageEditStrength flower.png' }) as HTMLSelectElement;
-    expect(select.value).toBe('medium');
+    expect(screen.getByLabelText('toggle input more panel').getAttribute('aria-expanded')).toBe('false');
+    expect(screen.getByTitle('input.attach')).toBeTruthy();
+    expect(screen.getByTitle('input.send')).toBeTruthy();
+    expect(screen.getByRole('combobox', { name: 'input.switchModel' })).toBeTruthy();
+    expect(screen.getByRole('combobox', { name: 'input.thinkingLevel' })).toBeTruthy();
+    expect(screen.getByRole('combobox', { name: 'input.permissionMode' })).toBeTruthy();
+    expect(screen.queryByTitle('input.pinLock')).toBeNull();
+    expect(screen.queryByTitle('input.debugProbe')).toBeNull();
+    expect(screen.queryByTitle('input.logs')).toBeNull();
+  });
 
-    fireEvent.change(select, { target: { value: 'high' } });
-    expect(props.onImageEditStrengthChange).toHaveBeenCalledWith('img-1', 'high');
+  it('展开更多后显示次级工具和状态信息', () => {
+    renderInputArea({
+      hasCompactBoundary: true,
+      hasMessages: true,
+      onNewSession: vi.fn(),
+    });
+
+    openMorePanel();
+
+    const controlStrip = screen.getByLabelText('input primary controls');
+    expect(screen.queryByLabelText('input more panel')).toBeNull();
+    expect(controlStrip.contains(screen.getByTitle('input.pinLock'))).toBe(true);
+    expect(controlStrip.contains(screen.getByTitle('input.debugProbe'))).toBe(true);
+    expect(controlStrip.contains(screen.getByTitle('input.logs'))).toBe(true);
+    expect(screen.getByText('input.gitShort')).toBeTruthy();
+    expect(screen.getByText('input.terminalShort')).toBeTruthy();
+    expect(screen.getByText('nav.startNewChat')).toBeTruthy();
+    expect(controlStrip.contains(screen.getByTestId('context-bar'))).toBe(true);
+    expect(controlStrip.contains(screen.getByTestId('api-usage-bar'))).toBe(true);
   });
 });
