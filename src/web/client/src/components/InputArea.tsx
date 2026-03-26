@@ -630,13 +630,13 @@ export function InputArea({
                     <span>{t('input.terminalShort')}</span>
                   </button>
                   <div className="input-inline-meta">
-                    <ContextBar usage={contextUsage} compactState={compactState} />
                     <ApiUsageBar info={rateLimitInfo} />
                   </div>
                 </>
               )}
             </div>
             <div className="input-footer-actions">
+              <ContextBar usage={contextUsage} compactState={compactState} />
               {status !== 'idle' && (
                 <button type="button" className="stop-btn" onClick={onCancel}>
                   {`■ ${t('input.stop')}`}

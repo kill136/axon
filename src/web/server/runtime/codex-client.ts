@@ -20,6 +20,9 @@ interface ResponseUsage {
   input_tokens?: number;
   output_tokens?: number;
   reasoning_tokens?: number;
+  input_tokens_details?: {
+    cached_tokens?: number;
+  };
 }
 
 interface ResponseOutputItem {
@@ -73,6 +76,9 @@ interface ChatCompletionChoice {
 interface ChatCompletionUsage {
   prompt_tokens?: number;
   completion_tokens?: number;
+  prompt_tokens_details?: {
+    cached_tokens?: number;
+  };
   completion_tokens_details?: {
     reasoning_tokens?: number;
   };
@@ -114,6 +120,97 @@ function extractTextFromOutput(output?: ResponseOutputItem[]): string {
     .flatMap(item => Array.isArray(item.content) ? item.content : [])
     .map(part => part.text || '')
     .join('');
+}
+
+function getHeaderNumber(headers: Headers, ...names: string[]): number | undefined {
+  for (const name of names) {
+    const value = headers.get(name);
+    if (value === null) {
+      continue;
+    }
+    const parsed = Number(value);
+    if (!Number.isNaN(parsed)) {
+      return parsed;
+    }
+  }
+  return undefined;
+}
+
+function getResponsesCachedTokens(usage?: ResponseUsage): number {
+  return usage?.input_tokens_details?.cached_tokens || 0;
+}
+
+function getChatCompletionCachedTokens(usage?: ChatCompletionUsage): number {
+  return usage?.prompt_tokens_details?.cached_tokens || 0;
+}
+
+function mapResponsesUsage(usage?: ResponseUsage) {
+  const cacheReadTokens = getResponsesCachedTokens(usage);
+  return {
+    inputTokens: usage?.input_tokens || 0,
+    outputTokens: usage?.output_tokens || 0,
+    ...(cacheReadTokens > 0 ? { cacheReadTokens } : {}),
+    thinkingTokens: usage?.reasoning_tokens || 0,
+  };
+}
+
+function mapChatCompletionUsage(usage?: ChatCompletionUsage) {
+  const cacheReadTokens = getChatCompletionCachedTokens(usage);
+  return {
+    inputTokens: usage?.prompt_tokens || 0,
+    outputTokens: usage?.completion_tokens || 0,
+    ...(cacheReadTokens > 0 ? { cacheReadTokens } : {}),
+    thinkingTokens: usage?.completion_tokens_details?.reasoning_tokens || 0,
+  };
+}
+
+function mapRateLimitInfo(headers: Headers) {
+  const resetSeconds = getHeaderNumber(
+    headers,
+    'x-ratelimit-reset-requests',
+    'x-ratelimit-reset-tokens',
+    'x-ratelimit-reset',
+  );
+
+  return {
+    remainingRequests: getHeaderNumber(headers, 'x-ratelimit-remaining-requests', 'ratelimit-remaining-requests'),
+    limitRequests: getHeaderNumber(headers, 'x-ratelimit-limit-requests', 'ratelimit-limit-requests'),
+    remainingTokens: getHeaderNumber(headers, 'x-ratelimit-remaining-tokens', 'ratelimit-remaining-tokens'),
+    limitTokens: getHeaderNumber(headers, 'x-ratelimit-limit-tokens', 'ratelimit-limit-tokens'),
+    resetsAt: resetSeconds !== undefined ? Math.floor(Date.now() / 1000) + Math.max(0, resetSeconds) : undefined,
+  };
+}
+
+function hasRateLimitInfo(info: ReturnType<typeof mapRateLimitInfo>): boolean {
+  return [info.remainingRequests, info.limitRequests, info.remainingTokens, info.limitTokens, info.resetsAt].some(
+    value => value !== undefined,
+  );
+}
+
+function createRateLimitEvent(headers: Headers, cacheReadTokens?: number): ConversationStreamEvent | null {
+  const info = mapRateLimitInfo(headers);
+  if (!hasRateLimitInfo(info) && !cacheReadTokens) {
+    return null;
+  }
+
+  return {
+    type: 'rate_limit',
+    info: {
+      status: 'available',
+      ...info,
+      ...(cacheReadTokens ? { cacheReadTokens } : {}),
+    },
+  };
+}
+
+function mergeRateLimitInfo(
+  base: ReturnType<typeof mapRateLimitInfo>,
+  update: Partial<ReturnType<typeof mapResponsesUsage>> | Partial<ReturnType<typeof mapChatCompletionUsage>>,
+) {
+  return {
+    ...base,
+    ...(update.cacheReadTokens ? { cacheReadTokens: update.cacheReadTokens } : {}),
+  };
 }
 
 function getResponseToolCallId(item: Pick<ResponseOutputItem, 'call_id' | 'id'>): string {
@@ -409,9 +506,13 @@ function isCustomResponsesEndpoint(baseUrl: string): boolean {
 function shouldFallbackToChatCompletions(
   response: Pick<Response, 'status' | 'headers'>,
   errorText: string | undefined,
+  stream: boolean,
 ): boolean {
   const normalized = errorText?.toLowerCase() || '';
   if (normalized.includes('convert_request_failed') || normalized.includes('not implemented')) {
+    return true;
+  }
+  if (!stream && normalized.includes('stream must be set to true')) {
     return true;
   }
 
@@ -454,6 +555,10 @@ export class CodexConversationClient implements ConversationClient {
       return this.mapChatCompletionResponse(response);
     }
 
+    if (this.shouldAggregateCreateMessageFromStream(options)) {
+      return this.aggregateCreateMessageFromStream(messages, tools, systemPrompt, options);
+    }
+
     const response = await this.callResponsesApi(messages, tools, systemPrompt, options, false);
     const content = this.mapOutputToContentBlocks(response.output);
     const hasToolUse = content.some(block => block.type === 'tool_use');
@@ -461,11 +566,7 @@ export class CodexConversationClient implements ConversationClient {
     return {
       content,
       stopReason: hasToolUse ? 'tool_use' : 'end_turn',
-      usage: {
-        inputTokens: response.usage?.input_tokens || 0,
-        outputTokens: response.usage?.output_tokens || 0,
-        thinkingTokens: response.usage?.reasoning_tokens || 0,
-      },
+      usage: mapResponsesUsage(response.usage),
       model: response.model || this.resolveModelName(),
     };
   }
@@ -497,18 +598,26 @@ export class CodexConversationClient implements ConversationClient {
 
     if (!response.ok) {
       const text = await response.text();
-      if (isCustomResponsesEndpoint(this.baseUrl) && shouldFallbackToChatCompletions(response, text)) {
+      if (isCustomResponsesEndpoint(this.baseUrl) && shouldFallbackToChatCompletions(response, text, true)) {
         yield* this.createChatCompletionsStream(messages, tools, systemPrompt, options);
         return;
       }
       clearTimeout(timeoutId);
       yield { type: 'response_headers', headers: response.headers };
+      const rateLimitEvent = createRateLimitEvent(response.headers);
+      if (rateLimitEvent) {
+        yield rateLimitEvent;
+      }
       yield { type: 'error', error: formatHttpErrorMessage('Codex', response, text) };
       return;
     }
 
     clearTimeout(timeoutId);
     yield { type: 'response_headers', headers: response.headers };
+    const responsesInitialRateLimitEvent = createRateLimitEvent(response.headers);
+    if (responsesInitialRateLimitEvent) {
+      yield responsesInitialRateLimitEvent;
+    }
 
     const contentType = response.headers.get('content-type') || '';
     if (!/text\/event-stream/i.test(contentType)) {
@@ -522,6 +631,11 @@ export class CodexConversationClient implements ConversationClient {
         return;
       }
 
+      const usage = mapResponsesUsage(apiResponse.usage);
+      const rateLimitEvent = createRateLimitEvent(response.headers, usage.cacheReadTokens);
+      if (rateLimitEvent) {
+        yield rateLimitEvent;
+      }
       yield* this.emitCompletedResponse(apiResponse);
       return;
     }
@@ -681,6 +795,11 @@ export class CodexConversationClient implements ConversationClient {
           case 'response.completed': {
             const apiResponse = payload.response as ResponsesApiResult | undefined;
             completed = true;
+            const usage = mapResponsesUsage(apiResponse?.usage);
+            const rateLimitEvent = createRateLimitEvent(response.headers, usage.cacheReadTokens);
+            if (rateLimitEvent) {
+              yield rateLimitEvent;
+            }
             yield* this.emitCompletedResponse(apiResponse, replayState);
             break;
           }
@@ -695,6 +814,11 @@ export class CodexConversationClient implements ConversationClient {
     if (!completed && trailingText) {
       const apiResponse = parseResponsesApiResult(trailingText);
       if (apiResponse) {
+        const usage = mapResponsesUsage(apiResponse.usage);
+        const rateLimitEvent = createRateLimitEvent(response.headers, usage.cacheReadTokens);
+        if (rateLimitEvent) {
+          yield rateLimitEvent;
+        }
         yield* this.emitCompletedResponse(apiResponse, replayState);
         return;
       }
@@ -729,7 +853,7 @@ export class CodexConversationClient implements ConversationClient {
 
       if (!response.ok) {
         const text = await response.text();
-        if (isCustomResponsesEndpoint(this.baseUrl) && shouldFallbackToChatCompletions(response, text)) {
+        if (isCustomResponsesEndpoint(this.baseUrl) && shouldFallbackToChatCompletions(response, text, stream)) {
           const fallback = await this.callChatCompletionsApi(messages, tools, systemPrompt, options, stream);
           return this.mapChatCompletionApiResultToResponses(fallback);
         }
@@ -804,6 +928,10 @@ export class CodexConversationClient implements ConversationClient {
 
     clearTimeout(timeoutId);
     yield { type: 'response_headers', headers: response.headers };
+    const chatInitialRateLimitEvent = createRateLimitEvent(response.headers);
+    if (chatInitialRateLimitEvent) {
+      yield chatInitialRateLimitEvent;
+    }
 
     if (!response.ok) {
       const text = await response.text();
@@ -820,6 +948,7 @@ export class CodexConversationClient implements ConversationClient {
     let buffer = '';
     let finishReason: string | null = null;
     let usage: ChatCompletionUsage | undefined;
+    const rateLimitBase = mapRateLimitInfo(response.headers);
     const toolCalls = new Map<number, { id: string; name: string; arguments: string; index: number }>();
     const toolCallAliases = new Map<string, number>();
     let generatedToolCallCounter = 0;
@@ -986,13 +1115,21 @@ export class CodexConversationClient implements ConversationClient {
       };
     }
 
+    const mappedUsage = mapChatCompletionUsage(usage);
+    const mergedRateLimit = mergeRateLimitInfo(rateLimitBase, mappedUsage);
+    if (hasRateLimitInfo(mergedRateLimit) || mappedUsage.cacheReadTokens) {
+      yield {
+        type: 'rate_limit',
+        info: {
+          status: 'available',
+          ...mergedRateLimit,
+        },
+      };
+    }
+
     yield {
       type: 'usage',
-      usage: {
-        inputTokens: usage?.prompt_tokens || 0,
-        outputTokens: usage?.completion_tokens || 0,
-        thinkingTokens: usage?.completion_tokens_details?.reasoning_tokens || 0,
-      },
+      usage: mappedUsage,
     };
     yield {
       type: 'stop',
@@ -1207,11 +1344,7 @@ export class CodexConversationClient implements ConversationClient {
     return {
       content,
       stopReason: choice?.finish_reason === 'tool_calls' ? 'tool_use' : choice?.finish_reason === 'length' ? 'max_tokens' : 'end_turn',
-      usage: {
-        inputTokens: response.usage?.prompt_tokens || 0,
-        outputTokens: response.usage?.completion_tokens || 0,
-        thinkingTokens: response.usage?.completion_tokens_details?.reasoning_tokens || 0,
-      },
+      usage: mapChatCompletionUsage(response.usage),
       model: response.model || this.resolveModelName(),
     };
   }
@@ -1255,6 +1388,11 @@ export class CodexConversationClient implements ConversationClient {
         input_tokens: mapped.usage.inputTokens,
         output_tokens: mapped.usage.outputTokens,
         reasoning_tokens: mapped.usage.thinkingTokens,
+        ...(mapped.usage.cacheReadTokens ? {
+          input_tokens_details: {
+            cached_tokens: mapped.usage.cacheReadTokens,
+          },
+        } : {}),
       },
     };
   }
@@ -1502,17 +1640,157 @@ export class CodexConversationClient implements ConversationClient {
     }
 
     const hasToolUse = output.some(item => item.type === 'function_call');
+    const mappedUsage = mapResponsesUsage(response?.usage);
     yield {
       type: 'usage',
-      usage: {
-        inputTokens: response?.usage?.input_tokens || 0,
-        outputTokens: response?.usage?.output_tokens || 0,
-        thinkingTokens: response?.usage?.reasoning_tokens || 0,
-      },
+      usage: mappedUsage,
     };
     yield {
       type: 'stop',
       stopReason: hasToolUse ? 'tool_use' : 'end_turn',
+    };
+  }
+
+  private shouldAggregateCreateMessageFromStream(options?: ConversationRequestOptions): boolean {
+    return options?.preferStreamingTransport === true && isCustomResponsesEndpoint(this.baseUrl);
+  }
+
+  private async aggregateCreateMessageFromStream(
+    messages: Message[],
+    tools?: ToolDefinition[],
+    systemPrompt?: string,
+    options?: ConversationRequestOptions,
+  ): Promise<ConversationMessageResponse> {
+    const content: ContentBlock[] = [];
+    let currentThinking = '';
+    let currentText = '';
+    let currentToolUse: {
+      id: string;
+      name: string;
+      inputJson: string;
+      parsedInput?: unknown;
+    } | null = null;
+    let stopReason: ConversationMessageResponse['stopReason'] = 'end_turn';
+    let usage: ConversationMessageResponse['usage'] = {
+      inputTokens: 0,
+      outputTokens: 0,
+    };
+
+    const flushThinking = () => {
+      if (!currentThinking) {
+        return;
+      }
+      content.push({ type: 'thinking', thinking: currentThinking } as any);
+      currentThinking = '';
+    };
+
+    const flushText = () => {
+      if (!currentText) {
+        return;
+      }
+      content.push({ type: 'text', text: currentText } as TextBlock);
+      currentText = '';
+    };
+
+    const flushToolUse = () => {
+      if (!currentToolUse) {
+        return;
+      }
+      const parsedInput = currentToolUse.parsedInput !== undefined
+        ? currentToolUse.parsedInput
+        : safeJsonParse(currentToolUse.inputJson || '{}', {});
+      content.push({
+        type: 'tool_use',
+        id: currentToolUse.id,
+        name: currentToolUse.name,
+        input: parsedInput,
+      } as ToolUseBlock);
+      currentToolUse = null;
+    };
+
+    for await (const event of this.createMessageStream(messages, tools, systemPrompt, options)) {
+      switch (event.type) {
+        case 'thinking':
+          if (event.thinking) {
+            if (currentText) {
+              flushText();
+            }
+            currentThinking += event.thinking;
+          }
+          break;
+
+        case 'text':
+          flushThinking();
+          if (event.text) {
+            currentText += event.text;
+          }
+          break;
+
+        case 'tool_use_start':
+          flushThinking();
+          flushText();
+          flushToolUse();
+          currentToolUse = {
+            id: event.id || `call_${Date.now()}`,
+            name: event.name || 'unknown_tool',
+            inputJson: '',
+          };
+          break;
+
+        case 'tool_use_delta':
+          if (currentToolUse && event.input) {
+            currentToolUse.inputJson += event.input;
+          }
+          break;
+
+        case 'tool_use_complete':
+          if (currentToolUse && currentToolUse.id === event.id) {
+            currentToolUse.parsedInput = event.input ?? {};
+            break;
+          }
+          if (event.id) {
+            for (const block of content) {
+              if (block.type === 'tool_use' && block.id === event.id) {
+                (block as ToolUseBlock).input = event.input ?? {};
+                break;
+              }
+            }
+          }
+          break;
+
+        case 'usage':
+          if (event.usage) {
+            usage = {
+              inputTokens: event.usage.inputTokens || 0,
+              outputTokens: event.usage.outputTokens || 0,
+              ...(event.usage.cacheReadTokens != null ? { cacheReadTokens: event.usage.cacheReadTokens } : {}),
+              ...(event.usage.cacheCreationTokens != null ? { cacheCreationTokens: event.usage.cacheCreationTokens } : {}),
+              ...(event.usage.thinkingTokens != null ? { thinkingTokens: event.usage.thinkingTokens } : {}),
+            };
+          }
+          break;
+
+        case 'stop':
+          flushThinking();
+          flushText();
+          flushToolUse();
+          stopReason = event.stopReason || (content.some(block => block.type === 'tool_use') ? 'tool_use' : 'end_turn');
+          break;
+
+        case 'error':
+          throw new Error(event.error || 'Codex stream aggregation failed');
+      }
+    }
+
+    flushThinking();
+    flushText();
+    flushToolUse();
+
+    return {
+      content: content.length > 0 ? content : [{ type: 'text', text: '' } as TextBlock],
+      stopReason,
+      usage,
+      model: this.resolveModelName(),
     };
   }
 

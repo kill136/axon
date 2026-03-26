@@ -35,7 +35,11 @@ export function SlashCommandPalette({ input, onSelect, onClose }: SlashCommandPa
   const paletteRef = useRef<HTMLDivElement>(null);
   const { t } = useLanguage();
 
-  const query = input.slice(1).toLowerCase();
+  const normalizedInput = input.trimStart();
+  const query = (normalizedInput.startsWith('/')
+    ? normalizedInput.slice(1).trimStart().split(/\s+/, 1)[0] || ''
+    : '')
+    .toLowerCase();
   const allCommands = getAllSlashCommands();
   const filteredCommands = allCommands.filter(cmd =>
     cmd.name.slice(1).startsWith(query) ||

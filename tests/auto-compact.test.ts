@@ -75,8 +75,8 @@ describe('Auto Compact Framework', () => {
 
       const maxOutput = getMaxOutputTokens(model);
 
-      // opus-4-5 默认 64000（configManager mock 返回 undefined，不覆盖）
-      expect(maxOutput).toBe(64000);
+      // opus-4-5 默认 32000（configManager mock 返回 undefined，不覆盖）
+      expect(maxOutput).toBe(32000);
     });
 
     it('should handle truthy values for DISABLE_COMPACT', () => {
@@ -134,19 +134,19 @@ describe('Auto Compact Framework', () => {
     it('should calculate max output tokens for opus-4-5', () => {
       const model = 'claude-opus-4-5-20251101';
       const result = getMaxOutputTokens(model);
-      expect(result).toBe(64000);
+      expect(result).toBe(32000);
     });
 
     it('should calculate max output tokens for sonnet-4', () => {
       const model = 'claude-sonnet-4-5-20250929';
       const result = getMaxOutputTokens(model);
-      expect(result).toBe(64000);
+      expect(result).toBe(32000);
     });
 
     it('should calculate max output tokens for haiku-4', () => {
       const model = 'claude-haiku-4-5-20251001';
       const result = getMaxOutputTokens(model);
-      expect(result).toBe(64000);
+      expect(result).toBe(32000);
     });
 
     it('should calculate max output tokens for opus-4', () => {
@@ -156,10 +156,10 @@ describe('Auto Compact Framework', () => {
     });
 
     it('should return default max for each model family', () => {
-      // opus-4-5: 64000
-      expect(getMaxOutputTokens('claude-opus-4-5-20251101')).toBe(64000);
-      // sonnet-4: 64000
-      expect(getMaxOutputTokens('claude-sonnet-4-5-20250929')).toBe(64000);
+      // opus-4-5: 32000
+      expect(getMaxOutputTokens('claude-opus-4-5-20251101')).toBe(32000);
+      // sonnet-4: 32000
+      expect(getMaxOutputTokens('claude-sonnet-4-5-20250929')).toBe(32000);
       // opus-4 (non-4-5): 32000
       expect(getMaxOutputTokens('claude-opus-4-20240229')).toBe(32000);
       // unknown: 32000
@@ -174,12 +174,12 @@ describe('Auto Compact Framework', () => {
       expect(availableInput).toBe(180000);
     });
 
-    it('should calculate available input tokens for 1M model', () => {
-      const model = 'claude-opus-4-5-20251101[1m]';
+    it('should calculate available input tokens for gpt-5.4', () => {
+      const model = 'gpt-5.4';
       const availableInput = calculateAvailableInput(model);
 
-      // 1000000 (context) - min(64000, 20000) = 980000 (官方 _QY=20000 cap)
-      expect(availableInput).toBe(980000);
+      // 280000 (context) - min(128000, 20000) = 260000
+      expect(availableInput).toBe(260000);
     });
   });
 
@@ -192,12 +192,12 @@ describe('Auto Compact Framework', () => {
       expect(threshold).toBe(140000);
     });
 
-    it('should calculate auto compact threshold for 1M model', () => {
-      const model = 'claude-opus-4-5-20251101[1m]';
+    it('should calculate auto compact threshold for gpt-5.4 using shared logic', () => {
+      const model = 'gpt-5.4';
       const threshold = calculateAutoCompactThreshold(model);
 
-      // 1000000 - 20000 - 40000 = 940000
-      expect(threshold).toBe(940000);
+      // 280000 (context) - min(128000, 20000) - 40000 = 220000
+      expect(threshold).toBe(220000);
     });
 
     it('should respect percentage override', () => {

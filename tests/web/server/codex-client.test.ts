@@ -143,6 +143,48 @@ describe('CodexConversationClient', () => {
     });
   });
 
+  it('should map cached tokens from Responses usage', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        model: 'gpt-5-codex',
+        output: [
+          {
+            type: 'message',
+            content: [{ type: 'output_text', text: 'done' }],
+          },
+        ],
+        usage: {
+          input_tokens: 12,
+          output_tokens: 7,
+          input_tokens_details: {
+            cached_tokens: 5,
+          },
+        },
+      }),
+    });
+
+    const client = new CodexConversationClient({
+      provider: 'codex',
+      model: 'gpt-5-codex',
+      apiKey: 'sk-test',
+    });
+
+    const response = await client.createMessage([
+      {
+        role: 'user',
+        content: [{ type: 'text', text: 'hello' }],
+      },
+    ]);
+
+    expect(response.usage).toMatchObject({
+      inputTokens: 12,
+      outputTokens: 7,
+      cacheReadTokens: 5,
+      thinkingTokens: 0,
+    });
+  });
+
   it('should map reasoning and function calls back to content blocks', async () => {
     fetchSpy.mockResolvedValueOnce({
       ok: true,
@@ -367,6 +409,76 @@ describe('CodexConversationClient', () => {
     expect(body.instructions).toContain('coding assistant');
   });
 
+  it('should aggregate createMessage from streaming transport when requested on custom codex endpoints', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      headers: new Headers({
+        'content-type': 'text/event-stream',
+      }),
+      body: {
+        async *[Symbol.asyncIterator]() {
+          yield new TextEncoder().encode(
+            `event: message\ndata: ${JSON.stringify({
+              type: 'response.output_text.delta',
+              delta: 'streamed ',
+            })}\n\n`,
+          );
+          yield new TextEncoder().encode(
+            `event: message\ndata: ${JSON.stringify({
+              type: 'response.output_text.delta',
+              delta: 'summary',
+            })}\n\n`,
+          );
+          yield new TextEncoder().encode(
+            `event: message\ndata: ${JSON.stringify({
+              type: 'response.completed',
+              response: {
+                model: 'gpt-5.4',
+                output: [
+                  {
+                    type: 'message',
+                    content: [{ type: 'output_text', text: 'streamed summary' }],
+                  },
+                ],
+                usage: {
+                  input_tokens: 11,
+                  output_tokens: 4,
+                },
+              },
+            })}\n\n`,
+          );
+        },
+      },
+    });
+
+    const client = new CodexConversationClient({
+      provider: 'codex',
+      model: 'gpt-5.4',
+      apiKey: 'sk-test',
+      baseUrl: 'https://api.chatbi.site',
+    });
+
+    const response = await client.createMessage([
+      {
+        role: 'user',
+        content: [{ type: 'text', text: 'summarize this conversation' }],
+      },
+    ], undefined, undefined, { preferStreamingTransport: true });
+
+    expect(response.content).toEqual([{ type: 'text', text: 'streamed summary' }]);
+    expect(response.stopReason).toBe('end_turn');
+    expect(response.usage).toEqual({
+      inputTokens: 11,
+      outputTokens: 4,
+      thinkingTokens: 0,
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe('https://api.chatbi.site/v1/responses');
+    const [, request] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(String(request.body));
+    expect(body.stream).toBe(true);
+  });
+
   it('should append /v1/responses for root OpenAI-compatible endpoints', async () => {
     fetchSpy.mockResolvedValueOnce({
       ok: true,
@@ -586,6 +698,61 @@ describe('CodexConversationClient', () => {
       },
       { type: 'stop', stopReason: 'end_turn' },
     ]);
+  });
+
+  it('should fall back to chat completions when non-stream Responses requests require stream=true', async () => {
+    fetchSpy
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        statusText: 'Bad Request',
+        headers: new Headers({
+          'content-type': 'application/json',
+        }),
+        text: async () => JSON.stringify({
+          error: {
+            message: 'Stream must be set to true',
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          model: 'gpt-5.4',
+          choices: [
+            {
+              message: {
+                role: 'assistant',
+                content: 'fallback summary ok',
+              },
+              finish_reason: 'stop',
+            },
+          ],
+          usage: {
+            prompt_tokens: 10,
+            completion_tokens: 4,
+          },
+        }),
+      });
+
+    const client = new CodexConversationClient({
+      provider: 'codex',
+      model: 'gpt-5.4',
+      apiKey: 'sk-test',
+      baseUrl: 'https://api.chatbi.site',
+    });
+
+    const response = await client.createMessage([
+      {
+        role: 'user',
+        content: [{ type: 'text', text: 'summarize this conversation' }],
+      },
+    ]);
+
+    expect(response.content).toEqual([{ type: 'text', text: 'fallback summary ok' }]);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe('https://api.chatbi.site/v1/responses');
+    expect(fetchSpy.mock.calls[1]?.[0]).toBe('https://api.chatbi.site/v1/chat/completions');
   });
 
   it('should fall back to chat completions when a custom Responses endpoint returns an HTML timeout page', async () => {
@@ -1206,6 +1373,10 @@ describe('CodexConversationClient', () => {
     ]);
     expect(response.content).toEqual([{ type: 'text', text: '我是 Kimi。' }]);
     expect(response.stopReason).toBe('end_turn');
+    expect(response.usage).toMatchObject({
+      inputTokens: 9,
+      outputTokens: 4,
+    });
   });
 
   it('should include reasoning_content when replaying assistant tool-call history in chat completions', async () => {
@@ -1417,6 +1588,60 @@ describe('CodexConversationClient', () => {
       },
     ]);
     expect(body.messages[0]).not.toHaveProperty('reasoning_content');
+  });
+
+  it('should expose cache hits and rate limit data in chat completions stream events', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      headers: new Headers({
+        'content-type': 'text/event-stream',
+        'x-ratelimit-remaining-requests': '42',
+        'x-ratelimit-limit-requests': '50',
+        'x-ratelimit-remaining-tokens': '9000',
+        'x-ratelimit-limit-tokens': '10000',
+        'x-ratelimit-reset-requests': '30',
+      }),
+      body: {
+        async *[Symbol.asyncIterator]() {
+          yield new TextEncoder().encode('data: {"choices":[{"delta":{"content":"你好"},"finish_reason":null}]}\n');
+          yield new TextEncoder().encode('data: {"choices":[{"delta":{"content":"，我是 Kimi。"},"finish_reason":"stop"}],"usage":{"prompt_tokens":5,"completion_tokens":6,"prompt_tokens_details":{"cached_tokens":2}}}\n');
+          yield new TextEncoder().encode('data: [DONE]\n');
+        },
+      },
+    });
+
+    const client = new CodexConversationClient({
+      provider: 'codex',
+      model: 'kimi-k2.5',
+      apiKey: 'sk-test',
+      baseUrl: 'https://api.chatbi.site',
+    });
+
+    const events = await collectStreamEvents(client, [
+      {
+        role: 'user',
+        content: [{ type: 'text', text: 'hi' }],
+      },
+    ]);
+
+    expect(events).toContainEqual(expect.objectContaining({
+      type: 'rate_limit',
+      info: expect.objectContaining({
+        remainingRequests: 42,
+        limitRequests: 50,
+        remainingTokens: 9000,
+        limitTokens: 10000,
+      }),
+    }));
+    expect(events).toContainEqual({
+      type: 'usage',
+      usage: {
+        inputTokens: 5,
+        outputTokens: 6,
+        cacheReadTokens: 2,
+        thinkingTokens: 0,
+      },
+    });
   });
 
   it('should parse chat completions streaming payloads for custom non-codex models', async () => {

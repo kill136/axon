@@ -163,9 +163,29 @@ describe('InputArea compact composer', () => {
     expect(screen.getByRole('combobox', { name: 'input.switchModel' })).toBeTruthy();
     expect(screen.getByRole('combobox', { name: 'input.thinkingLevel' })).toBeTruthy();
     expect(screen.getByRole('combobox', { name: 'input.permissionMode' })).toBeTruthy();
+    expect(screen.getByTestId('context-bar')).toBeTruthy();
     expect(screen.queryByTitle('input.pinLock')).toBeNull();
     expect(screen.queryByTitle('input.debugProbe')).toBeNull();
     expect(screen.queryByTitle('input.logs')).toBeNull();
+    expect(screen.queryByTestId('api-usage-bar')).toBeNull();
+  });
+
+  it('输入前导空格的斜杠命令时也会渲染命令面板', () => {
+    renderInputArea({
+      input: '   /compact',
+      showCommandPalette: true,
+    });
+
+    expect(screen.getByTestId('slash-command-palette')).toBeTruthy();
+  });
+
+  it('showCommandPalette=false 时不渲染命令面板', () => {
+    renderInputArea({
+      input: '/compact',
+      showCommandPalette: false,
+    });
+
+    expect(screen.queryByTestId('slash-command-palette')).toBeNull();
   });
 
   it('展开更多后显示次级工具和状态信息', () => {
@@ -185,7 +205,7 @@ describe('InputArea compact composer', () => {
     expect(screen.getByText('input.gitShort')).toBeTruthy();
     expect(screen.getByText('input.terminalShort')).toBeTruthy();
     expect(screen.getByText('nav.startNewChat')).toBeTruthy();
-    expect(controlStrip.contains(screen.getByTestId('context-bar'))).toBe(true);
     expect(controlStrip.contains(screen.getByTestId('api-usage-bar'))).toBe(true);
+    expect(screen.getByTestId('context-bar')).toBeTruthy();
   });
 });

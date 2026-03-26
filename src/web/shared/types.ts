@@ -559,6 +559,8 @@ export interface MessageCompletePayload {
   usage?: {
     inputTokens: number;
     outputTokens: number;
+    cacheReadTokens?: number;
+    cacheCreationTokens?: number;
   };
   sessionId?: string;
 }
@@ -585,6 +587,12 @@ export interface RateLimitUpdatePayload {
   utilization7d?: number;
   resetsAt?: number;
   rateLimitType?: string;
+  remainingRequests?: number;
+  limitRequests?: number;
+  remainingTokens?: number;
+  limitTokens?: number;
+  cacheReadTokens?: number;
+  cacheCreationTokens?: number;
   sessionId?: string;
 }
 
@@ -701,6 +709,8 @@ export interface ChatMessage {
   usage?: {
     inputTokens: number;
     outputTokens: number;
+    cacheReadTokens?: number;
+    cacheCreationTokens?: number;
   };
   /** 对齐官方 compact_boundary：标记此消息为压缩边界（UI 渲染分隔线） */
   isCompactBoundary?: boolean;

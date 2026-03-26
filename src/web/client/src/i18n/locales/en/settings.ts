@@ -26,7 +26,7 @@ const settings = {
   'apiConfig.modelContextWindowById.error': 'Context window overrides must be valid JSON objects with positive integer values.',
   'apiConfig.modelContextWindowById.help': 'Optional per-model context window overrides. These values are used by auto-compact and context budgeting for matching model IDs.',
   'apiConfig.modelContextWindowById.label': 'Context Window Overrides',
-  'apiConfig.modelContextWindowById.placeholder': '{\n  \"gpt-5.4\": 1000000,\n  \"gpt-5.4-mini\": 400000,\n  \"gpt-5-codex\": 400000\n}',
+  'apiConfig.modelContextWindowById.placeholder': '{\n  \"gpt-5.4\": 280000,\n  \"gpt-5.4-mini\": 400000,\n  \"gpt-5-codex\": 400000\n}',
   'apiConfig.description': 'Configure advanced Claude API parameters. These settings affect the AI\'s behavior and performance.',
   'apiConfig.loadFailed': 'Failed to load config: {{error}}',
   'apiConfig.maxRetries.error': 'Max Retries must be between 0 and 10',

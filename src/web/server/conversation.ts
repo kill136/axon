@@ -435,14 +435,14 @@ export interface StreamCallbacks {
   onToolUseDelta?: (toolUseId: string, partialJson: string) => void;
   onToolResult?: (toolUseId: string, success: boolean, output?: string, error?: string, data?: ToolResultData) => void;
   onPermissionRequest?: (request: any) => void;
-  onComplete?: (stopReason: string | null, usage?: { inputTokens: number; outputTokens: number }) => void;
+  onComplete?: (stopReason: string | null, usage?: { inputTokens: number; outputTokens: number; cacheReadTokens?: number; cacheCreationTokens?: number }) => void;
   onError?: (error: Error) => void;
   /** 上下文压缩事件：start=开始压缩, end=压缩完成, error=压缩失败 */
   onContextCompact?: (phase: 'start' | 'end' | 'error', info?: Record<string, any>) => void;
   /** 上下文使用量更新 */
   onContextUpdate?: (usage: { usedTokens: number; maxTokens: number; percentage: number; model: string }) => void;
   /** API 速率限制更新 */
-  onRateLimitUpdate?: (info: { status: string; utilization5h?: number; utilization7d?: number; resetsAt?: number; rateLimitType?: string; }) => void;
+  onRateLimitUpdate?: (info: { status: string; utilization5h?: number; utilization7d?: number; resetsAt?: number; rateLimitType?: string; remainingRequests?: number; limitRequests?: number; remainingTokens?: number; limitTokens?: number; cacheReadTokens?: number; cacheCreationTokens?: number; }) => void;
 }
 
 /**
@@ -1013,10 +1013,18 @@ export class ConversationManager {
       && authStatus.type === 'oauth'
         ? 'agent'
         : undefined;
+    const isThirdPartyAnthropic = provider === 'anthropic'
+      && !!creds.baseUrl
+      && !creds.baseUrl.includes('api.anthropic.com')
+      && !creds.baseUrl.includes('anthropic.com');
 
     return {
       provider,
-      model: provider === 'codex' ? normalizedModel : this.getModelId(normalizedModel),
+      model: provider === 'codex'
+        ? normalizedModel
+        : isThirdPartyAnthropic
+          ? normalizedModel
+          : this.getModelId(normalizedModel),
       apiKey: creds.apiKey,
       authToken: creds.authToken,
       baseUrl: creds.baseUrl,
@@ -1921,6 +1929,12 @@ export class ConversationManager {
             this.consolidateMemoryAfterCompact(preCompactMessages, state).catch(err => {
               console.warn('[MemoryConsolidation] Memory consolidation failed:', err);
             });
+          } else if (compactResult.error) {
+            console.warn('[AutoCompact] Compaction not applied:', compactResult.error);
+            callbacks.onContextCompact?.('error', {
+              message: compactResult.error,
+              reason: compactResult.failureReason,
+            });
           }
         } catch (err) {
           console.warn('[AutoCompact] Compaction failed, continuing with original messages:', err);
@@ -2232,6 +2246,13 @@ export class ConversationManager {
               break;
             }
 
+            case 'rate_limit': {
+              if (event.info) {
+                callbacks.onRateLimitUpdate?.(event.info);
+              }
+              break;
+            }
+
             case 'error':
               throw new Error(event.error || 'Unknown stream error');
           }
@@ -2440,6 +2461,8 @@ export class ConversationManager {
             usage: {
               inputTokens: totalInputTokens,
               outputTokens: totalOutputTokens,
+              cacheReadTokens: totalCacheReadTokens,
+              cacheCreationTokens: totalCacheCreationTokens,
             },
             _messagesLen: state.messages.length,
           };
@@ -2456,6 +2479,8 @@ export class ConversationManager {
           callbacks.onComplete?.(stopReason, {
             inputTokens: totalInputTokens,
             outputTokens: totalOutputTokens,
+            cacheReadTokens: totalCacheReadTokens,
+            cacheCreationTokens: totalCacheCreationTokens,
           });
         }
 
@@ -2540,6 +2565,14 @@ export class ConversationManager {
                 summaryText: compactResult.summaryText,
               });
               continue; // 重新进入循环
+            }
+
+            if (compactResult.error) {
+              console.warn('[AutoCompact] Force compaction not applied:', compactResult.error);
+              callbacks.onContextCompact?.('error', {
+                message: compactResult.error,
+                reason: compactResult.failureReason,
+              });
             }
           } catch (compactErr) {
             console.error('[AutoCompact] Force compaction failed:', compactErr);
@@ -3751,7 +3784,15 @@ export class ConversationManager {
     messages: Message[],
     model: string,
     state: SessionState
-  ): Promise<{ wasCompacted: boolean; messages: Message[]; savedTokens?: number; boundaryUuid?: string; summaryText?: string }> {
+  ): Promise<{
+    wasCompacted: boolean;
+    messages: Message[];
+    savedTokens?: number;
+    boundaryUuid?: string;
+    summaryText?: string;
+    failureReason?: 'not_performed' | 'summary_empty' | 'upstream_error';
+    error?: string;
+  }> {
     const threshold = calculateAutoCompactThreshold(model);
 
     // 1. 尝试 Session Memory 压缩 (TJ1)
@@ -3797,6 +3838,10 @@ export class ConversationManager {
     }
 
     // 2. 尝试对话摘要 (NJ1) — 对齐官方 oj1 压缩函数
+    let compactFailure: {
+      reason: 'summary_empty' | 'upstream_error';
+      error: string;
+    } | null = null;
     try {
       const contextWindow = getContextWindowSize(model);
       const estimatedMsgTokens = this.estimateMessageTokens(messages);
@@ -3839,7 +3884,8 @@ export class ConversationManager {
       const response = await state.client.createMessage(
         summaryMessages,
         undefined, // 不需要工具（对齐官方：compaction agent should only produce text summary）
-        'You are a helpful AI assistant tasked with summarizing conversations concisely while preserving all critical technical details.'
+        'You are a helpful AI assistant tasked with summarizing conversations concisely while preserving all critical technical details.',
+        { preferStreamingTransport: true }
       );
 
       let summaryText = '';
@@ -3881,11 +3927,25 @@ export class ConversationManager {
         }
         return { wasCompacted: true, messages: compactedMsgs, savedTokens, boundaryUuid, summaryText: formattedContent };
       }
+
+      compactFailure = {
+        reason: 'summary_empty',
+        error: 'Compaction not performed: the summary model returned no text.',
+      };
     } catch (err) {
+      compactFailure = {
+        reason: 'upstream_error',
+        error: err instanceof Error ? err.message : String(err),
+      };
       console.warn('[AutoCompact/NJ1] Conversation summary compaction failed:', err);
     }
 
-    return { wasCompacted: false, messages };
+    return {
+      wasCompacted: false,
+      messages,
+      failureReason: compactFailure?.reason || 'not_performed',
+      error: compactFailure?.error,
+    };
   }
 
   /**
@@ -5284,7 +5344,13 @@ Guidelines:
       const compactResult = await this.performAutoCompact(state.messages, state.model, state);
 
       if (!compactResult.wasCompacted) {
-        return { success: false, error: 'Compaction not performed (possibly too few messages or already compacted).' };
+        if (compactResult.failureReason === 'upstream_error' && compactResult.error) {
+          return { success: false, error: `Compaction failed: ${compactResult.error}` };
+        }
+        if (compactResult.error) {
+          return { success: false, error: compactResult.error };
+        }
+        return { success: false, error: 'Compaction not performed.' };
       }
 
       // 更新会话消息

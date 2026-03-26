@@ -14,9 +14,18 @@
   overflow: hidden;
 }
 
+.context-bar--placeholder {
+  opacity: 0.78;
+}
+
 .context-bar.hidden {
   opacity: 0;
   pointer-events: none;
+}
+
+.context-bar__label {
+  font-weight: 500;
+  opacity: 0.86;
 }
 
 /* 进度条容器 */
@@ -50,6 +59,10 @@
 
 .context-bar__fill--danger {
   background: var(--accent-error);
+}
+
+.context-bar__fill--placeholder {
+  background: linear-gradient(90deg, rgba(92, 229, 170, 0.88), rgba(92, 229, 170, 0.42));
 }
 
 /* 百分比文字 */

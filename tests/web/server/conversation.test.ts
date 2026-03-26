@@ -15,6 +15,14 @@ vi.mock('../../../src/web/server/web-auth.js', () => ({
   webAuth: mockWebAuth,
 }));
 
+vi.mock('../../../src/context/session-memory.js', async () => {
+  const actual = await vi.importActual<typeof import('../../../src/context/session-memory.js')>('../../../src/context/session-memory.js');
+  return {
+    ...actual,
+    isSessionMemoryEnabled: vi.fn(() => false),
+  };
+});
+
 vi.mock('../../../src/prompt/index.js', () => ({
   systemPromptBuilder: {
     build: (...args: any[]) => mockSystemPromptBuild(...args),
@@ -52,6 +60,52 @@ describe('ConversationManager startup', () => {
 
     expect(() => new ConversationManager('F:/claude-code-open', 'opus')).not.toThrow();
   }, 30000);
+
+  it('uses normalized anthropic aliases for third-party claude-compatible-api backends', async () => {
+    mockWebAuth.getStatus.mockReturnValue({
+      authenticated: true,
+      type: 'api_key',
+      provider: 'anthropic',
+      runtimeBackend: 'claude-compatible-api',
+    });
+    mockWebAuth.getCredentials.mockReturnValue({
+      apiKey: 'sk-test',
+      baseUrl: 'https://newapi.example.com/v1',
+    });
+
+    const { ConversationManager } = await import('../../../src/web/server/conversation.js');
+    const manager = new ConversationManager('F:/claude-code-open', 'opus') as any;
+
+    expect(manager.buildClientConfig('claude-sonnet-4-5-20250929', 'claude-compatible-api')).toEqual(
+      expect.objectContaining({
+        provider: 'anthropic',
+        model: 'sonnet',
+      }),
+    );
+  });
+
+  it('uses full Anthropic model ids for official claude-compatible-api endpoints', async () => {
+    mockWebAuth.getStatus.mockReturnValue({
+      authenticated: true,
+      type: 'api_key',
+      provider: 'anthropic',
+      runtimeBackend: 'claude-compatible-api',
+    });
+    mockWebAuth.getCredentials.mockReturnValue({
+      apiKey: 'sk-test',
+      baseUrl: 'https://api.anthropic.com',
+    });
+
+    const { ConversationManager } = await import('../../../src/web/server/conversation.js');
+    const manager = new ConversationManager('F:/claude-code-open', 'opus') as any;
+
+    expect(manager.buildClientConfig('claude-sonnet-4-5-20250929', 'claude-compatible-api')).toEqual(
+      expect.objectContaining({
+        provider: 'anthropic',
+        model: 'claude-sonnet-4-5-20250929',
+      }),
+    );
+  });
 
   it('uses agent identity for console oauth on claude-compatible-api backends', async () => {
     mockWebAuth.getStatus.mockReturnValue({
@@ -181,21 +235,27 @@ describe('ConversationManager startup', () => {
     expect(manager.shouldResumeStreamingOnReconnect('cancelling-session')).toBe(false);
   });
 
-  it('consumes the continuation marker and persists the cleared state', async () => {
+  it('requests streaming transport for manual conversation compaction summaries', async () => {
     const { ConversationManager } = await import('../../../src/web/server/conversation.js');
-    const manager = new ConversationManager('F:/claude-code-open', 'opus') as any;
-    const persistedSession = { pendingContinuationAfterRestore: true };
-    const saveSession = vi.fn().mockReturnValue(true);
+    const manager = new ConversationManager('F:/claude-code-open', 'gpt-5.4') as any;
+    const createMessage = vi.fn().mockResolvedValue({
+      content: [{ type: 'text', text: '<summary>compact result</summary>' }],
+      stopReason: 'end_turn',
+      usage: { inputTokens: 10, outputTokens: 5 },
+      model: 'gpt-5.4',
+    });
 
-    manager.sessionManager = {
-      loadSessionById: vi.fn().mockReturnValue(persistedSession),
-      saveSession,
-    };
-    manager.sessions.set('pending-session', {
-      session: {},
-      client: {},
-      messages: [],
-      model: 'sonnet',
+    manager.sessions.set('compact-session', {
+      session: { cwd: 'F:/claude-code-open', sessionId: 'compact-session' },
+      client: {
+        createMessage,
+      },
+      messages: [
+        { role: 'user', content: [{ type: 'text', text: '请总结前面的对话' }] },
+        { role: 'assistant', content: [{ type: 'text', text: '好的，我来处理。' }] },
+        { role: 'user', content: [{ type: 'text', text: '继续' }] },
+      ],
+      model: 'gpt-5.4',
       runtimeBackend: 'codex-subscription',
       cancelled: false,
       chatHistory: [],
@@ -209,15 +269,60 @@ describe('ConversationManager startup', () => {
       processingGeneration: 0,
       lastActualInputTokens: 0,
       messagesLenAtLastApiCall: 0,
-      pendingContinuationAfterRestore: true,
+      pendingContinuationAfterRestore: false,
       latestImageAttachments: [],
       lastPersistedMessageCount: 0,
     });
 
-    expect(manager.consumePendingContinuation('pending-session')).toBe(true);
-    expect(manager.sessions.get('pending-session').pendingContinuationAfterRestore).toBe(false);
-    expect(persistedSession.pendingContinuationAfterRestore).toBe(false);
-    expect(saveSession).toHaveBeenCalledWith('pending-session');
-    expect(manager.consumePendingContinuation('pending-session')).toBe(false);
+    const result = await manager.compactSession('compact-session');
+
+    expect(result.success).toBe(true);
+    expect(createMessage).toHaveBeenCalledWith(
+      expect.any(Array),
+      undefined,
+      'You are a helpful AI assistant tasked with summarizing conversations concisely while preserving all critical technical details.',
+      { preferStreamingTransport: true },
+    );
+  });
+
+  it('returns the upstream compact error instead of a generic not performed message', async () => {
+    const { ConversationManager } = await import('../../../src/web/server/conversation.js');
+    const manager = new ConversationManager('F:/claude-code-open', 'gpt-5.4') as any;
+
+    manager.sessions.set('compact-error-session', {
+      session: { cwd: 'F:/claude-code-open', sessionId: 'compact-error-session' },
+      client: {
+        createMessage: vi.fn().mockRejectedValue(new Error('OpenAI-compatible request failed (HTTP 503): Service Unavailable')),
+      },
+      messages: [
+        { role: 'user', content: [{ type: 'text', text: '请总结前面的对话' }] },
+        { role: 'assistant', content: [{ type: 'text', text: '好的，我来处理。' }] },
+        { role: 'user', content: [{ type: 'text', text: '继续' }] },
+      ],
+      model: 'gpt-5.4',
+      runtimeBackend: 'codex-subscription',
+      cancelled: false,
+      chatHistory: [],
+      userInteractionHandler: {},
+      taskManager: {},
+      permissionHandler: {},
+      rewindManager: {},
+      toolFilterConfig: { mode: 'all' },
+      systemPromptConfig: { useDefault: true },
+      isProcessing: false,
+      processingGeneration: 0,
+      lastActualInputTokens: 0,
+      messagesLenAtLastApiCall: 0,
+      pendingContinuationAfterRestore: false,
+      latestImageAttachments: [],
+      lastPersistedMessageCount: 0,
+    });
+
+    await expect(manager.compactSession('compact-error-session')).resolves.toEqual(
+      expect.objectContaining({
+        success: false,
+        error: 'Compaction failed: OpenAI-compatible request failed (HTTP 503): Service Unavailable',
+      }),
+    );
   });
 });

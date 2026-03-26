@@ -3,7 +3,8 @@ import * as os from 'os';
 import * as path from 'path';
 import { ConversationLoop } from '../../src/core/loop.js';
 import { getNotebookManagerForProject, resetNotebookManager } from '../../src/memory/notebook.js';
-import { resetMemorySearchManager } from '../../src/memory/memory-search.js';
+import { initMemorySearchManager, getMemorySearchManager, resetMemorySearchManager } from '../../src/memory/memory-search.js';
+import { getSummaryPath } from '../../src/context/session-memory.js';
 
 describe('ConversationLoop auto memory', () => {
   let configDir: string;
@@ -198,8 +199,8 @@ describe('ConversationLoop auto memory', () => {
     session.addMessage({ role: 'assistant', content: '旧助手回复 1：同样属于已经成功记忆过的内容。' });
     session.addMessage({ role: 'user', content: '旧用户消息 2：仍然属于旧增量之前。' });
     session.addMessage({ role: 'assistant', content: '旧助手回复 2：这是上一轮成功游标之前的尾部。' });
-    session.addMessage({ role: 'user', content: '新用户消息 3：这是本次应该被提取的新内容。' });
-    session.addMessage({ role: 'assistant', content: '新助手回复 3：也是本次应该被提取的新内容。' });
+    session.addMessage({ role: 'user', content: '新用户消息 3：这是本次应该被提取的新内容，包含明确的长期协作偏好：以后讨论记忆系统时优先看源码、直接指出根因、不要给空泛建议。' });
+    session.addMessage({ role: 'assistant', content: '新助手回复 3：明白，我会把这次新增信息视为新的有效协作信号，后续先核对实现、再给结论，并避免重复之前已经成功记忆过的历史内容。' });
 
     const createMessage = vi.fn().mockResolvedValue({
       content: [{ type: 'text', text: 'NO_UPDATE' }],
@@ -267,5 +268,82 @@ describe('ConversationLoop auto memory', () => {
 
     expect(result).toBe('好的');
     expect(seenNotebookSummary).toContain('Prefers concise responses');
+  });
+
+  it('adds current session summary recall when notebook recall alone is insufficient', async () => {
+    const loop = new ConversationLoop({
+      workingDir: projectDir,
+      apiKey: 'test-key',
+      model: 'sonnet',
+    }) as any;
+
+    const notebookMgr = getNotebookManagerForProject(projectDir)!;
+    notebookMgr.write('project', '# Project Notebook\n- Layered recall uses notebook first.');
+
+    const summaryPath = getSummaryPath(projectDir, loop.session.sessionId);
+    fs.mkdirSync(path.dirname(summaryPath), { recursive: true });
+    fs.writeFileSync(summaryPath, '# Current State\n- Session summary keeps current task state.', 'utf-8');
+    await initMemorySearchManager(projectDir, require('crypto').createHash('md5').update(projectDir).digest('hex').slice(0, 12), undefined);
+
+    const plan = await import('../../src/memory/recall-planner.js').then(m => m.buildLayeredMemoryRecall(getMemorySearchManager()!, 'current task state', {
+      sessionId: loop.session.sessionId,
+      hasCompactSummary: false,
+    }));
+
+    expect(plan.formatted).toContain('[Current session background]');
+    expect(plan.formatted).toContain('Session summary keeps current task state.');
+    expect(plan.formatted).toContain('[Notebook]');
+  }, 15000);
+
+  it('skips session summary recall when compact summary already exists in session messages', async () => {
+    const loop = new ConversationLoop({
+      workingDir: projectDir,
+      apiKey: 'test-key',
+      model: 'sonnet',
+    }) as any;
+
+    loop.promptBuilder = {
+      build: vi.fn().mockImplementation(async (context: any) => ({
+        content: 'mock-system-prompt',
+        blocks: [],
+        hashInfo: {
+          hash: 'mock-hash',
+          computedAt: Date.now(),
+          length: 18,
+          estimatedTokens: 5,
+        },
+        attachments: [],
+        truncated: false,
+        buildTimeMs: 1,
+      })),
+    };
+
+    const notebookMgr = getNotebookManagerForProject(projectDir)!;
+    notebookMgr.write('project', '# Project Notebook\n- Notebook recall remains available.');
+
+    const summaryPath = getSummaryPath(projectDir, loop.session.sessionId);
+    fs.mkdirSync(path.dirname(summaryPath), { recursive: true });
+    fs.writeFileSync(summaryPath, '# Current State\n- This should be skipped after compaction.', 'utf-8');
+    const projectHash = require('crypto').createHash('md5').update(projectDir).digest('hex').slice(0, 12);
+    await initMemorySearchManager(projectDir, projectHash, undefined);
+
+    loop.session.addMessage({
+      role: 'user',
+      content: 'Compacted summary already in messages.',
+      isCompactSummary: true,
+    });
+
+    loop.client.createMessage = vi.fn().mockResolvedValue({
+      content: [{ type: 'text', text: '好的' }],
+      stopReason: 'end_turn',
+      usage: { inputTokens: 10, outputTokens: 5 },
+    });
+
+    await loop.processMessage('current task state');
+
+    expect(typeof loop.promptContext.memoryRecall).toBe('string');
+    expect(loop.promptContext.memoryRecall).toContain('[Notebook]');
+    expect(loop.promptContext.memoryRecall).not.toContain('[Current session background]');
+    expect(loop.promptContext.memoryRecall).not.toContain('This should be skipped after compaction.');
   });
 });

@@ -209,22 +209,17 @@ export function createProxyAgent(
     return undefined;
   }
 
-  // 确定使用哪个代理
-  let proxyUrl: string | undefined;
+  // 手动配置优先级更高
+  const isHttps = targetUrl.startsWith('https://');
+  let proxyUrl =
+    effectiveConfig.socks ||
+    (isHttps ? effectiveConfig.https : effectiveConfig.http) ||
+    effectiveConfig.https ||
+    effectiveConfig.http;
 
   // 使用 proxy-from-env 自动检测（如果启用了系统代理）
-  if (effectiveConfig.useSystemProxy) {
+  if (!proxyUrl && effectiveConfig.useSystemProxy) {
     proxyUrl = getProxyForUrl(targetUrl);
-  }
-
-  // 手动配置优先级更高
-  if (!proxyUrl) {
-    const isHttps = targetUrl.startsWith('https://');
-    proxyUrl =
-      effectiveConfig.socks ||
-      (isHttps ? effectiveConfig.https : effectiveConfig.http) ||
-      effectiveConfig.https ||
-      effectiveConfig.http;
   }
 
   if (!proxyUrl) {
@@ -301,19 +296,15 @@ export function getProxyInfo(targetUrl: string, config?: ProxyConfig): {
     return { enabled: false, bypassed: true };
   }
 
-  let proxyUrl: string | undefined;
+  const isHttps = targetUrl.startsWith('https://');
+  let proxyUrl =
+    effectiveConfig.socks ||
+    (isHttps ? effectiveConfig.https : effectiveConfig.http) ||
+    effectiveConfig.https ||
+    effectiveConfig.http;
 
-  if (effectiveConfig.useSystemProxy) {
+  if (!proxyUrl && effectiveConfig.useSystemProxy) {
     proxyUrl = getProxyForUrl(targetUrl);
-  }
-
-  if (!proxyUrl) {
-    const isHttps = targetUrl.startsWith('https://');
-    proxyUrl =
-      effectiveConfig.socks ||
-      (isHttps ? effectiveConfig.https : effectiveConfig.http) ||
-      effectiveConfig.https ||
-      effectiveConfig.http;
   }
 
   return {

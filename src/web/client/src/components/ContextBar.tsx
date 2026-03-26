@@ -40,6 +40,7 @@ export function ContextBar({ usage, compactState }: ContextBarProps) {
   const [showResult, setShowResult] = useState(false);
   const resultTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const { t } = useLanguage();
+  const showIdlePlaceholder = !usage && compactState.phase === 'idle';
 
   // 压缩完成时显示结果 3 秒
   useEffect(() => {
@@ -52,16 +53,15 @@ export function ContextBar({ usage, compactState }: ContextBarProps) {
     };
   }, [compactState.phase, compactState.savedTokens]);
 
-  // 没有数据时隐藏
-  if (!usage && compactState.phase === 'idle') {
-    return null;
-  }
-
   const percentage = usage?.percentage ?? 0;
   const level = getLevel(percentage);
+  const progressClassName = showIdlePlaceholder
+    ? 'context-bar__fill context-bar__fill--placeholder'
+    : `context-bar__fill context-bar__fill--${level}`;
+  const progressWidth = showIdlePlaceholder ? '28%' : `${Math.min(100, percentage)}%`;
 
   return (
-    <div className={`context-bar ${!usage ? 'hidden' : ''}`}>
+    <div className={`context-bar${showIdlePlaceholder ? ' context-bar--placeholder' : ''}${!usage && !showIdlePlaceholder ? ' hidden' : ''}`}>
       {/* 压缩中动画 */}
       {compactState.phase === 'compacting' && (
         <div className="context-bar__compact">
@@ -79,21 +79,25 @@ export function ContextBar({ usage, compactState }: ContextBarProps) {
       )}
 
       {/* 进度条 */}
-      {usage && compactState.phase !== 'compacting' && (
+      {(usage || showIdlePlaceholder) && compactState.phase !== 'compacting' && (
         <>
           <span className="context-bar__label">ctx</span>
           <div className="context-bar__progress">
             <div
-              className={`context-bar__fill context-bar__fill--${level}`}
-              style={{ width: `${Math.min(100, percentage)}%` }}
+              className={progressClassName}
+              style={{ width: progressWidth }}
             />
           </div>
-          <span className={`context-bar__text context-bar__text--${level}`}>
-            {percentage}%
-          </span>
-          <span className="context-bar__details">
-            {formatTokens(usage.usedTokens)}/{formatTokens(usage.maxTokens)}
-          </span>
+          {usage && (
+            <>
+              <span className={`context-bar__text context-bar__text--${level}`}>
+                {percentage}%
+              </span>
+              <span className="context-bar__details">
+                {formatTokens(usage.usedTokens)}/{formatTokens(usage.maxTokens)}
+              </span>
+            </>
+          )}
         </>
       )}
     </div>

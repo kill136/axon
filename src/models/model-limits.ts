@@ -12,7 +12,7 @@ interface KnownModelLimits {
 
 const KNOWN_MODEL_LIMITS: Record<string, KnownModelLimits> = {
   'gpt-5.4': {
-    contextWindow: 1_000_000,
+    contextWindow: 280_000,
     outputTokens: { default: 128_000, upperLimit: 128_000 },
   },
   'gpt-5.4-mini': {

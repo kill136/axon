@@ -2746,7 +2746,7 @@ async function executeChatStreaming(
         cmux.onPermissionRequest(request.toolName || 'Unknown', request.description || 'execute');
       },
 
-      onComplete: async (stopReason: string | null, usage?: { inputTokens: number; outputTokens: number }) => {
+      onComplete: async (stopReason: string | null, usage?: { inputTokens: number; outputTokens: number; cacheReadTokens?: number; cacheCreationTokens?: number }) => {
         // 保存会话到磁盘（确保 messageCount 正确更新）
         await conversationManager.persistSession(chatSessionId);
 
@@ -2804,7 +2804,7 @@ async function executeChatStreaming(
         });
       },
 
-      onRateLimitUpdate: (info: { status: string; utilization5h?: number; utilization7d?: number; resetsAt?: number; rateLimitType?: string; }) => {
+      onRateLimitUpdate: (info: { status: string; utilization5h?: number; utilization7d?: number; resetsAt?: number; rateLimitType?: string; remainingRequests?: number; limitRequests?: number; remainingTokens?: number; limitTokens?: number; cacheReadTokens?: number; cacheCreationTokens?: number; }) => {
         sendMessage(getActiveWs(), {
           type: 'rate_limit_update',
           payload: { ...info, sessionId: chatSessionId },
@@ -3417,7 +3417,7 @@ async function handleSessionSwitch(
               payload: { ...request, sessionId: chatSessionId },
             });
           },
-          onComplete: async (stopReason: string | null, usage?: { inputTokens: number; outputTokens: number }) => {
+          onComplete: async (stopReason: string | null, usage?: { inputTokens: number; outputTokens: number; cacheReadTokens?: number; cacheCreationTokens?: number }) => {
             await conversationManager.persistSession(chatSessionId);
             sendMessage(getActiveWs(), {
               type: 'message_complete',
@@ -3449,7 +3449,7 @@ async function handleSessionSwitch(
               payload: { ...usage, sessionId: chatSessionId },
             });
           },
-          onRateLimitUpdate: (info: { status: string; utilization5h?: number; utilization7d?: number; resetsAt?: number; rateLimitType?: string; }) => {
+          onRateLimitUpdate: (info: { status: string; utilization5h?: number; utilization7d?: number; resetsAt?: number; rateLimitType?: string; remainingRequests?: number; limitRequests?: number; remainingTokens?: number; limitTokens?: number; cacheReadTokens?: number; cacheCreationTokens?: number; }) => {
             sendMessage(getActiveWs(), {
               type: 'rate_limit_update',
               payload: { ...info, sessionId: chatSessionId },

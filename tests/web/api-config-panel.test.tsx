@@ -51,7 +51,7 @@ describe('ApiConfigPanel', () => {
       success: true,
       data: {
         modelContextWindowById: {
-          'gpt-5.4': 1000000,
+          'gpt-5.4': 280000,
           'gpt-5.4-mini': 400000,
         },
       },
@@ -63,7 +63,7 @@ describe('ApiConfigPanel', () => {
 
     const textarea = container.querySelector('textarea') as HTMLTextAreaElement | null;
     expect(textarea).not.toBeNull();
-    expect(textarea?.value).toContain('"gpt-5.4": 1000000');
+    expect(textarea?.value).toContain('"gpt-5.4": 280000');
     expect(textarea?.value).toContain('"gpt-5.4-mini": 400000');
   });
 
@@ -75,7 +75,7 @@ describe('ApiConfigPanel', () => {
         success: true,
         data: {
           modelContextWindowById: {
-            'gpt-5.4': 1000000,
+            'gpt-5.4': 280000,
           },
         },
       }));
@@ -90,7 +90,7 @@ describe('ApiConfigPanel', () => {
     expect(valueSetter).toBeTruthy();
 
     await ClientReact.act(async () => {
-      valueSetter!.call(textarea, '{\n  "gpt-5.4": 1000000,\n  "custom-model": 262144\n}');
+      valueSetter!.call(textarea, '{\n  "gpt-5.4": 280000,\n  "custom-model": 262144\n}');
       textarea!.dispatchEvent(new Event('input', { bubbles: true }));
       textarea!.dispatchEvent(new Event('change', { bubbles: true }));
     });

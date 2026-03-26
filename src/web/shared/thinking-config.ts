@@ -24,7 +24,7 @@ export interface WebThinkingRuntimeOptions {
 
 const DEFAULT_WEB_THINKING_CONFIG: WebThinkingConfig = {
   enabled: true,
-  level: 'medium',
+  level: 'xhigh',
 };
 
 const THINKING_BUDGET_BY_LEVEL: Record<WebThinkingLevel, number> = {

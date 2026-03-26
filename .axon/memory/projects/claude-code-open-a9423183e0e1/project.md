@@ -35,6 +35,7 @@
 - Web UI 思考配置规则：输入框里的“思考开关/强度”不能只停留在前端状态，必须跟随每条 `chat` 消息一路透传到 `websocket -> ConversationManager -> runtime client`，否则用户看到开关变化但实际请求仍会沿用默认思考参数。
 - 排队消息坑：上下文压缩期间缓存的待发送消息也必须携带“排队当时”的 `thinkingConfig` 快照，不能等真正发送时再读最新 UI 状态，否则用户在等待期间切换强度会让发出去的请求配置漂移，形成难复现的错配。
 - OpenAI 思考档位规则：Web UI 不能把所有模型都硬编码成同一组思考强度；`GPT-5.4` 这类支持 `xhigh` 的 Codex/GPT-5 模型要显示 `xhigh`，而不支持该档位的模型必须自动收敛到自己的最高可用档位，避免 UI 允许选择但 runtime 实际不接受。
+- Web 思考默认值规则：基础默认档位要保持在最高档 `xhigh`，再由 `getResolvedWebThinkingConfig()` 按当前模型 capability 收敛；如果把默认值写死成 `medium`，`GPT-5.4` 这类支持 `xhigh` 的模型在 F5 刷新后会错误回落到“中”。
 - AutoCompact 前端悬挂坑：`performAutoCompact()` 在内部吞掉压缩失败并返回 `wasCompacted: false` 时，Web 端不一定能收到 `context_compact:end/error`；如果后续会话已经继续流式输出，前端必须把停留在 `compacting` 的旧状态自愈清掉，否则输入框会一直把后续消息当作“压缩排队”。
 - Codex 自定义网关兼容规则：`GPT-5.4` 走自定义 `/v1/responses` 时，代理可能直接返回 Cloudflare 524 之类的 HTML 错页；runtime client 不能把整页 HTML 原样抛给日志/前端，应该提炼成短错误，并在自定义 Responses 端点场景优先回退到 `/v1/chat/completions`。回归覆盖在 `tests/web/server/codex-client.test.ts` 和 `tests/web/useMessageHandler-compact-recovery.test.tsx`。
 - ImageGen 上传图引用坑：Web 输入框里的图片附件如果只作为视觉内容传给模型、却没有同时保存成稳定的临时文件映射，模型一旦在工具调用里填了 `image_path` 就很容易退化成“只有文件名的相对路径”，最终在工作区根目录 `stat` 失败。修复规则：上传图片要同时保留 `name -> temp file path` 映射，并在执行 `ImageGen` 前把无效的相对 `image_path` 回绑到最近上传图；回归覆盖在 `tests/web/server/image-attachments.test.ts`。
@@ -126,3 +127,5 @@
 - Web 会话恢复坑：`handleSessionSwitch()` 不能再用“最后一条消息是 `tool_result`”来推断是否需要自动续跑。用户取消、Abort 后的补偿 `tool_result` 也会满足这个条件，结果就是前端点了取消看似停了，F5 刷新又被误判成“应继续执行”。修复规则：续跑必须改成显式持久化标记，只在 SelfEvolve 这类受控场景置位；刷新恢复流式态时还要排除 `cancelled=true` 的收尾中会话。回归覆盖在 `tests/web/server/conversation.test.ts` 和 `tests/web/server/session-manager.test.ts`。
 - Chat 输入区交互决策：底部输入框继续保留“默认折叠控制区”，但主操作区只放最核心的附件/发送/停止；锁定、探针、日志、Git、终端、历史等次级控制统一收进一条可展开的单行命令栏，避免主输入区被一排零散图标切碎。
 - 输入区视觉规则：样式方向统一走“简约、克制、单块玻璃卡片”，不要再把输入框做成多层厚重按钮堆叠；命令栏展开态允许横向滚动，也不要在窄屏上直接换成多行碎布局。回归覆盖在 `src/web/client/src/components/__tests__/InputArea.test.tsx`。
+- `ctx` 展示规则：输入区里的 `ContextBar` 不能把“还没收到 `context_update`”误当成“不需要显示”。`ctx` 在 idle 态也要保留极简占位，避免用户把它当成功能消失；只有拿到 usage 后再补百分比和 token 详情。回归覆盖在 `src/web/client/src/components/__tests__/ContextBar.test.tsx`。
+- 输入区主行例外：用户明确要求时，`ctx` 不再跟随“更多”抽屉隐藏。当前规则是 `ContextBar` 常驻在发送区左侧，保持默认可见；`API usage` 仍留在 `更多` 抽屉，避免把次级状态全部拉回主行。回归覆盖在 `src/web/client/src/components/__tests__/InputArea.test.tsx`。

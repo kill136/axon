@@ -30,6 +30,12 @@ export interface RateLimitInfo {
   utilization7d?: number;
   resetsAt?: number;
   rateLimitType?: string;
+  remainingRequests?: number;
+  limitRequests?: number;
+  remainingTokens?: number;
+  limitTokens?: number;
+  cacheReadTokens?: number;
+  cacheCreationTokens?: number;
 }
 
 /**
@@ -381,7 +387,12 @@ export function useMessageHandler({
         case 'message_complete':
           if (currentMessageRef.current) {
             const currentMsg = currentMessageRef.current;
-            const usage = payload.usage as { inputTokens: number; outputTokens: number } | undefined;
+            const usage = payload.usage as {
+              inputTokens: number;
+              outputTokens: number;
+              cacheReadTokens?: number;
+              cacheCreationTokens?: number;
+            } | undefined;
             // 清理所有仍在 running 状态的 tool_use（可能因 max_tokens 截断等原因未完成）
             const completedContent = currentMsg.content.map(c => {
               if (c.type === 'tool_use' && c.status === 'running') {
@@ -534,6 +545,7 @@ export function useMessageHandler({
           setUserQuestion(null);
           setCompactState({ phase: 'idle' });
           setContextUsage(null);
+          setRateLimitInfo(null);
           // 原子性恢复：session_switched 内嵌了 history，一次 setMessages 完成切换+恢复
           // 避免先 setMessages([]) 再等 history 消息的竞态（F5 刷新时可能导致消息丢失）
           if (payload.history && Array.isArray(payload.history)) {
@@ -602,6 +614,7 @@ export function useMessageHandler({
               // 列表刷新由 message_complete 事件负责。
               setCompactState({ phase: 'idle' });
               setContextUsage(null);
+              setRateLimitInfo(null);
             }
           }
           break;
@@ -621,6 +634,7 @@ export function useMessageHandler({
           setUserQuestion(null);
           setCompactState({ phase: 'idle' });
           setContextUsage(null);
+          setRateLimitInfo(null);
           break;
 
         case 'task_status': {

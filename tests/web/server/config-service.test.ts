@@ -39,7 +39,7 @@ describe('web config service', () => {
       maxRetries: 3,
       requestTimeout: 300000,
       modelContextWindowById: {
-        'gpt-5.4': 1000000,
+        'gpt-5.4': 280000,
       },
     });
     mockWebAuth.getCredentials.mockReturnValue({
@@ -141,7 +141,7 @@ describe('web config service', () => {
 
     const success = await service.updateApiConfig({
       modelContextWindowById: {
-        'gpt-5.4': 1000000,
+        'gpt-5.4': 280000,
         'custom-model': 262144,
       },
     });
@@ -149,7 +149,7 @@ describe('web config service', () => {
     expect(success).toBe(true);
     expect(mockConfigSave).toHaveBeenCalledWith(expect.objectContaining({
       modelContextWindowById: {
-        'gpt-5.4': 1000000,
+        'gpt-5.4': 280000,
         'custom-model': 262144,
       },
     }));

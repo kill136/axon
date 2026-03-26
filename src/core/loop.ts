@@ -77,6 +77,7 @@ import { configManager } from '../config/index.js';
 import { accountUsageManager } from '../ratelimit/index.js';
 import { initNotebookManager, getNotebookManager } from '../memory/notebook.js';
 import { initMemorySearchManager, getMemorySearchManager } from '../memory/memory-search.js';
+import { buildLayeredMemoryRecall } from '../memory/recall-planner.js';
 import { getResolvedModelContextWindow } from '../models/model-limits.js';
 import { startCacheKeepalive, stopCacheKeepalive } from './cache-keepalive.js';
 import { createConversationClient } from '../web/server/runtime/factory.js';
@@ -2688,12 +2689,13 @@ export class ConversationLoop {
         return;
       }
 
-      const memoryRecall = await memSearchMgr.recall(recallQuery, 3, {
-        source: 'notebook',
-        mode: 'keyword',
+      const hasCompactSummary = this.session.getMessages().some(msg => msg.role === 'user' && msg.isCompactSummary);
+      const recallPlan = await buildLayeredMemoryRecall(memSearchMgr, recallQuery, {
+        sessionId: this.session.sessionId,
+        hasCompactSummary,
       });
 
-      this.promptContext.memoryRecall = memoryRecall || undefined;
+      this.promptContext.memoryRecall = recallPlan.formatted || undefined;
     } catch (error) {
       if (this.options.debug || process.env.AXON_DEBUG) {
         console.warn('[MemoryRecall] Failed to refresh prompt memory context:', error);

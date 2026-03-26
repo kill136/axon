@@ -7,6 +7,18 @@ import {
 } from '../../../src/web/shared/thinking-config.js';
 
 describe('web thinking config', () => {
+  it('should default to the highest available thinking level per model capability', () => {
+    expect(getResolvedWebThinkingConfig('openai-compatible-api', 'gpt-5.4')).toEqual({
+      enabled: true,
+      level: 'xhigh',
+    });
+
+    expect(getResolvedWebThinkingConfig('claude-subscription', 'sonnet')).toEqual({
+      enabled: true,
+      level: 'high',
+    });
+  });
+
   it('should map anthropic thinking levels to the expected budgets', () => {
     expect(
       mapThinkingConfigToRuntimeOptions('claude-subscription', 'sonnet', {

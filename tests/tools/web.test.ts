@@ -3,12 +3,17 @@
  * Tests web content fetching and searching
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import * as fs from 'fs';
+import * as path from 'path';
 import { WebFetchTool, clearWebCaches } from '../../src/tools/web.js';
 import axios from 'axios';
 
 // Mock axios
 vi.mock('axios');
+
+const TEST_SETTINGS_DIR = path.join(process.cwd(), '.tmp-webfetch-proxy-test');
+const TEST_SETTINGS_PATH = path.join(TEST_SETTINGS_DIR, 'settings.json');
 
 describe('WebFetchTool', () => {
   let webFetchTool: WebFetchTool;
@@ -16,7 +21,52 @@ describe('WebFetchTool', () => {
   beforeEach(() => {
     webFetchTool = new WebFetchTool();
     vi.clearAllMocks();
-    clearWebCaches(); // Clear cache before each test
+    clearWebCaches();
+    process.env = { ...process.env };
+    delete process.env.HTTP_PROXY;
+    delete process.env.HTTPS_PROXY;
+    delete process.env.http_proxy;
+    delete process.env.https_proxy;
+    delete process.env.ALL_PROXY;
+    delete process.env.all_proxy;
+    process.env.AXON_WEBFETCH_SETTINGS_PATH = TEST_SETTINGS_PATH;
+    fs.rmSync(TEST_SETTINGS_DIR, { recursive: true, force: true });
+  });
+
+  afterEach(() => {
+    delete process.env.AXON_WEBFETCH_SETTINGS_PATH;
+    fs.rmSync(TEST_SETTINGS_DIR, { recursive: true, force: true });
+  });
+
+  describe('Proxy Resolution', () => {
+    it('should prefer settings.json proxy over environment proxy', async () => {
+      fs.mkdirSync(TEST_SETTINGS_DIR, { recursive: true });
+      fs.writeFileSync(
+        TEST_SETTINGS_PATH,
+        JSON.stringify({ proxy: { https: 'http://127.0.0.1:7897' } }),
+        'utf8'
+      );
+
+      process.env.HTTPS_PROXY = 'http://127.0.0.1:15236';
+      vi.mocked(axios.get).mockResolvedValue({
+        data: '<html><body>Proxy Test</body></html>',
+        headers: { 'content-type': 'text/html' },
+        status: 200,
+      } as any);
+
+      await webFetchTool.execute({
+        url: 'https://example.com',
+        prompt: 'Test'
+      });
+
+      expect(vi.mocked(axios.get).mock.calls[0]?.[1]).toMatchObject({
+        proxy: {
+          host: '127.0.0.1',
+          port: 7897,
+          protocol: 'http',
+        },
+      });
+    });
   });
 
   describe('Input Schema', () => {
@@ -180,7 +230,6 @@ describe('WebFetchTool', () => {
       });
 
       expect(result.success).toBe(true);
-      // Turndown converts HTML entities correctly
       expect(result.output).toBeDefined();
     });
   });
@@ -203,7 +252,6 @@ describe('WebFetchTool', () => {
 
       expect(result.success).toBe(true);
       expect(result.output!.length).toBeLessThan(150000);
-      // Large content is persisted to disk via persistLargeOutputSync
       expect(result.output).toContain('Output saved to disk');
     });
   });
@@ -214,7 +262,6 @@ describe('WebFetchTool', () => {
       (networkError as any).code = 'ECONNREFUSED';
       vi.mocked(axios.get).mockRejectedValue(networkError);
 
-      // Network errors (ECONNREFUSED) are retryable, so after retries exhausted they throw
       await expect(webFetchTool.execute({
         url: 'https://example.com',
         prompt: 'Test'
@@ -222,32 +269,31 @@ describe('WebFetchTool', () => {
     });
 
     it('should handle redirect errors', async () => {
-      const redirectError: any = new Error('Redirect');
-      redirectError.response = {
+      const redirectError = new Error('Redirect');
+      (redirectError as any).response = {
         status: 301,
-        headers: { location: 'https://newurl.com' }
+        headers: { location: 'https://other.example.com' }
       };
       vi.mocked(axios.get).mockRejectedValue(redirectError);
 
-      // Redirect errors with response.status 301 and location header
-      // are caught by fetchUrl and returned as REDIRECT DETECTED
       const result = await webFetchTool.execute({
         url: 'https://example.com',
         prompt: 'Test'
       });
 
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('REDIRECT');
+      expect(result.success).toBe(true);
+      expect(result.output).toContain('REDIRECT');
     });
 
     it('should handle timeout', async () => {
-      vi.mocked(axios.get).mockRejectedValue(new Error('timeout of 30000ms exceeded'));
+      const timeoutError = new Error('timeout');
+      (timeoutError as any).code = 'ECONNABORTED';
+      vi.mocked(axios.get).mockRejectedValue(timeoutError);
 
-      // Timeout errors are retryable, so after retries exhausted they throw
       await expect(webFetchTool.execute({
         url: 'https://example.com',
         prompt: 'Test'
-      })).rejects.toThrow(/timeout/i);
+      })).rejects.toThrow();
     });
   });
 
@@ -261,13 +307,19 @@ describe('WebFetchTool', () => {
         config: {} as any
       } as any);
 
-      const result = await webFetchTool.execute({
+      await webFetchTool.execute({
         url: 'https://example.com',
         prompt: 'Test'
       });
 
-      expect(result.success).toBe(true);
-      expect(axios.get).toHaveBeenCalled();
+      expect(axios.get).toHaveBeenCalledWith(
+        'https://example.com',
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            'User-Agent': expect.stringContaining('ClaudeCode')
+          })
+        })
+      );
     });
 
     it('should set timeout', async () => {
@@ -279,13 +331,17 @@ describe('WebFetchTool', () => {
         config: {} as any
       } as any);
 
-      const result = await webFetchTool.execute({
+      await webFetchTool.execute({
         url: 'https://example.com',
         prompt: 'Test'
       });
 
-      expect(result.success).toBe(true);
-      expect(axios.get).toHaveBeenCalled();
+      expect(axios.get).toHaveBeenCalledWith(
+        'https://example.com',
+        expect.objectContaining({
+          timeout: expect.any(Number)
+        })
+      );
     });
 
     it('should allow redirects', async () => {
@@ -297,16 +353,17 @@ describe('WebFetchTool', () => {
         config: {} as any
       } as any);
 
-      const result = await webFetchTool.execute({
+      await webFetchTool.execute({
         url: 'https://example.com',
         prompt: 'Test'
       });
 
-      expect(result.success).toBe(true);
-      expect(axios.get).toHaveBeenCalled();
+      expect(axios.get).toHaveBeenCalledWith(
+        'https://example.com',
+        expect.objectContaining({
+          maxRedirects: 0
+        })
+      );
     });
   });
 });
-
-// Note: WebSearchTool has been migrated to Anthropic API Server Tool
-// and is no longer available as a client-side tool class

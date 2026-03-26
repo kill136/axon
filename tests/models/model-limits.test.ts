@@ -17,7 +17,7 @@ describe('model-limits', () => {
   it('returns official context windows for known gpt/codex models', async () => {
     const { getResolvedModelContextWindow } = await import('../../src/models/model-limits.js');
 
-    expect(getResolvedModelContextWindow('gpt-5.4')).toBe(1000000);
+    expect(getResolvedModelContextWindow('gpt-5.4')).toBe(280000);
     expect(getResolvedModelContextWindow('gpt-5.4-mini')).toBe(400000);
     expect(getResolvedModelContextWindow('gpt-5.3-codex')).toBe(400000);
     expect(getResolvedModelContextWindow('gpt-5.1-codex-max')).toBe(400000);

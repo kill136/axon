@@ -83,6 +83,11 @@ function getNotebookStorageDir(projectPath?: string): string {
   return configuredDir;
 }
 
+export function getProjectStorageDir(projectPath: string): string {
+  const storageDir = getNotebookStorageDir(projectPath);
+  return path.join(storageDir, 'projects', sanitizeProjectPath(projectPath));
+}
+
 /** 将项目路径转为安全的目录名 */
 function sanitizeProjectPath(projectPath: string): string {
   const hash = crypto.createHash('md5').update(projectPath).digest('hex').slice(0, 12);

@@ -7,6 +7,8 @@ import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs';
 import { initMemorySearchManager, getMemorySearchManager, resetMemorySearchManager } from '../../src/memory/memory-search.js';
+import { getRecallSourceKind } from '../../src/memory/recall-source-kind.js';
+import { planLayeredRecallFromResults } from '../../src/memory/recall-planner.js';
 
 // 使用临时目录作为 config dir，避免污染真实数据
 const tmpDir = path.join(os.tmpdir(), `axon-mem-test-${Date.now()}`);
@@ -53,6 +55,31 @@ describe('MemorySearchManager', () => {
       expect(results).toEqual([]);
     });
 
+    it('should disable embedding after provider failure and fallback to keyword search', async () => {
+      const fetchSpy = vi.fn().mockRejectedValueOnce(new TypeError('fetch failed'));
+      vi.stubGlobal('fetch', fetchSpy);
+
+      try {
+        const manager = await initMemorySearchManager('/test/project', 'testHash123', {
+          provider: 'openai',
+          apiKey: 'sk-test',
+          baseUrl: 'https://example.com/v1',
+          model: 'text-embedding-3-small',
+        });
+
+        await expect(manager.hybridSearch('test query')).resolves.toEqual([]);
+        expect(fetchSpy.mock.calls.length).toBeGreaterThanOrEqual(1);
+        expect(manager.getEmbeddingProvider()).toBeNull();
+        expect(manager.getEmbeddingCache()).toBeNull();
+
+        const callsAfterFailure = fetchSpy.mock.calls.length;
+        await expect(manager.hybridSearch('test query again')).resolves.toEqual([]);
+        expect(fetchSpy).toHaveBeenCalledTimes(callsAfterFailure);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
     it('should handle markDirty and re-sync', async () => {
       const manager = await initMemorySearchManager('/test/project', 'testHash123');
       
@@ -78,6 +105,101 @@ describe('MemorySearchManager', () => {
       const manager = await initMemorySearchManager('/test/project', 'testHash123');
       const result = await manager.recall('nonexistent topic xyz');
       expect(result).toBeNull();
+    });
+  });
+
+  describe('layered recall helpers', () => {
+    it('classifies recall source kinds from indexed paths', () => {
+      expect(getRecallSourceKind({ path: 'notebook:project.md', source: 'notebook' })).toBe('notebook');
+      expect(getRecallSourceKind({ path: 'transcript:session-1', source: 'session' })).toBe('transcript');
+      expect(getRecallSourceKind({ path: 'abc/session-memory/summary.md', source: 'session' })).toBe('session-summary');
+      expect(getRecallSourceKind({ path: 'notes/decision.md', source: 'memory' })).toBe('memory-doc');
+    });
+
+    it('builds layered recall with notebook first and current session summary as fallback', () => {
+      const now = Date.now();
+      const result = planLayeredRecallFromResults([
+        {
+          id: 'nb-1',
+          path: 'notebook:project.md',
+          startLine: 1,
+          endLine: 3,
+          score: 0.9,
+          snippet: 'Project notebook says use direct, honest answers.',
+          source: 'notebook',
+          timestamp: new Date(now).toISOString(),
+          age: 3600000,
+        },
+        {
+          id: 'ss-1',
+          path: 'session-123/session-memory/summary.md',
+          startLine: 5,
+          endLine: 8,
+          score: 0.7,
+          snippet: 'Current session is evaluating layered recall for summary.md.',
+          source: 'session',
+          timestamp: new Date(now).toISOString(),
+          age: 7200000,
+        },
+        {
+          id: 'ss-2',
+          path: 'other-session/session-memory/summary.md',
+          startLine: 1,
+          endLine: 2,
+          score: 0.8,
+          snippet: 'Other session summary should not appear.',
+          source: 'session',
+          timestamp: new Date(now).toISOString(),
+          age: 1800000,
+        },
+      ], {
+        sessionId: 'session-123',
+        hasCompactSummary: false,
+      });
+
+      expect(result.notebookResults).toHaveLength(1);
+      expect(result.sessionSummaryResults).toHaveLength(1);
+      expect(result.formatted).toContain('[Notebook]');
+      expect(result.formatted).toContain('[Current session background]');
+      expect(result.formatted).toContain('Project notebook says use direct, honest answers.');
+      expect(result.formatted).toContain('Current session is evaluating layered recall for summary.md.');
+      expect(result.formatted).not.toContain('Other session summary should not appear.');
+    });
+
+    it('skips session summary fallback when compact summary already exists in messages', () => {
+      const now = Date.now();
+      const result = planLayeredRecallFromResults([
+        {
+          id: 'nb-1',
+          path: 'notebook:project.md',
+          startLine: 1,
+          endLine: 3,
+          score: 0.9,
+          snippet: 'Notebook memory.',
+          source: 'notebook',
+          timestamp: new Date(now).toISOString(),
+          age: 3600000,
+        },
+        {
+          id: 'ss-1',
+          path: 'session-123/session-memory/summary.md',
+          startLine: 5,
+          endLine: 8,
+          score: 0.7,
+          snippet: 'Session summary memory.',
+          source: 'session',
+          timestamp: new Date(now).toISOString(),
+          age: 7200000,
+        },
+      ], {
+        sessionId: 'session-123',
+        hasCompactSummary: true,
+      });
+
+      expect(result.notebookResults).toHaveLength(1);
+      expect(result.sessionSummaryResults).toHaveLength(0);
+      expect(result.formatted).toContain('[Notebook]');
+      expect(result.formatted).not.toContain('[Current session background]');
     });
   });
 

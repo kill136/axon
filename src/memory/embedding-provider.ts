@@ -42,6 +42,25 @@ const MODEL_DIMENSIONS: Record<string, number> = {
 const DEFAULT_MODEL = 'text-embedding-3-small';
 const DEFAULT_BASE_URL = 'https://api.openai.com/v1';
 const BATCH_SIZE = 100; // 每批最多 100 个文本
+const REQUEST_TIMEOUT_MS = 15000;
+const MAX_RETRIES = 2;
+
+function isTransientEmbeddingError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+  return message.includes('fetch failed')
+    || message.includes('terminated')
+    || message.includes('other side closed')
+    || message.includes('socket')
+    || message.includes('timed out')
+    || message.includes('timeout')
+    || message.includes('econnreset')
+    || message.includes('und_err_socket')
+    || message.includes('aborterror');
+}
 
 /**
  * 归一化向量
@@ -69,24 +88,37 @@ export function createOpenAIEmbeddingProvider(config: EmbeddingProviderConfig): 
   async function embed(input: string[]): Promise<number[][]> {
     if (input.length === 0) return [];
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ model, input }),
-    });
+    let lastError: unknown;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ model, input }),
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        });
 
-    if (!response.ok) {
-      const body = await response.text().catch(() => '');
-      throw new Error(`Embedding API error ${response.status}: ${body.slice(0, 200)}`);
+        if (!response.ok) {
+          const body = await response.text().catch(() => '');
+          throw new Error(`Embedding API error ${response.status}: ${body.slice(0, 200)}`);
+        }
+
+        const data = await response.json() as {
+          data: Array<{ embedding: number[]; index: number }>;
+        };
+
+        // 按 index 排序（API 不保证顺序）
+        const sorted = data.data.sort((a, b) => a.index - b.index);
+        return sorted.map(d => normalizeVector(d.embedding));
+      } catch (error) {
+        lastError = error;
+        if (attempt >= MAX_RETRIES || !isTransientEmbeddingError(error)) {
+          throw error;
+        }
+      }
     }
 
-    const data = await response.json() as {
-      data: Array<{ embedding: number[]; index: number }>;
-    };
-
-    // 按 index 排序（API 不保证顺序）
-    const sorted = data.data.sort((a, b) => a.index - b.index);
-    return sorted.map(d => normalizeVector(d.embedding));
+    throw lastError instanceof Error ? lastError : new Error('Embedding request failed');
   }
 
   return {

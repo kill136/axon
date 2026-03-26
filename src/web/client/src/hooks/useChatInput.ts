@@ -586,8 +586,12 @@ export function useChatInput({
   // 输入处理
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value;
+    const normalizedInput = value.trimStart();
+    const hasSlashCommandPrefix = normalizedInput.startsWith('/')
+      && normalizedInput.length > 0
+      && !normalizedInput.startsWith('//');
     setInput(value);
-    setShowCommandPalette(value.startsWith('/') && value.length > 0);
+    setShowCommandPalette(hasSlashCommandPrefix);
     const el = e.target;
     el.style.height = 'auto';
     el.style.height = Math.min(el.scrollHeight, 200) + 'px';
