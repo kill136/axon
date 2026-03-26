@@ -830,11 +830,7 @@ export interface SessionMessage {
 export interface ToolDefinition {
   name: string;
   description: string;
-  inputSchema: {
-    type: 'object';
-    properties: Record<string, unknown>;
-    required?: string[];
-  };
+  inputSchema: ToolInputSchema;
   /** 是否为 MCP 工具（用于 deferred tool 判断） */
   isMcp?: boolean;
   /** 是否应延迟加载（对齐官方 shouldDefer 属性） */

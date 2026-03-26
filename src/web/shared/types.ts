@@ -559,6 +559,8 @@ export interface MessageCompletePayload {
   usage?: {
     inputTokens: number;
     outputTokens: number;
+    cacheReadTokens?: number;
+    cacheCreationTokens?: number;
   };
   sessionId?: string;
 }
@@ -585,6 +587,12 @@ export interface RateLimitUpdatePayload {
   utilization7d?: number;
   resetsAt?: number;
   rateLimitType?: string;
+  remainingRequests?: number;
+  limitRequests?: number;
+  remainingTokens?: number;
+  limitTokens?: number;
+  cacheReadTokens?: number;
+  cacheCreationTokens?: number;
   sessionId?: string;
 }
 
@@ -701,6 +709,8 @@ export interface ChatMessage {
   usage?: {
     inputTokens: number;
     outputTokens: number;
+    cacheReadTokens?: number;
+    cacheCreationTokens?: number;
   };
   /** 对齐官方 compact_boundary：标记此消息为压缩边界（UI 渲染分隔线） */
   isCompactBoundary?: boolean;
@@ -1389,6 +1399,10 @@ export interface ApiStatusPayload {
   connected: boolean;
   /** Provider 类型 */
   provider: 'anthropic' | 'bedrock' | 'vertex' | 'codex';
+  /** 当前 runtime backend */
+  runtimeBackend?: string;
+  /** 当前 runtime model */
+  runtimeModel?: string;
   /** API Base URL */
   baseUrl: string;
   /** 可用模型列表 */
@@ -1426,6 +1440,10 @@ export interface ProviderInfo {
   type: 'anthropic' | 'bedrock' | 'vertex' | 'codex';
   /** Provider 名称 */
   name: string;
+  /** 当前 runtime backend */
+  runtimeBackend?: string;
+  /** 当前 runtime model */
+  runtimeModel?: string;
   /** 区域（Bedrock/Vertex） */
   region?: string;
   /** 项目 ID（Vertex） */

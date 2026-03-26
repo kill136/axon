@@ -13,6 +13,7 @@ const electronAPI = isElectron ? (window as any).electronAPI as {
 } : null;
 // macOS 检测：用于交通灯按钮区域适配
 const isMacElectron = isElectron && navigator.platform.toUpperCase().includes('MAC');
+const HEADER_HIDDEN_STORAGE_KEY = 'axon.topNavBar.hidden.v1';
 
 interface SessionItem {
   id: string;
@@ -57,6 +58,8 @@ export interface TopNavBarProps {
   // 会话搜索
   onOpenSessionSearch?: () => void;
 }
+
+type NavPage = TopNavBarProps['currentPage'];
 
 // SVG 图标组件
 const FolderIcon = () => (
@@ -152,6 +155,22 @@ const SearchIcon = () => (
   </svg>
 );
 
+const ChevronIcon = ({ collapsed }: { collapsed: boolean }) => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    {collapsed
+      ? <path d="M4 6l4 4 4-4" />
+      : <path d="M4 10l4-4 4 4" />}
+  </svg>
+);
+
+function getStoredHeaderHidden(): boolean {
+  try {
+    return localStorage.getItem(HEADER_HIDDEN_STORAGE_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
 /**
  * 顶部导航栏组件 - 两行布局
  * 第一行：项目选择器 + 会话选择器 + 连接状态 + 新会话按钮 + 设置按钮
@@ -167,6 +186,7 @@ export default function TopNavBar({
   onOpenSessionSearch,
 }: TopNavBarProps) {
   const { t } = useLanguage();
+  const [isHeaderHidden, setIsHeaderHidden] = useState(getStoredHeaderHidden);
   const [sessionDropdownOpen, setSessionDropdownOpen] = useState(false);
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
@@ -194,7 +214,36 @@ export default function TopNavBar({
     }
   }, [editingSessionId]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(HEADER_HIDDEN_STORAGE_KEY, String(isHeaderHidden));
+    } catch {
+      // ignore storage failures
+    }
+  }, [isHeaderHidden]);
+
+  useEffect(() => {
+    if (!isHeaderHidden) return;
+    setSessionDropdownOpen(false);
+    setEditingSessionId(null);
+  }, [isHeaderHidden]);
+
   const currentSession = sessions.find(s => s.id === currentSessionId);
+  const currentSessionName = currentSession?.name || t('nav.newSession');
+
+  const navItems: Array<{
+    key: NavPage;
+    label: string;
+    Icon: typeof ChatIcon;
+  }> = [
+    { key: 'chat', label: t('nav.chat'), Icon: ChatIcon },
+    { key: 'code', label: t('nav.code'), Icon: FilesIcon },
+    { key: 'blueprint', label: t('nav.blueprint'), Icon: BlueprintIcon },
+    { key: 'swarm', label: t('nav.swarm'), Icon: SwarmIcon },
+    { key: 'customize', label: t('nav.customize'), Icon: ToolboxIcon },
+    { key: 'apps', label: t('nav.myApps'), Icon: AppsIcon },
+    { key: 'activity', label: t('nav.activity'), Icon: ActivityIcon },
+  ];
 
   const formatTime = (ts: number) => {
     const d = new Date(ts);
@@ -218,163 +267,204 @@ export default function TopNavBar({
     setEditingSessionId(null);
   };
 
+  const renderSessionDropdown = () => (
+    <div className={styles.sessionDropdown}>
+      {/* 顶部新建对话入口 - 让用户在下拉里也能一眼找到 */}
+      <div
+        className={styles.newSessionEntry}
+        onClick={() => {
+          onNewSession?.();
+          setSessionDropdownOpen(false);
+        }}
+      >
+        <span className={styles.newSessionEntryIcon}>+</span>
+        <span>{t('nav.startNewChat')}</span>
+      </div>
+      <div className={styles.sessionDropdownHeader}>{t('nav.recentSessions')}</div>
+      <div className={styles.sessionList}>
+        {sessions.length === 0 ? (
+          <div className={styles.sessionEmpty}>{t('nav.noSessions')}</div>
+        ) : (
+          sessions.map(session => {
+            const activityStatus = sessionStatusMap?.get(session.id);
+            const needsAttention = activityStatus === 'waiting_input' || activityStatus === 'waiting_permission';
+            const isWorking = activityStatus === 'thinking' || activityStatus === 'streaming' || activityStatus === 'tool_executing';
+            return (
+              <div
+                key={session.id}
+                className={`${styles.sessionItem} ${session.id === currentSessionId ? styles.active : ''} ${needsAttention ? styles.needsAttention : ''}`}
+                onClick={() => {
+                  if (editingSessionId !== session.id) {
+                    onSessionSelect?.(session.id);
+                    setSessionDropdownOpen(false);
+                  }
+                }}
+              >
+                {activityStatus && session.id !== currentSessionId && (
+                  <span
+                    className={`${styles.sessionStatusDot} ${needsAttention ? styles.attention : isWorking ? styles.working : ''}`}
+                    title={activityStatus === 'waiting_input' ? t('nav.waitingInput') : activityStatus === 'waiting_permission' ? t('nav.waitingPermission') : activityStatus === 'thinking' ? t('nav.thinking') : activityStatus === 'tool_executing' ? t('nav.toolExecuting') : ''}
+                  />
+                )}
+                <div className={styles.sessionItemInfo}>
+                  {editingSessionId === session.id ? (
+                    <input
+                      ref={renameInputRef}
+                      className={styles.renameInput}
+                      value={editingName}
+                      onChange={(e) => setEditingName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleFinishRename(session.id);
+                        if (e.key === 'Escape') setEditingSessionId(null);
+                      }}
+                      onBlur={() => handleFinishRename(session.id)}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  ) : (
+                    <>
+                      <span className={styles.sessionItemName}>
+                        {session.name || t('nav.unnamedSession')}
+                      </span>
+                      <span className={styles.sessionItemMeta}>
+                        {t('nav.messageCount', { count: session.messageCount })} · {formatTime(session.updatedAt)}
+                      </span>
+                    </>
+                  )}
+                </div>
+                <div className={styles.sessionItemActions}>
+                  <button
+                    className={styles.sessionRenameBtn}
+                    onClick={(e) => handleStartRename(e, session)}
+                    title={t('nav.rename')}
+                  >
+                    ✏️
+                  </button>
+                  <button
+                    className={styles.sessionDeleteBtn}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSessionDelete?.(session.id);
+                    }}
+                    title={t('nav.deleteSession')}
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+
+  const renderSessionControls = () => (
+    <div className={styles.sessionGroup}>
+      <div className={styles.sessionSelector} ref={sessionDropdownRef}>
+        <button
+          className={`${styles.sessionTrigger} ${sessionDropdownOpen ? styles.open : ''}`}
+          onClick={() => setSessionDropdownOpen(!sessionDropdownOpen)}
+          title={currentSessionName}
+        >
+          <span className={styles.sessionIcon}>
+            <ChatIcon />
+          </span>
+          <span className={styles.sessionName}>
+            {currentSessionName}
+          </span>
+          <span className={`${styles.sessionArrow} ${sessionDropdownOpen ? styles.open : ''}`}>▼</span>
+        </button>
+
+        {sessionDropdownOpen && renderSessionDropdown()}
+      </div>
+      <button className={styles.newSessionButton} onClick={onNewSession} title={t('nav.newSession')}>
+        +
+      </button>
+      {onOpenSessionSearch && (
+        <button className={styles.searchButton} onClick={onOpenSessionSearch} title={`${t('sessionSearch.placeholder')} (Ctrl+K)`}>
+          <SearchIcon />
+        </button>
+      )}
+    </div>
+  );
+
+  const renderProjectSelector = (className?: string) => (
+    <ProjectSelector
+      onOpenFolder={onOpenFolder}
+      apps={apps}
+      onAppSelect={onAppSelect}
+      onCreateApp={onCreateApp}
+      className={`${styles.navProjectSelector}${className ? ` ${className}` : ''}`}
+    />
+  );
+
+  const renderUtilityActions = () => (
+    <>
+      <AuthStatus onLoginClick={onLoginClick ?? (() => {})} refreshKey={authRefreshKey} />
+      {connected !== undefined && (
+        <span className={`${styles.connectionDot} ${connected ? styles.connected : ''}`} title={connected ? t('nav.connected') : t('nav.disconnected')} />
+      )}
+      <button className={styles.settingsButton} onClick={onSettingsClick} title={t('nav.settings')}>
+        <SettingsIcon />
+      </button>
+      <button
+        className={`${styles.headerToggleButton} ${styles.headerToggleGhost}`}
+        onClick={() => setIsHeaderHidden(true)}
+        aria-label={t('nav.hideHeader')}
+        aria-expanded="true"
+        title={t('nav.hideHeader')}
+      >
+        <span className={styles.headerToggleIcon}><ChevronIcon collapsed={false} /></span>
+      </button>
+      {electronAPI && !isMacElectron && (
+        <div className={styles.windowControls}>
+          <button className={styles.windowBtn} onClick={() => electronAPI.minimize()} title={t('nav.minimize')}>
+            <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 6h8" stroke="currentColor" strokeWidth="1.5" fill="none" /></svg>
+          </button>
+          <button className={styles.windowBtn} onClick={() => electronAPI.maximize()} title={t('nav.maximize')}>
+            <svg width="12" height="12" viewBox="0 0 12 12"><rect x="2" y="2" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1.2" fill="none" /></svg>
+          </button>
+          <button className={`${styles.windowBtn} ${styles.windowBtnClose}`} onClick={() => electronAPI.close()} title={t('nav.close')}>
+            <svg width="12" height="12" viewBox="0 0 12 12"><path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" strokeWidth="1.5" fill="none" /></svg>
+          </button>
+        </div>
+      )}
+    </>
+  );
+
+  if (isHeaderHidden) {
+    return (
+      <div className={styles.hiddenHeaderDock}>
+        <button
+          className={`${styles.headerToggleButton} ${styles.headerToggleGhost} ${styles.headerRevealButton}`}
+          onClick={() => setIsHeaderHidden(false)}
+          aria-label={t('nav.showHeader')}
+          aria-expanded="false"
+          title={t('nav.showHeader')}
+        >
+          <span className={styles.headerToggleIcon}><ChevronIcon collapsed={true} /></span>
+        </button>
+      </div>
+    );
+  }
+
   return (
     <nav className={styles.topNavBar}>
       {/* 第一行：全局上下文行（Electron 模式下充当标题栏，可拖拽） */}
       <div className={`${styles.contextRow} ${isElectron ? styles.electronDragRegion : ''} ${isMacElectron ? styles.electronMacDragRegion : ''}`}>
         {/* 左侧：项目选择器 */}
         <div className={styles.contextLeft}>
-          <ProjectSelector
-            onOpenFolder={onOpenFolder}
-            apps={apps}
-            onAppSelect={onAppSelect}
-            onCreateApp={onCreateApp}
-            className={styles.navProjectSelector}
-          />
+          {renderProjectSelector()}
         </div>
 
         {/* 中间：会话选择器 + 新建按钮 */}
         <div className={styles.contextCenter}>
-          <div className={styles.sessionGroup}>
-          <div className={styles.sessionSelector} ref={sessionDropdownRef}>
-            <button
-              className={`${styles.sessionTrigger} ${sessionDropdownOpen ? styles.open : ''}`}
-              onClick={() => setSessionDropdownOpen(!sessionDropdownOpen)}
-            >
-              <span className={styles.sessionIcon}>
-                <ChatIcon />
-              </span>
-              <span className={styles.sessionName}>
-                {currentSession?.name || t('nav.newSession')}
-              </span>
-              <span className={`${styles.sessionArrow} ${sessionDropdownOpen ? styles.open : ''}`}>▼</span>
-            </button>
-
-            {sessionDropdownOpen && (
-              <div className={styles.sessionDropdown}>
-                {/* 顶部新建对话入口 - 让用户在下拉里也能一眼找到 */}
-                <div
-                  className={styles.newSessionEntry}
-                  onClick={() => {
-                    onNewSession?.();
-                    setSessionDropdownOpen(false);
-                  }}
-                >
-                  <span className={styles.newSessionEntryIcon}>+</span>
-                  <span>{t('nav.startNewChat')}</span>
-                </div>
-                <div className={styles.sessionDropdownHeader}>{t('nav.recentSessions')}</div>
-                <div className={styles.sessionList}>
-                  {sessions.length === 0 ? (
-                    <div className={styles.sessionEmpty}>{t('nav.noSessions')}</div>
-                  ) : (
-                    sessions.map(session => {
-                      const activityStatus = sessionStatusMap?.get(session.id);
-                      const needsAttention = activityStatus === 'waiting_input' || activityStatus === 'waiting_permission';
-                      const isWorking = activityStatus === 'thinking' || activityStatus === 'streaming' || activityStatus === 'tool_executing';
-                      return (
-                      <div
-                        key={session.id}
-                        className={`${styles.sessionItem} ${session.id === currentSessionId ? styles.active : ''} ${needsAttention ? styles.needsAttention : ''}`}
-                        onClick={() => {
-                          if (editingSessionId !== session.id) {
-                            onSessionSelect?.(session.id);
-                            setSessionDropdownOpen(false);
-                          }
-                        }}
-                      >
-                        {/* 会话状态指示器（借鉴 cmux 通知环设计） */}
-                        {activityStatus && session.id !== currentSessionId && (
-                          <span
-                            className={`${styles.sessionStatusDot} ${needsAttention ? styles.attention : isWorking ? styles.working : ''}`}
-                            title={activityStatus === 'waiting_input' ? t('nav.waitingInput') : activityStatus === 'waiting_permission' ? t('nav.waitingPermission') : activityStatus === 'thinking' ? t('nav.thinking') : activityStatus === 'tool_executing' ? t('nav.toolExecuting') : ''}
-                          />
-                        )}
-                        <div className={styles.sessionItemInfo}>
-                          {editingSessionId === session.id ? (
-                            <input
-                              ref={renameInputRef}
-                              className={styles.renameInput}
-                              value={editingName}
-                              onChange={(e) => setEditingName(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') handleFinishRename(session.id);
-                                if (e.key === 'Escape') setEditingSessionId(null);
-                              }}
-                              onBlur={() => handleFinishRename(session.id)}
-                              onClick={(e) => e.stopPropagation()}
-                            />
-                          ) : (
-                            <>
-                              <span className={styles.sessionItemName}>
-                                {session.name || t('nav.unnamedSession')}
-                              </span>
-                              <span className={styles.sessionItemMeta}>
-                                {t('nav.messageCount', { count: session.messageCount })} · {formatTime(session.updatedAt)}
-                              </span>
-                            </>
-                          )}
-                        </div>
-                        <div className={styles.sessionItemActions}>
-                          <button
-                            className={styles.sessionRenameBtn}
-                            onClick={(e) => handleStartRename(e, session)}
-                            title={t('nav.rename')}
-                          >
-                            ✏️
-                          </button>
-                          <button
-                            className={styles.sessionDeleteBtn}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onSessionDelete?.(session.id);
-                            }}
-                            title={t('nav.deleteSession')}
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      </div>
-                    ); })
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-          <button className={styles.newSessionButton} onClick={onNewSession} title={t('nav.newSession')}>
-            +
-          </button>
-          {onOpenSessionSearch && (
-            <button className={styles.searchButton} onClick={onOpenSessionSearch} title={`${t('sessionSearch.placeholder')} (Ctrl+K)`}>
-              <SearchIcon />
-            </button>
-          )}
-          </div>
+          {renderSessionControls()}
         </div>
 
         {/* 右侧：认证状态 + 连接状态 + 设置按钮 + (Electron) 窗口控制 */}
         <div className={styles.contextRight}>
-          <AuthStatus onLoginClick={onLoginClick ?? (() => {})} refreshKey={authRefreshKey} />
-          {connected !== undefined && (
-            <span className={`${styles.connectionDot} ${connected ? styles.connected : ''}`} title={connected ? t('nav.connected') : t('nav.disconnected')} />
-          )}
-          <button className={styles.settingsButton} onClick={onSettingsClick} title={t('nav.settings')}>
-            <SettingsIcon />
-          </button>
-          {/* Electron 窗口控制按钮（macOS 用系统交通灯，不需要自定义按钮） */}
-          {electronAPI && !isMacElectron && (
-            <div className={styles.windowControls}>
-              <button className={styles.windowBtn} onClick={() => electronAPI.minimize()} title={t('nav.minimize')}>
-                <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 6h8" stroke="currentColor" strokeWidth="1.5" fill="none" /></svg>
-              </button>
-              <button className={styles.windowBtn} onClick={() => electronAPI.maximize()} title={t('nav.maximize')}>
-                <svg width="12" height="12" viewBox="0 0 12 12"><rect x="2" y="2" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1.2" fill="none" /></svg>
-              </button>
-              <button className={`${styles.windowBtn} ${styles.windowBtnClose}`} onClick={() => electronAPI.close()} title={t('nav.close')}>
-                <svg width="12" height="12" viewBox="0 0 12 12"><path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" strokeWidth="1.5" fill="none" /></svg>
-              </button>
-            </div>
-          )}
+          {renderUtilityActions()}
         </div>
       </div>
 
@@ -382,69 +472,18 @@ export default function TopNavBar({
       <div className={styles.navRow}>
         {/* 左侧：页面 Tab */}
         <div className={styles.navTabs}>
-          <button
-            className={`${styles.navTab} ${currentPage === 'chat' ? styles.active : ''}`}
-            onClick={() => onPageChange('chat')}
-          >
-            <span className={styles.icon}>
-              <ChatIcon />
-            </span>
-            <span>{t('nav.chat')}</span>
-          </button>
-          <button
-            className={`${styles.navTab} ${currentPage === 'code' ? styles.active : ''}`}
-            onClick={() => onPageChange('code')}
-          >
-            <span className={styles.icon}>
-              <FilesIcon />
-            </span>
-            <span>{t('nav.code')}</span>
-          </button>
-          <button
-            className={`${styles.navTab} ${currentPage === 'blueprint' ? styles.active : ''}`}
-            onClick={() => onPageChange('blueprint')}
-          >
-            <span className={styles.icon}>
-              <BlueprintIcon />
-            </span>
-            <span>{t('nav.blueprint')}</span>
-          </button>
-          <button
-            className={`${styles.navTab} ${currentPage === 'swarm' ? styles.active : ''}`}
-            onClick={() => onPageChange('swarm')}
-          >
-            <span className={styles.icon}>
-              <SwarmIcon />
-            </span>
-            <span>{t('nav.swarm')}</span>
-          </button>
-          <button
-            className={`${styles.navTab} ${currentPage === 'customize' ? styles.active : ''}`}
-            onClick={() => onPageChange('customize')}
-          >
-            <span className={styles.icon}>
-              <ToolboxIcon />
-            </span>
-            <span>{t('nav.customize')}</span>
-          </button>
-          <button
-            className={`${styles.navTab} ${currentPage === 'apps' ? styles.active : ''}`}
-            onClick={() => onPageChange('apps')}
-          >
-            <span className={styles.icon}>
-              <AppsIcon />
-            </span>
-            <span>{t('nav.myApps')}</span>
-          </button>
-          <button
-            className={`${styles.navTab} ${currentPage === 'activity' ? styles.active : ''}`}
-            onClick={() => onPageChange('activity')}
-          >
-            <span className={styles.icon}>
-              <ActivityIcon />
-            </span>
-            <span>{t('nav.activity')}</span>
-          </button>
+          {navItems.map(({ key, label, Icon }) => (
+            <button
+              key={key}
+              className={`${styles.navTab} ${currentPage === key ? styles.active : ''}`}
+              onClick={() => onPageChange(key)}
+            >
+              <span className={styles.icon}>
+                <Icon />
+              </span>
+              <span>{label}</span>
+            </button>
+          ))}
         </div>
       </div>
     </nav>

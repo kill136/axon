@@ -135,7 +135,10 @@ function RootContent() {
     //    这确保后续聊天消息中的 projectPath 也指向正确的目录
     const dirName = workingDirectory.split(/[/\\]/).pop() || workingDirectory;
     try {
-      await switchProject({ id: workingDirectory, name: dirName, path: workingDirectory });
+      await switchProject(
+        { id: workingDirectory, name: dirName, path: workingDirectory },
+        { source: 'create-app', createSession: false },
+      );
     } catch (err) {
       // 目录可能不存在（AI 会创建），手动设置 currentProject 保证后续消息带正确路径
       console.warn('[CreateApp] switchProject 失败，手动设置 currentProject:', err);
@@ -311,7 +314,13 @@ function RootContent() {
         onClose={() => setShowCreateApp(false)}
         onSubmit={handleCreateAppSubmit}
       />
-      {needSetup && <SetupWizard onComplete={completeSetup} />}
+      {needSetup && (
+        <SetupWizard
+          onComplete={completeSetup}
+          onOpenFolder={openFolder}
+          currentProjectName={projectState.currentProject?.name ?? null}
+        />
+      )}
     </div>
   );
 }

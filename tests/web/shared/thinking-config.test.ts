@@ -7,6 +7,18 @@ import {
 } from '../../../src/web/shared/thinking-config.js';
 
 describe('web thinking config', () => {
+  it('should default to the highest available thinking level per model capability', () => {
+    expect(getResolvedWebThinkingConfig('openai-compatible-api', 'gpt-5.4')).toEqual({
+      enabled: true,
+      level: 'xhigh',
+    });
+
+    expect(getResolvedWebThinkingConfig('claude-subscription', 'sonnet')).toEqual({
+      enabled: true,
+      level: 'high',
+    });
+  });
+
   it('should map anthropic thinking levels to the expected budgets', () => {
     expect(
       mapThinkingConfigToRuntimeOptions('claude-subscription', 'sonnet', {
@@ -98,6 +110,48 @@ describe('web thinking config', () => {
     ).toEqual({
       enableThinking: false,
       reasoningEffort: 'none',
+    });
+
+    expect(
+      getResolvedWebThinkingConfig('claude-subscription', 'haiku', {
+        enabled: true,
+        level: 'high',
+      }),
+    ).toEqual({
+      enabled: false,
+      level: 'high',
+    });
+
+    expect(
+      getResolvedWebThinkingConfig('claude-subscription', 'claude-3-5-sonnet-20241022', {
+        enabled: true,
+        level: 'high',
+      }),
+    ).toEqual({
+      enabled: false,
+      level: 'high',
+    });
+  });
+
+  it('should keep anthropic thinking enabled for Claude 4 aliases and ids', () => {
+    expect(
+      getResolvedWebThinkingConfig('claude-subscription', 'sonnet', {
+        enabled: true,
+        level: 'medium',
+      }),
+    ).toEqual({
+      enabled: true,
+      level: 'medium',
+    });
+
+    expect(
+      getResolvedWebThinkingConfig('claude-subscription', 'claude-sonnet-4-20250514', {
+        enabled: true,
+        level: 'high',
+      }),
+    ).toEqual({
+      enabled: true,
+      level: 'high',
     });
   });
 });

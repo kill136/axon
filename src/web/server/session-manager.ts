@@ -30,6 +30,7 @@ const SESSION_DIR = process.env.AXON_SESSION_DIR || path.join(os.homedir(), '.ax
 export interface WebSessionData extends SessionData {
   chatHistory?: ChatMessage[]; // WebUI 聊天历史
   currentModel?: string; // 当前使用的模型
+  pendingContinuationAfterRestore?: boolean; // 仅用于显式恢复续跑，不再从最后一条 tool_result 猜测
 }
 
 /**
@@ -146,6 +147,52 @@ export class WebSessionManager {
       console.error(`Failed to save session ${sessionId}:`, error);
       return false;
     }
+  }
+
+  /**
+   * 为持久化会话登记临时 sessionId 别名
+   * 用于前端还没收到 session_created 就遇到强制重启时，后续能用旧临时 ID 找回真实会话
+   */
+  registerTemporarySessionId(sessionId: string, temporarySessionId: string): boolean {
+    if (!temporarySessionId) {
+      return false;
+    }
+
+    const session = this.loadSessionById(sessionId);
+    if (!session) {
+      return false;
+    }
+
+    const existingIds = session.metadata.temporarySessionIds || [];
+    if (existingIds.includes(temporarySessionId)) {
+      return true;
+    }
+
+    session.metadata.temporarySessionIds = [...existingIds, temporarySessionId];
+    return this.saveSession(sessionId);
+  }
+
+  /**
+   * 通过临时 sessionId 查找对应的持久化会话
+   */
+  findSessionIdByTemporarySessionId(temporarySessionId: string): string | null {
+    if (!temporarySessionId) {
+      return null;
+    }
+
+    for (const session of this.sessions.values()) {
+      if (session.metadata.temporarySessionIds?.includes(temporarySessionId)) {
+        return session.metadata.id;
+      }
+    }
+
+    const match = this.listSessions({
+      limit: Number.MAX_SAFE_INTEGER,
+      sortBy: 'updatedAt',
+      sortOrder: 'desc',
+    }).find((session) => session.temporarySessionIds?.includes(temporarySessionId));
+
+    return match?.id || null;
   }
 
   /**

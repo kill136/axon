@@ -66,6 +66,9 @@ describe('web model catalog', () => {
     expect(normalizeWebRuntimeModelForBackend('codex-subscription', 'sonnet')).toBe('gpt-5-codex');
     expect(normalizeWebRuntimeModelForBackend('openai-compatible-api', undefined, 'gpt-5.4-mini')).toBe('gpt-5.4-mini');
     expect(normalizeWebRuntimeModelForBackend('openai-compatible-api', 'kimi-k2.5')).toBe('kimi-k2.5');
+    expect(
+      normalizeWebRuntimeModelForBackend('openai-compatible-api', undefined, undefined, ['deepseek-v3', 'qwen-max']),
+    ).toBe('deepseek-v3');
     expect(normalizeWebRuntimeModelForBackend('claude-compatible-api', 'claude-sonnet-4-5-20250929')).toBe('sonnet');
   });
 
@@ -85,6 +88,18 @@ describe('web model catalog', () => {
     const openaiOptions = getWebModelOptionsForBackend('openai-compatible-api', 'gpt-5.1', 'gpt-5.4');
     expect(openaiOptions.map(option => option.value)).toContain('gpt-5.4');
     expect(openaiOptions.map(option => option.value)).toContain('gpt-5.1');
+  });
+
+  it('should prefer dynamic OpenAI-compatible catalogs over static recommendations when available', () => {
+    const options = getWebModelOptionsForBackend(
+      'openai-compatible-api',
+      undefined,
+      undefined,
+      ['deepseek-v3', 'qwen-max'],
+    );
+
+    expect(options.map(option => option.value)).toEqual(['deepseek-v3', 'qwen-max']);
+    expect(options.map(option => option.label)).toEqual(['deepseek-v3', 'qwen-max']);
   });
 
   it('should expose backend-specific model pickers for chat entry surfaces', () => {

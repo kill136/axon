@@ -1,4 +1,5 @@
 import type { WebRuntimeBackend } from './model-catalog.js';
+import { getRuntimeBackendCapabilities } from './runtime-capabilities.js';
 
 export interface RuntimeApiProviderOption {
   id: 'anthropic' | 'openai' | 'openrouter' | 'custom';
@@ -13,6 +14,11 @@ export interface SetupRuntimeOption {
   recommended?: boolean;
 }
 
+export interface SetupRuntimeGroup {
+  id: 'managed' | 'api';
+  items: SetupRuntimeOption[];
+}
+
 export interface RuntimeBackendAuthSpec {
   backend: WebRuntimeBackend;
   authMode: 'axon-cloud' | 'oauth' | 'api-key';
@@ -20,6 +26,41 @@ export interface RuntimeBackendAuthSpec {
   apiProvider?: 'anthropic' | 'openai-compatible' | 'axon-cloud';
   testConnection: boolean;
   providerOptions: RuntimeApiProviderOption[];
+}
+
+export type RuntimeConfigApiProvider =
+  | 'anthropic'
+  | 'openai-compatible'
+  | 'axon-cloud'
+  | 'bedrock'
+  | 'vertex';
+
+export type RuntimeConfigAuthPriority = 'apiKey' | 'oauth' | 'auto';
+
+export interface RuntimeConfigShape {
+  runtimeBackend?: WebRuntimeBackend;
+  runtimeProvider?: 'anthropic' | 'codex';
+  apiProvider?: RuntimeConfigApiProvider;
+  authPriority?: RuntimeConfigAuthPriority;
+}
+
+export interface NormalizedRuntimeConfigShape {
+  runtimeBackend: WebRuntimeBackend;
+  runtimeProvider: 'anthropic' | 'codex';
+  apiProvider: RuntimeConfigApiProvider;
+  authPriority: RuntimeConfigAuthPriority;
+}
+
+function compactRuntimeConfigShape<T extends Partial<RuntimeConfigShape>>(shape?: T): Partial<RuntimeConfigShape> {
+  const compacted: Partial<RuntimeConfigShape> = {};
+
+  for (const [key, value] of Object.entries(shape || {})) {
+    if (value !== undefined) {
+      (compacted as Record<string, unknown>)[key] = value;
+    }
+  }
+
+  return compacted;
 }
 
 const ANTHROPIC_PROVIDER_OPTIONS: RuntimeApiProviderOption[] = [
@@ -63,12 +104,13 @@ export function getSetupRuntimeOptions(): SetupRuntimeOption[] {
 }
 
 export function getRuntimeBackendAuthSpec(backend: WebRuntimeBackend): RuntimeBackendAuthSpec {
+  const capability = getRuntimeBackendCapabilities(backend);
   switch (backend) {
     case 'axon-cloud':
       return {
         backend,
         authMode: 'axon-cloud',
-        runtimeProvider: 'anthropic',
+        runtimeProvider: capability.defaultProvider,
         apiProvider: 'axon-cloud',
         testConnection: false,
         providerOptions: [],
@@ -77,7 +119,7 @@ export function getRuntimeBackendAuthSpec(backend: WebRuntimeBackend): RuntimeBa
       return {
         backend,
         authMode: 'oauth',
-        runtimeProvider: 'anthropic',
+        runtimeProvider: capability.defaultProvider,
         apiProvider: 'anthropic',
         testConnection: false,
         providerOptions: [],
@@ -86,7 +128,7 @@ export function getRuntimeBackendAuthSpec(backend: WebRuntimeBackend): RuntimeBa
       return {
         backend,
         authMode: 'oauth',
-        runtimeProvider: 'codex',
+        runtimeProvider: capability.defaultProvider,
         apiProvider: 'openai-compatible',
         testConnection: false,
         providerOptions: [],
@@ -95,9 +137,9 @@ export function getRuntimeBackendAuthSpec(backend: WebRuntimeBackend): RuntimeBa
       return {
         backend,
         authMode: 'api-key',
-        runtimeProvider: 'codex',
+        runtimeProvider: capability.defaultProvider,
         apiProvider: 'openai-compatible',
-        testConnection: false,
+        testConnection: true,
         providerOptions: OPENAI_PROVIDER_OPTIONS,
       };
     case 'claude-compatible-api':
@@ -105,12 +147,139 @@ export function getRuntimeBackendAuthSpec(backend: WebRuntimeBackend): RuntimeBa
       return {
         backend,
         authMode: 'api-key',
-        runtimeProvider: 'anthropic',
+        runtimeProvider: capability.defaultProvider,
         apiProvider: 'anthropic',
         testConnection: true,
         providerOptions: ANTHROPIC_PROVIDER_OPTIONS,
       };
   }
+}
+
+export function getGroupedSetupRuntimeOptions(): SetupRuntimeGroup[] {
+  const groups: SetupRuntimeGroup[] = [
+    { id: 'managed', items: [] },
+    { id: 'api', items: [] },
+  ];
+
+  for (const option of getSetupRuntimeOptions()) {
+    const spec = getRuntimeBackendAuthSpec(option.backend);
+    if (spec.authMode === 'api-key') {
+      groups[1].items.push(option);
+    } else {
+      groups[0].items.push(option);
+    }
+  }
+
+  return groups;
+}
+
+function inferRuntimeBackendFromConfigShape(input: {
+  current?: RuntimeConfigShape;
+  updates?: Partial<RuntimeConfigShape>;
+}): WebRuntimeBackend {
+  const current = input.current || {};
+  const updates = input.updates || {};
+  const merged: RuntimeConfigShape = {
+    ...current,
+    ...updates,
+  };
+  const currentRuntimeBackend = current.runtimeBackend;
+  const currentSpec = currentRuntimeBackend
+    ? getRuntimeBackendAuthSpec(currentRuntimeBackend)
+    : undefined;
+
+  if (updates.runtimeBackend) {
+    return updates.runtimeBackend;
+  }
+
+  const hasRuntimeSignal =
+    'runtimeProvider' in updates
+    || 'apiProvider' in updates
+    || 'authPriority' in updates;
+
+  if (!hasRuntimeSignal) {
+    return currentRuntimeBackend || merged.runtimeBackend || 'claude-compatible-api';
+  }
+
+  if (merged.authPriority === 'oauth') {
+    return merged.runtimeProvider === 'codex'
+      || merged.apiProvider === 'openai-compatible'
+      || currentSpec?.runtimeProvider === 'codex'
+      ? 'codex-subscription'
+      : 'claude-subscription';
+  }
+
+  if (merged.authPriority === 'apiKey') {
+    if (merged.apiProvider === 'axon-cloud') {
+      return 'axon-cloud';
+    }
+
+    if (
+      merged.runtimeProvider === 'codex'
+      || merged.apiProvider === 'openai-compatible'
+      || (currentSpec?.runtimeProvider === 'codex' && currentSpec.authMode === 'api-key')
+    ) {
+      return 'openai-compatible-api';
+    }
+
+    return 'claude-compatible-api';
+  }
+
+  if (merged.apiProvider === 'openai-compatible') {
+    return 'openai-compatible-api';
+  }
+
+  if (merged.apiProvider === 'axon-cloud') {
+    return 'axon-cloud';
+  }
+
+  if (merged.runtimeProvider === 'codex') {
+    return currentSpec?.authMode === 'api-key'
+      ? 'openai-compatible-api'
+      : 'codex-subscription';
+  }
+
+  return currentRuntimeBackend || 'claude-compatible-api';
+}
+
+export function normalizeRuntimeConfigShape(input: {
+  current?: RuntimeConfigShape;
+  updates?: Partial<RuntimeConfigShape>;
+}): NormalizedRuntimeConfigShape {
+  const current = compactRuntimeConfigShape(input.current) as RuntimeConfigShape;
+  const updates = compactRuntimeConfigShape(input.updates);
+  const merged: RuntimeConfigShape = {
+    ...current,
+    ...updates,
+  };
+
+  const runtimeBackend = inferRuntimeBackendFromConfigShape({ current, updates });
+  const spec = getRuntimeBackendAuthSpec(runtimeBackend);
+
+  let apiProvider: RuntimeConfigApiProvider = spec.apiProvider || 'anthropic';
+  if (runtimeBackend === 'claude-compatible-api') {
+    if (
+      merged.apiProvider === 'bedrock'
+      || merged.apiProvider === 'vertex'
+      || merged.apiProvider === 'anthropic'
+    ) {
+      apiProvider = merged.apiProvider;
+    } else {
+      apiProvider = 'anthropic';
+    }
+  }
+
+  const authPriority: RuntimeConfigAuthPriority =
+    spec.authMode === 'oauth' ? 'oauth'
+      : spec.authMode === 'api-key' ? 'apiKey'
+      : 'auto';
+
+  return {
+    runtimeBackend,
+    runtimeProvider: spec.runtimeProvider,
+    apiProvider,
+    authPriority,
+  };
 }
 
 export function buildRuntimeBackendConfigPayload(
@@ -120,23 +289,16 @@ export function buildRuntimeBackendConfigPayload(
     apiKey?: string;
   },
 ): Record<string, string> {
-  const spec = getRuntimeBackendAuthSpec(backend);
+  const normalized = normalizeRuntimeConfigShape({
+    updates: { runtimeBackend: backend },
+  });
   const payload: Record<string, string> = {
-    runtimeBackend: backend,
-    runtimeProvider: spec.runtimeProvider,
+    runtimeBackend: normalized.runtimeBackend,
+    runtimeProvider: normalized.runtimeProvider,
   };
 
-  if (spec.apiProvider) {
-    payload.apiProvider = spec.apiProvider;
-  }
-
-  if (spec.authMode === 'oauth') {
-    payload.authPriority = 'oauth';
-  } else if (spec.authMode === 'api-key') {
-    payload.authPriority = 'apiKey';
-  } else {
-    payload.authPriority = 'auto';
-  }
+  payload.apiProvider = normalized.apiProvider;
+  payload.authPriority = normalized.authPriority;
 
   if (options?.apiBaseUrl) {
     payload.apiBaseUrl = options.apiBaseUrl;

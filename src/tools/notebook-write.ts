@@ -32,6 +32,8 @@ Saying "I'll remember" without calling this tool is a LIE — conversation memor
 
 ## Three Notebooks
 - **profile**: Stable personal info — name, role, contact, preferences, background. (~2K tokens max)
+  Prefer this structure: Basic Info / Stable Preferences / Communication Style / Working Style / Decision Signals / Values & Motivations / Do Not Assume / Open Questions
+  Prefer compact bullets such as: \`- Prefers concise Chinese replies [updated: 2026-03-21; evidence: user stated directly]\`
 - **experience**: Cross-project knowledge — work patterns, lessons learned, anti-patterns. (~4K tokens max)
 - **project**: Things YOU discovered about this project that are NOT in AXON.md — gotchas, hidden dependencies, operational tips. (~8K tokens max)
 
@@ -46,7 +48,7 @@ Only write things you discovered during work that AXON.md does not cover:
 - Write in markdown, keep it concise
 - Add dates for time-sensitive info: "Prefers React (2026-02)"
 - Record patterns, not volatile facts (facts go stale, patterns don't)
-- When new info contradicts your notes, update the notes
+- When new info contradicts your notes, update or replace the old note instead of keeping both
 - Stay within token budgets — prune stale content when needed
 
 ## Reading

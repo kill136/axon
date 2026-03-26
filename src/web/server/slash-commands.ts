@@ -15,9 +15,42 @@ import {
   getWebModelOptionsForBackend,
   isCodexCompatibleModel,
   normalizeWebRuntimeModelForBackend,
+  type WebRuntimeBackend,
 } from '../shared/model-catalog.js';
+import { allowsArbitraryModelIdsForBackend } from '../shared/runtime-capabilities.js';
 
 const require = createRequire(import.meta.url);
+
+function getRuntimeModelState(
+  runtimeBackend: WebRuntimeBackend,
+  sessionModel: string,
+  webAuth: {
+    getDefaultModelByBackend(): Partial<Record<string, string>>;
+    getCustomModelCatalogByBackend?: () => Partial<Record<string, string[]>>;
+    getCodexModelName?: () => string | undefined;
+    getCustomModelName?: () => string | undefined;
+  },
+) {
+  const defaultModels = webAuth.getDefaultModelByBackend();
+  const customModelCatalogByBackend = webAuth.getCustomModelCatalogByBackend?.() || {};
+  const customModelName = defaultModels[runtimeBackend]
+    || webAuth.getCodexModelName?.()
+    || webAuth.getCustomModelName?.();
+  const availableModels = customModelCatalogByBackend[runtimeBackend];
+  const currentModel = normalizeWebRuntimeModelForBackend(
+    runtimeBackend,
+    sessionModel,
+    customModelName,
+    availableModels,
+  );
+  const provider = getProviderForRuntimeBackend(runtimeBackend, currentModel);
+  return {
+    currentModel,
+    provider,
+    customModelName,
+    availableModels,
+  };
+}
 
 // ============ 类型定义 ============
 
@@ -198,18 +231,30 @@ const statusCommand: SlashCommand = {
   name: 'status',
   description: 'Show system status',
   category: 'general',
-  execute: (ctx: ExtendedCommandContext): CommandResult => {
+  execute: async (ctx: ExtendedCommandContext): Promise<CommandResult> => {
+    const { webAuth } = await import('./web-auth.js');
     const history = ctx.conversationManager.getHistory(ctx.sessionId);
-    const apiKeySet = !!(process.env.ANTHROPIC_API_KEY || process.env.AXON_API_KEY);
+    const authStatus = webAuth.getStatus();
+    const runtimeBackend = (ctx.conversationManager.getSessionRuntimeBackend(ctx.sessionId)
+      || authStatus.runtimeBackend
+      || webAuth.getRuntimeBackend()) as WebRuntimeBackend;
+    const authTypeLabel = authStatus.type === 'api_key'
+      ? 'API Key'
+      : authStatus.type === 'oauth'
+        ? 'OAuth'
+        : 'None';
 
     let message = 'Axon WebUI Status\n\n';
     message += 'Session Info:\n';
     message += `  Session ID: ${ctx.sessionId.slice(0, 8)}\n`;
     message += `  Messages: ${history.length}\n`;
     message += `  Model: ${ctx.model}\n\n`;
+    message += 'Runtime:\n';
+    message += `  Backend: ${getRuntimeBackendLabel(runtimeBackend)}\n`;
+    message += `  Provider: ${authStatus.provider || 'unknown'}\n\n`;
     message += 'API Connection:\n';
-    message += `  Status: ${apiKeySet ? '✓ Connected' : '✗ Not connected'}\n`;
-    message += `  API Key: ${apiKeySet ? '✓ Configured' : '✗ Not configured'}\n\n`;
+    message += `  Status: ${authStatus.authenticated ? '✓ Connected' : '✗ Not connected'}\n`;
+    message += `  Auth Type: ${authTypeLabel}\n\n`;
     message += 'Environment:\n';
     message += `  Working Directory: ${ctx.cwd}\n`;
     message += `  Platform: ${process.platform}\n`;
@@ -230,11 +275,14 @@ const modelCommand: SlashCommand = {
     const { args } = ctx;
     const { webAuth } = await import('./web-auth.js');
     const runtimeBackend = ctx.conversationManager.getSessionRuntimeBackend(ctx.sessionId) || webAuth.getRuntimeBackend();
-    const provider = getProviderForRuntimeBackend(runtimeBackend);
-    const customModelName = webAuth.getDefaultModelByBackend()[runtimeBackend]
-      || (provider === 'codex' ? webAuth.getCodexModelName() : webAuth.getCustomModelName());
-    const currentModel = normalizeWebRuntimeModelForBackend(runtimeBackend, ctx.model, customModelName);
-    const options = getWebModelOptionsForBackend(runtimeBackend, currentModel, customModelName);
+    const {
+      currentModel,
+      provider,
+      customModelName,
+      availableModels,
+    } = getRuntimeModelState(runtimeBackend, ctx.model, webAuth);
+    const options = getWebModelOptionsForBackend(runtimeBackend, currentModel, customModelName, availableModels);
+    const allowArbitraryModelIds = allowsArbitraryModelIdsForBackend(runtimeBackend);
 
     if (!args || args.length === 0) {
       let message = `Current runtime backend: ${getRuntimeBackendLabel(runtimeBackend)}\n`;
@@ -247,7 +295,11 @@ const modelCommand: SlashCommand = {
         }
         message += '\n';
       }
-      if (provider === 'codex') {
+      if (runtimeBackend === 'axon-cloud') {
+        message += '\nAxon Cloud accepts arbitrary runtime catalog model ids, including Claude, GPT, and other compatible models.\n';
+      } else if (allowArbitraryModelIds) {
+        message += '\nOpenAI-compatible mode also accepts arbitrary responses-compatible model ids, such as gpt-5.4, deepseek-v3, or qwen-max.\n';
+      } else if (provider === 'codex') {
         message += runtimeBackend === 'openai-compatible-api'
           ? '\nOpenAI-compatible mode also accepts arbitrary responses-compatible model ids, such as gpt-5.4 or gpt-5.1.\n'
           : '\nCodex mode also accepts any Codex-compatible model id, such as gpt-5.4 or gpt-5.1-codex.\n';
@@ -258,7 +310,15 @@ const modelCommand: SlashCommand = {
     }
 
     const requestedModel = args[0].trim();
-    if (provider === 'codex' && !isCodexCompatibleModel(requestedModel)) {
+    if (!requestedModel) {
+      return {
+        success: false,
+        message: 'Model name cannot be empty.',
+        dialogType: 'text',
+      };
+    }
+
+    if (!allowArbitraryModelIds && provider === 'codex' && !isCodexCompatibleModel(requestedModel)) {
       return {
         success: false,
         message: `Invalid Codex model: ${requestedModel}\n\nUse a Codex-compatible model id such as gpt-5-codex, gpt-5.4, or gpt-5.1-codex.`,
@@ -266,8 +326,14 @@ const modelCommand: SlashCommand = {
       };
     }
 
-    const newModel = normalizeWebRuntimeModelForBackend(runtimeBackend, requestedModel, customModelName);
-    if (provider === 'anthropic' && !['opus', 'sonnet', 'haiku'].includes(newModel)) {
+    const newModel = normalizeWebRuntimeModelForBackend(
+      runtimeBackend,
+      requestedModel,
+      customModelName,
+      availableModels,
+    );
+    const newProvider = getProviderForRuntimeBackend(runtimeBackend, newModel);
+    if (!allowArbitraryModelIds && newProvider === 'anthropic' && !['opus', 'sonnet', 'haiku'].includes(newModel)) {
       return {
         success: false,
         message: `Invalid Claude model: ${requestedModel}\n\nAvailable models: opus, sonnet, haiku`,
@@ -278,7 +344,7 @@ const modelCommand: SlashCommand = {
     ctx.conversationManager.setModel(ctx.sessionId, newModel);
     return {
       success: true,
-      message: `Switched to ${getRuntimeBackendLabel(runtimeBackend)} ${getWebModelLabel(newModel, provider)} (${newModel})`,
+      message: `Switched to ${getRuntimeBackendLabel(runtimeBackend)} ${getWebModelLabel(newModel, newProvider)} (${newModel})`,
       dialogType: 'text',
     };
   },
@@ -293,7 +359,7 @@ const costCommand: SlashCommand = {
     const { webAuth } = await import('./web-auth.js');
     const history = ctx.conversationManager.getHistory(ctx.sessionId);
     const runtimeBackend = ctx.conversationManager.getSessionRuntimeBackend(ctx.sessionId) || webAuth.getRuntimeBackend();
-    const provider = getProviderForRuntimeBackend(runtimeBackend);
+    const { currentModel, provider } = getRuntimeModelState(runtimeBackend, ctx.model, webAuth);
 
     let totalInput = 0;
     let totalOutput = 0;
@@ -302,6 +368,19 @@ const costCommand: SlashCommand = {
         totalInput += msg.usage.inputTokens || 0;
         totalOutput += msg.usage.outputTokens || 0;
       }
+    }
+
+    if (runtimeBackend === 'axon-cloud') {
+      let message = 'Session Cost Summary\n\n';
+      message += 'Current Session:\n';
+      message += `  Messages: ${history.length}\n`;
+      message += `  Input tokens: ${totalInput.toLocaleString()}\n`;
+      message += `  Output tokens: ${totalOutput.toLocaleString()}\n\n`;
+      message += `Runtime backend: ${getRuntimeBackendLabel(runtimeBackend)}\n`;
+      message += `Current model: ${getWebModelLabel(currentModel, provider)} (${currentModel})\n\n`;
+      message += 'Axon Cloud can route multiple provider families, so static per-token pricing is not authoritative here.\n';
+      message += 'Use Axon Cloud quota or billing views for the real cost source of truth.';
+      return { success: true, message, dialogType: 'text' };
     }
 
     if (provider === 'codex') {
@@ -345,16 +424,23 @@ const configCommand: SlashCommand = {
   aliases: ['settings'],
   description: 'Show current configuration',
   category: 'config',
-  execute: (ctx: ExtendedCommandContext): CommandResult => {
-    const apiKeySet = !!(process.env.ANTHROPIC_API_KEY || process.env.AXON_API_KEY);
+  execute: async (ctx: ExtendedCommandContext): Promise<CommandResult> => {
+    const { webAuth } = await import('./web-auth.js');
+    const authStatus = webAuth.getStatus();
+    const runtimeBackend = (ctx.conversationManager.getSessionRuntimeBackend(ctx.sessionId)
+      || authStatus.runtimeBackend
+      || webAuth.getRuntimeBackend()) as WebRuntimeBackend;
     let message = 'Current Configuration\n\n';
     message += `Session ID: ${ctx.sessionId}\n`;
+    message += `Runtime Backend: ${getRuntimeBackendLabel(runtimeBackend)}\n`;
+    message += `Runtime Provider: ${authStatus.provider || 'unknown'}\n`;
     message += `Model: ${ctx.model}\n`;
     message += `Working Directory: ${ctx.cwd}\n`;
     message += `Platform: ${process.platform}\n`;
     message += `Node.js: ${process.version}\n\n`;
-    message += `API Status:\n`;
-    message += `  API Key: ${apiKeySet ? '✓ Configured' : '✗ Not configured'}\n`;
+    message += 'Authentication:\n';
+    message += `  Status: ${authStatus.authenticated ? '✓ Authenticated' : '✗ Not authenticated'}\n`;
+    message += `  Type: ${authStatus.type === 'api_key' ? 'API Key' : authStatus.type === 'oauth' ? 'OAuth' : 'None'}\n`;
     return { success: true, message, dialogType: 'text' };
   },
 };

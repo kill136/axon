@@ -44,6 +44,21 @@ describe('auth summary', () => {
     });
   });
 
+  it('should keep codex-family api key auth as API Key instead of ChatGPT subscription', () => {
+    expect(summarizeAuthStatus({
+      authenticated: true,
+      type: 'api_key',
+      provider: 'codex',
+      runtimeBackend: 'openai-compatible-api',
+    }, labels)).toEqual({
+      avatar: '🔑',
+      triggerLabel: 'API Key',
+      accountLabel: 'API Key',
+      accountDetail: 'codex',
+      runtimeLabel: 'OpenAI-Compatible API',
+    });
+  });
+
   it('should summarize axon cloud with account and runtime labels', () => {
     expect(summarizeAuthStatus({
       authenticated: true,

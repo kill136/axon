@@ -23,6 +23,9 @@ import type { Message } from '../types/index.js';
 import { GENERAL_PURPOSE_AGENT_PROMPT, EXPLORE_AGENT_PROMPT, CODE_ANALYZER_PROMPT, BLUEPRINT_WORKER_PROMPT } from '../prompt/templates.js';
 import { notificationManager, type AgentCompletionResult } from '../notifications/index.js';
 import { t } from '../i18n/index.js';
+import { resolveRuntimeSelection } from '../web/server/runtime/runtime-selection.js';
+import type { ConversationClientConfig } from '../web/server/runtime/types.js';
+import type { WebRuntimeBackend } from '../web/shared/model-catalog.js';
 
 // 代理类型定义（参照官方）
 export interface AgentTypeDefinition {
@@ -96,6 +99,24 @@ export function parseToolsWithAgentTypeRestriction(tools: string[]): {
 // 模型别名类型（与官方 SDK 一致）
 export type ModelAlias = 'sonnet' | 'opus' | 'haiku' | 'inherit';
 
+const WEB_RUNTIME_BACKENDS = new Set<WebRuntimeBackend>([
+  'axon-cloud',
+  'claude-subscription',
+  'claude-compatible-api',
+  'codex-subscription',
+  'openai-compatible-api',
+]);
+
+function isWebRuntimeBackend(value: string | undefined): value is WebRuntimeBackend {
+  return !!value && WEB_RUNTIME_BACKENDS.has(value as WebRuntimeBackend);
+}
+
+interface AgentRuntimeConfig {
+  runtimeBackend?: string;
+  defaultModelByBackend?: Partial<Record<WebRuntimeBackend, string>>;
+  customModelName?: string;
+}
+
 // 全局父模型上下文（用于 inherit 继承）
 let parentModelContext: string | undefined;
 
@@ -146,6 +167,28 @@ export function resolveAgentModel(
 
   // 最终默认返回 undefined（让 ConversationLoop 使用它自己的默认值 'sonnet'）
   return undefined;
+}
+
+export function normalizeAgentModelForRuntime(
+  model: string | undefined,
+  runtimeConfig?: AgentRuntimeConfig,
+): string | undefined {
+  if (!model) {
+    return model;
+  }
+
+  const runtimeBackend = runtimeConfig?.runtimeBackend;
+  if (!isWebRuntimeBackend(runtimeBackend)) {
+    return model;
+  }
+
+  return resolveRuntimeSelection({
+    runtimeBackend,
+    model,
+    defaultModelByBackend: runtimeConfig.defaultModelByBackend,
+    codexModelName: runtimeConfig.customModelName,
+    customModelName: runtimeConfig.customModelName,
+  }).normalizedModel;
 }
 
 /**
@@ -1308,12 +1351,44 @@ Usage notes:
         content: agent.prompt,
       });
 
-      // 解析模型参数，支持 inherit 继承
-      const resolvedModel = resolveAgentModel(agent.model, agentDef.model);
-
       // 从配置管理器获取完整配置（包括环境变量）
       const { configManager } = await import('../config/index.js');
       const config = configManager.getAll();
+      const runtimeBackend = config.runtimeBackend as string | undefined;
+      const runtimeApiKey = config.apiKey as string | undefined;
+      const runtimeAuthToken = config.oauthToken as string | undefined;
+      const runtimeBaseUrl = config.apiBaseUrl as string | undefined;
+
+      // 子 agent 需要按当前 runtime backend 归一化模型，否则 GPT/Codex backend 下
+      // 的内置 Claude alias（如 opus/sonnet/haiku）会落到错误 provider。
+      const resolvedModel = normalizeAgentModelForRuntime(
+        resolveAgentModel(agent.model, agentDef.model),
+        {
+          runtimeBackend: config.runtimeBackend as string | undefined,
+          defaultModelByBackend: config.defaultModelByBackend as Partial<Record<WebRuntimeBackend, string>> | undefined,
+          customModelName: config.customModelName as string | undefined,
+        },
+      );
+      const runtimeSelection = isWebRuntimeBackend(runtimeBackend)
+        ? resolveRuntimeSelection({
+            runtimeBackend,
+            model: resolveAgentModel(agent.model, agentDef.model),
+            defaultModelByBackend: config.defaultModelByBackend as Partial<Record<WebRuntimeBackend, string>> | undefined,
+            codexModelName: config.customModelName as string | undefined,
+            customModelName: config.customModelName as string | undefined,
+          })
+        : undefined;
+      const conversationClientConfig: ConversationClientConfig | undefined =
+        runtimeSelection && (runtimeApiKey || runtimeAuthToken)
+          ? {
+              provider: runtimeSelection.provider,
+              model: runtimeSelection.normalizedModel,
+              apiKey: runtimeApiKey,
+              authToken: runtimeAuthToken,
+              baseUrl: runtimeBaseUrl,
+              customModelName: runtimeSelection.customModelName,
+            }
+          : undefined;
 
       // 类型断言：确保 TypeScript 正确识别配置类型
       const fallbackModel = config.fallbackModel as string | undefined;
@@ -1365,6 +1440,8 @@ Usage notes:
         mcpTools: [],
         // v2.1.33: 传递子 agent 类型限制
         allowedSubagentTypes: childAllowedSubagentTypes,
+        // 让子 agent 复用当前 runtime-aware client 配置，避免 GPT backend 掉回 ClaudeClient。
+        conversationClientConfig,
       };
 
       // 创建子对话循环（动态导入避免循环依赖）
@@ -1395,6 +1472,8 @@ Usage notes:
         };
       }
 
+      let streamFailure: string | undefined;
+
       for await (const event of loop.processMessageStream(agent.prompt)) {
         if (event.type === 'text' && event.content) {
           lastAssistantText += event.content;
@@ -1413,6 +1492,9 @@ Usage notes:
           };
           saveAgentState(agent);
         } else if (event.type === 'tool_end') {
+          if (!event.toolName && event.toolError) {
+            streamFailure = event.toolError;
+          }
           // 工具执行完成，更新状态
           saveAgentState(agent);
         } else if (event.type === 'done') {
@@ -1422,6 +1504,10 @@ Usage notes:
           // 如果被中断，记录状态
           throw new Error(t('agent.executionInterrupted'));
         }
+      }
+
+      if (streamFailure) {
+        throw new Error(streamFailure);
       }
 
       // 对齐官方：截断过长的结果，防止撑爆父对话上下文
@@ -1818,4 +1904,3 @@ Usage notes:
     };
   }
 }
-

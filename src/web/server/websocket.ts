@@ -28,6 +28,7 @@ import { getSwarmLogDB, type WorkerLog, type WorkerStream } from './database/swa
 import { registerE2EAgent, unregisterE2EAgent, getE2EAgent } from '../../blueprint/e2e-agent-registry.js';
 // 终端管理器
 import { TerminalManager } from './terminal-manager.js';
+import { resolveSessionAlias, syncClientSessionAlias } from './session-alias.js';
 // 日志系统
 import { logger } from '../../utils/logger.js';
 // 错误感知
@@ -1649,8 +1650,10 @@ async function handleClientMessage(
 
     case 'rewind_preview':
       try {
+        const resolvedSessionId = syncClientSessionAlias(client, conversationManager);
+        await conversationManager.resumeSession(resolvedSessionId, client.permissionMode);
         const preview = conversationManager.getRewindPreview(
-          client.sessionId,
+          resolvedSessionId,
           message.payload.messageId,
           message.payload.option
         );
@@ -1662,13 +1665,15 @@ async function handleClientMessage(
 
     case 'rewind_execute':
       try {
+        const resolvedSessionId = syncClientSessionAlias(client, conversationManager);
+        await conversationManager.resumeSession(resolvedSessionId, client.permissionMode);
         const result = await conversationManager.rewind(
-          client.sessionId,
+          resolvedSessionId,
           message.payload.messageId,
           message.payload.option
         );
         if (result.success) {
-          const updatedMessages = conversationManager.getHistory(client.sessionId);
+          const updatedMessages = conversationManager.getHistory(resolvedSessionId);
           sendMessage(client.ws, {
             type: 'rewind_success',
             payload: { success: true, result, messages: updatedMessages },
@@ -2429,7 +2434,14 @@ async function prepareChatSession(
   thinkingConfig?: WebThinkingConfig,
 ): Promise<ChatSessionContext | null> {
   const { ws, model, projectPath } = client;
-  let { sessionId } = client;
+  const originalSessionId = client.sessionId;
+  let sessionId = syncClientSessionAlias(client, conversationManager);
+
+  if (sessionId !== originalSessionId) {
+    console.log(`[WebSocket] Resolved chat session alias ${originalSessionId} -> ${sessionId}`);
+  }
+
+  conversationManager.setWebSocket(sessionId, ws);
 
   console.log(`[WebSocket] handleChatMessage - sessionId: ${sessionId}, projectPath: ${projectPath || 'undefined'}`);
 
@@ -2456,6 +2468,7 @@ async function prepareChatSession(
   if (!existingSession) {
     // 当前 sessionId 是临时的（WebSocket 连接时生成的），需要创建持久化会话
     // 官方规范：使用第一条消息的前50个字符作为会话标题
+    const temporarySessionId = sessionId;
     const firstPrompt = content.substring(0, 50);
     console.log(`[WebSocket] Temporary session ${sessionId}, creating persistent session, title: ${firstPrompt}, projectPath: ${client.projectPath || 'global'}`);
     const newSession = sessionManager.createSession({
@@ -2465,6 +2478,7 @@ async function prepareChatSession(
       tags: ['webui'],
       projectPath: client.projectPath,  // 传递项目路径
     });
+    sessionManager.registerTemporarySessionId(newSession.metadata.id, temporarySessionId);
     // 更新 client 的 sessionId
     client.sessionId = newSession.metadata.id;
     sessionId = newSession.metadata.id;
@@ -2732,7 +2746,7 @@ async function executeChatStreaming(
         cmux.onPermissionRequest(request.toolName || 'Unknown', request.description || 'execute');
       },
 
-      onComplete: async (stopReason: string | null, usage?: { inputTokens: number; outputTokens: number }) => {
+      onComplete: async (stopReason: string | null, usage?: { inputTokens: number; outputTokens: number; cacheReadTokens?: number; cacheCreationTokens?: number }) => {
         // 保存会话到磁盘（确保 messageCount 正确更新）
         await conversationManager.persistSession(chatSessionId);
 
@@ -2790,7 +2804,7 @@ async function executeChatStreaming(
         });
       },
 
-      onRateLimitUpdate: (info: { status: string; utilization5h?: number; utilization7d?: number; resetsAt?: number; rateLimitType?: string; }) => {
+      onRateLimitUpdate: (info: { status: string; utilization5h?: number; utilization7d?: number; resetsAt?: number; rateLimitType?: string; remainingRequests?: number; limitRequests?: number; remainingTokens?: number; limitTokens?: number; cacheReadTokens?: number; cacheCreationTokens?: number; }) => {
         sendMessage(getActiveWs(), {
           type: 'rate_limit_update',
           payload: { ...info, sessionId: chatSessionId },
@@ -3172,43 +3186,60 @@ async function handleSessionSwitch(
   const { ws } = client;
 
   try {
+    let targetSessionId = sessionId;
+
     // 提前更新 ws：如果目标会话已在内存中（正在处理），立即将其 ws 指向新连接
     // 这样在 await resumeSession() 期间，流式回调就能通过 getActiveWs() 获取到新 ws，
     // 避免消息发送到已关闭的旧连接而丢失
-    conversationManager.setWebSocket(sessionId, ws);
+    conversationManager.setWebSocket(targetSessionId, ws);
 
     // 保存当前会话
     await conversationManager.persistSession(client.sessionId);
 
     // 恢复目标会话（传入客户端权限模式，确保 YOLO 等模式跨会话持久化）
-    const success = await conversationManager.resumeSession(sessionId, client.permissionMode);
+    let success = await conversationManager.resumeSession(targetSessionId, client.permissionMode);
+
+    if (!success) {
+      const resolvedSessionId = resolveSessionAlias(
+        targetSessionId,
+        conversationManager.getSessionManager(),
+      );
+      if (resolvedSessionId !== targetSessionId) {
+        console.log(`[WebSocket] Resolved temporary session ${targetSessionId} -> ${resolvedSessionId}`);
+        targetSessionId = resolvedSessionId;
+        conversationManager.setWebSocket(targetSessionId, ws);
+        success = await conversationManager.resumeSession(targetSessionId, client.permissionMode);
+      }
+    }
 
     if (success) {
       // 更新客户端会话ID
-      client.sessionId = sessionId;
+      client.sessionId = targetSessionId;
 
       // 恢复后再次更新 ws（resumeSession 可能从磁盘新建了 SessionState）
-      conversationManager.setWebSocket(sessionId, ws);
+      conversationManager.setWebSocket(targetSessionId, ws);
 
       // 更新客户端项目路径（优化：从内存中的 SessionState 获取，避免重复读磁盘）
-      const projectPath = conversationManager.getSessionProjectPath(sessionId);
+      const projectPath = conversationManager.getSessionProjectPath(targetSessionId);
       if (projectPath) {
         client.projectPath = projectPath;
       }
 
       // 获取会话历史（使用 getLiveHistory：处理中时从 messages 实时构建，确保工具调用中间 turn 不丢失）
-      const history = conversationManager.getLiveHistory(sessionId);
-      console.log(`[WebSocket] handleSessionSwitch: sessionId=${sessionId}, history.length=${history.length}, isProcessing=${conversationManager.isSessionProcessing(sessionId)}`);
+      const history = conversationManager.getLiveHistory(targetSessionId);
+      console.log(
+        `[WebSocket] handleSessionSwitch: sessionId=${targetSessionId}, history.length=${history.length}, isProcessing=${conversationManager.isSessionProcessing(targetSessionId)}, shouldResumeStreaming=${conversationManager.shouldResumeStreamingOnReconnect(targetSessionId)}`
+      );
 
-      const sessionName = conversationManager.getSessionName(sessionId);
-      const sessionRuntimeBackend = conversationManager.getSessionRuntimeBackend(sessionId) || webAuth.getRuntimeBackend();
-      const sessionModel = conversationManager.getSessionModel(sessionId) || getDefaultChatModel(sessionRuntimeBackend);
+      const sessionName = conversationManager.getSessionName(targetSessionId);
+      const sessionRuntimeBackend = conversationManager.getSessionRuntimeBackend(targetSessionId) || webAuth.getRuntimeBackend();
+      const sessionModel = conversationManager.getSessionModel(targetSessionId) || getDefaultChatModel(sessionRuntimeBackend);
       client.model = sessionModel;
       client.runtimeBackend = sessionRuntimeBackend;
       sendMessage(ws, {
         type: 'session_switched',
         payload: {
-          sessionId,
+          sessionId: targetSessionId,
           sessionName,
           projectPath: client.projectPath,
           history,
@@ -3218,7 +3249,7 @@ async function handleSessionSwitch(
       });
 
       // 同步权限配置到客户端（刷新后客户端 permissionMode 会重置为 'default'，需要从服务端恢复）
-      const permConfig = conversationManager.getPermissionConfig(sessionId);
+      const permConfig = conversationManager.getPermissionConfig(targetSessionId);
       if (permConfig) {
         sendMessage(ws, {
           type: 'permission_config_update',
@@ -3233,34 +3264,34 @@ async function handleSessionSwitch(
 
       // 如果会话正在处理中（如页面刷新），恢复流式状态
       // 补发 message_start + 已累积的内容，让客户端立即显示已生成的内容
-      const isProcessing = conversationManager.isSessionProcessing(sessionId);
-      if (isProcessing) {
+      const shouldResumeStreaming = conversationManager.shouldResumeStreamingOnReconnect(targetSessionId);
+      if (shouldResumeStreaming) {
         const resumeMessageId = `resume-${Date.now()}`;
         // 补发 message_start，客户端收到后会创建 currentMessageRef
         sendMessage(ws, {
           type: 'message_start',
-          payload: { messageId: resumeMessageId, sessionId },
+          payload: { messageId: resumeMessageId, sessionId: targetSessionId },
         });
 
         // 获取已累积的流式中间内容，补发给客户端
         // 这样用户刷新后能立即看到 API 已经生成的内容，而不是空气泡
-        const streamingContent = conversationManager.getStreamingContent(sessionId);
+        const streamingContent = conversationManager.getStreamingContent(targetSessionId);
         if (streamingContent) {
           // 补发 thinking 内容（如果有）
           if (streamingContent.thinkingText) {
             sendMessage(ws, {
               type: 'thinking_start',
-              payload: { messageId: resumeMessageId, sessionId },
+              payload: { messageId: resumeMessageId, sessionId: targetSessionId },
             });
             sendMessage(ws, {
               type: 'thinking_delta',
-              payload: { messageId: resumeMessageId, text: streamingContent.thinkingText, sessionId },
+              payload: { messageId: resumeMessageId, text: streamingContent.thinkingText, sessionId: targetSessionId },
             });
             // 如果已有 text 内容，说明 thinking 已经结束
             if (streamingContent.textContent) {
               sendMessage(ws, {
                 type: 'thinking_complete',
-                payload: { messageId: resumeMessageId, sessionId },
+                payload: { messageId: resumeMessageId, sessionId: targetSessionId },
               });
             }
           }
@@ -3268,43 +3299,43 @@ async function handleSessionSwitch(
           if (streamingContent.textContent) {
             sendMessage(ws, {
               type: 'text_delta',
-              payload: { messageId: resumeMessageId, text: streamingContent.textContent, sessionId },
+              payload: { messageId: resumeMessageId, text: streamingContent.textContent, sessionId: targetSessionId },
             });
           }
         }
 
         sendMessage(ws, {
           type: 'status',
-          payload: { status: 'streaming', message: 'Processing conversation...', sessionId },
+          payload: { status: 'streaming', message: 'Processing conversation...', sessionId: targetSessionId },
         });
 
         // 重发待处理的权限请求和用户问题
         // 会话正在处理中且被阻塞在等待用户响应时，切换回来后需要重新弹出对话框
-        const pendingPermissions = conversationManager.getPendingPermissionRequests(sessionId);
+        const pendingPermissions = conversationManager.getPendingPermissionRequests(targetSessionId);
         for (const req of pendingPermissions) {
           sendMessage(ws, {
             type: 'permission_request',
-            payload: { ...req, sessionId },
+            payload: { ...req, sessionId: targetSessionId },
           });
           console.log(`[WebSocket] Resending pending permission request: ${req.tool} (${req.requestId})`);
         }
 
-        const pendingQuestions = conversationManager.getUndeliveredPendingUserQuestions(sessionId);
+        const pendingQuestions = conversationManager.getUndeliveredPendingUserQuestions(targetSessionId);
         for (const q of pendingQuestions) {
           sendMessage(ws, {
             type: 'user_question',
-            payload: { ...q, sessionId },
+            payload: { ...q, sessionId: targetSessionId },
           } as any);
-          conversationManager.markPendingUserQuestionDelivered(sessionId, q.requestId);
+          conversationManager.markPendingUserQuestionDelivered(targetSessionId, q.requestId);
           console.log(`[WebSocket] Resending pending user question: ${q.header} (${q.requestId})`);
         }
-      } else if (conversationManager.needsContinuation(sessionId)) {
+      } else if (conversationManager.consumePendingContinuation(targetSessionId)) {
         // SelfEvolve 重启等场景：工具结果已保存但模型还没来得及继续回复
         // 自动触发对话继续，让模型接着上次中断的地方回复
-        console.log(`[WebSocket] Session ${sessionId} needs continuation (last message is tool_result), auto-triggering`);
+        console.log(`[WebSocket] Session ${targetSessionId} has pending continuation marker, auto-triggering`);
 
         const continueMessageId = randomUUID();
-        const chatSessionId = sessionId;
+        const chatSessionId = targetSessionId;
         const getActiveWs = (): WebSocket => {
           return conversationManager.getWebSocket(chatSessionId) || ws;
         };
@@ -3386,7 +3417,7 @@ async function handleSessionSwitch(
               payload: { ...request, sessionId: chatSessionId },
             });
           },
-          onComplete: async (stopReason: string | null, usage?: { inputTokens: number; outputTokens: number }) => {
+          onComplete: async (stopReason: string | null, usage?: { inputTokens: number; outputTokens: number; cacheReadTokens?: number; cacheCreationTokens?: number }) => {
             await conversationManager.persistSession(chatSessionId);
             sendMessage(getActiveWs(), {
               type: 'message_complete',
@@ -3418,7 +3449,7 @@ async function handleSessionSwitch(
               payload: { ...usage, sessionId: chatSessionId },
             });
           },
-          onRateLimitUpdate: (info: { status: string; utilization5h?: number; utilization7d?: number; resetsAt?: number; rateLimitType?: string; }) => {
+          onRateLimitUpdate: (info: { status: string; utilization5h?: number; utilization7d?: number; resetsAt?: number; rateLimitType?: string; remainingRequests?: number; limitRequests?: number; remainingTokens?: number; limitTokens?: number; cacheReadTokens?: number; cacheCreationTokens?: number; }) => {
             sendMessage(getActiveWs(), {
               type: 'rate_limit_update',
               payload: { ...info, sessionId: chatSessionId },
@@ -3645,23 +3676,35 @@ async function handleSessionResume(
   const { ws } = client;
 
   try {
-    const success = await conversationManager.resumeSession(sessionId, client.permissionMode);
+    let targetSessionId = sessionId;
+    let success = await conversationManager.resumeSession(targetSessionId, client.permissionMode);
+
+    if (!success) {
+      const resolvedSessionId = resolveSessionAlias(
+        targetSessionId,
+        conversationManager.getSessionManager(),
+      );
+      if (resolvedSessionId !== targetSessionId) {
+        targetSessionId = resolvedSessionId;
+        success = await conversationManager.resumeSession(targetSessionId, client.permissionMode);
+      }
+    }
 
     if (success) {
-      client.sessionId = sessionId;
+      client.sessionId = targetSessionId;
 
       // 重要：更新会话的 WebSocket 连接，确保 UserInteractionHandler 和 TaskManager 使用新连接
-      conversationManager.setWebSocket(sessionId, ws);
+      conversationManager.setWebSocket(targetSessionId, ws);
 
-      const history = conversationManager.getHistory(sessionId);
-      const sessionRuntimeBackend = conversationManager.getSessionRuntimeBackend(sessionId) || webAuth.getRuntimeBackend();
-      const sessionModel = conversationManager.getSessionModel(sessionId) || getDefaultChatModel(sessionRuntimeBackend);
+      const history = conversationManager.getHistory(targetSessionId);
+      const sessionRuntimeBackend = conversationManager.getSessionRuntimeBackend(targetSessionId) || webAuth.getRuntimeBackend();
+      const sessionModel = conversationManager.getSessionModel(targetSessionId) || getDefaultChatModel(sessionRuntimeBackend);
       client.model = sessionModel;
       client.runtimeBackend = sessionRuntimeBackend;
 
       sendMessage(ws, {
         type: 'session_switched',
-        payload: { sessionId, history, model: sessionModel, runtimeBackend: sessionRuntimeBackend },
+        payload: { sessionId: targetSessionId, history, model: sessionModel, runtimeBackend: sessionRuntimeBackend },
       });
     } else {
       sendMessage(ws, {

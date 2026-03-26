@@ -71,4 +71,50 @@ describe('normalizeToolInputForWebRuntime', () => {
       },
     });
   });
+
+  it('removes empty single-edit placeholders for batch edit schemas', () => {
+    const normalized = normalizeToolInputForWebRuntime(
+      {
+        file_path: '/tmp/demo.ts',
+        old_string: '',
+        new_string: '',
+        batch_edits: [
+          {
+            old_string: 'before',
+            new_string: 'after',
+          },
+        ],
+      },
+      {
+        type: 'object',
+        properties: {
+          file_path: { type: 'string' },
+          old_string: { type: 'string' },
+          new_string: { type: 'string' },
+          batch_edits: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                old_string: { type: 'string' },
+                new_string: { type: 'string' },
+              },
+              required: ['old_string', 'new_string'],
+            },
+          },
+        },
+        required: ['file_path'],
+      },
+    );
+
+    expect(normalized).toEqual({
+      file_path: '/tmp/demo.ts',
+      batch_edits: [
+        {
+          old_string: 'before',
+          new_string: 'after',
+        },
+      ],
+    });
+  });
 });

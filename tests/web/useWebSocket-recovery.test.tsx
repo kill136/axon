@@ -168,6 +168,41 @@ describe('useWebSocket recovery', () => {
     expect(freshSessionRequests).toHaveLength(1);
   });
 
+  it('should self-heal restore errors that use the resume failed wording', () => {
+    localStorage.setItem(SESSION_ID_STORAGE_KEY, 'stale-session');
+    const receivedMessages: unknown[] = [];
+
+    ClientReact.act(() => {
+      root.render(ClientReact.createElement(HookHarness, { receivedMessages }));
+    });
+
+    const ws = MockWebSocket.instances[0];
+
+    ClientReact.act(() => {
+      ws.emitOpen();
+      ws.emitMessage({
+        type: 'connected',
+        payload: { sessionId: 'temporary-session', model: 'opus' },
+      });
+      vi.advanceTimersByTime(100);
+      ws.emitMessage({
+        type: 'error',
+        payload: { message: 'Session does not exist or resume failed' },
+      });
+    });
+
+    expect(localStorage.getItem(SESSION_ID_STORAGE_KEY)).toBeNull();
+    expect(ws.sentMessages).toContainEqual({
+      type: 'session_new',
+      payload: {},
+    });
+    expect(receivedMessages.some((message) => (
+      typeof message === 'object'
+      && message !== null
+      && (message as { type?: string }).type === 'error'
+    ))).toBe(false);
+  });
+
   it('should suppress stale restore errors from app message handlers', () => {
     localStorage.setItem(SESSION_ID_STORAGE_KEY, 'stale-session');
     const receivedMessages: unknown[] = [];

@@ -68,6 +68,7 @@ const UserConfigSchema = z.object({
   ]).optional(),
   defaultModelByBackend: z.record(z.string()).optional(),
   customModelCatalogByBackend: z.record(z.array(z.string())).optional(),
+  modelContextWindowById: z.record(z.number().int().positive()).optional(),
   authPriority: z.enum(['apiKey', 'oauth', 'auto']).default('auto').optional(),
   oauthAccount: z.record(z.any()).optional(),
   codexAccount: z.record(z.any()).optional(),

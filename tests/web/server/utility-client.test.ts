@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mockWebAuth = {
   getRuntimeProvider: vi.fn(),
   getRuntimeBackend: vi.fn(),
+  getDefaultModelByBackend: vi.fn(),
+  getCustomModelCatalogByBackend: vi.fn(),
   getCodexModelName: vi.fn(),
   getCustomModelName: vi.fn(),
   getCredentials: vi.fn(),
@@ -23,6 +25,8 @@ describe('utility client', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockWebAuth.getRuntimeBackend.mockReturnValue('codex-subscription');
+    mockWebAuth.getDefaultModelByBackend.mockReturnValue({});
+    mockWebAuth.getCustomModelCatalogByBackend.mockReturnValue({});
     mockWebAuth.getCredentials.mockReturnValue({
       apiKey: 'sk-test',
       authToken: undefined,

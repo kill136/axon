@@ -47,6 +47,23 @@ export interface BlueprintInfo {
   version: string;
 }
 
+export type ProjectChangeSource =
+  | 'init'
+  | 'switch'
+  | 'open-folder'
+  | 'remove'
+  | 'create-app';
+
+export interface ProjectChangeMeta {
+  source: ProjectChangeSource;
+  createSession: boolean;
+}
+
+export interface SwitchProjectOptions {
+  source?: ProjectChangeSource;
+  createSession?: boolean;
+}
+
 /**
  * 项目 Context 状态
  */
@@ -86,7 +103,7 @@ export interface ProjectContextValue {
   state: ProjectState;
   dispatch: Dispatch<ProjectAction>;
   /** 切换到指定项目 */
-  switchProject: (project: Project) => Promise<void>;
+  switchProject: (project: Project, options?: SwitchProjectOptions) => Promise<void>;
   /** 打开文件夹选择对话框并打开选中的项目 */
   openFolder: () => Promise<Project | null>;
   /** 移除项目 */
@@ -229,9 +246,13 @@ function saveProjectToStorage(project: Project | null): void {
 /**
  * 发送项目切换全局事件
  */
-function emitProjectChangeEvent(project: Project | null, blueprint: BlueprintInfo | null): void {
+function emitProjectChangeEvent(
+  project: Project | null,
+  blueprint: BlueprintInfo | null,
+  meta: ProjectChangeMeta,
+): void {
   const event = new CustomEvent(PROJECT_CHANGE_EVENT, {
-    detail: { project, blueprint },
+    detail: { project, blueprint, meta },
   });
   window.dispatchEvent(event);
 }
@@ -242,6 +263,17 @@ function emitProjectChangeEvent(project: Project | null, blueprint: BlueprintInf
 
 export interface ProjectProviderProps {
   children: ReactNode;
+}
+
+export function pickInitialProject(savedProject: Project | null, recentProjects: Project[]): Project | null {
+  if (savedProject) {
+    const matchedProject = recentProjects.find(project => project && project.id === savedProject.id);
+    if (matchedProject) {
+      return matchedProject;
+    }
+  }
+
+  return recentProjects[0] || null;
 }
 
 export function ProjectProvider({ children }: ProjectProviderProps) {
@@ -378,7 +410,7 @@ export function ProjectProvider({ children }: ProjectProviderProps) {
   /**
    * 切换项目
    */
-  const switchProject = useCallback(async (project: Project): Promise<void> => {
+  const switchProject = useCallback(async (project: Project, options?: SwitchProjectOptions): Promise<void> => {
     dispatch({ type: 'SET_LOADING', payload: true });
     dispatch({ type: 'SET_ERROR', payload: null });
 
@@ -397,7 +429,10 @@ export function ProjectProvider({ children }: ProjectProviderProps) {
       saveProjectToStorage(openedProject);
 
       // 发送全局事件
-      emitProjectChangeEvent(openedProject, blueprint);
+      emitProjectChangeEvent(openedProject, blueprint, {
+        source: options?.source || 'switch',
+        createSession: options?.createSession ?? true,
+      });
     } catch (error: any) {
       console.error('[ProjectContext] 切换项目失败:', error);
       dispatch({ type: 'SET_ERROR', payload: error.message });
@@ -435,7 +470,10 @@ export function ProjectProvider({ children }: ProjectProviderProps) {
       saveProjectToStorage(project);
 
       // 发送全局事件
-      emitProjectChangeEvent(project, blueprint);
+      emitProjectChangeEvent(project, blueprint, {
+        source: 'open-folder',
+        createSession: true,
+      });
 
       return project;
     } catch (error: any) {
@@ -456,7 +494,10 @@ export function ProjectProvider({ children }: ProjectProviderProps) {
       // 如果移除的是当前项目，清除 localStorage
       if (state.currentProject?.id === projectId) {
         saveProjectToStorage(null);
-        emitProjectChangeEvent(null, null);
+        emitProjectChangeEvent(null, null, {
+          source: 'remove',
+          createSession: false,
+        });
       }
     } catch (error: any) {
       console.error('[ProjectContext] 移除项目失败:', error);
@@ -516,46 +557,38 @@ export function ProjectProvider({ children }: ProjectProviderProps) {
         const projects = await fetchRecentProjects();
         dispatch({ type: 'SET_RECENT_PROJECTS', payload: projects });
 
-        // 2. 尝试恢复上次选中的项目
+        // 2. 优先恢复上次选中的项目；否则自动打开最近一次使用的项目
         const savedProject = loadSavedProject();
-        let projectRestored = false;
-        if (savedProject) {
-          // 验证保存的项目是否仍在列表中
-          const exists = projects.some(p => p && p.id === savedProject.id);
-          if (exists) {
-            // 重新打开项目以获取最新蓝图信息
-            try {
-              const { project, blueprint, hasAxonMd } = await openProjectApi(savedProject.path);
-              dispatch({
-                type: 'OPEN_PROJECT_SUCCESS',
-                payload: { project, blueprint },
-              });
-              emitProjectChangeEvent(project, blueprint);
-              projectRestored = true;
-            } catch (error) {
-              console.warn('[ProjectContext] 恢复保存的项目失败，使用缓存数据:', error);
-              dispatch({ type: 'SET_CURRENT_PROJECT', payload: savedProject });
-              projectRestored = true;
-            }
-          } else {
-            // 保存的项目已不存在，清除
-            saveProjectToStorage(null);
-          }
+        const initialProject = pickInitialProject(savedProject, projects);
+
+        if (savedProject && (!initialProject || initialProject.id !== savedProject.id)) {
+          saveProjectToStorage(null);
         }
 
-        // 3. 如果没有恢复任何项目，使用 server 的工作目录作为默认项目
-        if (!projectRestored) {
+        if (initialProject) {
           try {
-            const defaultProject = await fetchCurrentProject();
-            if (defaultProject) {
-              dispatch({ type: 'SET_CURRENT_PROJECT', payload: defaultProject });
-              dispatch({ type: 'ADD_PROJECT', payload: defaultProject });
-              saveProjectToStorage(defaultProject);
-              emitProjectChangeEvent(defaultProject, null);
-              console.log('[ProjectContext] 使用默认工作目录:', defaultProject.path);
-            }
+            const { project, blueprint } = await openProjectApi(initialProject.path);
+            dispatch({
+              type: 'OPEN_PROJECT_SUCCESS',
+              payload: { project, blueprint },
+            });
+            saveProjectToStorage(project);
+            emitProjectChangeEvent(project, blueprint, {
+              source: 'init',
+              createSession: false,
+            });
           } catch (error) {
-            console.warn('[ProjectContext] 获取默认工作目录失败:', error);
+            if (savedProject && savedProject.id === initialProject.id) {
+              console.warn('[ProjectContext] 恢复保存的项目失败，使用缓存数据:', error);
+              dispatch({ type: 'SET_CURRENT_PROJECT', payload: savedProject });
+              saveProjectToStorage(savedProject);
+              emitProjectChangeEvent(savedProject, null, {
+                source: 'init',
+                createSession: false,
+              });
+            } else {
+              console.warn('[ProjectContext] 打开最近项目失败，保留无项目欢迎态:', error);
+            }
           }
         }
 
@@ -569,7 +602,7 @@ export function ProjectProvider({ children }: ProjectProviderProps) {
     };
 
     initialize();
-  }, [fetchRecentProjects, openProjectApi, fetchCurrentProject]);
+  }, [fetchRecentProjects, openProjectApi]);
 
   // ========================================
   // Context 值
@@ -620,11 +653,11 @@ export function useProject(): ProjectContextValue {
  * 监听项目切换事件的 Hook
  */
 export function useProjectChangeListener(
-  callback: (project: Project | null, blueprint: BlueprintInfo | null) => void
+  callback: (project: Project | null, blueprint: BlueprintInfo | null, meta: ProjectChangeMeta) => void
 ): void {
   useEffect(() => {
-    const handler = (event: CustomEvent<{ project: Project | null; blueprint: BlueprintInfo | null }>) => {
-      callback(event.detail.project, event.detail.blueprint);
+    const handler = (event: CustomEvent<{ project: Project | null; blueprint: BlueprintInfo | null; meta: ProjectChangeMeta }>) => {
+      callback(event.detail.project, event.detail.blueprint, event.detail.meta);
     };
 
     window.addEventListener(PROJECT_CHANGE_EVENT, handler as EventListener);

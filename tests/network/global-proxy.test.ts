@@ -1,9 +1,34 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as net from 'net';
+import * as fs from 'fs';
+import * as path from 'path';
+import { fileURLToPath } from 'url';
 
 describe('global-proxy', () => {
+  const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
   // We test probeProxy logic directly by creating a TCP server
   
+  describe('source policy regression', () => {
+    it('should read proxy settings from settings.json without mutating env vars', () => {
+      const source = fs.readFileSync(path.join(projectRoot, 'src/network/global-proxy.ts'), 'utf-8');
+
+      expect(source).toContain("import * as fs from 'fs'");
+      expect(source).toContain("import * as path from 'path'");
+      expect(source).toContain("import * as os from 'os'");
+      expect(source).toContain('getProxyFromSettings()');
+      expect(source).not.toContain('process.env.HTTPS_PROXY =');
+      expect(source).not.toContain('process.env.HTTP_PROXY =');
+      expect(source).toContain('new EnvHttpProxyAgent({');
+    });
+
+    it('browser tool should prefer Axon proxy config, then system proxy environment', () => {
+      const source = fs.readFileSync(path.join(projectRoot, 'src/tools/browser.ts'), 'utf-8');
+
+      expect(source).toContain('config.proxy?.https || config.proxy?.http || getProxyForUrl');
+      expect(source).toContain("await import('../config/index.js')");
+    });
+  });
+
   describe('proxy reachability probe', () => {
     let server: net.Server;
     let serverPort: number;

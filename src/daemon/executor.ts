@@ -5,13 +5,12 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
-import * as crypto from 'crypto';
 import { ConversationLoop } from '../core/loop.js';
 import { initAuth, getAuth } from '../auth/index.js';
 import { Notifier } from './notifier.js';
 import { TaskStore, type ScheduledTask } from './store.js';
 import { appendRunLog, type RunLogEntry } from './run-log.js';
+import { NotebookManager } from '../memory/notebook.js';
 
 export interface ExecutorOptions {
   maxConcurrent: number;
@@ -261,41 +260,36 @@ export class TaskExecutor {
     workingDir: string,
   ): string {
     const parts: string[] = [];
+    const notebookMgr = new NotebookManager(workingDir);
 
-    // 1. 读取用户 notebook（experience.md）
+    // 1. 读取用户 profile notebook
     try {
-      const experiencePath = path.join(os.homedir(), '.axon', 'memory', 'experience.md');
-      if (fs.existsSync(experiencePath)) {
-        const content = fs.readFileSync(experiencePath, 'utf-8').trim();
-        if (content) {
-          parts.push('## User Information (Your Memory)');
-          parts.push(content);
-        }
+      const content = notebookMgr.read('profile').trim();
+      if (content) {
+        parts.push('## User Profile');
+        parts.push(content);
       }
     } catch { /* 读取失败不影响执行 */ }
 
-    // 2. 读取项目 notebook（project.md）
+    // 2. 读取用户经验 notebook
     try {
-      const projectHash = crypto.createHash('md5').update(workingDir).digest('hex').slice(0, 12);
-      const projectDir = path.join(os.homedir(), '.axon', 'memory', 'projects');
-      // 尝试匹配 projectHash 开头的目录
-      if (fs.existsSync(projectDir)) {
-        const dirs = fs.readdirSync(projectDir);
-        const matchDir = dirs.find(d => d.includes(projectHash));
-        if (matchDir) {
-          const projectMdPath = path.join(projectDir, matchDir, 'project.md');
-          if (fs.existsSync(projectMdPath)) {
-            const content = fs.readFileSync(projectMdPath, 'utf-8').trim();
-            if (content) {
-              parts.push('## Project Information');
-              parts.push(content);
-            }
-          }
-        }
+      const content = notebookMgr.read('experience').trim();
+      if (content) {
+        parts.push('## User Experience');
+        parts.push(content);
       }
     } catch { /* 读取失败不影响执行 */ }
 
-    // 3. 任务上下文
+    // 3. 读取项目 notebook（project.md）
+    try {
+      const content = notebookMgr.read('project').trim();
+      if (content) {
+        parts.push('## Project Information');
+        parts.push(content);
+      }
+    } catch { /* 读取失败不影响执行 */ }
+
+    // 4. 任务上下文
     parts.push('## Scheduled Task Information');
     parts.push(`Task name: ${task.name}`);
 
@@ -303,7 +297,7 @@ export class TaskExecutor {
       parts.push(`Conversation context at creation: ${task.context}`);
     }
 
-    // 4. 历史执行记录
+    // 5. 历史执行记录
     if ('executionMemory' in task && task.executionMemory && task.executionMemory.length > 0) {
       parts.push('');
       parts.push('### Execution History');
@@ -312,7 +306,7 @@ export class TaskExecutor {
       }
     }
 
-    // 5. 最后是实际任务指令
+    // 6. 最后是实际任务指令
     parts.push('');
     parts.push('## Please Execute the Following Task');
     parts.push(basePrompt);

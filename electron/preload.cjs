@@ -8,5 +8,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   minimize: () => ipcRenderer.send('window-minimize'),
   maximize: () => ipcRenderer.send('window-maximize'),
   close: () => ipcRenderer.send('window-close'),
+  openExternal: (url) => ipcRenderer.invoke('open-external', url),
   onBootLog: (callback) => ipcRenderer.on('boot-log', (_event, msg) => callback(msg)),
 });

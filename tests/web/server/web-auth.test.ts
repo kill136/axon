@@ -263,6 +263,26 @@ describe('webAuth Codex credentials', () => {
     });
   });
 
+  it('should infer openai-compatible backend from legacy codex api-key settings', async () => {
+    fs.writeFileSync(settingsPath, JSON.stringify({
+      runtimeProvider: 'codex',
+      authPriority: 'apiKey',
+      apiKey: 'sk-openai-test',
+      customModelName: 'gpt-5.4',
+    }), 'utf-8');
+
+    const { webAuth } = await import('../../../src/web/server/web-auth.js');
+    expect(webAuth.getRuntimeBackend()).toBe('openai-compatible-api');
+    expect(webAuth.getRuntimeProvider()).toBe('codex');
+    expect(webAuth.getCustomModelName()).toBe('gpt-5.4');
+    expect(webAuth.getStatus()).toEqual({
+      authenticated: true,
+      type: 'api_key',
+      provider: 'openai-compatible',
+      runtimeBackend: 'openai-compatible-api',
+    });
+  });
+
   it('should read per-backend model preferences for openai-compatible api mode', async () => {
     fs.writeFileSync(settingsPath, JSON.stringify({
       runtimeBackend: 'openai-compatible-api',
@@ -302,6 +322,7 @@ describe('webAuth Codex credentials', () => {
     }), 'utf-8');
 
     const { webAuth } = await import('../../../src/web/server/web-auth.js');
+    expect(webAuth.getRuntimeProvider()).toBe('codex');
     expect(webAuth.getCustomModelName()).toBe('kimi-k2.5');
     expect(webAuth.getDefaultModelByBackend()).toEqual({
       'openai-compatible-api': 'deepseek-v3',

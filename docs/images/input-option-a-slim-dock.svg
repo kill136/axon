@@ -1,0 +1,48 @@
+<svg width="1600" height="960" viewBox="0 0 1600 960" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgA" x1="160" y1="80" x2="1440" y2="920" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0A1020"/>
+      <stop offset="1" stop-color="#141B2F"/>
+    </linearGradient>
+    <linearGradient id="dockA" x1="146" y1="640" x2="1454" y2="910" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F7F3ED"/>
+      <stop offset="1" stop-color="#ECE7E0"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="960" fill="url(#bgA)"/>
+  <circle cx="1280" cy="160" r="220" fill="#5B63F6" opacity="0.08"/>
+  <circle cx="260" cy="840" r="240" fill="#22C55E" opacity="0.05"/>
+
+  <rect x="0" y="0" width="1600" height="88" fill="#10141F"/>
+  <rect x="62" y="18" width="250" height="52" rx="14" fill="#1D2333" stroke="#30384E"/>
+  <text x="98" y="52" fill="#F8FAFC" font-family="Segoe UI, sans-serif" font-size="18" font-weight="700">Project</text>
+  <text x="800" y="220" text-anchor="middle" fill="#F8FAFC" font-family="Georgia, serif" font-size="64" font-weight="700">Option A</text>
+  <text x="800" y="272" text-anchor="middle" fill="#9AA4B5" font-family="Segoe UI, sans-serif" font-size="28" font-weight="500">Slim Dock</text>
+  <text x="800" y="344" text-anchor="middle" fill="#B6C0D2" font-family="Segoe UI, sans-serif" font-size="22" font-weight="500">One visual block. One control row. No heavy second panel.</text>
+
+  <rect x="96" y="638" width="1408" height="258" rx="40" fill="url(#dockA)" stroke="#DAD3CA" stroke-width="2"/>
+  <rect x="124" y="672" width="1352" height="138" rx="30" fill="#FBF9F6" stroke="#E7DED3"/>
+  <text x="154" y="742" fill="#8A8176" font-family="Segoe UI, sans-serif" font-size="26" font-weight="500">e.g. "Review my recent changes and tell me what is risky"</text>
+
+  <circle cx="154" cy="846" r="28" fill="#FFFDF9" stroke="#D7CFC4"/>
+  <path d="M154 833V859" stroke="#7E756A" stroke-width="2.8" stroke-linecap="round"/>
+  <path d="M141 846H167" stroke="#7E756A" stroke-width="2.8" stroke-linecap="round"/>
+
+  <rect x="204" y="824" width="138" height="44" rx="22" fill="#FFFDF9" stroke="#D7CFC4"/>
+  <text x="248" y="852" fill="#4E473F" font-family="Segoe UI, sans-serif" font-size="18" font-weight="600">GPT-5</text>
+
+  <rect x="356" y="824" width="118" height="44" rx="22" fill="#FFFDF9" stroke="#D7CFC4"/>
+  <text x="395" y="852" fill="#4E473F" font-family="Segoe UI, sans-serif" font-size="18" font-weight="600">Think</text>
+
+  <rect x="488" y="824" width="114" height="44" rx="22" fill="#FFFDF9" stroke="#D7CFC4"/>
+  <text x="527" y="852" fill="#4E473F" font-family="Segoe UI, sans-serif" font-size="18" font-weight="600">YOLO</text>
+
+  <rect x="616" y="824" width="112" height="44" rx="22" fill="#F1EBE2" stroke="#CDBFAE"/>
+  <text x="655" y="852" fill="#3E372F" font-family="Segoe UI, sans-serif" font-size="18" font-weight="700">More</text>
+
+  <path d="M1400 826C1415.46 826 1428 838.54 1428 854C1428 869.46 1415.46 882 1400 882C1384.54 882 1372 869.46 1372 854C1372 838.54 1384.54 826 1400 826Z" fill="#171717"/>
+  <path d="M1400 840V866" stroke="white" stroke-width="3.2" stroke-linecap="round"/>
+  <path d="M1389 851L1400 840L1411 851" stroke="white" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <text x="118" y="592" fill="#CBD5E1" font-family="Segoe UI, sans-serif" font-size="18" font-weight="600">Best when you want the most Codex-like, compressed structure.</text>
+</svg>

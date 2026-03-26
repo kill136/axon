@@ -11,7 +11,9 @@ import {
   getBackgroundAgent,
   killBackgroundAgent,
   clearCompletedAgents,
-  AGENT_TYPES
+  AGENT_TYPES,
+  normalizeAgentModelForRuntime,
+  resolveAgentModel,
 } from '../../src/tools/agent.js';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -101,6 +103,31 @@ describe('TaskTool', () => {
   });
 
   describe('Model Selection', () => {
+    it('should normalize built-in Claude aliases to the configured GPT model on codex backends', () => {
+      const resolvedModel = resolveAgentModel(undefined, 'opus');
+      const normalizedModel = normalizeAgentModelForRuntime(resolvedModel, {
+        runtimeBackend: 'codex-subscription',
+        defaultModelByBackend: {
+          'codex-subscription': 'gpt-5.4',
+        },
+      });
+
+      expect(normalizedModel).toBe('gpt-5.4');
+    });
+
+    it('should preserve Claude aliases on Claude-compatible backends', () => {
+      const resolvedModel = resolveAgentModel(undefined, 'opus');
+      const normalizedModel = normalizeAgentModelForRuntime(resolvedModel, {
+        runtimeBackend: 'claude-compatible-api',
+        defaultModelByBackend: {
+          'claude-compatible-api': 'claude-sonnet-4-5-20250929',
+        },
+        customModelName: 'claude-sonnet-4-5-20250929',
+      });
+
+      expect(normalizedModel).toBe('opus');
+    });
+
     it.skipIf(!hasApiKey)('should work with different models for different agent types', async () => {
       const exploreResult = await taskTool.execute({
         description: 'Explore with haiku',

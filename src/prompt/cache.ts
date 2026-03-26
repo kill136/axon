@@ -171,24 +171,55 @@ export class PromptCache {
  */
 export const promptCache = new PromptCache();
 
+function normalizeForCache(value: unknown): unknown {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (
+    value === null ||
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'boolean'
+  ) {
+    return value;
+  }
+
+  if (value instanceof Set) {
+    return Array.from(value.values())
+      .map(item => normalizeForCache(item))
+      .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+  }
+
+  if (value instanceof Map) {
+    return Array.from(value.entries())
+      .sort(([a], [b]) => String(a).localeCompare(String(b)))
+      .map(([key, mapValue]) => [key, normalizeForCache(mapValue)]);
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(item => normalizeForCache(item));
+  }
+
+  if (typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, entryValue]) => entryValue !== undefined)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, entryValue]) => [key, normalizeForCache(entryValue)]);
+
+    return Object.fromEntries(entries);
+  }
+
+  return String(value);
+}
+
 /**
  * 生成缓存键
  */
-export function generateCacheKey(context: {
-  workingDir: string;
-  model?: string;
-  permissionMode?: string;
-  planMode?: boolean;
-  isOfficialAuth?: boolean;
-  coreIdentityVariant?: 'main' | 'sdk' | 'agent';
-}): string {
-  const parts = [
-    context.workingDir,
-    context.model || 'default',
-    context.permissionMode || 'default',
-    context.planMode ? 'plan' : 'normal',
-    context.isOfficialAuth ? 'official' : 'non-official',
-    context.coreIdentityVariant || 'default-identity',
-  ];
-  return parts.join(':');
+export function generateCacheKey(context: object): string {
+  const normalized = normalizeForCache(context);
+  return createHash('sha256')
+    .update(JSON.stringify(normalized))
+    .digest('hex')
+    .slice(0, 24);
 }

@@ -37,7 +37,13 @@ export function summarizeAuthStatus(
     : labels.axonCloud;
 
   const isAxonCloud = input.isAxonCloud || input.accountType === 'axon-cloud';
-  const isCodex = input.provider === 'codex' || input.accountType === 'chatgpt';
+  const isCodexSubscriptionAccount =
+    input.type === 'oauth'
+    && (
+      input.provider === 'codex'
+      || input.accountType === 'chatgpt'
+      || input.runtimeBackend === 'codex-subscription'
+    );
 
   if (isAxonCloud) {
     return {
@@ -49,7 +55,7 @@ export function summarizeAuthStatus(
     };
   }
 
-  if (isCodex) {
+  if (isCodexSubscriptionAccount) {
     return {
       avatar: '🧠',
       triggerLabel: input.displayName || input.email || labels.chatgpt,

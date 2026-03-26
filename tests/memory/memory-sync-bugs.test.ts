@@ -30,6 +30,20 @@ describe('MemorySyncEngine bug fixes', () => {
   });
 
   describe('Bug 3: syncSessionFiles should NOT delete transcript entries', () => {
+    it('should index session summary files found on disk', async () => {
+      const sessionsDir = path.join(tmpDir, 'projects', 'demo-project');
+      const summaryDir = path.join(sessionsDir, 'session-1', 'session-memory');
+      fs.mkdirSync(summaryDir, { recursive: true });
+      fs.writeFileSync(path.join(summaryDir, 'summary.md'), '# Current State\nWorking on layered recall', 'utf-8');
+
+      const result = await syncEngine.syncSessionFiles(sessionsDir);
+
+      expect(result.added).toBe(1);
+      expect(store.hasFile('session-1/session-memory/summary.md')).toBe(true);
+      const matches = store.search('layered recall', { source: 'session', maxResults: 5 });
+      expect(matches.some(match => match.path === 'session-1/session-memory/summary.md')).toBe(true);
+    });
+
     it('should preserve transcript: entries when syncing session files', async () => {
       // Pre-populate store with a transcript entry (as if syncTranscriptFiles ran before)
       const crypto = require('crypto');

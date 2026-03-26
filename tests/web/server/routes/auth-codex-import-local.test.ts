@@ -6,6 +6,7 @@ const mockConfigGetAll = vi.fn();
 const mockImportOfficialAuthFile = vi.fn();
 const mockImportOfficialConfigFile = vi.fn();
 const mockActivateCodexLogin = vi.fn();
+const mockImportOfficialClaudeCodeAuth = vi.fn();
 
 vi.mock('../../../../src/config/index.js', () => ({
   configManager: {
@@ -69,6 +70,7 @@ vi.mock('../../../../src/auth/index.js', () => ({
   },
   exchangeAuthorizationCode: vi.fn(),
   createOAuthApiKey: vi.fn(),
+  importOfficialClaudeCodeAuth: (...args: any[]) => mockImportOfficialClaudeCodeAuth(...args),
 }));
 
 vi.mock('../../../../src/utils/env-check.js', () => ({
@@ -133,6 +135,7 @@ describe('Codex import-local route', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     vi.resetModules();
+    mockImportOfficialClaudeCodeAuth.mockReset();
 
     mockConfigGetAll.mockReturnValue({
       defaultModelByBackend: {

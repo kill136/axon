@@ -5,6 +5,7 @@ import { useSessionManager } from './hooks/useSessionManager';
 import { useChatInput } from './hooks/useChatInput';
 import { useArtifacts } from './hooks/useArtifacts';
 import { useScheduleArtifacts } from './hooks/useScheduleArtifacts';
+import { useProgressiveMessageRendering } from './hooks/useProgressiveMessageRendering';
 import {
   Message,
   WelcomeScreen,
@@ -29,11 +30,10 @@ import { useLanguage } from './i18n/LanguageContext';
 import InitAxonMdDialog from './components/InitAxonMdDialog';
 import { useSpeechSynthesis } from './hooks/useSpeechSynthesis';
 import { useRuntimeModelCatalog } from './hooks/useRuntimeModelCatalog';
+import { useActiveRuntimeState } from './hooks/useActiveRuntimeState';
 import {
-  getProviderForRuntimeBackend,
   normalizeWebRuntimeModelForBackend,
   type WebRuntimeBackend,
-  type WebRuntimeProvider,
 } from '../../shared/model-catalog';
 import {
   getResolvedWebThinkingConfig,
@@ -133,6 +133,7 @@ function AppContent({
 
   const {
     connected,
+    sessionReady,
     sessionId,
     model,
     runtimeBackend: socketRuntimeBackend,
@@ -141,11 +142,18 @@ function AppContent({
     addMessageHandler,
   } = useWebSocket(getWebSocketUrl());
 
-  // 认证状态：连接后检查，用于控制 InputArea 是否允许发送消息
-  // authRefreshKey 变化时（登录/登出后）也会重新检查
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null); // null = 加载中
-  const [runtimeProvider, setRuntimeProvider] = useState<WebRuntimeProvider>('anthropic');
-  const [runtimeBackend, setRuntimeBackend] = useState<WebRuntimeBackend>('claude-compatible-api');
+  const {
+    isAuthenticated,
+    runtimeBackend,
+    runtimeProvider,
+  } = useActiveRuntimeState({
+    connected,
+    sessionReady,
+    socketRuntimeBackend: socketRuntimeBackend as WebRuntimeBackend | null,
+    model,
+    addMessageHandler,
+    authRefreshKey,
+  });
   const [thinkingConfig, setThinkingConfig] = useState<WebThinkingConfig>(() => normalizeWebThinkingConfig());
   const availableModels = useRuntimeModelCatalog({
     connected,
@@ -153,51 +161,6 @@ function AppContent({
     send,
     addMessageHandler,
   });
-  useEffect(() => {
-    if (!connected) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch('/api/auth/oauth/status');
-        if (!res.ok || cancelled) return;
-        const data = await res.json();
-        if (!cancelled) {
-          setIsAuthenticated(!!data.authenticated);
-          const nextBackend = (data.runtimeBackend || 'claude-compatible-api') as WebRuntimeBackend;
-          setRuntimeBackend(nextBackend);
-          setRuntimeProvider(getProviderForRuntimeBackend(nextBackend));
-        }
-      } catch {
-        if (!cancelled) {
-          setIsAuthenticated(false);
-          setRuntimeBackend('claude-compatible-api');
-          setRuntimeProvider('anthropic');
-        }
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [connected, authRefreshKey, model]);
-
-  // 监听 auth 变化（登录/登出后刷新认证状态）
-  useEffect(() => {
-    const handler = (msg: any) => {
-      // WebSocket 连接建立时或 auth 状态变化时刷新
-      if (msg.type === 'auth_status_changed' || msg.type === 'connected') {
-        fetch('/api/auth/oauth/status')
-          .then(res => res.ok ? res.json() : null)
-          .then(data => {
-            if (data) {
-              setIsAuthenticated(!!data.authenticated);
-              const nextBackend = (data.runtimeBackend || 'claude-compatible-api') as WebRuntimeBackend;
-              setRuntimeBackend(nextBackend);
-              setRuntimeProvider(getProviderForRuntimeBackend(nextBackend));
-            }
-          })
-          .catch(() => {});
-      }
-    };
-    return addMessageHandler(handler);
-  }, [addMessageHandler]);
 
   useEffect(() => {
     if (!connected) return;
@@ -206,12 +169,6 @@ function AppContent({
       setModel(normalizedModel);
     }
   }, [availableModels, connected, model, runtimeBackend, setModel]);
-
-  useEffect(() => {
-    if (!socketRuntimeBackend) return;
-    setRuntimeBackend(socketRuntimeBackend as WebRuntimeBackend);
-    setRuntimeProvider(getProviderForRuntimeBackend(socketRuntimeBackend as WebRuntimeBackend));
-  }, [socketRuntimeBackend]);
 
   // 模式预设列表 + 当前活跃预设 ID
   const [modePresets, setModePresets] = useState<Array<{ id: string; name: string; icon: string; permissionMode: string }>>([]);
@@ -411,13 +368,6 @@ function AppContent({
     return () => container.removeEventListener('scroll', handleScroll);
   }, []);
 
-  // 仅在用户处于底部附近时自动滚动
-  useEffect(() => {
-    if (isNearBottomRef.current && chatContainerRef.current) {
-      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
-    }
-  }, [messages]);
-
   // 上报会话数据给 Root
   useEffect(() => {
     onSessionsChange?.(sessionManager.sessions);
@@ -546,6 +496,19 @@ function AppContent({
   }, [messages, isTranscriptMode, activeMessages]);
 
   const hasCompactBoundary = useMemo(() => compactBoundaryIdx !== -1, [compactBoundaryIdx]);
+  const {
+    renderedMessages,
+    hiddenMessageCount: progressivelyHiddenMessageCount,
+    isHydratingHistory,
+    revealAllMessages,
+  } = useProgressiveMessageRendering(visibleMessages, sessionId ?? null);
+
+  // 仅在用户处于底部附近时自动滚动
+  useEffect(() => {
+    if (isNearBottomRef.current && chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+  }, [renderedMessages]);
 
   // ========================================================================
   // Rewind 功能
@@ -759,11 +722,25 @@ function AppContent({
                     )}
                   </div>
                 )}
-                {visibleMessages.flatMap((msg, idx) => {
+                {progressivelyHiddenMessageCount > 0 && (
+                  <div className="progressive-history-banner">
+                    <div className="progressive-history-banner__content">
+                      <span className={`progressive-history-banner__dot ${isHydratingHistory ? 'is-loading' : ''}`} />
+                      <span>{t('message.loadingEarlierCount', { count: progressivelyHiddenMessageCount })}</span>
+                    </div>
+                    <button
+                      className="progressive-history-banner__button"
+                      onClick={revealAllMessages}
+                    >
+                      {t('message.showAllNow')}
+                    </button>
+                  </div>
+                )}
+                {renderedMessages.flatMap((msg, idx) => {
                   const elements: React.ReactNode[] = [];
                   // 4 分钟时间分隔线
                   if (idx > 0) {
-                    const prev = visibleMessages[idx - 1];
+                    const prev = renderedMessages[idx - 1];
                     const gap = msg.timestamp - prev.timestamp;
                     if (gap >= 4 * 60 * 1000) {
                       elements.push(

@@ -23,6 +23,7 @@ import type {
 import * as fs from 'fs';
 import * as path from 'path';
 import { isPdfExtension, getPdfPageCount, formatBytes, PDF_LARGE_THRESHOLD, PDF_MAX_PAGES_PER_REQUEST } from '../media/index.js';
+import { getResolvedModelContextWindow } from '../models/model-limits.js';
 
 // ============ T321: Token 计数增强 ============
 
@@ -63,6 +64,11 @@ export const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
  * 获取模型的上下文窗口大小
  */
 export function getModelContextWindow(modelId: string): number {
+  const resolvedContextWindow = getResolvedModelContextWindow(modelId);
+  if (resolvedContextWindow !== undefined) {
+    return resolvedContextWindow;
+  }
+
   // 精确匹配
   if (modelId in MODEL_CONTEXT_WINDOWS) {
     return MODEL_CONTEXT_WINDOWS[modelId];

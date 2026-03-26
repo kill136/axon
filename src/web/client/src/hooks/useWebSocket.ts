@@ -75,6 +75,7 @@ function isSessionRestoreFailureMessage(message: string): boolean {
   return errorMsg.includes('会话不存在')
     || errorMsg.includes('session does not exist')
     || errorMsg.includes('failed to resume')
+    || errorMsg.includes('resume failed')
     || errorMsg.includes('failed to switch')
     || errorMsg.includes('failed to load');
 }

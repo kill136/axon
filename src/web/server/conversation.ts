@@ -12,7 +12,7 @@ import { systemPromptBuilder, type PromptContext, type PromptBlock } from '../..
 import { modelConfig } from '../../models/index.js';
 import { configManager } from '../../config/index.js';
 import { createOAuthApiKey } from '../../auth/index.js';
-import type { Message, ContentBlock, ToolUseBlock, TextBlock } from '../../types/index.js';
+import type { Message, ContentBlock, ThinkingBlock, ToolUseBlock, TextBlock } from '../../types/index.js';
 import type { ChatMessage, ChatContent, ToolResultData, PermissionConfigPayload, PermissionRequestPayload, SystemPromptConfig, SystemPromptGetPayload, DebugMessagesPayload } from '../shared/types.js';
 import { UserInteractionHandler } from './user-interaction.js';
 import { PermissionHandler, type PermissionConfig, type PermissionRequest, type PermissionDestination } from './permission-handler.js';
@@ -435,14 +435,14 @@ export interface StreamCallbacks {
   onToolUseDelta?: (toolUseId: string, partialJson: string) => void;
   onToolResult?: (toolUseId: string, success: boolean, output?: string, error?: string, data?: ToolResultData) => void;
   onPermissionRequest?: (request: any) => void;
-  onComplete?: (stopReason: string | null, usage?: { inputTokens: number; outputTokens: number }) => void;
+  onComplete?: (stopReason: string | null, usage?: { inputTokens: number; outputTokens: number; cacheReadTokens?: number; cacheCreationTokens?: number }) => void;
   onError?: (error: Error) => void;
   /** 上下文压缩事件：start=开始压缩, end=压缩完成, error=压缩失败 */
   onContextCompact?: (phase: 'start' | 'end' | 'error', info?: Record<string, any>) => void;
   /** 上下文使用量更新 */
   onContextUpdate?: (usage: { usedTokens: number; maxTokens: number; percentage: number; model: string }) => void;
   /** API 速率限制更新 */
-  onRateLimitUpdate?: (info: { status: string; utilization5h?: number; utilization7d?: number; resetsAt?: number; rateLimitType?: string; }) => void;
+  onRateLimitUpdate?: (info: { status: string; utilization5h?: number; utilization7d?: number; resetsAt?: number; rateLimitType?: string; remainingRequests?: number; limitRequests?: number; remainingTokens?: number; limitTokens?: number; cacheReadTokens?: number; cacheCreationTokens?: number; }) => void;
 }
 
 /**
@@ -475,6 +475,8 @@ interface SessionState {
   lastCompactedUuid?: string;
   /** 标记：处理中 WebSocket 被刷新替换，完成后需要重发 history */
   needsHistoryResend?: boolean;
+  /** 显式标记：恢复会话后需要自动续跑（仅用于 SelfEvolve 等受控场景） */
+  pendingContinuationAfterRestore: boolean;
   /** Most recent uploaded user images available for ImageGen follow-up calls. */
   latestImageAttachments: UploadedImageAttachment[];
   /** 上次持久化时的消息数量（用于判断是否需要持久化，避免磁盘读取） */
@@ -959,14 +961,15 @@ export class ConversationManager {
     model: string | undefined,
     runtimeBackend: WebRuntimeBackend = this.getRuntimeBackend(),
   ) {
-    return resolveRuntimeSelection({
-      runtimeBackend,
-      model,
-      defaultModelByBackend: webAuth.getDefaultModelByBackend(),
-      codexModelName: webAuth.getCodexModelName(),
-      customModelName: webAuth.getCustomModelName(),
-    });
-  }
+      return resolveRuntimeSelection({
+        runtimeBackend,
+        model,
+        defaultModelByBackend: webAuth.getDefaultModelByBackend(),
+        customModelCatalogByBackend: webAuth.getCustomModelCatalogByBackend(),
+        codexModelName: webAuth.getCodexModelName(),
+        customModelName: webAuth.getCustomModelName(),
+      });
+    }
 
   private getRuntimeProvider(runtimeBackend: WebRuntimeBackend = this.getRuntimeBackend()) {
     return this.getRuntimeSelection(undefined, runtimeBackend).provider;
@@ -1010,10 +1013,18 @@ export class ConversationManager {
       && authStatus.type === 'oauth'
         ? 'agent'
         : undefined;
+    const isThirdPartyAnthropic = provider === 'anthropic'
+      && !!creds.baseUrl
+      && !creds.baseUrl.includes('api.anthropic.com')
+      && !creds.baseUrl.includes('anthropic.com');
 
     return {
       provider,
-      model: provider === 'codex' ? normalizedModel : this.getModelId(normalizedModel),
+      model: provider === 'codex'
+        ? normalizedModel
+        : isThirdPartyAnthropic
+          ? normalizedModel
+          : this.getModelId(normalizedModel),
       apiKey: creds.apiKey,
       authToken: creds.authToken,
       baseUrl: creds.baseUrl,
@@ -1183,6 +1194,7 @@ export class ConversationManager {
       processingGeneration: 0,
       lastActualInputTokens: 0,
       messagesLenAtLastApiCall: 0,
+      pendingContinuationAfterRestore: false,
       latestImageAttachments: [],
       lastPersistedMessageCount: 0,
       credentialsFingerprint: this.getCredentialsFingerprint(runtimeBackend),
@@ -1335,6 +1347,7 @@ export class ConversationManager {
     const state = this.sessions.get(sessionId);
     if (state) {
       state.cancelled = true;
+      state.pendingContinuationAfterRestore = false;
       // 谁启动的蜂群，谁负责关闭：如果 Planner Agent 正在等待蜂群执行，一并取消
       StartLeadAgentTool.cancelActiveExecution();
       // 取消所有运行中的子 agent（Task 工具启动的后台任务）
@@ -1401,6 +1414,15 @@ export class ConversationManager {
   getStreamingContent(sessionId: string): { thinkingText: string; textContent: string } | undefined {
     const state = this.sessions.get(sessionId);
     return state?.streamingContent;
+  }
+
+  /**
+   * 浏览器刷新后是否应该恢复流式态
+   * 已取消但尚未完全收尾的会话不应继续向新页面表现为“仍在执行”。
+   */
+  shouldResumeStreamingOnReconnect(sessionId: string): boolean {
+    const state = this.sessions.get(sessionId);
+    return Boolean(state?.isProcessing && !state?.cancelled);
   }
 
   /**
@@ -1541,6 +1563,7 @@ export class ConversationManager {
 
     state.cancelled = false;
     state.isProcessing = true;
+    state.pendingContinuationAfterRestore = false;
     const currentGeneration = ++state.processingGeneration;
 
     // 关键修复：确保会话的 WebSocket 已设置
@@ -1906,6 +1929,12 @@ export class ConversationManager {
             this.consolidateMemoryAfterCompact(preCompactMessages, state).catch(err => {
               console.warn('[MemoryConsolidation] Memory consolidation failed:', err);
             });
+          } else if (compactResult.error) {
+            console.warn('[AutoCompact] Compaction not applied:', compactResult.error);
+            callbacks.onContextCompact?.('error', {
+              message: compactResult.error,
+              reason: compactResult.failureReason,
+            });
           }
         } catch (err) {
           console.warn('[AutoCompact] Compaction failed, continuing with original messages:', err);
@@ -1938,10 +1967,18 @@ export class ConversationManager {
 
       // 将流式状态变量提升到 try 外，以便 catch 中断流自愈时可以访问
       const assistantContent: ContentBlock[] = [];
+      let currentThinkingContent = '';
       let currentTextContent = '';
       let currentToolUse: { id: string; name: string; inputJson: string } | null = null;
       let stopReason: string | null = null;
       let thinkingStarted = false;
+      const flushThinkingContent = () => {
+        if (!currentThinkingContent) {
+          return;
+        }
+        assistantContent.push({ type: 'thinking', thinking: currentThinkingContent } as ThinkingBlock);
+        currentThinkingContent = '';
+      };
 
       // 对齐官方 v2.1.70：检查是否有 ToolSearch 工具（Mcp），决定是否启用 deferred tools
       const hasToolSearch = tools.some(t => t.name === 'Mcp');
@@ -2008,6 +2045,7 @@ export class ConversationManager {
                 thinkingStarted = true;
               }
               if (event.thinking) {
+                currentThinkingContent += event.thinking;
                 // 追踪 thinking 内容（用于浏览器刷新恢复）
                 if (state.streamingContent) {
                   state.streamingContent.thinkingText += event.thinking;
@@ -2021,6 +2059,7 @@ export class ConversationManager {
                 callbacks.onThinkingComplete?.();
                 thinkingStarted = false;
               }
+              flushThinkingContent();
               if (event.text) {
                 hasStreamedContent = true;
                 currentTextContent += event.text;
@@ -2033,6 +2072,11 @@ export class ConversationManager {
               break;
 
             case 'tool_use_start':
+              if (thinkingStarted) {
+                callbacks.onThinkingComplete?.();
+                thinkingStarted = false;
+              }
+              flushThinkingContent();
               hasStreamedContent = true;
               // 保存之前的文本内容
               if (currentTextContent) {
@@ -2106,6 +2150,11 @@ export class ConversationManager {
             }
 
             case 'stop':
+              if (thinkingStarted) {
+                callbacks.onThinkingComplete?.();
+                thinkingStarted = false;
+              }
+              flushThinkingContent();
               // 完成当前文本块
               if (currentTextContent) {
                 assistantContent.push({ type: 'text', text: currentTextContent } as TextBlock);
@@ -2197,6 +2246,13 @@ export class ConversationManager {
               break;
             }
 
+            case 'rate_limit': {
+              if (event.info) {
+                callbacks.onRateLimitUpdate?.(event.info);
+              }
+              break;
+            }
+
             case 'error':
               throw new Error(event.error || 'Unknown stream error');
           }
@@ -2207,6 +2263,7 @@ export class ConversationManager {
         justForceCompacted = false;
 
         // 中断或正常结束时，保存未完成的文本内容
+        flushThinkingContent();
         if (currentTextContent) {
           assistantContent.push({ type: 'text', text: currentTextContent } as TextBlock);
           currentTextContent = '';
@@ -2357,13 +2414,16 @@ export class ConversationManager {
           // 这样可以确保工具结果已保存，然后在循环结束后的持久化逻辑中触发关闭
           if (isEvolveRestartRequested()) {
             console.log('[ConversationManager] Evolve restart requested, stopping conversation loop after tool persistence.');
+            state.pendingContinuationAfterRestore = true;
             continueLoop = false;
           } else {
             // 继续循环
+            state.pendingContinuationAfterRestore = false;
             continueLoop = true;
           }
         } else {
           // 对话结束
+          state.pendingContinuationAfterRestore = false;
           continueLoop = false;
 
           // 对齐官方：max_tokens 截断时，流式输出错误消息告知用户
@@ -2401,6 +2461,8 @@ export class ConversationManager {
             usage: {
               inputTokens: totalInputTokens,
               outputTokens: totalOutputTokens,
+              cacheReadTokens: totalCacheReadTokens,
+              cacheCreationTokens: totalCacheCreationTokens,
             },
             _messagesLen: state.messages.length,
           };
@@ -2417,6 +2479,8 @@ export class ConversationManager {
           callbacks.onComplete?.(stopReason, {
             inputTokens: totalInputTokens,
             outputTokens: totalOutputTokens,
+            cacheReadTokens: totalCacheReadTokens,
+            cacheCreationTokens: totalCacheCreationTokens,
           });
         }
 
@@ -2431,6 +2495,7 @@ export class ConversationManager {
           errMsg.includes('Request aborted by user')
         ) {
           console.log('[ConversationManager] Request cancelled by user');
+          state.pendingContinuationAfterRestore = false;
           continueLoop = false;
           continue;
         }
@@ -2500,6 +2565,14 @@ export class ConversationManager {
                 summaryText: compactResult.summaryText,
               });
               continue; // 重新进入循环
+            }
+
+            if (compactResult.error) {
+              console.warn('[AutoCompact] Force compaction not applied:', compactResult.error);
+              callbacks.onContextCompact?.('error', {
+                message: compactResult.error,
+                reason: compactResult.failureReason,
+              });
             }
           } catch (compactErr) {
             console.error('[AutoCompact] Force compaction failed:', compactErr);
@@ -2615,6 +2688,7 @@ export class ConversationManager {
     // 取消/中断时 assistant 消息可能已包含 tool_use 块，但缺少对应的 tool_result
     // 这会导致下次 API 调用报错，需要补充 error tool_result
     if (state.cancelled) {
+      state.pendingContinuationAfterRestore = false;
       state.messages = validateToolResults(state.messages);
     }
 
@@ -2661,6 +2735,7 @@ export class ConversationManager {
         sessionData.messages = state.messages;
         sessionData.chatHistory = state.chatHistory;
         sessionData.currentModel = state.model;
+        sessionData.pendingContinuationAfterRestore = state.pendingContinuationAfterRestore;
         sessionData.metadata.runtimeBackend = state.runtimeBackend;
         (sessionData as any).toolFilterConfig = state.toolFilterConfig;
         (sessionData as any).systemPromptConfig = state.systemPromptConfig;
@@ -2681,6 +2756,12 @@ export class ConversationManager {
         triggerGracefulShutdown();
       }, 200);
     }
+
+    if (state.cancelled) {
+      state.needsHistoryResend = false;
+    }
+    state.streamingContent = undefined;
+    state.currentAbortController = undefined;
 
   }
 
@@ -2858,11 +2939,7 @@ export class ConversationManager {
         {
           model: task.model || 'sonnet',
           workingDirectory: task.workingDir,
-          clientConfig: {
-            apiKey: mainClientConfig.apiKey,
-            authToken: mainClientConfig.authToken,
-            baseUrl: mainClientConfig.baseUrl,
-          },
+          clientConfig: mainClientConfig,
         }
       );
 
@@ -3082,11 +3159,7 @@ export class ConversationManager {
               model: input.model || state.model,
               parentMessages: state.messages,
               workingDirectory: state.session.cwd,
-              clientConfig: {
-                apiKey: mainClientConfig.apiKey,
-                authToken: mainClientConfig.authToken,
-                baseUrl: mainClientConfig.baseUrl,
-              },
+              clientConfig: mainClientConfig,
               toolUseId: normalizedToolUse.id,
               maxTurns: input.max_turns,
             }
@@ -3711,7 +3784,15 @@ export class ConversationManager {
     messages: Message[],
     model: string,
     state: SessionState
-  ): Promise<{ wasCompacted: boolean; messages: Message[]; savedTokens?: number; boundaryUuid?: string; summaryText?: string }> {
+  ): Promise<{
+    wasCompacted: boolean;
+    messages: Message[];
+    savedTokens?: number;
+    boundaryUuid?: string;
+    summaryText?: string;
+    failureReason?: 'not_performed' | 'summary_empty' | 'upstream_error';
+    error?: string;
+  }> {
     const threshold = calculateAutoCompactThreshold(model);
 
     // 1. 尝试 Session Memory 压缩 (TJ1)
@@ -3757,6 +3838,10 @@ export class ConversationManager {
     }
 
     // 2. 尝试对话摘要 (NJ1) — 对齐官方 oj1 压缩函数
+    let compactFailure: {
+      reason: 'summary_empty' | 'upstream_error';
+      error: string;
+    } | null = null;
     try {
       const contextWindow = getContextWindowSize(model);
       const estimatedMsgTokens = this.estimateMessageTokens(messages);
@@ -3799,7 +3884,8 @@ export class ConversationManager {
       const response = await state.client.createMessage(
         summaryMessages,
         undefined, // 不需要工具（对齐官方：compaction agent should only produce text summary）
-        'You are a helpful AI assistant tasked with summarizing conversations concisely while preserving all critical technical details.'
+        'You are a helpful AI assistant tasked with summarizing conversations concisely while preserving all critical technical details.',
+        { preferStreamingTransport: true }
       );
 
       let summaryText = '';
@@ -3841,11 +3927,25 @@ export class ConversationManager {
         }
         return { wasCompacted: true, messages: compactedMsgs, savedTokens, boundaryUuid, summaryText: formattedContent };
       }
+
+      compactFailure = {
+        reason: 'summary_empty',
+        error: 'Compaction not performed: the summary model returned no text.',
+      };
     } catch (err) {
+      compactFailure = {
+        reason: 'upstream_error',
+        error: err instanceof Error ? err.message : String(err),
+      };
       console.warn('[AutoCompact/NJ1] Conversation summary compaction failed:', err);
     }
 
-    return { wasCompacted: false, messages };
+    return {
+      wasCompacted: false,
+      messages,
+      failureReason: compactFailure?.reason || 'not_performed',
+      error: compactFailure?.error,
+    };
   }
 
   /**
@@ -4895,6 +4995,7 @@ Guidelines:
       sessionData.messages = state.messages;
       sessionData.chatHistory = state.chatHistory;
       sessionData.currentModel = state.model;
+      sessionData.pendingContinuationAfterRestore = state.pendingContinuationAfterRestore;
       sessionData.metadata.runtimeBackend = state.runtimeBackend;
       (sessionData as any).toolFilterConfig = state.toolFilterConfig;
       (sessionData as any).systemPromptConfig = state.systemPromptConfig;
@@ -5012,6 +5113,7 @@ Guidelines:
         processingGeneration: 0,
         lastActualInputTokens: 0,
         messagesLenAtLastApiCall: 0,
+        pendingContinuationAfterRestore: sessionData.pendingContinuationAfterRestore === true,
         latestImageAttachments: [],
         lastPersistedMessageCount: sessionData.messages.length, // 从磁盘加载时，初始化为当前消息数
         credentialsFingerprint: this.getCredentialsFingerprint(runtimeBackend),
@@ -5036,21 +5138,32 @@ Guidelines:
   }
 
   /**
-   * 检查恢复的会话是否需要继续对话（最后一条消息是 tool_result）
-   * 典型场景：SelfEvolve 重启后，工具结果已保存但模型还没来得及继续回复
+   * 检查恢复的会话是否需要继续对话
+   * 仅依赖显式续跑标记，避免把用户取消后的 tool_result 误判成“应自动继续”
    */
   needsContinuation(sessionId: string): boolean {
     const state = this.sessions.get(sessionId);
-    if (!state || state.messages.length === 0) return false;
+    return state?.pendingContinuationAfterRestore === true;
+  }
 
-    const lastMsg = state.messages[state.messages.length - 1];
-    if (lastMsg.role !== 'user') return false;
-
-    // 检查最后一条消息是否包含 tool_result
-    if (Array.isArray(lastMsg.content)) {
-      return lastMsg.content.some((block: any) => block.type === 'tool_result');
+  /**
+   * 消费一次“恢复后续跑”标记，并立即落盘，避免页面重复刷新时反复触发。
+   */
+  consumePendingContinuation(sessionId: string): boolean {
+    const state = this.sessions.get(sessionId);
+    if (!state?.pendingContinuationAfterRestore) {
+      return false;
     }
-    return false;
+
+    state.pendingContinuationAfterRestore = false;
+
+    const sessionData = this.sessionManager.loadSessionById(sessionId);
+    if (sessionData) {
+      sessionData.pendingContinuationAfterRestore = false;
+      this.sessionManager.saveSession(sessionId);
+    }
+
+    return true;
   }
 
   /**
@@ -5074,6 +5187,7 @@ Guidelines:
 
     state.cancelled = false;
     state.isProcessing = true;
+    state.pendingContinuationAfterRestore = false;
 
     try {
       console.log(`[ConversationManager] Continuing conversation after resume: ${sessionId}, message count: ${state.messages.length}`);
@@ -5159,6 +5273,8 @@ Guidelines:
         for (const block of msg.content) {
           if (block.type === 'text') {
             chatMsg.content.push({ type: 'text', text: (block as TextBlock).text });
+          } else if (block.type === 'thinking') {
+            chatMsg.content.push({ type: 'thinking', text: (block as ThinkingBlock).thinking });
           } else if (block.type === 'image') {
             // 保留图片内容以便刷新后回显
             const imgBlock = block as any;
@@ -5228,7 +5344,13 @@ Guidelines:
       const compactResult = await this.performAutoCompact(state.messages, state.model, state);
 
       if (!compactResult.wasCompacted) {
-        return { success: false, error: 'Compaction not performed (possibly too few messages or already compacted).' };
+        if (compactResult.failureReason === 'upstream_error' && compactResult.error) {
+          return { success: false, error: `Compaction failed: ${compactResult.error}` };
+        }
+        if (compactResult.error) {
+          return { success: false, error: compactResult.error };
+        }
+        return { success: false, error: 'Compaction not performed.' };
       }
 
       // 更新会话消息

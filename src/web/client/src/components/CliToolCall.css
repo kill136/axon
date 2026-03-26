@@ -146,6 +146,19 @@
   overflow: hidden;
 }
 
+.cli-edit-fallback {
+  margin: 0;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.cli-edit-fallback--empty {
+  color: var(--text-muted);
+}
+
 .cli-edit-status {
   font-size: 12px;
   font-weight: 500;
@@ -162,6 +175,13 @@
 /* 每一行：左右两列 */
 .cli-diff-row {
   display: flex;
+}
+
+.cli-edit-separator {
+  height: 1px;
+  margin: 6px 0;
+  background: var(--border-color);
+  opacity: 0.7;
 }
 
 /* 单元格通用 */
@@ -420,6 +440,30 @@
   font-size: 12px;
   color: var(--text-secondary);
   max-height: 300px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+}
+
+/* ===== Glob 工具样式 ===== */
+.cli-glob-content {
+  background: var(--code-bg);
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+}
+
+.cli-glob-info {
+  padding: 6px 12px;
+  font-size: 11px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.cli-glob-preview {
+  margin: 0;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  max-height: 240px;
   overflow-y: auto;
   white-space: pre-wrap;
 }

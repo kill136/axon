@@ -26,7 +26,7 @@ function formatAge(ms: number): string {
  */
 export interface MemorySearchInput {
   query: string;
-  source?: 'all' | 'memory' | 'session';
+  source?: 'all' | 'memory' | 'session' | 'notebook';
   maxResults?: number;
 }
 
@@ -61,7 +61,7 @@ PROACTIVE USAGE: You should actively search memory when the user's question rela
         },
         source: {
           type: 'string',
-          enum: ['all', 'memory', 'session'],
+          enum: ['all', 'memory', 'session', 'notebook'],
           description: 'Filter by source type (default: all)',
         },
         maxResults: {

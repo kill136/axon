@@ -16,6 +16,7 @@ import type { ContextUsage, CompactState } from '../components/ContextBar';
 import type { SlashCommandResult } from '../components/SlashCommandDialog';
 import { playNotificationSound } from './useNotificationSound';
 import { createAssistantMessage } from '../utils/assistantMessage';
+import { normalizeUserQuestionPayload } from '../utils/userQuestion';
 
 export type Status = 'idle' | 'thinking' | 'streaming' | 'tool_executing';
 export type PermissionMode = 'default' | 'bypassPermissions' | 'acceptEdits' | 'plan';
@@ -29,6 +30,12 @@ export interface RateLimitInfo {
   utilization7d?: number;
   resetsAt?: number;
   rateLimitType?: string;
+  remainingRequests?: number;
+  limitRequests?: number;
+  remainingTokens?: number;
+  limitTokens?: number;
+  cacheReadTokens?: number;
+  cacheCreationTokens?: number;
 }
 
 /**
@@ -162,10 +169,11 @@ export function useMessageHandler({
           });
           playNotificationSound('warning');
         } else if (msg.type === 'user_question') {
+          const normalizedQuestion = normalizeUserQuestionPayload(payload);
           setCrossSessionNotification({
             sessionId: msgSessionId,
             type: 'user_question',
-            questionHeader: (payload as any).header,
+            questionHeader: normalizedQuestion?.header,
             timestamp: Date.now(),
           });
           playNotificationSound('attention');
@@ -277,17 +285,32 @@ export function useMessageHandler({
         case 'tool_use_start':
           if (currentMessageRef.current) {
             const currentMsg = currentMessageRef.current;
-            const newContent = [
-              ...currentMsg.content,
-              {
-                type: 'tool_use' as const,
-                id: payload.toolUseId as string,
-                name: payload.toolName as string,
-                input: payload.input,
-                status: 'running' as const,
-                toolCategory: payload.toolCategory as string | undefined,
-              },
-            ];
+            const existingToolUseIndex = currentMsg.content.findIndex(
+              c => c.type === 'tool_use' && c.id === payload.toolUseId
+            );
+            const newToolUse = {
+              type: 'tool_use' as const,
+              id: payload.toolUseId as string,
+              name: payload.toolName as string,
+              input: payload.input,
+              status: 'running' as const,
+              toolCategory: payload.toolCategory as string | undefined,
+            };
+            const newContent = existingToolUseIndex === -1
+              ? [...currentMsg.content, newToolUse]
+              : currentMsg.content.map((item, index) => {
+                  if (index !== existingToolUseIndex || item.type !== 'tool_use') {
+                    return item;
+                  }
+
+                  return {
+                    ...item,
+                    name: payload.toolName as string || item.name,
+                    input: payload.input ?? item.input,
+                    status: 'running' as const,
+                    toolCategory: (payload.toolCategory as string | undefined) ?? item.toolCategory,
+                  };
+                });
             const updatedMsg = { ...currentMsg, content: newContent };
             currentMessageRef.current = updatedMsg;
             setMessages(prev => {
@@ -364,7 +387,12 @@ export function useMessageHandler({
         case 'message_complete':
           if (currentMessageRef.current) {
             const currentMsg = currentMessageRef.current;
-            const usage = payload.usage as { inputTokens: number; outputTokens: number } | undefined;
+            const usage = payload.usage as {
+              inputTokens: number;
+              outputTokens: number;
+              cacheReadTokens?: number;
+              cacheCreationTokens?: number;
+            } | undefined;
             // 清理所有仍在 running 状态的 tool_use（可能因 max_tokens 截断等原因未完成）
             const completedContent = currentMsg.content.map(c => {
               if (c.type === 'tool_use' && c.status === 'running') {
@@ -496,7 +524,7 @@ export function useMessageHandler({
           break;
 
         case 'user_question':
-          setUserQuestion(payload as unknown as UserQuestion);
+          setUserQuestion(normalizeUserQuestionPayload(payload));
           break;
 
         case 'session_list_response':
@@ -517,6 +545,7 @@ export function useMessageHandler({
           setUserQuestion(null);
           setCompactState({ phase: 'idle' });
           setContextUsage(null);
+          setRateLimitInfo(null);
           // 原子性恢复：session_switched 内嵌了 history，一次 setMessages 完成切换+恢复
           // 避免先 setMessages([]) 再等 history 消息的竞态（F5 刷新时可能导致消息丢失）
           if (payload.history && Array.isArray(payload.history)) {
@@ -585,6 +614,7 @@ export function useMessageHandler({
               // 列表刷新由 message_complete 事件负责。
               setCompactState({ phase: 'idle' });
               setContextUsage(null);
+              setRateLimitInfo(null);
             }
           }
           break;
@@ -604,6 +634,7 @@ export function useMessageHandler({
           setUserQuestion(null);
           setCompactState({ phase: 'idle' });
           setContextUsage(null);
+          setRateLimitInfo(null);
           break;
 
         case 'task_status': {

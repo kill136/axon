@@ -17,6 +17,7 @@ import * as path from 'path';
 import * as os from 'os';
 import * as http from 'http';
 import * as crypto from 'crypto';
+import { execSync } from 'child_process';
 import open from 'open';
 
 // 导入 Keychain 模块
@@ -90,6 +91,19 @@ export interface UserProfileResponse {
   };
 }
 
+export interface ImportedClaudeCodeAuth {
+  accountType: 'claude.ai';
+  accessToken: string;
+  refreshToken?: string;
+  expiresAt?: number;
+  scopes: string[];
+  subscriptionType?: string;
+  rateLimitTier?: string;
+  accountUuid?: string;
+  source: 'file' | 'keychain';
+  sourcePath?: string;
+}
+
 // ============ 常量配置 ============
 
 // 认证配置文件路径
@@ -102,6 +116,8 @@ const SETTINGS_FILE = path.join(AUTH_DIR, 'settings.json');
 const CONFIG_FILE = path.join(AUTH_DIR, 'config.json');
 // 官方 Axon 参考实现 的 OAuth 凭据文件（存储 claudeAiOauth）
 const OFFICIAL_CREDENTIALS_FILE = path.join(AUTH_DIR, '.credentials.json');
+// 官方 Claude Code 的默认配置目录
+const OFFICIAL_CLAUDE_DIR = path.join(os.homedir(), '.claude');
 
 // 加密密钥（基于机器特征生成）
 const ENCRYPTION_KEY = crypto
@@ -238,6 +254,151 @@ function hasInferenceScope(scopes?: string[]): boolean {
   return Boolean(scopes?.includes('user:inference'));
 }
 
+function normalizeScopes(scopes: unknown): string[] {
+  if (Array.isArray(scopes)) {
+    return scopes.filter((scope): scope is string => typeof scope === 'string' && scope.length > 0);
+  }
+  if (typeof scopes === 'string') {
+    return scopes.split(/\s+/).filter(Boolean);
+  }
+  return [];
+}
+
+function getOfficialClaudeConfigDir(): string {
+  const customDir = process.env.CLAUDE_CONFIG_DIR?.trim();
+  return customDir ? path.resolve(customDir) : OFFICIAL_CLAUDE_DIR;
+}
+
+function getOfficialClaudeOauthSuffixes(): string[] {
+  const suffixes = [''];
+
+  if (process.env.CLAUDE_CODE_CUSTOM_OAUTH_URL) {
+    suffixes.unshift('-custom-oauth');
+  }
+
+  suffixes.push('-custom-oauth', '-staging-oauth', '-local-oauth');
+  return Array.from(new Set(suffixes));
+}
+
+function getOfficialClaudeCredentialsCandidates(): string[] {
+  const configDir = getOfficialClaudeConfigDir();
+  return getOfficialClaudeOauthSuffixes().map((suffix) =>
+    path.join(configDir, `.credentials${suffix}.json`)
+  );
+}
+
+function getOfficialClaudeKeychainServiceNames(): string[] {
+  const configDir = getOfficialClaudeConfigDir();
+  const configHash = process.env.CLAUDE_CONFIG_DIR
+    ? `-${crypto.createHash('sha256').update(configDir).digest('hex').substring(0, 8)}`
+    : '';
+
+  return getOfficialClaudeOauthSuffixes().map((suffix) =>
+    `Claude Code${suffix}-credentials${configHash}`
+  );
+}
+
+function parseOfficialClaudeCodeAuth(
+  raw: unknown,
+  source: ImportedClaudeCodeAuth['source'],
+  sourcePath?: string,
+): ImportedClaudeCodeAuth | null {
+  if (!raw || typeof raw !== 'object') {
+    return null;
+  }
+
+  const parsed = raw as Record<string, any>;
+  const oauth = parsed.claudeAiOauth;
+  if (!oauth || typeof oauth !== 'object' || typeof oauth.accessToken !== 'string' || !oauth.accessToken.trim()) {
+    return null;
+  }
+
+  const scopes = normalizeScopes(oauth.scopes);
+  if (!hasInferenceScope(scopes)) {
+    return null;
+  }
+
+  const expiresAt = typeof oauth.expiresAt === 'number' && Number.isFinite(oauth.expiresAt)
+    ? oauth.expiresAt
+    : undefined;
+
+  return {
+    accountType: 'claude.ai',
+    accessToken: oauth.accessToken,
+    refreshToken: typeof oauth.refreshToken === 'string' ? oauth.refreshToken : undefined,
+    expiresAt,
+    scopes,
+    subscriptionType: typeof oauth.subscriptionType === 'string' ? oauth.subscriptionType : undefined,
+    rateLimitTier: typeof oauth.rateLimitTier === 'string' ? oauth.rateLimitTier : undefined,
+    accountUuid: typeof parsed.oauthAccount?.accountUuid === 'string' ? parsed.oauthAccount.accountUuid : undefined,
+    source,
+    sourcePath,
+  };
+}
+
+function loadOfficialClaudeCodeAuthFromFiles(): ImportedClaudeCodeAuth | null {
+  for (const credentialsFile of getOfficialClaudeCredentialsCandidates()) {
+    if (!fs.existsSync(credentialsFile)) {
+      continue;
+    }
+
+    try {
+      const parsed = JSON.parse(fs.readFileSync(credentialsFile, 'utf-8'));
+      const imported = parseOfficialClaudeCodeAuth(parsed, 'file', credentialsFile);
+      if (imported) {
+        return imported;
+      }
+    } catch {
+      // 忽略损坏或不兼容的候选文件，继续尝试其他官方后缀
+    }
+  }
+
+  return null;
+}
+
+function loadOfficialClaudeCodeAuthFromKeychain(): ImportedClaudeCodeAuth | null {
+  if (!Keychain.isKeychainAvailable()) {
+    return null;
+  }
+
+  const accountName = process.env.USER || os.userInfo().username;
+
+  for (const serviceName of getOfficialClaudeKeychainServiceNames()) {
+    try {
+      const rawValue = execSync(
+        `security find-generic-password -a "${accountName}" -w -s "${serviceName}"`,
+        { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'ignore'] }
+      ).trim();
+
+      if (!rawValue) {
+        continue;
+      }
+
+      const parsed = JSON.parse(rawValue);
+      const imported = parseOfficialClaudeCodeAuth(parsed, 'keychain');
+      if (imported) {
+        return imported;
+      }
+    } catch {
+      // 尝试下一个官方 service name
+    }
+  }
+
+  return null;
+}
+
+export function loadOfficialClaudeCodeAuth(): ImportedClaudeCodeAuth | null {
+  return loadOfficialClaudeCodeAuthFromFiles() || loadOfficialClaudeCodeAuthFromKeychain();
+}
+
+export function importOfficialClaudeCodeAuth(): ImportedClaudeCodeAuth {
+  const imported = loadOfficialClaudeCodeAuth();
+  if (!imported) {
+    throw new Error('No reusable Claude Code subscription login found in ~/.claude or the macOS Keychain');
+  }
+  return imported;
+}
+
 /**
  * 初始化认证系统
  *
@@ -304,19 +465,17 @@ export function initAuth(): AuthConfig | null {
       const creds = JSON.parse(fs.readFileSync(OFFICIAL_CREDENTIALS_FILE, 'utf-8'));
       if (creds.claudeAiOauth?.accessToken) {
         const oauth = creds.claudeAiOauth;
-        const scopes = oauth.scopes || [];
+        const scopes = normalizeScopes(oauth.scopes);
 
-        // 检查是否有 user:inference scope（订阅用户标志）
         if (hasInferenceScope(scopes)) {
-          // 调试日志已移除，避免污染 UI 输出
           currentAuth = {
             type: 'oauth',
             accountType: 'subscription',
             authToken: oauth.accessToken,
-            accessToken: oauth.accessToken,  // 添加 accessToken 字段
+            accessToken: oauth.accessToken,
             refreshToken: oauth.refreshToken,
             expiresAt: oauth.expiresAt,
-            scopes: scopes,
+            scopes,
           };
           return currentAuth;
         }
@@ -324,6 +483,20 @@ export function initAuth(): AuthConfig | null {
     } catch (err) {
       // 忽略解析错误
     }
+  }
+
+  const importedOfficialAuth = loadOfficialClaudeCodeAuth();
+  if (importedOfficialAuth) {
+    currentAuth = {
+      type: 'oauth',
+      accountType: 'subscription',
+      authToken: importedOfficialAuth.accessToken,
+      accessToken: importedOfficialAuth.accessToken,
+      refreshToken: importedOfficialAuth.refreshToken,
+      expiresAt: importedOfficialAuth.expiresAt,
+      scopes: importedOfficialAuth.scopes,
+    };
+    return currentAuth;
   }
 
   // 5. 检查 config.json 的 primaryApiKey

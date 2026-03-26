@@ -20,6 +20,7 @@ import {
   getRuntimeBackendLabel,
   getWebModelOptionsForBackend,
   normalizeWebRuntimeModelForBackend,
+  supportsDynamicModelCatalogForBackend,
   type WebRuntimeBackend,
   type WebRuntimeProvider,
 } from '../../../shared/model-catalog';
@@ -28,6 +29,7 @@ import {
   upsertBackendDefaultModel,
   type DefaultModelMap,
 } from '../../../shared/model-preferences';
+import { getSetupRuntimeOptions } from '../../../shared/setup-runtime';
 
 interface SettingsPanelProps {
   isOpen: boolean;
@@ -44,6 +46,7 @@ interface SettingsPanelProps {
 interface ModelSettingsConfig {
   runtimeBackend?: WebRuntimeBackend;
   defaultModelByBackend?: DefaultModelMap;
+  customModelCatalogByBackend?: Partial<Record<WebRuntimeBackend, string[]>>;
 }
 
 type SettingsTab =
@@ -96,23 +99,36 @@ function SettingsPanelContent({
   const { play, isEnabled, setEnabled, getVolume, setVolume } = useNotificationSound();
   const [soundEnabled, setSoundEnabled] = useState(isEnabled());
   const [soundVolume, setSoundVolume] = useState(getVolume());
-  const modelOptions = getWebModelOptionsForBackend(runtimeBackend, model, model, availableModels);
-  const selectedModel = normalizeWebRuntimeModelForBackend(runtimeBackend, model, model, availableModels);
   const [modelConfig, setModelConfig] = useState<ModelSettingsConfig>({
     runtimeBackend,
     defaultModelByBackend: {},
+    customModelCatalogByBackend: {},
   });
+  const currentRuntimeCatalog = availableModels && availableModels.length > 0
+    ? availableModels
+    : modelConfig.customModelCatalogByBackend?.[runtimeBackend];
+  const modelOptions = getWebModelOptionsForBackend(runtimeBackend, model, model, currentRuntimeCatalog);
+  const selectedModel = normalizeWebRuntimeModelForBackend(runtimeBackend, model, model, currentRuntimeCatalog);
   const [managedBackend, setManagedBackend] = useState<WebRuntimeBackend>(runtimeBackend);
   const [modelConfigLoading, setModelConfigLoading] = useState(false);
   const [modelConfigSaving, setModelConfigSaving] = useState(false);
   const [modelConfigError, setModelConfigError] = useState<string | null>(null);
   const [modelConfigSuccess, setModelConfigSuccess] = useState<string | null>(null);
+  const managedBackendOptions = getSetupRuntimeOptions().map(option => option.backend);
   const managedDefaultModel = resolveBackendDefaultModel(
     managedBackend,
     modelConfig.defaultModelByBackend,
     managedBackend === runtimeBackend ? model : undefined,
   );
-  const managedModelOptions = getWebModelOptionsForBackend(managedBackend, managedDefaultModel, managedDefaultModel);
+  const showCuratedAnthropicCards =
+    runtimeProvider === 'anthropic'
+    && !supportsDynamicModelCatalogForBackend(runtimeBackend);
+  const managedModelOptions = getWebModelOptionsForBackend(
+    managedBackend,
+    managedDefaultModel,
+    managedDefaultModel,
+    modelConfig.customModelCatalogByBackend?.[managedBackend],
+  );
 
   useEffect(() => {
     if (!isOpen) return;
@@ -128,6 +144,7 @@ function SettingsPanelContent({
         setModelConfig({
           runtimeBackend: data.data.runtimeBackend || runtimeBackend,
           defaultModelByBackend: data.data.defaultModelByBackend || {},
+          customModelCatalogByBackend: data.data.customModelCatalogByBackend || {},
         });
       })
       .catch(err => {
@@ -316,7 +333,7 @@ function SettingsPanelContent({
                 value={managedBackend}
                 onChange={(e) => handleManagedBackendChange(e.target.value as WebRuntimeBackend)}
               >
-                {(['claude-subscription', 'claude-compatible-api', 'codex-subscription', 'openai-compatible-api'] as WebRuntimeBackend[]).map(backend => (
+                {managedBackendOptions.map(backend => (
                   <option key={backend} value={backend}>{getRuntimeBackendLabel(backend)}</option>
                 ))}
               </select>
@@ -354,7 +371,7 @@ function SettingsPanelContent({
               </button>
             </div>
             <div className="model-info">
-              {runtimeProvider === 'anthropic' ? (
+              {showCuratedAnthropicCards ? (
                 <>
                   <div className="model-card">
                     <h4>{t('settings.model.opus.title')}</h4>

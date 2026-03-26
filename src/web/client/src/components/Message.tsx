@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { memo, useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { MarkdownContent } from './MarkdownContent';
 import { CliToolCall } from './CliToolCall';
 import { CliThinkingBlock } from './CliThinkingBlock';
@@ -73,7 +73,7 @@ interface MessageProps {
   canRewind?: boolean;
 }
 
-export function Message({
+function MessageComponent({
   message,
   onNavigateToBlueprint,
   onNavigateToSwarm,
@@ -568,3 +568,16 @@ export function Message({
     </>
   );
 }
+
+export const Message = memo(MessageComponent, (previousProps, nextProps) => (
+  previousProps.message === nextProps.message
+  && previousProps.isStreaming === nextProps.isStreaming
+  && previousProps.isTranscriptMode === nextProps.isTranscriptMode
+  && previousProps.canRewind === nextProps.canRewind
+  && previousProps.onNavigateToBlueprint === nextProps.onNavigateToBlueprint
+  && previousProps.onNavigateToSwarm === nextProps.onNavigateToSwarm
+  && previousProps.onNavigateToCode === nextProps.onNavigateToCode
+  && previousProps.onDevAction === nextProps.onDevAction
+  && previousProps.onRewind === nextProps.onRewind
+  && previousProps.getRewindPreview === nextProps.getRewindPreview
+));

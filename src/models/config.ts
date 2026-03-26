@@ -4,6 +4,7 @@
  */
 
 import type { ModelInfo, ModelCapabilities, ModelPricing } from './types.js';
+import { getResolvedModelContextWindow, getResolvedModelOutputTokenLimits } from './model-limits.js';
 
 /**
  * 已知模型列表
@@ -272,6 +273,8 @@ export class ModelConfig {
    */
   private inferCapabilities(modelId: string): ModelCapabilities {
     const normalized = modelId.toLowerCase();
+    const resolvedContextWindow = getResolvedModelContextWindow(modelId);
+    const resolvedOutputLimits = getResolvedModelOutputTokenLimits(modelId);
 
     // 检测是否为非 Claude 模型（Ollama 本地模型等）
     const isClaude = normalized.includes('claude') || normalized.includes('opus') || normalized.includes('sonnet') || normalized.includes('haiku');
@@ -279,8 +282,8 @@ export class ModelConfig {
     if (!isClaude) {
       // 本地 / 第三方模型：保守的默认能力
       return {
-        contextWindow: 32_000,
-        maxOutputTokens: 4096,
+        contextWindow: resolvedContextWindow ?? 32_000,
+        maxOutputTokens: resolvedOutputLimits?.default ?? 4096,
         supportsThinking: false,
         supportsTools: true,  // 大多数现代模型支持 function calling
         supportsVision: false,
@@ -323,8 +326,8 @@ export class ModelConfig {
     }
 
     return {
-      contextWindow,
-      maxOutputTokens: 8192,
+      contextWindow: resolvedContextWindow ?? contextWindow,
+      maxOutputTokens: resolvedOutputLimits?.default ?? 8192,
       supportsThinking,
       supportsTools: true,
       supportsVision: true,

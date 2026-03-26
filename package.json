@@ -1,6 +1,6 @@
 {
   "name": "axon-code",
-  "version": "2.5.0",
+  "version": "2.6.1",
   "description": "AI coding assistant with Web IDE, multi-agent system, and self-evolution",
   "type": "module",
   "main": "electron/main.cjs",
@@ -51,6 +51,7 @@
     "test:e2e:basic": "tsx tests/e2e/cli-basic.test.ts",
     "test:e2e:session": "tsx tests/e2e/cli-session.test.ts",
     "test:e2e:tools": "tsx tests/e2e/cli-tools.test.ts",
+    "mirror:upload:cos": "node scripts/upload-tencent-cos-installer.cjs",
     "postinstall": "node scripts/postinstall.js || true",
     "prepublishOnly": "npm run build && npm run build:web:client",
     "pkg": "pkg dist/web-cli.js --compress GZip --target node18-win-x64 --output release/axon-web.exe",
@@ -153,6 +154,7 @@
     "cli-highlight": "^2.1.11",
     "cloudflared": "^0.7.1",
     "commander": "^12.0.0",
+    "cos-nodejs-sdk-v5": "^2.15.4",
     "diff": "^8.0.3",
     "discord.js": "^14.25.1",
     "eventsource": "^4.1.0",

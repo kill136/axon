@@ -8,6 +8,7 @@
  */
 
 import { BaseTool } from './base.js';
+import { getProxyForUrl } from 'proxy-from-env';
 import type { ToolResult, ToolDefinition } from '../types/index.js';
 import type { BrowserToolInput } from '../browser/types.js';
 import { t } from '../i18n/index.js';
@@ -248,16 +249,14 @@ ADVANCED FEATURES:
             await this.removeController(sessionId);
           }
 
-          // Read proxy from config
+          // Follow Axon proxy config first, then system proxy environment
           let proxyServer: string | undefined;
           try {
             const { configManager } = await import('../config/index.js');
             const config = configManager.getAll();
-            if (config.proxy) {
-              proxyServer = config.proxy.https || config.proxy.http;
-            }
+            proxyServer = config.proxy?.https || config.proxy?.http || getProxyForUrl('https://example.com') || undefined;
           } catch {
-            // Config read failed, continue without proxy
+            proxyServer = getProxyForUrl('https://example.com') || undefined;
           }
 
           await manager.start({ 

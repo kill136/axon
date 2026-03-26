@@ -9,6 +9,8 @@ export interface ChatMessage {
   usage?: {
     inputTokens: number;
     outputTokens: number;
+    cacheReadTokens?: number;
+    cacheCreationTokens?: number;
   };
   attachments?: Array<{
     name: string;

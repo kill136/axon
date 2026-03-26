@@ -143,6 +143,48 @@ describe('CodexConversationClient', () => {
     });
   });
 
+  it('should map cached tokens from Responses usage', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        model: 'gpt-5-codex',
+        output: [
+          {
+            type: 'message',
+            content: [{ type: 'output_text', text: 'done' }],
+          },
+        ],
+        usage: {
+          input_tokens: 12,
+          output_tokens: 7,
+          input_tokens_details: {
+            cached_tokens: 5,
+          },
+        },
+      }),
+    });
+
+    const client = new CodexConversationClient({
+      provider: 'codex',
+      model: 'gpt-5-codex',
+      apiKey: 'sk-test',
+    });
+
+    const response = await client.createMessage([
+      {
+        role: 'user',
+        content: [{ type: 'text', text: 'hello' }],
+      },
+    ]);
+
+    expect(response.usage).toMatchObject({
+      inputTokens: 12,
+      outputTokens: 7,
+      cacheReadTokens: 5,
+      thinkingTokens: 0,
+    });
+  });
+
   it('should map reasoning and function calls back to content blocks', async () => {
     fetchSpy.mockResolvedValueOnce({
       ok: true,
@@ -367,6 +409,76 @@ describe('CodexConversationClient', () => {
     expect(body.instructions).toContain('coding assistant');
   });
 
+  it('should aggregate createMessage from streaming transport when requested on custom codex endpoints', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      headers: new Headers({
+        'content-type': 'text/event-stream',
+      }),
+      body: {
+        async *[Symbol.asyncIterator]() {
+          yield new TextEncoder().encode(
+            `event: message\ndata: ${JSON.stringify({
+              type: 'response.output_text.delta',
+              delta: 'streamed ',
+            })}\n\n`,
+          );
+          yield new TextEncoder().encode(
+            `event: message\ndata: ${JSON.stringify({
+              type: 'response.output_text.delta',
+              delta: 'summary',
+            })}\n\n`,
+          );
+          yield new TextEncoder().encode(
+            `event: message\ndata: ${JSON.stringify({
+              type: 'response.completed',
+              response: {
+                model: 'gpt-5.4',
+                output: [
+                  {
+                    type: 'message',
+                    content: [{ type: 'output_text', text: 'streamed summary' }],
+                  },
+                ],
+                usage: {
+                  input_tokens: 11,
+                  output_tokens: 4,
+                },
+              },
+            })}\n\n`,
+          );
+        },
+      },
+    });
+
+    const client = new CodexConversationClient({
+      provider: 'codex',
+      model: 'gpt-5.4',
+      apiKey: 'sk-test',
+      baseUrl: 'https://api.chatbi.site',
+    });
+
+    const response = await client.createMessage([
+      {
+        role: 'user',
+        content: [{ type: 'text', text: 'summarize this conversation' }],
+      },
+    ], undefined, undefined, { preferStreamingTransport: true });
+
+    expect(response.content).toEqual([{ type: 'text', text: 'streamed summary' }]);
+    expect(response.stopReason).toBe('end_turn');
+    expect(response.usage).toEqual({
+      inputTokens: 11,
+      outputTokens: 4,
+      thinkingTokens: 0,
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe('https://api.chatbi.site/v1/responses');
+    const [, request] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(String(request.body));
+    expect(body.stream).toBe(true);
+  });
+
   it('should append /v1/responses for root OpenAI-compatible endpoints', async () => {
     fetchSpy.mockResolvedValueOnce({
       ok: true,
@@ -588,6 +700,61 @@ describe('CodexConversationClient', () => {
     ]);
   });
 
+  it('should fall back to chat completions when non-stream Responses requests require stream=true', async () => {
+    fetchSpy
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        statusText: 'Bad Request',
+        headers: new Headers({
+          'content-type': 'application/json',
+        }),
+        text: async () => JSON.stringify({
+          error: {
+            message: 'Stream must be set to true',
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          model: 'gpt-5.4',
+          choices: [
+            {
+              message: {
+                role: 'assistant',
+                content: 'fallback summary ok',
+              },
+              finish_reason: 'stop',
+            },
+          ],
+          usage: {
+            prompt_tokens: 10,
+            completion_tokens: 4,
+          },
+        }),
+      });
+
+    const client = new CodexConversationClient({
+      provider: 'codex',
+      model: 'gpt-5.4',
+      apiKey: 'sk-test',
+      baseUrl: 'https://api.chatbi.site',
+    });
+
+    const response = await client.createMessage([
+      {
+        role: 'user',
+        content: [{ type: 'text', text: 'summarize this conversation' }],
+      },
+    ]);
+
+    expect(response.content).toEqual([{ type: 'text', text: 'fallback summary ok' }]);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe('https://api.chatbi.site/v1/responses');
+    expect(fetchSpy.mock.calls[1]?.[0]).toBe('https://api.chatbi.site/v1/chat/completions');
+  });
+
   it('should fall back to chat completions when a custom Responses endpoint returns an HTML timeout page', async () => {
     fetchSpy
       .mockResolvedValueOnce({
@@ -722,6 +889,153 @@ describe('CodexConversationClient', () => {
     ]);
   });
 
+  it('should emit reasoning when Responses streams summary done events', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      headers: new Headers({
+        'content-type': 'text/event-stream',
+      }),
+      body: {
+        async *[Symbol.asyncIterator]() {
+          yield new TextEncoder().encode(
+            `event: message\ndata: ${JSON.stringify({
+              type: 'response.reasoning_summary.done',
+              item_id: 'rs_1',
+              output_index: 0,
+              summary_index: 0,
+              text: '先检查模型配置，再输出结论。',
+            })}\n\n`,
+          );
+          yield new TextEncoder().encode(
+            `event: message\ndata: ${JSON.stringify({
+              type: 'response.completed',
+              response: {
+                model: 'gpt-5-codex',
+                output: [
+                  {
+                    id: 'rs_1',
+                    type: 'reasoning',
+                    summary: [{ text: '先检查模型配置，再输出结论。' }],
+                  },
+                  {
+                    type: 'message',
+                    content: [{ type: 'output_text', text: '已经处理好了。' }],
+                  },
+                ],
+                usage: {
+                  input_tokens: 8,
+                  output_tokens: 4,
+                  reasoning_tokens: 3,
+                },
+              },
+            })}\n\n`,
+          );
+        },
+      },
+    });
+
+    const client = new CodexConversationClient({
+      provider: 'codex',
+      model: 'gpt-5-codex',
+      apiKey: 'sk-test',
+      baseUrl: 'https://chatgpt.com/backend-api/codex',
+    });
+
+    const events = await collectStreamEvents(client, [
+      {
+        role: 'user',
+        content: [{ type: 'text', text: '帮我检查一下当前配置' }],
+      },
+    ]);
+
+    expect(events).toEqual([
+      expect.objectContaining({ type: 'response_headers' }),
+      { type: 'thinking', thinking: '先检查模型配置，再输出结论。' },
+      { type: 'text', text: '已经处理好了。' },
+      {
+        type: 'usage',
+        usage: {
+          inputTokens: 8,
+          outputTokens: 4,
+          thinkingTokens: 3,
+        },
+      },
+      { type: 'stop', stopReason: 'end_turn' },
+    ]);
+  });
+
+  it('should emit reasoning from output_item.done snapshots when no deltas are present', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      headers: new Headers({
+        'content-type': 'text/event-stream',
+      }),
+      body: {
+        async *[Symbol.asyncIterator]() {
+          yield new TextEncoder().encode(
+            `event: message\ndata: ${JSON.stringify({
+              type: 'response.output_item.done',
+              output_index: 0,
+              item: {
+                id: 'rs_2',
+                type: 'reasoning',
+                summary: [{ text: '先读取会话，再归纳思路。' }],
+              },
+            })}\n\n`,
+          );
+          yield new TextEncoder().encode(
+            `event: message\ndata: ${JSON.stringify({
+              type: 'response.completed',
+              response: {
+                model: 'gpt-5.4',
+                output: [
+                  {
+                    id: 'rs_2',
+                    type: 'reasoning',
+                    summary: [{ text: '先读取会话，再归纳思路。' }],
+                  },
+                ],
+                usage: {
+                  input_tokens: 6,
+                  output_tokens: 2,
+                  reasoning_tokens: 2,
+                },
+              },
+            })}\n\n`,
+          );
+        },
+      },
+    });
+
+    const client = new CodexConversationClient({
+      provider: 'codex',
+      model: 'gpt-5.4',
+      apiKey: 'sk-test',
+      baseUrl: 'https://api.chatbi.site/v1',
+    });
+
+    const events = await collectStreamEvents(client, [
+      {
+        role: 'user',
+        content: [{ type: 'text', text: '总结一下刚才的会话' }],
+      },
+    ]);
+
+    expect(events).toEqual([
+      expect.objectContaining({ type: 'response_headers' }),
+      { type: 'thinking', thinking: '先读取会话，再归纳思路。' },
+      {
+        type: 'usage',
+        usage: {
+          inputTokens: 6,
+          outputTokens: 2,
+          thinkingTokens: 2,
+        },
+      },
+      { type: 'stop', stopReason: 'end_turn' },
+    ]);
+  });
+
   it('should not replay streamed Responses tool calls from response.completed', async () => {
     const args = {
       questions: [
@@ -813,6 +1127,206 @@ describe('CodexConversationClient', () => {
     ]);
   });
 
+  it('should keep a single canonical tool id when Responses stream mixes item id and call_id', async () => {
+    const editArgs = {
+      file_path: 'src/core/loop.ts',
+      old_string: 'before',
+      new_string: 'after',
+    };
+
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      headers: new Headers({
+        'content-type': 'text/event-stream',
+      }),
+      body: {
+        async *[Symbol.asyncIterator]() {
+          yield new TextEncoder().encode(
+            `event: message\ndata: ${JSON.stringify({
+              type: 'response.output_item.added',
+              item: {
+                type: 'function_call',
+                id: 'fc_edit_1',
+                name: 'Edit',
+              },
+            })}\n\n`,
+          );
+          yield new TextEncoder().encode(
+            `event: message\ndata: ${JSON.stringify({
+              type: 'response.function_call_arguments.done',
+              call_id: 'call_edit_1',
+              arguments: JSON.stringify(editArgs),
+            })}\n\n`,
+          );
+          yield new TextEncoder().encode(
+            `event: message\ndata: ${JSON.stringify({
+              type: 'response.completed',
+              response: {
+                model: 'gpt-5.4',
+                output: [
+                  {
+                    type: 'function_call',
+                    id: 'fc_edit_1',
+                    call_id: 'call_edit_1',
+                    name: 'Edit',
+                    arguments: JSON.stringify(editArgs),
+                  },
+                ],
+                usage: {
+                  input_tokens: 12,
+                  output_tokens: 3,
+                },
+              },
+            })}\n\n`,
+          );
+        },
+      },
+    });
+
+    const client = new CodexConversationClient({
+      provider: 'codex',
+      model: 'gpt-5.4',
+      apiKey: 'sk-test',
+      baseUrl: 'https://api.chatbi.site/v1',
+    });
+
+    const events = await collectStreamEvents(client, [
+      {
+        role: 'user',
+        content: [{ type: 'text', text: '修一下 loop.ts' }],
+      },
+    ]);
+
+    expect(events).toEqual([
+      expect.objectContaining({ type: 'response_headers' }),
+      { type: 'tool_use_start', id: 'fc_edit_1', name: 'Edit' },
+      { type: 'tool_use_complete', id: 'fc_edit_1', input: editArgs },
+      {
+        type: 'usage',
+        usage: {
+          inputTokens: 12,
+          outputTokens: 3,
+          thinkingTokens: 0,
+        },
+      },
+      { type: 'stop', stopReason: 'tool_use' },
+    ]);
+  });
+
+  it('should dedupe fallback chat completions tool calls when a gateway replays the same call', async () => {
+    const fallbackArgs = {
+      file_path: 'src/core/loop.ts',
+      old_string: 'foo',
+      new_string: 'bar',
+    };
+
+    fetchSpy.mockResolvedValueOnce({
+      ok: false,
+      status: 501,
+      statusText: 'Not Implemented',
+      headers: new Headers({
+        'content-type': 'application/json',
+      }),
+      text: async () => JSON.stringify({ message: 'convert_request_failed' }),
+    });
+
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      headers: new Headers({
+        'content-type': 'text/event-stream',
+      }),
+      body: {
+        async *[Symbol.asyncIterator]() {
+          yield new TextEncoder().encode(
+            `data: ${JSON.stringify({
+              choices: [
+                {
+                  delta: {
+                    tool_calls: [
+                      {
+                        index: 0,
+                        id: 'call_edit_2',
+                        function: {
+                          name: 'Edit',
+                          arguments: '{"file_path":"src/core/loop.ts"',
+                        },
+                      },
+                    ],
+                  },
+                },
+              ],
+            })}\n\n`,
+          );
+          yield new TextEncoder().encode(
+            `data: ${JSON.stringify({
+              choices: [
+                {
+                  delta: {
+                    tool_calls: [
+                      {
+                        index: 1,
+                        id: 'call_edit_2',
+                        function: {
+                          name: 'Edit',
+                          arguments: JSON.stringify(fallbackArgs),
+                        },
+                      },
+                    ],
+                  },
+                },
+              ],
+            })}\n\n`,
+          );
+          yield new TextEncoder().encode(
+            `data: ${JSON.stringify({
+              choices: [
+                {
+                  finish_reason: 'tool_calls',
+                },
+              ],
+              usage: {
+                prompt_tokens: 14,
+                completion_tokens: 5,
+              },
+            })}\n\n`,
+          );
+          yield new TextEncoder().encode('data: [DONE]\n\n');
+        },
+      },
+    });
+
+    const client = new CodexConversationClient({
+      provider: 'codex',
+      model: 'gpt-5.4',
+      apiKey: 'sk-test',
+      baseUrl: 'https://api.chatbi.site/v1',
+    });
+
+    const events = await collectStreamEvents(client, [
+      {
+        role: 'user',
+        content: [{ type: 'text', text: '修一下 edit 逻辑' }],
+      },
+    ]);
+
+    expect(events).toEqual([
+      expect.objectContaining({ type: 'response_headers' }),
+      { type: 'tool_use_start', id: 'call_edit_2', name: 'Edit' },
+      { type: 'tool_use_delta', id: 'call_edit_2', input: '{"file_path":"src/core/loop.ts"' },
+      { type: 'tool_use_delta', id: 'call_edit_2', input: ',"old_string":"foo","new_string":"bar"}' },
+      { type: 'tool_use_complete', id: 'call_edit_2', input: fallbackArgs },
+      {
+        type: 'usage',
+        usage: {
+          inputTokens: 14,
+          outputTokens: 5,
+          thinkingTokens: 0,
+        },
+      },
+      { type: 'stop', stopReason: 'tool_use' },
+    ]);
+  });
+
   it('should use chat completions transport for custom non-codex models', async () => {
     fetchSpy.mockResolvedValueOnce({
       ok: true,
@@ -859,6 +1373,10 @@ describe('CodexConversationClient', () => {
     ]);
     expect(response.content).toEqual([{ type: 'text', text: '我是 Kimi。' }]);
     expect(response.stopReason).toBe('end_turn');
+    expect(response.usage).toMatchObject({
+      inputTokens: 9,
+      outputTokens: 4,
+    });
   });
 
   it('should include reasoning_content when replaying assistant tool-call history in chat completions', async () => {
@@ -1070,6 +1588,60 @@ describe('CodexConversationClient', () => {
       },
     ]);
     expect(body.messages[0]).not.toHaveProperty('reasoning_content');
+  });
+
+  it('should expose cache hits and rate limit data in chat completions stream events', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      headers: new Headers({
+        'content-type': 'text/event-stream',
+        'x-ratelimit-remaining-requests': '42',
+        'x-ratelimit-limit-requests': '50',
+        'x-ratelimit-remaining-tokens': '9000',
+        'x-ratelimit-limit-tokens': '10000',
+        'x-ratelimit-reset-requests': '30',
+      }),
+      body: {
+        async *[Symbol.asyncIterator]() {
+          yield new TextEncoder().encode('data: {"choices":[{"delta":{"content":"你好"},"finish_reason":null}]}\n');
+          yield new TextEncoder().encode('data: {"choices":[{"delta":{"content":"，我是 Kimi。"},"finish_reason":"stop"}],"usage":{"prompt_tokens":5,"completion_tokens":6,"prompt_tokens_details":{"cached_tokens":2}}}\n');
+          yield new TextEncoder().encode('data: [DONE]\n');
+        },
+      },
+    });
+
+    const client = new CodexConversationClient({
+      provider: 'codex',
+      model: 'kimi-k2.5',
+      apiKey: 'sk-test',
+      baseUrl: 'https://api.chatbi.site',
+    });
+
+    const events = await collectStreamEvents(client, [
+      {
+        role: 'user',
+        content: [{ type: 'text', text: 'hi' }],
+      },
+    ]);
+
+    expect(events).toContainEqual(expect.objectContaining({
+      type: 'rate_limit',
+      info: expect.objectContaining({
+        remainingRequests: 42,
+        limitRequests: 50,
+        remainingTokens: 9000,
+        limitTokens: 10000,
+      }),
+    }));
+    expect(events).toContainEqual({
+      type: 'usage',
+      usage: {
+        inputTokens: 5,
+        outputTokens: 6,
+        cacheReadTokens: 2,
+        thinkingTokens: 0,
+      },
+    });
   });
 
   it('should parse chat completions streaming payloads for custom non-codex models', async () => {

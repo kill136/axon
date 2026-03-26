@@ -40,11 +40,6 @@ const AXON_IDENTITY = AXON_IDENTITIES[0];
 // Token 提前刷新时间：过期前 5 分钟
 const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;
 
-// 代理的持久 ID（模拟官方 CC 的 Sy() 设备ID 和 B6() 会话ID）
-// 每次代理进程启动时重新生成，与官方 CC 行为一致
-const PROXY_DEVICE_ID = crypto.randomBytes(32).toString('hex');
-const PROXY_SESSION_ID = crypto.randomUUID();
-
 // ============ 类型定义 ============
 
 export type AuthMode = 'api-key' | 'oauth';
@@ -213,6 +208,75 @@ function shouldStripForwardedHeader(headerName: string): boolean {
     || key === 'authorization'
     || key === 'content-length'
     || key === 'x-api-key';
+}
+
+const METADATA_USER_ID_PATTERN = /^user_(.+?)_account_(.*?)_session_(.+)$/;
+
+interface ParsedMetadataUserId {
+  deviceId: string;
+  accountUuid: string;
+  sessionId: string;
+}
+
+interface ValidatedMetadataIdentity {
+  deviceId: string;
+  sessionId: string;
+}
+
+function parseMetadataUserId(userId: string): ParsedMetadataUserId | null {
+  const match = METADATA_USER_ID_PATTERN.exec(userId);
+  if (!match) {
+    return null;
+  }
+
+  const [, deviceId, accountUuid, sessionId] = match;
+  if (!deviceId || !sessionId) {
+    return null;
+  }
+
+  return { deviceId, accountUuid, sessionId };
+}
+
+function buildMetadataUserId(deviceId: string, accountUuid: string, sessionId: string): string {
+  return `user_${deviceId}_account_${accountUuid}_session_${sessionId}`;
+}
+
+function validateClientMetadataIdentity(clientMetadata: unknown): ValidatedMetadataIdentity | null {
+  if (clientMetadata && typeof clientMetadata === 'object' && !Array.isArray(clientMetadata)) {
+    const rawUserId = (clientMetadata as Record<string, unknown>).user_id;
+    if (typeof rawUserId === 'string') {
+      const parsed = parseMetadataUserId(rawUserId);
+      if (parsed) {
+        return {
+          deviceId: parsed.deviceId,
+          sessionId: parsed.sessionId,
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
+function buildProxyMetadata(
+  clientMetadata: unknown,
+  accountUuid: string,
+): { metadata: Record<string, unknown>; identity: ValidatedMetadataIdentity } | null {
+  const identity = validateClientMetadataIdentity(clientMetadata);
+  if (!identity) {
+    return null;
+  }
+  const baseMetadata = clientMetadata && typeof clientMetadata === 'object' && !Array.isArray(clientMetadata)
+    ? { ...(clientMetadata as Record<string, unknown>) }
+    : {};
+
+  return {
+    metadata: {
+      ...baseMetadata,
+      user_id: buildMetadataUserId(identity.deviceId, accountUuid, identity.sessionId),
+    },
+    identity,
+  };
 }
 
 /**
@@ -506,8 +570,6 @@ export async function createProxyServer(config: ProxyConfig) {
     } else {
       console.log('[AUTH] ⚠ Unable to get account UUID (JWT/credentials/Profile API all failed), metadata will use empty account');
     }
-    console.log(`[AUTH] Proxy Device ID: ${PROXY_DEVICE_ID.slice(0, 16)}...`);
-    console.log(`[AUTH] Proxy Session ID: ${PROXY_SESSION_ID}`);
   }
 
   const logs: RequestLog[] = [];
@@ -791,21 +853,36 @@ export async function createProxyServer(config: ProxyConfig) {
               }
             }
 
-            // OAuth 模式：总是重建 metadata
+            // OAuth 模式：总是补齐 metadata.user_id 中的 accountUuid。
             //
-            // 官方 CC 的 ho() 总是为 messages 请求生成 metadata：
-            //   { user_id: "user_${Sy()}_account_${accountUuid ?? ''}_session_${B6()}" }
-            //
-            // 客户端以 API Key 模式连接代理，其 buildMetadata() 生成的
-            // user_id 中 account 为空、device hex 是客户端的随机值。
-            // 代理必须用自己的 device ID + accountUUID 完整重建。
+            // 关键点：优先保留下游客户端已经生成好的 device/session，
+            // 让 metadata 指纹和透传的客户端 headers 保持同源一致。
+            // 若下游没有合法 metadata.user_id，则直接拒绝，避免共享代理代造身份。
             {
               const accountUuid = oauthState?.accountUUID || '';
-              parsed.metadata = {
-                user_id: `user_${PROXY_DEVICE_ID}_account_${accountUuid}_session_${PROXY_SESSION_ID}`
-              };
+              const metadataResult = buildProxyMetadata(parsed.metadata, accountUuid);
+              if (!metadataResult) {
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({
+                  type: 'error',
+                  error: {
+                    type: 'invalid_request_error',
+                    message: 'OAuth proxy requires a valid metadata.user_id from the downstream client and will not synthesize a fallback identity.',
+                  },
+                }));
+                console.log(`[DENIED] ${method} ${path} from ${clientIp} - Missing or invalid metadata.user_id for OAuth proxy`);
+                return;
+              }
+
+              const { metadata, identity } = metadataResult;
+              parsed.metadata = metadata;
               needsRewrite = true;
-              console.log(`[INJECT] Rebuilt metadata: device=${PROXY_DEVICE_ID.slice(0, 8)}... account=${accountUuid ? accountUuid.slice(0, 8) + '...' : '<empty>'} session=${PROXY_SESSION_ID.slice(0, 8)}...`);
+              console.log(
+                `[INJECT] Rebuilt metadata from client identity:` +
+                ` device=${identity.deviceId.slice(0, 8)}...` +
+                ` account=${accountUuid ? accountUuid.slice(0, 8) + '...' : '<empty>'}` +
+                ` session=${identity.sessionId.slice(0, 8)}...`,
+              );
             }
 
             if (needsRewrite) {

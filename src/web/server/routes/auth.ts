@@ -7,7 +7,13 @@ import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { createServer, type Server } from 'http';
 import { v4 as uuidv4 } from 'uuid';
-import { OAUTH_ENDPOINTS, exchangeAuthorizationCode, createOAuthApiKey, type AuthConfig } from '../../../auth/index.js';
+import {
+  OAUTH_ENDPOINTS,
+  exchangeAuthorizationCode,
+  createOAuthApiKey,
+  importOfficialClaudeCodeAuth,
+  type AuthConfig,
+} from '../../../auth/index.js';
 import { isDemoMode } from '../../../utils/env-check.js';
 import { configManager } from '../../../config/index.js';
 import { oauthManager } from '../oauth-manager.js';
@@ -403,6 +409,45 @@ router.post('/submit-code', async (req: Request, res: Response) => {
     }
 
     res.status(400).json({ error: errorMessage });
+  }
+});
+
+/**
+ * POST /api/auth/oauth/import-local
+ * 导入当前机器上 Claude Code 已有的订阅登录态
+ */
+router.post('/import-local', async (_req: Request, res: Response) => {
+  try {
+    const importedAuth = importOfficialClaudeCodeAuth();
+
+    await oauthManager.saveOAuthConfig({
+      accessToken: importedAuth.accessToken,
+      refreshToken: importedAuth.refreshToken,
+      expiresAt: importedAuth.expiresAt,
+      scopes: importedAuth.scopes,
+      subscriptionType: importedAuth.subscriptionType || importedAuth.accountType,
+      rateLimitTier: importedAuth.rateLimitTier,
+    });
+
+    configManager.set('authPriority', 'oauth');
+    configManager.set('runtimeBackend', 'claude-subscription');
+    configManager.set('runtimeProvider', 'anthropic');
+    configManager.set('apiProvider', 'anthropic');
+
+    res.json({
+      success: true,
+      auth: {
+        accountType: importedAuth.subscriptionType || importedAuth.accountType,
+        expiresAt: importedAuth.expiresAt,
+        scopes: importedAuth.scopes,
+        source: importedAuth.source,
+      },
+    });
+  } catch (error) {
+    console.error('[OAuth] Import local Claude Code auth failed:', error);
+    res.status(400).json({
+      error: error instanceof Error ? error.message : 'Failed to import local Claude Code auth',
+    });
   }
 });
 

@@ -1,11 +1,18 @@
 /**
  * Axon 官网 Express 服务器
  * - 静态文件服务（landing page HTML/CSS/JS/资源）
- * - 下载代理（/download/:filename → GitHub Release 302 重定向）
+ * - 下载分流（国内镜像优先，GitHub Release 代理兜底）
  */
 
 const express = require('express');
 const path = require('path');
+const {
+  buildDownloadPath,
+  detectDownloadRegion,
+  isAllowed,
+  listMirrorOnlyAssets,
+  resolveDownloadTarget,
+} = require('./download-utils.cjs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -13,19 +20,6 @@ const GITHUB_REPO = 'kill136/axon';
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 
 // ============ 下载代理 ============
-
-const ALLOWED_FILES = [
-  /^Axon-Setup\.exe$/,
-  /^Axon-Setup\.dmg$/,
-  /^Axon-Setup\.AppImage$/,
-  /^Axon-Windows-Portable-v[\d.]+\.zip$/,
-  /^axon-(windows|linux|macos)-(x64|arm64)-v[\d.]+\.(zip|tar\.gz)$/,
-  /^install\.(bat|ps1)$/,
-];
-
-function isAllowed(filename) {
-  return ALLOWED_FILES.some(p => p.test(filename));
-}
 
 async function fetchLatestRelease() {
   const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, {
@@ -41,34 +35,73 @@ async function fetchLatestRelease() {
 
 // GET /api/download/latest - 返回最新 release 信息
 app.get('/api/download/latest', async (req, res) => {
-  if (!GITHUB_TOKEN) return res.status(503).json({ error: 'GITHUB_TOKEN not configured' });
+  const preferredRegion = detectDownloadRegion(req);
+
+  if (!GITHUB_TOKEN) {
+    const mirrorAssets = listMirrorOnlyAssets(process.env, preferredRegion);
+    if (mirrorAssets.length > 0) {
+      return res.json({
+        version: null,
+        name: 'mirror-only',
+        published_at: null,
+        preferred_region: preferredRegion,
+        assets: mirrorAssets,
+      });
+    }
+
+    return res.status(503).json({ error: 'GITHUB_TOKEN not configured' });
+  }
+
   try {
     const release = await fetchLatestRelease();
     res.json({
       version: release.tag_name,
       name: release.name,
       published_at: release.published_at,
+      preferred_region: preferredRegion,
       assets: release.assets
         .filter(a => isAllowed(a.name))
-        .map(a => ({
-          name: a.name,
-          size: a.size,
-          download_count: a.download_count,
-          url: `/download/${a.name}`,
-        })),
+        .map(a => {
+          const target = resolveDownloadTarget({
+            filename: a.name,
+            req,
+            env: process.env,
+            region: preferredRegion,
+          });
+
+          return {
+            name: a.name,
+            size: a.size,
+            download_count: a.download_count,
+            url: buildDownloadPath(a.name, preferredRegion),
+            direct_url: target.type === 'mirror' ? target.redirectUrl : null,
+            source: target.source,
+          };
+        }),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// GET /download/:filename - 302 重定向到 GitHub 临时 URL
+// GET /download/:filename - 优先 302 到镜像，否则再走 GitHub 临时 URL
 app.get('/download/:filename', async (req, res) => {
   const { filename } = req.params;
-  if (!GITHUB_TOKEN) return res.status(503).json({ error: 'GITHUB_TOKEN not configured' });
   if (!isAllowed(filename)) return res.status(403).json({ error: 'File not allowed' });
 
   try {
+    const target = resolveDownloadTarget({ filename, req, env: process.env });
+    if (target.type === 'mirror') {
+      return res.redirect(302, target.redirectUrl);
+    }
+
+    if (!GITHUB_TOKEN) {
+      return res.status(503).json({
+        error: 'GITHUB_TOKEN not configured and no mirror available',
+        preferred_region: target.region,
+      });
+    }
+
     const release = await fetchLatestRelease();
     const asset = release.assets.find(a => a.name === filename);
     if (!asset) {
@@ -118,5 +151,6 @@ app.use((req, res) => {
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Axon Website running on port ${PORT}`);
-  console.log(`  Download proxy: ${GITHUB_TOKEN ? 'enabled' : 'DISABLED (no GITHUB_TOKEN)'}`);
+  console.log(`  Download mirror: ${process.env.DOWNLOAD_MIRROR_CN_BASE_URL || process.env.DOWNLOAD_MIRROR_BASE_URL ? 'configured' : 'not configured'}`);
+  console.log(`  GitHub proxy: ${GITHUB_TOKEN ? 'enabled' : 'DISABLED (no GITHUB_TOKEN)'}`);
 });

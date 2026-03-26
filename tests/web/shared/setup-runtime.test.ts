@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildRuntimeBackendConfigPayload,
+  getGroupedSetupRuntimeOptions,
   getRuntimeBackendAuthSpec,
   getSetupRuntimeOptions,
+  normalizeRuntimeConfigShape,
 } from '../../../src/web/shared/setup-runtime.js';
 
 describe('setup runtime helpers', () => {
@@ -37,8 +39,28 @@ describe('setup runtime helpers', () => {
     expect(getRuntimeBackendAuthSpec('openai-compatible-api')).toMatchObject({
       authMode: 'api-key',
       runtimeProvider: 'codex',
-      testConnection: false,
+      testConnection: true,
     });
+  });
+
+  it('should group setup runtime options by managed vs api backends', () => {
+    expect(getGroupedSetupRuntimeOptions()).toEqual([
+      {
+        id: 'managed',
+        items: [
+          { backend: 'axon-cloud', icon: '☁️', recommended: true },
+          { backend: 'claude-subscription', icon: '🔐' },
+          { backend: 'codex-subscription', icon: '🧠' },
+        ],
+      },
+      {
+        id: 'api',
+        items: [
+          { backend: 'claude-compatible-api', icon: '🔑' },
+          { backend: 'openai-compatible-api', icon: '🌐' },
+        ],
+      },
+    ]);
   });
 
   it('should build configuration payloads from runtime backends', () => {
@@ -59,6 +81,63 @@ describe('setup runtime helpers', () => {
       authPriority: 'apiKey',
       apiBaseUrl: 'https://api.openai.com/v1',
       apiKey: 'sk-test',
+    });
+  });
+
+  it('should normalize codex api-key updates onto the api backend family', () => {
+    expect(normalizeRuntimeConfigShape({
+      current: {
+        runtimeBackend: 'codex-subscription',
+        runtimeProvider: 'codex',
+        apiProvider: 'openai-compatible',
+        authPriority: 'oauth',
+      },
+      updates: {
+        authPriority: 'apiKey',
+      },
+    })).toEqual({
+      runtimeBackend: 'openai-compatible-api',
+      runtimeProvider: 'codex',
+      apiProvider: 'openai-compatible',
+      authPriority: 'apiKey',
+    });
+  });
+
+  it('should normalize oauth updates onto the current runtime family', () => {
+    expect(normalizeRuntimeConfigShape({
+      current: {
+        runtimeBackend: 'openai-compatible-api',
+        runtimeProvider: 'codex',
+        apiProvider: 'openai-compatible',
+        authPriority: 'apiKey',
+      },
+      updates: {
+        authPriority: 'oauth',
+      },
+    })).toEqual({
+      runtimeBackend: 'codex-subscription',
+      runtimeProvider: 'codex',
+      apiProvider: 'openai-compatible',
+      authPriority: 'oauth',
+    });
+  });
+
+  it('should preserve claude-compatible provider variants during normalization', () => {
+    expect(normalizeRuntimeConfigShape({
+      current: {
+        runtimeBackend: 'claude-compatible-api',
+        runtimeProvider: 'anthropic',
+        apiProvider: 'bedrock',
+        authPriority: 'apiKey',
+      },
+      updates: {
+        runtimeBackend: 'claude-compatible-api',
+      },
+    })).toEqual({
+      runtimeBackend: 'claude-compatible-api',
+      runtimeProvider: 'anthropic',
+      apiProvider: 'bedrock',
+      authPriority: 'apiKey',
     });
   });
 });

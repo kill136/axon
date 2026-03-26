@@ -1,3 +1,4 @@
+import type Anthropic from '@anthropic-ai/sdk';
 import type { PromptBlock } from '../../../prompt/index.js';
 import type { ContentBlock, Message, ToolDefinition } from '../../../types/index.js';
 import type { ThinkingResult } from '../../../models/index.js';
@@ -49,6 +50,22 @@ export type ConversationStreamEvent =
         thinkingTokens?: number;
       };
     }
+  | {
+      type: 'rate_limit';
+      info?: {
+        status: string;
+        utilization5h?: number;
+        utilization7d?: number;
+        resetsAt?: number;
+        rateLimitType?: string;
+        remainingRequests?: number;
+        limitRequests?: number;
+        remainingTokens?: number;
+        limitTokens?: number;
+        cacheReadTokens?: number;
+        cacheCreationTokens?: number;
+      };
+    }
   | { type: 'error'; error?: string }
   | { type: 'response_headers'; headers?: Headers };
 
@@ -60,6 +77,7 @@ export interface ConversationRequestOptions {
   toolChoice?: { type: 'auto' } | { type: 'any' } | { type: 'tool'; name: string };
   promptBlocks?: PromptBlock[];
   toolSearchEnabled?: boolean;
+  preferStreamingTransport?: boolean;
 }
 
 export interface ConversationClient {
@@ -75,4 +93,8 @@ export interface ConversationClient {
     systemPrompt?: string,
     options?: ConversationRequestOptions,
   ): AsyncGenerator<ConversationStreamEvent>;
+  getModel(): string;
+  setModel(model: string): void;
+  getIsOAuth(): boolean;
+  getAnthropicClient(): Anthropic | undefined;
 }

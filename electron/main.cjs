@@ -12,7 +12,7 @@
  * 3. Electron GUI 没有 stdout，pipe 输出会 EPIPE 崩溃
  */
 
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
 const fs = require('fs');
@@ -292,6 +292,13 @@ ipcMain.on('window-maximize', () => {
 });
 ipcMain.on('window-close', () => {
   mainWindow?.close();
+});
+ipcMain.handle('open-external', async (_event, url) => {
+  if (typeof url !== 'string' || !url.trim()) {
+    throw new Error('A valid URL is required');
+  }
+
+  await shell.openExternal(url);
 });
 
 app.whenReady().then(async () => {

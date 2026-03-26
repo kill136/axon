@@ -154,7 +154,14 @@ export class AttachmentManager {
       );
     }
 
-    // Memory Recall 已移除 — autoRecall 信噪比太低，用户可主动调用 MemorySearch
+    // Focused Memory Recall
+    if (context.memoryRecall) {
+      attachmentPromises.push(
+        this.computeAttachment('memory_recall', () =>
+          Promise.resolve(this.generateMemoryRecallAttachment(context.memoryRecall!))
+        )
+      );
+    }
 
     // Active Goals
     if (context.activeGoals && context.activeGoals.length > 0) {
@@ -359,7 +366,20 @@ export class AttachmentManager {
   /**
    * 生成记忆回忆附件（autoRecall）
    */
-  // generateMemoryRecallAttachment 已移除 — autoRecall 已废弃
+  private generateMemoryRecallAttachment(memoryRecall: string): Attachment[] {
+    if (!memoryRecall.trim()) {
+      return [];
+    }
+
+    return [
+      {
+        type: 'memory_recall' as AttachmentType,
+        content: `<system-reminder>\nRelevant long-term memory for the current user request:\n${memoryRecall}\n</system-reminder>`,
+        label: 'Memory Recall',
+        priority: 27,
+      },
+    ];
+  }
 
   /**
    * 生成目标附件

@@ -6,7 +6,7 @@
  * - Axon Cloud（显示余额 + 充值入口）
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, type MouseEvent as ReactMouseEvent } from 'react';
 import { useLanguage } from '../i18n';
 import './AuthStatus.css';
 import { type WebRuntimeBackend } from '../../../shared/model-catalog';
@@ -37,6 +37,18 @@ interface AuthStatusProps {
 }
 
 const AXON_CLOUD_DASHBOARD = 'https://api.chatbi.site/console';
+const AXON_CLOUD_TOPUP_PATH = '/api/axon-cloud/topup';
+
+interface ElectronBridge {
+  openExternal?: (url: string) => Promise<void>;
+}
+
+function getElectronBridge(): ElectronBridge | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+  return (window as any).electronAPI ?? null;
+}
 
 export function AuthStatus({ onLoginClick, refreshKey }: AuthStatusProps) {
   const { t } = useLanguage();
@@ -131,6 +143,33 @@ export function AuthStatus({ onLoginClick, refreshKey }: AuthStatusProps) {
     }
   };
 
+  const handleExternalLinkClick = async (
+    event: ReactMouseEvent<HTMLAnchorElement>,
+    url: string,
+  ) => {
+    const electronBridge = getElectronBridge();
+    if (!electronBridge?.openExternal) {
+      return;
+    }
+
+    event.preventDefault();
+
+    try {
+      await electronBridge.openExternal(url);
+      setDropdownOpen(false);
+    } catch (error) {
+      console.error('Failed to open external link:', error);
+    }
+  };
+
+  const handleRechargeClick = (event: ReactMouseEvent<HTMLAnchorElement>) => {
+    void handleExternalLinkClick(event, new URL(AXON_CLOUD_TOPUP_PATH, window.location.origin).toString());
+  };
+
+  const handleDashboardClick = (event: ReactMouseEvent<HTMLAnchorElement>) => {
+    void handleExternalLinkClick(event, AXON_CLOUD_DASHBOARD);
+  };
+
   if (loading) {
     return (
       <div className="auth-status loading">
@@ -223,10 +262,11 @@ export function AuthStatus({ onLoginClick, refreshKey }: AuthStatusProps) {
                   )}
                   <div className="quota-actions">
                     <a
-                      href={`${AXON_CLOUD_DASHBOARD}/topup`}
+                      href={AXON_CLOUD_TOPUP_PATH}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="auth-dropdown-item quota-action-btn recharge"
+                      onClick={handleRechargeClick}
                     >
                       {t('axonCloud.recharge')}
                     </a>
@@ -235,6 +275,7 @@ export function AuthStatus({ onLoginClick, refreshKey }: AuthStatusProps) {
                       target="_blank"
                       rel="noopener noreferrer"
                       className="auth-dropdown-item quota-action-btn"
+                      onClick={handleDashboardClick}
                     >
                       {t('axonCloud.manage')}
                     </a>

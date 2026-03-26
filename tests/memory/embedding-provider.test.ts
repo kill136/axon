@@ -146,7 +146,29 @@ describe('embedding-provider', () => {
       expect(magnitude).toBeCloseTo(1.0, 5);
     });
 
-    it('should throw on non-ok response', async () => {
+    it('should retry transient network errors before succeeding', async () => {
+      fetchSpy
+        .mockRejectedValueOnce(new TypeError('fetch failed'))
+        .mockRejectedValueOnce(new Error('other side closed'))
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            data: [{ embedding: [0.1, 0.2, 0.3], index: 0 }],
+          }),
+        });
+
+      const provider = createOpenAIEmbeddingProvider({
+        apiKey: 'test-key',
+        baseUrl: 'https://example.com/v1',
+        model: 'embeddinggemma:300m',
+      });
+
+      const result = await provider.embedQuery('hello');
+      expect(result).toHaveLength(3);
+      expect(fetchSpy).toHaveBeenCalledTimes(3);
+    });
+
+    it('should not retry non-transient HTTP errors', async () => {
       fetchSpy.mockResolvedValueOnce({
         ok: false,
         status: 401,
@@ -159,6 +181,7 @@ describe('embedding-provider', () => {
       });
 
       await expect(provider.embedQuery('hello')).rejects.toThrow('Embedding API error 401');
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
     });
   });
 

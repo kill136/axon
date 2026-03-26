@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useProjectChangeListener, type Project, type BlueprintInfo } from '../contexts/ProjectContext';
+import { useProjectChangeListener, type Project, type BlueprintInfo, type ProjectChangeMeta } from '../contexts/ProjectContext';
 import type { Session, WSMessage } from '../types';
 
 // 防抖函数
@@ -258,9 +258,9 @@ export function useSessionManager({
   // 监听项目切换事件
   useProjectChangeListener(
     useCallback(
-      (project: Project | null, _blueprint: BlueprintInfo | null) => {
-        console.log('[App] Project switched, creating new session for:', project?.path);
-        if (connected) {
+      (project: Project | null, _blueprint: BlueprintInfo | null, meta: ProjectChangeMeta) => {
+        console.log('[App] Project changed:', project?.path, `createSession=${meta.createSession}`, `source=${meta.source}`);
+        if (connected && meta.createSession) {
           // 切换项目时自动创建新会话，确保当前会话关联到新目录
           setMessages([]);
           send({ type: 'session_new', payload: { model, projectPath: project?.path } });

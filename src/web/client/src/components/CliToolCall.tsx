@@ -5,6 +5,8 @@ import './CliToolCall.css';
 import type { ToolUse, SubagentToolCall } from '../types';
 import { computeSideBySideDiff } from '../utils/diffUtils';
 import type { DiffRow } from '../utils/diffUtils';
+import { getEditOperations, getToolResultText } from '../utils/editTool';
+import type { EditOperation } from '../utils/editTool';
 
 // 默认显示的最大行数（与官方 CLI 保持一致）
 const DEFAULT_MAX_LINES = 10;
@@ -36,6 +38,10 @@ interface CliToolCallProps {
   toolUse: ToolUse;
 }
 
+type EditDisplayRow =
+  | { kind: 'separator'; key: string }
+  | { kind: 'diff'; key: string; row: DiffRow };
+
 /**
  * 可展开的内容包装组件 - 支持 "Click to expand" 功能
  */
@@ -46,6 +52,8 @@ interface ExpandableContentProps {
   expanded: boolean;
   onToggle: () => void;
   t: (key: string, params?: Record<string, string | number>) => string;
+  hideContentWhenCollapsed?: boolean;
+  alwaysShowToggle?: boolean;
 }
 
 function ExpandableContent({
@@ -55,18 +63,24 @@ function ExpandableContent({
   expanded,
   onToggle,
   t,
+  hideContentWhenCollapsed = false,
+  alwaysShowToggle = false,
 }: ExpandableContentProps) {
   const hiddenLines = totalLines - maxLines;
   const shouldTruncate = !expanded && hiddenLines > 0;
+  const showToggle = alwaysShowToggle || hiddenLines > 0;
+  const showBody = !(hideContentWhenCollapsed && !expanded);
 
   return (
     <div className="cli-expandable-content">
-      <div className={`cli-expandable-body ${shouldTruncate ? 'cli-expandable-truncated' : ''}`}>
-        {children}
-      </div>
-      {hiddenLines > 0 && (
+      {showBody && (
+        <div className={`cli-expandable-body ${shouldTruncate ? 'cli-expandable-truncated' : ''}`}>
+          {children}
+        </div>
+      )}
+      {showToggle && (
         <div className="cli-expand-footer">
-          {!expanded && (
+          {!expanded && !hideContentWhenCollapsed && hiddenLines > 0 && (
             <span className="cli-hidden-lines">{t('cli.hiddenLines', { count: hiddenLines })}</span>
           )}
           <button
@@ -138,6 +152,45 @@ function getToolDescription(name: string, input: any): string {
       }
       return '';
   }
+}
+
+interface HiddenOutputToolContentProps {
+  output: string;
+  lineCount: number;
+  containerClassName: string;
+  infoClassName: string;
+  previewClassName: string;
+}
+
+function HiddenOutputToolContent({
+  output,
+  lineCount,
+  containerClassName,
+  infoClassName,
+  previewClassName,
+}: HiddenOutputToolContentProps) {
+  const [expanded, setExpanded] = useState(false);
+  const { t } = useLanguage();
+  const totalLines = output ? output.split('\n').length : 0;
+
+  if (!output) return null;
+
+  return (
+    <div className={containerClassName}>
+      <div className={infoClassName}>{t('cli.linesOfOutput', { count: lineCount })}</div>
+      <ExpandableContent
+        totalLines={totalLines}
+        maxLines={DEFAULT_MAX_LINES}
+        expanded={expanded}
+        onToggle={() => setExpanded(!expanded)}
+        t={t}
+        hideContentWhenCollapsed
+        alwaysShowToggle
+      >
+        <pre className={previewClassName}>{output}</pre>
+      </ExpandableContent>
+    </div>
+  );
 }
 
 /**
@@ -225,33 +278,81 @@ function BashToolContent({ input, result, status, streamingOutput }: {
 function EditToolContent({ input, result }: { input: any; result?: any }) {
   const [expanded, setExpanded] = useState(false);
   const { t } = useLanguage();
-  const oldString = input?.old_string || '';
-  const newString = input?.new_string || '';
   const filePath = input?.file_path || '';
   const fileExt = filePath.split('.').pop()?.toLowerCase() || '';
   const isDocumentFile = ['docx', 'xlsx', 'pptx'].includes(fileExt);
+  const editOperations = useMemo(() => getEditOperations(input), [input]);
+  const resultText = getToolResultText(result);
 
-  const oldLines = oldString ? oldString.split('\n') : [];
-  const newLines = newString ? newString.split('\n') : [];
+  const diffRows = useMemo<EditDisplayRow[]>(() => {
+    return editOperations.flatMap((operation, index) => {
+      const rows: EditDisplayRow[] = [];
+      if (index > 0) {
+        rows.push({ kind: 'separator', key: `separator-${index}` });
+      }
 
-  const diffRows = useMemo(
-    () => computeSideBySideDiff(oldLines, newLines),
-    [oldString, newString]
-  );
+      const oldLines = operation.old_string ? operation.old_string.split('\n') : [];
+      const newLines = operation.new_string ? operation.new_string.split('\n') : [];
+      const operationRows = computeSideBySideDiff(oldLines, newLines).map((row, rowIndex) => ({
+        kind: 'diff' as const,
+        key: `diff-${index}-${rowIndex}`,
+        row,
+      }));
+
+      rows.push(...operationRows);
+      return rows;
+    });
+  }, [editOperations]);
 
   const totalRows = diffRows.length;
   const maxRows = DEFAULT_MAX_LINES;
   const displayRows = expanded ? diffRows : diffRows.slice(0, maxRows);
 
   // 统计增删行数
-  const removedCount = diffRows.filter(r => r.left && !r.right).length;
-  const addedCount = diffRows.filter(r => !r.left && r.right).length;
+  const removedCount = diffRows.filter(
+    (entry): entry is Extract<EditDisplayRow, { kind: 'diff' }> => entry.kind === 'diff'
+  ).filter(entry => entry.row.left && !entry.row.right).length;
+  const addedCount = diffRows.filter(
+    (entry): entry is Extract<EditDisplayRow, { kind: 'diff' }> => entry.kind === 'diff'
+  ).filter(entry => !entry.row.left && entry.row.right).length;
 
   // 生成摘要文本
   const summaryParts: string[] = [];
   if (removedCount > 0) summaryParts.push(t('cli.editRemoved', { count: removedCount }));
   if (addedCount > 0) summaryParts.push(t('cli.editAdded', { count: addedCount }));
   const summary = summaryParts.length > 0 ? summaryParts.join(', ') : t('cli.editModified');
+
+  if (displayRows.length === 0) {
+    const fallbackLines = resultText ? resultText.split('\n').length : 0;
+
+    return (
+      <div className="cli-edit-content">
+        <div className="cli-edit-header">
+          {isDocumentFile && (
+            <span className="cli-edit-doc-badge">{fileExt.toUpperCase()}</span>
+          )}
+          <div className="cli-edit-status">{summary}</div>
+          <div className="cli-edit-stats">
+            {removedCount > 0 && <span className="cli-stat-removed">-{removedCount}</span>}
+            {addedCount > 0 && <span className="cli-stat-added">+{addedCount}</span>}
+          </div>
+        </div>
+        {resultText ? (
+          <ExpandableContent
+            totalLines={fallbackLines}
+            maxLines={DEFAULT_MAX_LINES}
+            expanded={expanded}
+            onToggle={() => setExpanded(!expanded)}
+            t={t}
+          >
+            <pre className="cli-edit-fallback">{resultText}</pre>
+          </ExpandableContent>
+        ) : (
+          <div className="cli-edit-fallback cli-edit-fallback--empty">{summary}</div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="cli-edit-content">
@@ -273,39 +374,43 @@ function EditToolContent({ input, result }: { input: any; result?: any }) {
         t={t}
       >
         <div className="cli-diff-sidebyside">
-          {displayRows.map((row, i) => (
-            <div key={i} className="cli-diff-row">
-              {/* 左列 - old */}
-              <div className={`cli-diff-cell ${
-                row.left
-                  ? (row.left.type === 'removed' ? 'cli-diff-cell--removed' : 'cli-diff-cell--unchanged')
-                  : 'cli-diff-cell--empty'
-              }`}>
-                {row.left && (
-                  <>
-                    <span className="cli-diff-cell-prefix">
-                      {row.left.type === 'removed' ? '\u2212' : '\u00A0'}
-                    </span>
-                    <span className="cli-diff-cell-text">{row.left.text || '\u00A0'}</span>
-                  </>
-                )}
+          {displayRows.map((entry) => (
+            entry.kind === 'separator' ? (
+              <div key={entry.key} className="cli-edit-separator" />
+            ) : (
+              <div key={entry.key} className="cli-diff-row">
+                {/* 左列 - old */}
+                <div className={`cli-diff-cell ${
+                  entry.row.left
+                    ? (entry.row.left.type === 'removed' ? 'cli-diff-cell--removed' : 'cli-diff-cell--unchanged')
+                    : 'cli-diff-cell--empty'
+                }`}>
+                  {entry.row.left && (
+                    <>
+                      <span className="cli-diff-cell-prefix">
+                        {entry.row.left.type === 'removed' ? '\u2212' : '\u00A0'}
+                      </span>
+                      <span className="cli-diff-cell-text">{entry.row.left.text || '\u00A0'}</span>
+                    </>
+                  )}
+                </div>
+                {/* 右列 - new */}
+                <div className={`cli-diff-cell ${
+                  entry.row.right
+                    ? (entry.row.right.type === 'added' ? 'cli-diff-cell--added' : 'cli-diff-cell--unchanged')
+                    : 'cli-diff-cell--empty'
+                }`}>
+                  {entry.row.right && (
+                    <>
+                      <span className="cli-diff-cell-prefix">
+                        {entry.row.right.type === 'added' ? '+' : '\u00A0'}
+                      </span>
+                      <span className="cli-diff-cell-text">{entry.row.right.text || '\u00A0'}</span>
+                    </>
+                  )}
+                </div>
               </div>
-              {/* 右列 - new */}
-              <div className={`cli-diff-cell ${
-                row.right
-                  ? (row.right.type === 'added' ? 'cli-diff-cell--added' : 'cli-diff-cell--unchanged')
-                  : 'cli-diff-cell--empty'
-              }`}>
-                {row.right && (
-                  <>
-                    <span className="cli-diff-cell-prefix">
-                      {row.right.type === 'added' ? '+' : '\u00A0'}
-                    </span>
-                    <span className="cli-diff-cell-text">{row.right.text || '\u00A0'}</span>
-                  </>
-                )}
-              </div>
-            </div>
+            )
           ))}
         </div>
       </ExpandableContent>
@@ -431,68 +536,54 @@ function TodoWriteContent({ input }: { input: any }) {
 /**
  * 渲染 Read 工具内容 - 支持 Click to expand
  */
-function ReadToolContent({ input, result }: { input: any; result?: any }) {
-  const [expanded, setExpanded] = useState(false);
-  const { t } = useLanguage();
-  const output = result?.output || '';
-  const allLines = output.split('\n');
-  const totalLines = allLines.length;
-  const maxLines = DEFAULT_MAX_LINES;
-
-  const displayLines = expanded ? allLines : allLines.slice(0, maxLines);
+function ReadToolContent({ result }: { result?: any }) {
+  const output = getToolResultText(result);
+  const lineCount = output ? output.split('\n').length : 0;
 
   return (
-    <div className="cli-read-content">
-      {result && (
-        <>
-          <div className="cli-read-info">{t('cli.linesOfOutput', { count: totalLines })}</div>
-          <ExpandableContent
-            totalLines={totalLines}
-            maxLines={maxLines}
-            expanded={expanded}
-            onToggle={() => setExpanded(!expanded)}
-            t={t}
-          >
-            <pre className="cli-read-preview">
-              {displayLines.join('\n')}
-            </pre>
-          </ExpandableContent>
-        </>
-      )}
-    </div>
+    <HiddenOutputToolContent
+      output={output}
+      lineCount={lineCount}
+      containerClassName="cli-read-content"
+      infoClassName="cli-read-info"
+      previewClassName="cli-read-preview"
+    />
   );
 }
 
 /**
  * 渲染 Grep 工具内容 - 支持 Click to expand
  */
-function GrepToolContent({ input, result }: { input: any; result?: any }) {
-  const [expanded, setExpanded] = useState(false);
-  const { t } = useLanguage();
-  const output = result?.output || '';
-  const allLines = output.split('\n');
-  const totalLines = allLines.filter((l: string) => l.trim()).length;
-  const maxLines = DEFAULT_MAX_LINES;
-
-  const displayLines = expanded ? allLines : allLines.slice(0, maxLines);
+function GrepToolContent({ result }: { result?: any }) {
+  const output = getToolResultText(result);
+  const lineCount = output ? output.split('\n').filter((line: string) => line.trim().length > 0).length : 0;
 
   return (
-    <div className="cli-grep-content">
-      {result && (
-        <>
-          <div className="cli-grep-info">{t('cli.linesOfOutput', { count: totalLines })}</div>
-          <ExpandableContent
-            totalLines={allLines.length}
-            maxLines={maxLines}
-            expanded={expanded}
-            onToggle={() => setExpanded(!expanded)}
-            t={t}
-          >
-            <pre className="cli-grep-preview">{displayLines.join('\n')}</pre>
-          </ExpandableContent>
-        </>
-      )}
-    </div>
+    <HiddenOutputToolContent
+      output={output}
+      lineCount={lineCount}
+      containerClassName="cli-grep-content"
+      infoClassName="cli-grep-info"
+      previewClassName="cli-grep-preview"
+    />
+  );
+}
+
+/**
+ * 渲染 Glob 工具内容 - 默认隐藏结果正文
+ */
+function GlobToolContent({ result }: { result?: any }) {
+  const output = getToolResultText(result);
+  const lineCount = output ? output.split('\n').filter((line: string) => line.trim().length > 0).length : 0;
+
+  return (
+    <HiddenOutputToolContent
+      output={output}
+      lineCount={lineCount}
+      containerClassName="cli-glob-content"
+      infoClassName="cli-glob-info"
+      previewClassName="cli-glob-preview"
+    />
   );
 }
 
@@ -986,9 +1077,11 @@ export function CliToolCall({ toolUse }: CliToolCallProps) {
       case 'TodoWrite':
         return <TodoWriteContent input={input} />;
       case 'Read':
-        return <ReadToolContent input={input} result={result} />;
+        return <ReadToolContent result={result} />;
+      case 'Glob':
+        return <GlobToolContent result={result} />;
       case 'Grep':
-        return <GrepToolContent input={input} result={result} />;
+        return <GrepToolContent result={result} />;
       case 'Browser':
         return <BrowserToolContent input={input} result={result} />;
       case 'TestRunner':

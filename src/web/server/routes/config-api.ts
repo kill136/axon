@@ -6,6 +6,7 @@
 import type { Express, Request, Response } from 'express';
 import { webConfigService } from '../services/config-service.js';
 import { webAuth } from '../web-auth.js';
+import { testRuntimeApiConnection } from '../runtime/api-connection-test.js';
 
 /**
  * 统一的响应格式
@@ -219,7 +220,12 @@ export function setupConfigApiRoutes(app: Express): void {
    */
   app.post('/api/config/api/test', async (req: Request, res: Response) => {
     try {
-      const { apiBaseUrl, customModelName } = req.body;
+      const {
+        apiBaseUrl,
+        customModelName,
+        runtimeBackend,
+        apiProvider,
+      } = req.body;
       let { apiKey } = req.body;
 
       // 如果前端发来的是掩码值或空值，回退到已保存的真实 key
@@ -232,34 +238,22 @@ export function setupConfigApiRoutes(app: Express): void {
         return sendError(res, new Error('API Key is required for testing'), 400);
       }
 
-      // 导入 Anthropic SDK
-      const Anthropic = (await import('@anthropic-ai/sdk')).default;
-
-      // 创建临时客户端
-      const client = new Anthropic({
-        apiKey: apiKey,
-        baseURL: apiBaseUrl || undefined,
-      });
-
-      // 发送一个简单的测试请求
-      const testModel = customModelName || 'claude-haiku-4-5-20251001';
-      
       try {
-        const response = await client.messages.create({
-          model: testModel,
-          max_tokens: 10,
-          messages: [{
-            role: 'user',
-            content: 'Hi'
-          }]
+        const result = await testRuntimeApiConnection({
+          apiKey,
+          apiBaseUrl,
+          customModelName,
+          runtimeBackend,
+          apiProvider,
         });
 
         // 测试成功
         sendSuccess(res, {
           success: true,
-          model: testModel,
-          baseUrl: apiBaseUrl || 'https://api.anthropic.com',
-          responseId: response.id,
+          model: result.model,
+          baseUrl: result.baseUrl,
+          provider: result.provider,
+          availableModels: result.availableModels,
         }, 'API connection test successful');
       } catch (apiError: any) {
         // API 调用失败

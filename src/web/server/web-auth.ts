@@ -26,14 +26,19 @@ import { codexAuthManager, type CodexAuthConfig } from './codex-auth-manager.js'
 import type { AuthStatus } from '../shared/types.js';
 import Anthropic from '@anthropic-ai/sdk';
 import {
-  getDefaultWebModelForBackend,
   getProviderForRuntimeBackend,
+  supportsDynamicModelCatalogForBackend,
   type WebRuntimeBackend,
   type WebRuntimeProvider,
 } from '../shared/model-catalog.js';
-
-const DEFAULT_CODEX_BASE_URL = 'https://chatgpt.com/backend-api/codex';
-const DEFAULT_CODEX_API_KEY_BASE_URL = 'https://api.openai.com/v1';
+import {
+  getDefaultBaseUrlForRuntimeBackend,
+  getRuntimeOAuthRefreshStrategy,
+} from '../shared/runtime-capabilities.js';
+import {
+  normalizeRuntimeConfigShape,
+  type RuntimeConfigApiProvider,
+} from '../shared/setup-runtime.js';
 
 function isCodexCompatibleModel(model?: string): boolean {
   if (!model) return false;
@@ -91,6 +96,14 @@ function isCodexApiKeyBaseUrlCandidate(baseUrl: string): boolean {
   } catch {
     return false;
   }
+}
+
+function isRuntimeConfigApiProvider(value?: string): value is RuntimeConfigApiProvider {
+  return value === 'anthropic'
+    || value === 'openai-compatible'
+    || value === 'axon-cloud'
+    || value === 'bedrock'
+    || value === 'vertex';
 }
 
 // ============ WebAuthProvider ============
@@ -164,35 +177,24 @@ class WebAuthProvider {
     if (
       settings.authPriority === 'oauth'
       && oauthConfig?.subscriptionType === 'console'
-      && settings.runtimeBackend === 'claude-subscription'
+      && settings.runtimeProvider !== 'codex'
+      && (!settings.runtimeBackend || settings.runtimeBackend === 'claude-subscription')
     ) {
       return 'claude-compatible-api';
-    }
-
-    if (settings.runtimeBackend) {
-      return settings.runtimeBackend;
     }
 
     if (settings.apiBaseUrl?.includes('chatbi.site')) {
       return 'axon-cloud';
     }
 
-    if (settings.runtimeProvider === 'codex') {
-      return 'codex-subscription';
-    }
-
-    if (settings.authPriority === 'oauth') {
-      if (oauthConfig?.subscriptionType === 'console') {
-        return 'claude-compatible-api';
-      }
-      return 'claude-subscription';
-    }
-
-    if (settings.apiProvider === 'openai-compatible') {
-      return 'openai-compatible-api';
-    }
-
-    return 'claude-compatible-api';
+    return normalizeRuntimeConfigShape({
+      updates: {
+        runtimeBackend: settings.runtimeBackend,
+        runtimeProvider: settings.runtimeProvider,
+        apiProvider: isRuntimeConfigApiProvider(settings.apiProvider) ? settings.apiProvider : undefined,
+        authPriority: settings.authPriority,
+      },
+    }).runtimeBackend;
   }
 
   private getStoredModelForBackend(
@@ -209,7 +211,7 @@ class WebAuthProvider {
       return undefined;
     }
 
-    if (backend === 'axon-cloud' || backend === 'openai-compatible-api') {
+    if (supportsDynamicModelCatalogForBackend(backend)) {
       return legacyModel;
     }
 
@@ -256,8 +258,11 @@ class WebAuthProvider {
     runtimeBackend: WebRuntimeBackend = this.inferRuntimeBackend(this.readSettings()),
   ): Promise<boolean> {
     const settings = this.readSettings();
+    const refreshStrategy = getRuntimeOAuthRefreshStrategy(runtimeBackend, {
+      authPriority: settings.authPriority,
+    });
 
-    if (runtimeBackend === 'codex-subscription') {
+    if (refreshStrategy === 'codex') {
       const codexConfig = codexAuthManager.getAuthConfig();
       if (!codexConfig?.accessToken) return true;
       if (!codexAuthManager.isTokenExpired()) return true;
@@ -283,12 +288,7 @@ class WebAuthProvider {
       return this.refreshPromise;
     }
 
-    const isAnthropicOAuthBackend =
-      runtimeBackend === 'claude-subscription'
-      || (runtimeBackend === 'claude-compatible-api' && settings.authPriority === 'oauth');
-
-    // 非 Claude OAuth 模式，不需要刷新
-    if (!isAnthropicOAuthBackend) return true;
+    if (refreshStrategy !== 'anthropic') return true;
 
     // 检查是否有 OAuth 配置
     const config = oauthManager.getOAuthConfig();
@@ -638,7 +638,9 @@ class WebAuthProvider {
       return configuredBaseUrl.replace(/\/+$/, '');
     }
 
-    return usesApiKey ? DEFAULT_CODEX_API_KEY_BASE_URL : DEFAULT_CODEX_BASE_URL;
+    return getDefaultBaseUrlForRuntimeBackend('codex-subscription', {
+      useApiKey: usesApiKey,
+    });
   }
 
   getRuntimeBackend(): WebRuntimeBackend {
@@ -646,7 +648,9 @@ class WebAuthProvider {
   }
 
   getRuntimeProvider(): WebRuntimeProvider {
-    return getProviderForRuntimeBackend(this.getRuntimeBackend());
+    const runtimeBackend = this.getRuntimeBackend();
+    const runtimeModel = this.getStoredModelForBackend(runtimeBackend);
+    return getProviderForRuntimeBackend(runtimeBackend, runtimeModel);
   }
 
   getDefaultModelByBackend(): Partial<Record<WebRuntimeBackend, string>> {

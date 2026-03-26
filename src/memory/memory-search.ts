@@ -9,6 +9,8 @@ import * as crypto from 'crypto';
 import { LongTermStore } from './long-term-store.js';
 import { MemorySyncEngine } from './memory-sync.js';
 import type { MemorySource, MemorySearchResult } from './types.js';
+import { NotebookManager, type NotebookType } from './notebook.js';
+import { getSessionMemoryProjectDir } from '../context/session-memory.js';
 import { createOpenAIEmbeddingProvider, type EmbeddingProvider } from './embedding-provider.js';
 import { EmbeddingCache } from './embedding-cache.js';
 import { mergeHybridResults } from './hybrid-search.js';
@@ -20,6 +22,10 @@ import { applyMMRToResults, type MMRConfig } from './mmr.js';
 export interface MemorySearchOptions {
   source?: MemorySource | 'all';
   maxResults?: number;
+}
+
+export interface MemoryRecallOptions extends MemorySearchOptions {
+  mode?: 'hybrid' | 'keyword';
 }
 
 /**
@@ -81,17 +87,6 @@ function hashProjectPath(projectPath: string): string {
 }
 
 /**
- * 将项目路径转为安全的目录名
- */
-function sanitizeProjectPath(projectPath: string): string {
-  const hash = hashProjectPath(projectPath);
-  const projectName = path.basename(projectPath)
-    .replace(/[^a-zA-Z0-9_-]/g, '_')
-    .slice(0, 30);
-  return `${projectName}-${hash}`;
-}
-
-/**
  * 记忆搜索管理器
  */
 export class MemorySearchManager {
@@ -127,11 +122,35 @@ export class MemorySearchManager {
     if (opts.embeddingConfig?.apiKey) {
       manager.embeddingConfig = opts.embeddingConfig;
       try {
-        manager.embeddingProvider = createOpenAIEmbeddingProvider({
+        const rawProvider = createOpenAIEmbeddingProvider({
           apiKey: opts.embeddingConfig.apiKey,
           baseUrl: opts.embeddingConfig.baseUrl,
           model: opts.embeddingConfig.model,
         });
+
+        const disableEmbedding = (error: unknown): never => {
+          manager.embeddingProvider = null;
+          manager.embeddingCache = null;
+          throw error;
+        };
+
+        manager.embeddingProvider = {
+          ...rawProvider,
+          async embedQuery(text: string): Promise<number[]> {
+            try {
+              return await rawProvider.embedQuery(text);
+            } catch (error) {
+              return disableEmbedding(error);
+            }
+          },
+          async embedBatch(texts: string[]): Promise<number[][]> {
+            try {
+              return await rawProvider.embedBatch(texts);
+            } catch (error) {
+              return disableEmbedding(error);
+            }
+          },
+        };
 
         const cachePath = path.join(memoryProjectDir, 'embedding-cache.sqlite');
         manager.embeddingCache = await EmbeddingCache.create(cachePath);
@@ -167,13 +186,22 @@ export class MemorySearchManager {
   async sync(reason?: string): Promise<void> {
     const claudeDir = getClaudeDir();
     const memoryDir = path.join(claudeDir, 'memory', 'projects', this.projectHash);
-    const sessionsDir = path.join(claudeDir, 'projects', sanitizeProjectPath(this.projectDir));
+    const sessionsDir = getSessionMemoryProjectDir(this.projectDir);
     const transcriptsDir = path.join(claudeDir, 'sessions');
+    const notebookManager = new NotebookManager(this.projectDir);
+    const notebookPaths: Partial<Record<NotebookType, string>> = {
+      profile: notebookManager.getPath('profile'),
+      experience: notebookManager.getPath('experience'),
+      project: notebookManager.getPath('project'),
+      identity: notebookManager.getPath('identity'),
+      'tools-notes': notebookManager.getPath('tools-notes'),
+    };
 
     const result = await this.syncEngine.syncAll({
       memoryDir,
       sessionsDir,
       transcriptsDir,
+      notebookPaths,
     });
 
     if (process.env.AXON_DEBUG) {
@@ -229,10 +257,34 @@ export class MemorySearchManager {
    * @param query 查询文本（通常是用户的最新消息）
    * @param maxResults 最大结果数（默认 5，避免占用太多 prompt 空间）
    */
-  async recall(query: string, maxResults: number = 5): Promise<string | null> {
+  async recall(
+    query: string,
+    maxResults: number = 5,
+    opts?: MemoryRecallOptions,
+  ): Promise<string | null> {
     if (!query || query.trim().length < 3) return null;
 
-    const results = await this.hybridSearch(query, { maxResults });
+    let results: MemorySearchResult[];
+    if (opts?.mode === 'keyword') {
+      if (this.dirty) {
+        this.triggerSync();
+      }
+      if (this.syncPromise) {
+        await this.syncPromise;
+      }
+
+      const source = opts?.source === 'all' ? undefined : opts?.source;
+      results = this.store.search(query, {
+        source,
+        maxResults,
+      });
+    } else {
+      results = await this.hybridSearch(query, {
+        source: opts?.source,
+        maxResults,
+      });
+    }
+
     if (results.length === 0) return null;
 
     // 过滤低分结果（混合搜索 + 时间衰减后 score < 0.1 的没有参考价值）

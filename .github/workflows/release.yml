@@ -223,6 +223,14 @@ jobs:
     name: Build Windows Desktop (Setup .exe + Portable .zip)
     runs-on: windows-latest
     needs: release
+    env:
+      TENCENT_COS_SECRET_ID: ${{ secrets.TENCENT_COS_SECRET_ID }}
+      TENCENT_COS_SECRET_KEY: ${{ secrets.TENCENT_COS_SECRET_KEY }}
+      TENCENT_COS_BUCKET: ${{ secrets.TENCENT_COS_BUCKET }}
+      TENCENT_COS_REGION: ${{ secrets.TENCENT_COS_REGION }}
+      TENCENT_COS_PUBLIC_BASE_URL: ${{ secrets.TENCENT_COS_PUBLIC_BASE_URL }}
+      TENCENT_COS_OBJECT_KEY: ${{ secrets.TENCENT_COS_OBJECT_KEY }}
+      TENCENT_COS_CACHE_CONTROL: ${{ secrets.TENCENT_COS_CACHE_CONTROL }}
 
     steps:
       - name: Checkout
@@ -273,6 +281,43 @@ jobs:
             Write-Error "Inno Setup output not found: Axon-Setup.exe"
             exit 1
           }
+
+      - name: Upload Setup.exe to Tencent COS
+        id: tencent_cos_mirror
+        if: ${{ env.TENCENT_COS_SECRET_ID != '' && env.TENCENT_COS_SECRET_KEY != '' && env.TENCENT_COS_BUCKET != '' && env.TENCENT_COS_REGION != '' }}
+        shell: pwsh
+        run: node scripts/upload-tencent-cos-installer.cjs Axon-Setup.exe
+
+      - name: Summarize skipped Tencent COS mirror upload
+        if: ${{ !(env.TENCENT_COS_SECRET_ID != '' && env.TENCENT_COS_SECRET_KEY != '' && env.TENCENT_COS_BUCKET != '' && env.TENCENT_COS_REGION != '') }}
+        shell: pwsh
+        run: |
+          @(
+            '## Tencent COS mirror'
+            ''
+            'Skipped because one or more required GitHub secrets are missing:'
+            '- TENCENT_COS_SECRET_ID'
+            '- TENCENT_COS_SECRET_KEY'
+            '- TENCENT_COS_BUCKET'
+            '- TENCENT_COS_REGION'
+          ) | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+
+      - name: Summarize Tencent COS mirror upload
+        if: ${{ steps.tencent_cos_mirror.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          @(
+            '## Tencent COS mirror'
+            ''
+            "- Mirror object URL: ${{ steps.tencent_cos_mirror.outputs.public_url }}"
+            "- Mirror base URL: ${{ steps.tencent_cos_mirror.outputs.public_base_url }}"
+            "- Object key: ${{ steps.tencent_cos_mirror.outputs.object_key }}"
+            "- Region: ${{ steps.tencent_cos_mirror.outputs.region }}"
+            "- Bucket: ${{ steps.tencent_cos_mirror.outputs.bucket }}"
+            "- SHA256: ${{ steps.tencent_cos_mirror.outputs.sha256 }}"
+            ''
+            '> This URL can be used directly as DOWNLOAD_MIRROR_CN_AXON_SETUP_EXE_URL if the bucket/object is public-readable.'
+          ) | Add-Content -Path $env:GITHUB_STEP_SUMMARY
 
       - name: Upload to Release
         uses: softprops/action-gh-release@v2

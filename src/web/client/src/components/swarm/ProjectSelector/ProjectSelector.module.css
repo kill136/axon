@@ -324,10 +324,20 @@
   font-size: 13px;
 }
 
+.emptyState p {
+  margin: 0;
+}
+
 .emptyIcon {
   font-size: 32px;
   margin-bottom: 8px;
   opacity: 0.5;
+}
+
+.emptyHint {
+  margin-top: 8px !important;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 /* 加载状态 */

@@ -6,10 +6,10 @@ import {
 } from '../../src/web/client/src/hooks/useRuntimeModelCatalog';
 
 describe('runtime model catalog hook helpers', () => {
-  it('should only enable dynamic model catalogs for Axon Cloud', () => {
+  it('should enable dynamic model catalogs for backends with live model discovery', () => {
     expect(supportsDynamicModelCatalog('axon-cloud')).toBe(true);
+    expect(supportsDynamicModelCatalog('openai-compatible-api')).toBe(true);
     expect(supportsDynamicModelCatalog('claude-compatible-api')).toBe(false);
-    expect(supportsDynamicModelCatalog('openai-compatible-api')).toBe(false);
   });
 
   it('should normalize model catalog payloads from api_models_response', () => {

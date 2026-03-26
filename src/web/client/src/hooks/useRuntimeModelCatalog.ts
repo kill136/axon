@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import type { WSMessage } from '../types';
-import type { WebRuntimeBackend } from '../../../shared/model-catalog';
+import {
+  supportsDynamicModelCatalogForBackend,
+  type WebRuntimeBackend,
+} from '../../../shared/model-catalog';
 
 interface UseRuntimeModelCatalogParams {
   connected: boolean;
@@ -10,7 +13,7 @@ interface UseRuntimeModelCatalogParams {
 }
 
 export function supportsDynamicModelCatalog(runtimeBackend: WebRuntimeBackend): boolean {
-  return runtimeBackend === 'axon-cloud';
+  return supportsDynamicModelCatalogForBackend(runtimeBackend);
 }
 
 export function parseRuntimeModelCatalogMessage(message: WSMessage): string[] | null {

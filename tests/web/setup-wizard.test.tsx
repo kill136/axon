@@ -30,12 +30,16 @@ vi.mock('../../src/web/client/src/i18n', () => ({
 describe('SetupWizard', () => {
   let container: HTMLDivElement;
   let root: ReturnType<typeof createRoot>;
+  let fetchMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
+    localStorage.clear();
+    fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
   });
 
   afterEach(() => {
@@ -43,8 +47,49 @@ describe('SetupWizard', () => {
       root.unmount();
     });
     container.remove();
+    vi.unstubAllGlobals();
     vi.clearAllMocks();
   });
+
+  const findButton = (text: string) => Array.from(container.querySelectorAll('button')).find(
+    button => button.textContent === text,
+  );
+
+  const clickButton = async (text: string) => {
+    const button = findButton(text);
+
+    expect(button).toBeTruthy();
+
+    await ClientReact.act(async () => {
+      button?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+  };
+
+  const clickModeCard = async (text: string) => {
+    const card = Array.from(container.querySelectorAll('.setup-wizard-mode-card')).find(
+      element => element.textContent?.includes(text),
+    );
+
+    expect(card).toBeTruthy();
+
+    await ClientReact.act(async () => {
+      card?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+  };
+
+  const enterApiKey = async (value = 'sk-test') => {
+    const input = container.querySelector('input[type="password"]') as HTMLInputElement | null;
+    const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+
+    expect(input).not.toBeNull();
+    expect(valueSetter).toBeTruthy();
+
+    await ClientReact.act(async () => {
+      valueSetter!.call(input, value);
+      input!.dispatchEvent(new Event('input', { bubbles: true }));
+      input!.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+  };
 
   it('should use wide layouts for runtime selection and oauth auth steps', async () => {
     await ClientReact.act(async () => {
@@ -131,5 +176,90 @@ describe('SetupWizard', () => {
     expect(apiGrid?.querySelectorAll('.setup-wizard-provider-card')).toHaveLength(3);
     expect(container.textContent).toContain('setupWizard.config.openaiCompatibleHint');
     expect(container.textContent).not.toContain('setupWizard.testUnsupported');
+  });
+
+  it('should enter usage onboarding after api key setup and finish only on final confirmation', async () => {
+    const onComplete = vi.fn();
+    fetchMock.mockResolvedValue({
+      json: async () => ({ success: true }),
+    });
+
+    await ClientReact.act(async () => {
+      root.render(ClientReact.createElement(SetupWizard, { onComplete }));
+    });
+
+    await clickButton('setupWizard.next');
+    await clickModeCard('OpenAI-Compatible API');
+    await clickButton('setupWizard.next');
+    await enterApiKey();
+    await clickButton('setupWizard.finish');
+
+    expect(container.textContent).toContain('setupWizard.usage.title');
+    expect(localStorage.getItem('axon_setup_done')).toBeNull();
+    expect(onComplete).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await clickButton('setupWizard.startUsing');
+
+    expect(localStorage.getItem('axon_setup_done')).toBe('true');
+    expect(onComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it('should show project state in usage onboarding and trigger folder selection CTA', async () => {
+    const onOpenFolder = vi.fn().mockResolvedValue(null);
+    fetchMock.mockResolvedValue({
+      json: async () => ({ success: true }),
+    });
+
+    await ClientReact.act(async () => {
+      root.render(ClientReact.createElement(SetupWizard, {
+        onComplete: vi.fn(),
+        onOpenFolder,
+        currentProjectName: 'demo-app',
+      }));
+    });
+
+    await clickButton('setupWizard.next');
+    await clickModeCard('OpenAI-Compatible API');
+    await clickButton('setupWizard.next');
+    await enterApiKey();
+    await clickButton('setupWizard.finish');
+
+    expect(container.textContent).toContain('demo-app');
+    expect(container.textContent).toContain('setupWizard.usage.projectReadyLabel');
+    expect(findButton('setupWizard.usage.changeFolder')).toBeTruthy();
+
+    await clickButton('setupWizard.usage.changeFolder');
+
+    expect(onOpenFolder).toHaveBeenCalledTimes(1);
+  });
+
+  it('should save normalized anthropic api payloads for claude-compatible setup', async () => {
+    const onComplete = vi.fn();
+    fetchMock.mockResolvedValue({
+      json: async () => ({ success: true }),
+    });
+
+    await ClientReact.act(async () => {
+      root.render(ClientReact.createElement(SetupWizard, { onComplete }));
+    });
+
+    await clickButton('setupWizard.next');
+    await clickModeCard('Claude-Compatible API');
+    await clickButton('setupWizard.next');
+    await enterApiKey('sk-anthropic');
+    await clickButton('setupWizard.finish');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      runtimeBackend: 'claude-compatible-api',
+      runtimeProvider: 'anthropic',
+      apiProvider: 'anthropic',
+      authPriority: 'apiKey',
+      apiBaseUrl: 'https://api.anthropic.com',
+      apiKey: 'sk-anthropic',
+    });
+    expect(container.textContent).toContain('setupWizard.usage.title');
+    expect(onComplete).not.toHaveBeenCalled();
   });
 });

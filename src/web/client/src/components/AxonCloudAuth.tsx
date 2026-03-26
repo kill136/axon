@@ -3,13 +3,15 @@
  * 提供注册和登录功能，成功后自动配置 API
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLanguage } from '../i18n';
 
 export interface AxonCloudAuthProps {
   onSuccess?: (data: { username: string; quota: number }) => void;
   onError?: (error: string) => void;
 }
+
+const VERIFICATION_CODE_RESEND_SECONDS = 60;
 
 type AuthTab = 'login' | 'register';
 
@@ -82,6 +84,9 @@ export function AxonCloudAuth({ onSuccess, onError }: AxonCloudAuthProps) {
   const [registerEmail, setRegisterEmail] = useState('');
   const [registerPassword, setRegisterPassword] = useState('');
   const [registerConfirmPassword, setRegisterConfirmPassword] = useState('');
+  const [registerVerificationCode, setRegisterVerificationCode] = useState('');
+  const [verificationSending, setVerificationSending] = useState(false);
+  const [verificationCountdown, setVerificationCountdown] = useState(0);
 
   /**
    * 验证邮箱格式
@@ -89,6 +94,55 @@ export function AxonCloudAuth({ onSuccess, onError }: AxonCloudAuthProps) {
   const validateEmail = (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(email);
+  };
+
+  useEffect(() => {
+    if (verificationCountdown <= 0) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setVerificationCountdown((current) => Math.max(0, current - 1));
+    }, 1000);
+
+    return () => window.clearTimeout(timer);
+  }, [verificationCountdown]);
+
+  const handleSendVerificationCode = async () => {
+    if (!registerEmail.trim()) {
+      setStatusType('error');
+      setStatus(t('axonCloud.error.emailRequired'));
+      return;
+    }
+    if (!validateEmail(registerEmail)) {
+      setStatusType('error');
+      setStatus(t('axonCloud.error.emailInvalid'));
+      return;
+    }
+
+    setVerificationSending(true);
+    setStatusType('loading');
+    setStatus(t('axonCloud.verification.sending'));
+
+    try {
+      const response = await fetch(`/api/axon-cloud/verification?email=${encodeURIComponent(registerEmail.trim())}`);
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to send verification code');
+      }
+
+      setVerificationCountdown(VERIFICATION_CODE_RESEND_SECONDS);
+      setStatusType('success');
+      setStatus(t('axonCloud.verification.sent'));
+    } catch (error) {
+      setStatusType('error');
+      const rawMsg = error instanceof Error ? error.message : String(error);
+      const errorMsg = translateServerError(rawMsg, t);
+      setStatus(errorMsg);
+      onError?.(errorMsg);
+    } finally {
+      setVerificationSending(false);
+    }
   };
 
   /**
@@ -168,6 +222,11 @@ export function AxonCloudAuth({ onSuccess, onError }: AxonCloudAuthProps) {
       setStatus(t('axonCloud.error.emailInvalid'));
       return;
     }
+    if (!registerVerificationCode.trim()) {
+      setStatusType('error');
+      setStatus(t('axonCloud.verification.required'));
+      return;
+    }
     if (!registerPassword.trim()) {
       setStatusType('error');
       setStatus(t('axonCloud.error.passwordRequired'));
@@ -198,6 +257,7 @@ export function AxonCloudAuth({ onSuccess, onError }: AxonCloudAuthProps) {
           username: registerUsername.trim(),
           email: registerEmail.trim(),
           password: registerPassword,
+          verificationCode: registerVerificationCode.trim(),
         }),
       });
 
@@ -208,8 +268,15 @@ export function AxonCloudAuth({ onSuccess, onError }: AxonCloudAuthProps) {
       }
 
       setStatusType('success');
-      setStatus(t('axonCloud.registerSuccess'));
+      setStatus(data.requiresLogin ? t('axonCloud.registerSuccessLoginRequired') : t('axonCloud.registerSuccess'));
       setLoading(false);
+
+      if (data.requiresLogin) {
+        setActiveTab('login');
+        setLoginUsername(registerUsername.trim());
+        setLoginPassword(registerPassword);
+        return;
+      }
 
       // 成功回调
       onSuccess?.({
@@ -358,6 +425,37 @@ export function AxonCloudAuth({ onSuccess, onError }: AxonCloudAuthProps) {
             />
           </div>
 
+          <div className="axon-cloud-field">
+            <label>{t('axonCloud.verification.code')}</label>
+            <div className="axon-cloud-verification-row">
+              <input
+                type="text"
+                className="axon-cloud-input"
+                placeholder={t('axonCloud.verification.code')}
+                value={registerVerificationCode}
+                onChange={(e) => setRegisterVerificationCode(e.target.value)}
+                disabled={loading}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !loading) {
+                    handleRegister();
+                  }
+                }}
+              />
+              <button
+                type="button"
+                className="axon-cloud-btn"
+                onClick={handleSendVerificationCode}
+                disabled={loading || verificationSending || verificationCountdown > 0}
+              >
+                {verificationSending
+                  ? t('axonCloud.verification.sending')
+                  : verificationCountdown > 0
+                    ? t('axonCloud.verification.resendIn', { seconds: String(verificationCountdown) })
+                    : t('axonCloud.verification.send')}
+              </button>
+            </div>
+          </div>
+
           <button
             className="axon-cloud-btn"
             onClick={handleRegister}
@@ -365,6 +463,7 @@ export function AxonCloudAuth({ onSuccess, onError }: AxonCloudAuthProps) {
               loading ||
               !registerUsername.trim() ||
               !registerEmail.trim() ||
+              !registerVerificationCode.trim() ||
               !registerPassword.trim() ||
               !registerConfirmPassword.trim()
             }

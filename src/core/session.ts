@@ -9,6 +9,7 @@ import * as path from 'path';
 import * as os from 'os';
 import type { Message, SessionState, TodoItem, SessionConfig } from '../types/index.js';
 import { GitUtils, type GitInfo } from '../git/index.js';
+import { getResolvedModelContextWindow } from '../models/model-limits.js';
 
 // 会话版本号
 const SESSION_VERSION = '2.0';
@@ -416,13 +417,12 @@ export class Session {
    * 获取模型的上下文窗口大小
    */
   private getContextWindow(model: string): number {
-    if (model.includes('opus-4')) return 200000;
-    if (model.includes('sonnet-4')) return 200000;
-    if (model.includes('haiku-4')) return 200000;
-    if (model.includes('sonnet-3.7')) return 200000;
-    if (model.includes('sonnet-3.5')) return 200000;
-    if (model.includes('opus-3')) return 200000;
-    if (model.includes('haiku')) return 200000;
+    const resolvedContextWindow = getResolvedModelContextWindow(model);
+    if (resolvedContextWindow !== undefined) {
+      return resolvedContextWindow;
+    }
+
+    if (model.includes('[1m]')) return 1000000;
     return 200000; // 默认值
   }
 

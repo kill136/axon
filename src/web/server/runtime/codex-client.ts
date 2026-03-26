@@ -1,3 +1,4 @@
+import type Anthropic from '@anthropic-ai/sdk';
 import type {
   ContentBlock,
   Message,
@@ -19,6 +20,9 @@ interface ResponseUsage {
   input_tokens?: number;
   output_tokens?: number;
   reasoning_tokens?: number;
+  input_tokens_details?: {
+    cached_tokens?: number;
+  };
 }
 
 interface ResponseOutputItem {
@@ -43,6 +47,8 @@ interface ResponsesStreamReplayState {
   sawThinkingDelta: boolean;
   startedToolCallIds: Set<string>;
   completedToolCallIds: Set<string>;
+  reasoningByKey: Map<string, string>;
+  toolCallAliases: Map<string, string>;
 }
 
 interface ChatCompletionToolCall {
@@ -70,6 +76,9 @@ interface ChatCompletionChoice {
 interface ChatCompletionUsage {
   prompt_tokens?: number;
   completion_tokens?: number;
+  prompt_tokens_details?: {
+    cached_tokens?: number;
+  };
   completion_tokens_details?: {
     reasoning_tokens?: number;
   };
@@ -113,8 +122,224 @@ function extractTextFromOutput(output?: ResponseOutputItem[]): string {
     .join('');
 }
 
+function getHeaderNumber(headers: Headers, ...names: string[]): number | undefined {
+  for (const name of names) {
+    const value = headers.get(name);
+    if (value === null) {
+      continue;
+    }
+    const parsed = Number(value);
+    if (!Number.isNaN(parsed)) {
+      return parsed;
+    }
+  }
+  return undefined;
+}
+
+function getResponsesCachedTokens(usage?: ResponseUsage): number {
+  return usage?.input_tokens_details?.cached_tokens || 0;
+}
+
+function getChatCompletionCachedTokens(usage?: ChatCompletionUsage): number {
+  return usage?.prompt_tokens_details?.cached_tokens || 0;
+}
+
+function mapResponsesUsage(usage?: ResponseUsage) {
+  const cacheReadTokens = getResponsesCachedTokens(usage);
+  return {
+    inputTokens: usage?.input_tokens || 0,
+    outputTokens: usage?.output_tokens || 0,
+    ...(cacheReadTokens > 0 ? { cacheReadTokens } : {}),
+    thinkingTokens: usage?.reasoning_tokens || 0,
+  };
+}
+
+function mapChatCompletionUsage(usage?: ChatCompletionUsage) {
+  const cacheReadTokens = getChatCompletionCachedTokens(usage);
+  return {
+    inputTokens: usage?.prompt_tokens || 0,
+    outputTokens: usage?.completion_tokens || 0,
+    ...(cacheReadTokens > 0 ? { cacheReadTokens } : {}),
+    thinkingTokens: usage?.completion_tokens_details?.reasoning_tokens || 0,
+  };
+}
+
+function mapRateLimitInfo(headers: Headers) {
+  const resetSeconds = getHeaderNumber(
+    headers,
+    'x-ratelimit-reset-requests',
+    'x-ratelimit-reset-tokens',
+    'x-ratelimit-reset',
+  );
+
+  return {
+    remainingRequests: getHeaderNumber(headers, 'x-ratelimit-remaining-requests', 'ratelimit-remaining-requests'),
+    limitRequests: getHeaderNumber(headers, 'x-ratelimit-limit-requests', 'ratelimit-limit-requests'),
+    remainingTokens: getHeaderNumber(headers, 'x-ratelimit-remaining-tokens', 'ratelimit-remaining-tokens'),
+    limitTokens: getHeaderNumber(headers, 'x-ratelimit-limit-tokens', 'ratelimit-limit-tokens'),
+    resetsAt: resetSeconds !== undefined ? Math.floor(Date.now() / 1000) + Math.max(0, resetSeconds) : undefined,
+  };
+}
+
+function hasRateLimitInfo(info: ReturnType<typeof mapRateLimitInfo>): boolean {
+  return [info.remainingRequests, info.limitRequests, info.remainingTokens, info.limitTokens, info.resetsAt].some(
+    value => value !== undefined,
+  );
+}
+
+function createRateLimitEvent(headers: Headers, cacheReadTokens?: number): ConversationStreamEvent | null {
+  const info = mapRateLimitInfo(headers);
+  if (!hasRateLimitInfo(info) && !cacheReadTokens) {
+    return null;
+  }
+
+  return {
+    type: 'rate_limit',
+    info: {
+      status: 'available',
+      ...info,
+      ...(cacheReadTokens ? { cacheReadTokens } : {}),
+    },
+  };
+}
+
+function mergeRateLimitInfo(
+  base: ReturnType<typeof mapRateLimitInfo>,
+  update: Partial<ReturnType<typeof mapResponsesUsage>> | Partial<ReturnType<typeof mapChatCompletionUsage>>,
+) {
+  return {
+    ...base,
+    ...(update.cacheReadTokens ? { cacheReadTokens: update.cacheReadTokens } : {}),
+  };
+}
+
 function getResponseToolCallId(item: Pick<ResponseOutputItem, 'call_id' | 'id'>): string {
   return item.call_id || item.id || `call_${Date.now()}`;
+}
+
+function collectResponseToolCallAliases(item: Pick<ResponseOutputItem, 'call_id' | 'id'>): string[] {
+  const aliases = [item.call_id, item.id]
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+  return Array.from(new Set(aliases));
+}
+
+function resolveCanonicalToolCallId(
+  replayState: ResponsesStreamReplayState | undefined,
+  identifiers: Array<string | undefined>,
+  fallback?: string,
+): string {
+  const aliases = Array.from(new Set(
+    identifiers.filter((value): value is string => typeof value === 'string' && value.trim().length > 0),
+  ));
+
+  if (replayState) {
+    for (const alias of aliases) {
+      const canonical = replayState.toolCallAliases.get(alias);
+      if (canonical) {
+        for (const candidate of aliases) {
+          replayState.toolCallAliases.set(candidate, canonical);
+        }
+        return canonical;
+      }
+    }
+  }
+
+  const canonical = fallback || aliases[0] || `call_${Date.now()}`;
+
+  if (replayState) {
+    replayState.toolCallAliases.set(canonical, canonical);
+    for (const alias of aliases) {
+      replayState.toolCallAliases.set(alias, canonical);
+    }
+  }
+
+  return canonical;
+}
+
+function getReasoningEventKey(payload: Record<string, any>): string {
+  const itemId = typeof payload.item_id === 'string' && payload.item_id
+    ? payload.item_id
+    : typeof payload.item?.id === 'string' && payload.item.id
+      ? payload.item.id
+      : `reasoning-${typeof payload.output_index === 'number' ? payload.output_index : 0}`;
+
+  const partIndex = typeof payload.summary_index === 'number'
+    ? payload.summary_index
+    : typeof payload.content_index === 'number'
+      ? payload.content_index
+      : 0;
+
+  return `${itemId}:${partIndex}`;
+}
+
+function extractReasoningText(value: unknown): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (!value || typeof value !== 'object') {
+    return '';
+  }
+
+  if (typeof (value as { text?: unknown }).text === 'string') {
+    return (value as { text: string }).text;
+  }
+
+  const part = (value as { part?: { text?: unknown } }).part;
+  if (part && typeof part.text === 'string') {
+    return part.text;
+  }
+
+  if (Array.isArray((value as { summary?: Array<{ text?: unknown }> }).summary)) {
+    return (value as { summary: Array<{ text?: unknown }> }).summary
+      .map(part => typeof part.text === 'string' ? part.text : '')
+      .join('');
+  }
+
+  return '';
+}
+
+function recordReasoningText(
+  replayState: ResponsesStreamReplayState,
+  key: string,
+  text: string,
+  mode: 'delta' | 'snapshot',
+): string | undefined {
+  if (!text) {
+    return undefined;
+  }
+
+  const previous = replayState.reasoningByKey.get(key) || '';
+
+  if (mode === 'delta') {
+    replayState.reasoningByKey.set(key, previous + text);
+    replayState.sawThinkingDelta = true;
+    return text;
+  }
+
+  if (!previous) {
+    replayState.reasoningByKey.set(key, text);
+    replayState.sawThinkingDelta = true;
+    return text;
+  }
+
+  if (text === previous) {
+    return undefined;
+  }
+
+  if (text.startsWith(previous)) {
+    const delta = text.slice(previous.length);
+    if (!delta) {
+      return undefined;
+    }
+    replayState.reasoningByKey.set(key, text);
+    replayState.sawThinkingDelta = true;
+    return delta;
+  }
+
+  replayState.reasoningByKey.set(key, text);
+  replayState.sawThinkingDelta = true;
+  return text;
 }
 
 function isCodexCompatibleModel(model?: string): boolean {
@@ -281,9 +506,13 @@ function isCustomResponsesEndpoint(baseUrl: string): boolean {
 function shouldFallbackToChatCompletions(
   response: Pick<Response, 'status' | 'headers'>,
   errorText: string | undefined,
+  stream: boolean,
 ): boolean {
   const normalized = errorText?.toLowerCase() || '';
   if (normalized.includes('convert_request_failed') || normalized.includes('not implemented')) {
+    return true;
+  }
+  if (!stream && normalized.includes('stream must be set to true')) {
     return true;
   }
 
@@ -326,6 +555,10 @@ export class CodexConversationClient implements ConversationClient {
       return this.mapChatCompletionResponse(response);
     }
 
+    if (this.shouldAggregateCreateMessageFromStream(options)) {
+      return this.aggregateCreateMessageFromStream(messages, tools, systemPrompt, options);
+    }
+
     const response = await this.callResponsesApi(messages, tools, systemPrompt, options, false);
     const content = this.mapOutputToContentBlocks(response.output);
     const hasToolUse = content.some(block => block.type === 'tool_use');
@@ -333,11 +566,7 @@ export class CodexConversationClient implements ConversationClient {
     return {
       content,
       stopReason: hasToolUse ? 'tool_use' : 'end_turn',
-      usage: {
-        inputTokens: response.usage?.input_tokens || 0,
-        outputTokens: response.usage?.output_tokens || 0,
-        thinkingTokens: response.usage?.reasoning_tokens || 0,
-      },
+      usage: mapResponsesUsage(response.usage),
       model: response.model || this.resolveModelName(),
     };
   }
@@ -369,18 +598,26 @@ export class CodexConversationClient implements ConversationClient {
 
     if (!response.ok) {
       const text = await response.text();
-      if (isCustomResponsesEndpoint(this.baseUrl) && shouldFallbackToChatCompletions(response, text)) {
+      if (isCustomResponsesEndpoint(this.baseUrl) && shouldFallbackToChatCompletions(response, text, true)) {
         yield* this.createChatCompletionsStream(messages, tools, systemPrompt, options);
         return;
       }
       clearTimeout(timeoutId);
       yield { type: 'response_headers', headers: response.headers };
+      const rateLimitEvent = createRateLimitEvent(response.headers);
+      if (rateLimitEvent) {
+        yield rateLimitEvent;
+      }
       yield { type: 'error', error: formatHttpErrorMessage('Codex', response, text) };
       return;
     }
 
     clearTimeout(timeoutId);
     yield { type: 'response_headers', headers: response.headers };
+    const responsesInitialRateLimitEvent = createRateLimitEvent(response.headers);
+    if (responsesInitialRateLimitEvent) {
+      yield responsesInitialRateLimitEvent;
+    }
 
     const contentType = response.headers.get('content-type') || '';
     if (!/text\/event-stream/i.test(contentType)) {
@@ -394,6 +631,11 @@ export class CodexConversationClient implements ConversationClient {
         return;
       }
 
+      const usage = mapResponsesUsage(apiResponse.usage);
+      const rateLimitEvent = createRateLimitEvent(response.headers, usage.cacheReadTokens);
+      if (rateLimitEvent) {
+        yield rateLimitEvent;
+      }
       yield* this.emitCompletedResponse(apiResponse);
       return;
     }
@@ -413,6 +655,8 @@ export class CodexConversationClient implements ConversationClient {
       sawThinkingDelta: false,
       startedToolCallIds: new Set<string>(),
       completedToolCallIds: new Set<string>(),
+      reasoningByKey: new Map<string, string>(),
+      toolCallAliases: new Map<string, string>(),
     };
 
     for await (const chunk of response.body as any as AsyncIterable<Uint8Array>) {
@@ -453,45 +697,109 @@ export class CodexConversationClient implements ConversationClient {
             break;
           case 'response.reasoning_summary_text.delta':
           case 'response.reasoning.delta':
-            if (payload.delta) {
-              replayState.sawThinkingDelta = true;
+          case 'response.reasoning_summary.delta': {
+            const thinkingText = recordReasoningText(
+              replayState,
+              getReasoningEventKey(payload),
+              extractReasoningText(payload.delta),
+              'delta',
+            );
+            if (thinkingText) {
+              yield { type: 'thinking', thinking: thinkingText };
             }
-            yield { type: 'thinking', thinking: payload.delta || '' };
             break;
+          }
+          case 'response.reasoning.done':
+          case 'response.reasoning_summary.done':
+          case 'response.reasoning_summary_text.done':
+          case 'response.reasoning_summary_part.done': {
+            const thinkingText = recordReasoningText(
+              replayState,
+              getReasoningEventKey(payload),
+              extractReasoningText(payload),
+              'snapshot',
+            );
+            if (thinkingText) {
+              yield { type: 'thinking', thinking: thinkingText };
+            }
+            break;
+          }
           case 'response.output_item.added': {
             const item = payload.item || {};
             if (item.type === 'function_call') {
-              activeToolCallId = getResponseToolCallId(item);
+              activeToolCallId = resolveCanonicalToolCallId(
+                replayState,
+                collectResponseToolCallAliases(item),
+                getResponseToolCallId(item),
+              );
               activeToolCallName = item.name;
-              replayState.startedToolCallIds.add(activeToolCallId);
-              yield {
-                type: 'tool_use_start',
-                id: activeToolCallId,
-                name: activeToolCallName,
-              };
+              if (!replayState.startedToolCallIds.has(activeToolCallId)) {
+                replayState.startedToolCallIds.add(activeToolCallId);
+                yield {
+                  type: 'tool_use_start',
+                  id: activeToolCallId,
+                  name: activeToolCallName,
+                };
+              }
+            }
+            break;
+          }
+          case 'response.output_item.done': {
+            const item = payload.item || {};
+            if (item.type === 'reasoning' && Array.isArray(item.summary)) {
+              const itemId = typeof item.id === 'string' && item.id
+                ? item.id
+                : `reasoning-${typeof payload.output_index === 'number' ? payload.output_index : 0}`;
+              for (let index = 0; index < item.summary.length; index += 1) {
+                const part = item.summary[index];
+                const thinkingText = recordReasoningText(
+                  replayState,
+                  `${itemId}:${index}`,
+                  extractReasoningText(part),
+                  'snapshot',
+                );
+                if (thinkingText) {
+                  yield { type: 'thinking', thinking: thinkingText };
+                }
+              }
             }
             break;
           }
           case 'response.function_call_arguments.delta':
+            activeToolCallId = resolveCanonicalToolCallId(
+              replayState,
+              [payload.call_id],
+              activeToolCallId,
+            );
             yield {
               type: 'tool_use_delta',
-              id: payload.call_id || activeToolCallId,
+              id: activeToolCallId,
               input: payload.delta || '',
             };
             break;
           case 'response.function_call_arguments.done':
-            if (payload.call_id || activeToolCallId) {
-              replayState.completedToolCallIds.add(payload.call_id || activeToolCallId || '');
+            activeToolCallId = resolveCanonicalToolCallId(
+              replayState,
+              [payload.call_id],
+              activeToolCallId,
+            );
+            if (!replayState.completedToolCallIds.has(activeToolCallId)) {
+              replayState.completedToolCallIds.add(activeToolCallId);
+              yield {
+                type: 'tool_use_complete',
+                id: activeToolCallId,
+                input: safeJsonParse(payload.arguments, {}),
+              };
             }
-            yield {
-              type: 'tool_use_complete',
-              id: payload.call_id || activeToolCallId,
-              input: safeJsonParse(payload.arguments, {}),
-            };
             break;
           case 'response.completed': {
             const apiResponse = payload.response as ResponsesApiResult | undefined;
             completed = true;
+            const usage = mapResponsesUsage(apiResponse?.usage);
+            const rateLimitEvent = createRateLimitEvent(response.headers, usage.cacheReadTokens);
+            if (rateLimitEvent) {
+              yield rateLimitEvent;
+            }
             yield* this.emitCompletedResponse(apiResponse, replayState);
             break;
           }
@@ -506,6 +814,11 @@ export class CodexConversationClient implements ConversationClient {
     if (!completed && trailingText) {
       const apiResponse = parseResponsesApiResult(trailingText);
       if (apiResponse) {
+        const usage = mapResponsesUsage(apiResponse.usage);
+        const rateLimitEvent = createRateLimitEvent(response.headers, usage.cacheReadTokens);
+        if (rateLimitEvent) {
+          yield rateLimitEvent;
+        }
         yield* this.emitCompletedResponse(apiResponse, replayState);
         return;
       }
@@ -540,7 +853,7 @@ export class CodexConversationClient implements ConversationClient {
 
       if (!response.ok) {
         const text = await response.text();
-        if (isCustomResponsesEndpoint(this.baseUrl) && shouldFallbackToChatCompletions(response, text)) {
+        if (isCustomResponsesEndpoint(this.baseUrl) && shouldFallbackToChatCompletions(response, text, stream)) {
           const fallback = await this.callChatCompletionsApi(messages, tools, systemPrompt, options, stream);
           return this.mapChatCompletionApiResultToResponses(fallback);
         }
@@ -615,6 +928,10 @@ export class CodexConversationClient implements ConversationClient {
 
     clearTimeout(timeoutId);
     yield { type: 'response_headers', headers: response.headers };
+    const chatInitialRateLimitEvent = createRateLimitEvent(response.headers);
+    if (chatInitialRateLimitEvent) {
+      yield chatInitialRateLimitEvent;
+    }
 
     if (!response.ok) {
       const text = await response.text();
@@ -631,7 +948,69 @@ export class CodexConversationClient implements ConversationClient {
     let buffer = '';
     let finishReason: string | null = null;
     let usage: ChatCompletionUsage | undefined;
-    const toolCalls = new Map<number, { id: string; name: string; arguments: string }>();
+    const rateLimitBase = mapRateLimitInfo(response.headers);
+    const toolCalls = new Map<number, { id: string; name: string; arguments: string; index: number }>();
+    const toolCallAliases = new Map<string, number>();
+    let generatedToolCallCounter = 0;
+
+    const resolveToolCall = (toolCall: ChatCompletionToolCall & { index?: number }) => {
+      const rawId = typeof toolCall.id === 'string' && toolCall.id.trim()
+        ? toolCall.id
+        : undefined;
+      const explicitIndex = typeof toolCall.index === 'number'
+        ? toolCall.index
+        : undefined;
+
+      if (rawId) {
+        const aliasedIndex = toolCallAliases.get(rawId);
+        if (aliasedIndex != null) {
+          return toolCalls.get(aliasedIndex) || null;
+        }
+
+        for (const candidate of toolCalls.values()) {
+          if (candidate.id === rawId) {
+            toolCallAliases.set(rawId, candidate.index);
+            return candidate;
+          }
+        }
+      }
+
+      if (explicitIndex != null) {
+        return toolCalls.get(explicitIndex) || null;
+      }
+
+      return null;
+    };
+
+    const appendToolArguments = (
+      entry: { arguments: string },
+      nextChunk: string | undefined,
+    ): string | undefined => {
+      if (!nextChunk) {
+        return undefined;
+      }
+
+      if (!entry.arguments) {
+        entry.arguments = nextChunk;
+        return nextChunk;
+      }
+
+      if (nextChunk === entry.arguments || entry.arguments.endsWith(nextChunk)) {
+        return undefined;
+      }
+
+      if (nextChunk.startsWith(entry.arguments)) {
+        const delta = nextChunk.slice(entry.arguments.length);
+        if (!delta) {
+          return undefined;
+        }
+        entry.arguments = nextChunk;
+        return delta;
+      }
+
+      entry.arguments += nextChunk;
+      return nextChunk;
+    };
 
     for await (const chunk of response.body as any as AsyncIterable<Uint8Array>) {
       buffer += decoder.decode(chunk, { stream: true });
@@ -671,39 +1050,53 @@ export class CodexConversationClient implements ConversationClient {
         }
 
         for (const toolCall of delta.tool_calls || []) {
-          const index = (toolCall as any).index ?? 0;
-          const existing = toolCalls.get(index);
+          const rawId = typeof toolCall.id === 'string' && toolCall.id.trim()
+            ? toolCall.id
+            : undefined;
+          const explicitIndex = typeof (toolCall as any).index === 'number'
+            ? (toolCall as any).index
+            : undefined;
+          const existing = resolveToolCall(toolCall as ChatCompletionToolCall & { index?: number });
           if (!existing) {
+            const nextIndex = explicitIndex ?? generatedToolCallCounter++;
             const next = {
-              id: toolCall.id || `call_${Date.now()}_${index}`,
+              id: rawId || `call_${Date.now()}_${nextIndex}`,
               name: toolCall.function?.name || 'unknown_tool',
-              arguments: toolCall.function?.arguments || '',
+              arguments: '',
+              index: nextIndex,
             };
-            toolCalls.set(index, next);
+            toolCalls.set(nextIndex, next);
+            if (rawId) {
+              toolCallAliases.set(rawId, nextIndex);
+            }
             yield {
               type: 'tool_use_start',
               id: next.id,
               name: next.name,
             };
-            if (toolCall.function?.arguments) {
+            const initialDelta = appendToolArguments(next, toolCall.function?.arguments);
+            if (initialDelta) {
               yield {
                 type: 'tool_use_delta',
                 id: next.id,
-                input: toolCall.function.arguments,
+                input: initialDelta,
               };
             }
             continue;
           }
 
+          if (rawId) {
+            toolCallAliases.set(rawId, existing.index);
+          }
           if (toolCall.function?.name && existing.name === 'unknown_tool') {
             existing.name = toolCall.function.name;
           }
-          if (toolCall.function?.arguments) {
-            existing.arguments += toolCall.function.arguments;
+          const deltaChunk = appendToolArguments(existing, toolCall.function?.arguments);
+          if (deltaChunk) {
             yield {
               type: 'tool_use_delta',
               id: existing.id,
-              input: toolCall.function.arguments,
+              input: deltaChunk,
             };
           }
         }
@@ -722,13 +1115,21 @@ export class CodexConversationClient implements ConversationClient {
       };
     }
 
+    const mappedUsage = mapChatCompletionUsage(usage);
+    const mergedRateLimit = mergeRateLimitInfo(rateLimitBase, mappedUsage);
+    if (hasRateLimitInfo(mergedRateLimit) || mappedUsage.cacheReadTokens) {
+      yield {
+        type: 'rate_limit',
+        info: {
+          status: 'available',
+          ...mergedRateLimit,
+        },
+      };
+    }
+
     yield {
       type: 'usage',
-      usage: {
-        inputTokens: usage?.prompt_tokens || 0,
-        outputTokens: usage?.completion_tokens || 0,
-        thinkingTokens: usage?.completion_tokens_details?.reasoning_tokens || 0,
-      },
+      usage: mappedUsage,
     };
     yield {
       type: 'stop',
@@ -943,11 +1344,7 @@ export class CodexConversationClient implements ConversationClient {
     return {
       content,
       stopReason: choice?.finish_reason === 'tool_calls' ? 'tool_use' : choice?.finish_reason === 'length' ? 'max_tokens' : 'end_turn',
-      usage: {
-        inputTokens: response.usage?.prompt_tokens || 0,
-        outputTokens: response.usage?.completion_tokens || 0,
-        thinkingTokens: response.usage?.completion_tokens_details?.reasoning_tokens || 0,
-      },
+      usage: mapChatCompletionUsage(response.usage),
       model: response.model || this.resolveModelName(),
     };
   }
@@ -991,6 +1388,11 @@ export class CodexConversationClient implements ConversationClient {
         input_tokens: mapped.usage.inputTokens,
         output_tokens: mapped.usage.outputTokens,
         reasoning_tokens: mapped.usage.thinkingTokens,
+        ...(mapped.usage.cacheReadTokens ? {
+          input_tokens_details: {
+            cached_tokens: mapped.usage.cacheReadTokens,
+          },
+        } : {}),
       },
     };
   }
@@ -1203,7 +1605,11 @@ export class CodexConversationClient implements ConversationClient {
       }
 
       if (item.type === 'function_call') {
-        const callId = getResponseToolCallId(item);
+        const callId = resolveCanonicalToolCallId(
+          replayState,
+          collectResponseToolCallAliases(item),
+          getResponseToolCallId(item),
+        );
         if (!replayState?.startedToolCallIds.has(callId)) {
           yield {
             type: 'tool_use_start',
@@ -1234,17 +1640,157 @@ export class CodexConversationClient implements ConversationClient {
     }
 
     const hasToolUse = output.some(item => item.type === 'function_call');
+    const mappedUsage = mapResponsesUsage(response?.usage);
     yield {
       type: 'usage',
-      usage: {
-        inputTokens: response?.usage?.input_tokens || 0,
-        outputTokens: response?.usage?.output_tokens || 0,
-        thinkingTokens: response?.usage?.reasoning_tokens || 0,
-      },
+      usage: mappedUsage,
     };
     yield {
       type: 'stop',
       stopReason: hasToolUse ? 'tool_use' : 'end_turn',
+    };
+  }
+
+  private shouldAggregateCreateMessageFromStream(options?: ConversationRequestOptions): boolean {
+    return options?.preferStreamingTransport === true && isCustomResponsesEndpoint(this.baseUrl);
+  }
+
+  private async aggregateCreateMessageFromStream(
+    messages: Message[],
+    tools?: ToolDefinition[],
+    systemPrompt?: string,
+    options?: ConversationRequestOptions,
+  ): Promise<ConversationMessageResponse> {
+    const content: ContentBlock[] = [];
+    let currentThinking = '';
+    let currentText = '';
+    let currentToolUse: {
+      id: string;
+      name: string;
+      inputJson: string;
+      parsedInput?: unknown;
+    } | null = null;
+    let stopReason: ConversationMessageResponse['stopReason'] = 'end_turn';
+    let usage: ConversationMessageResponse['usage'] = {
+      inputTokens: 0,
+      outputTokens: 0,
+    };
+
+    const flushThinking = () => {
+      if (!currentThinking) {
+        return;
+      }
+      content.push({ type: 'thinking', thinking: currentThinking } as any);
+      currentThinking = '';
+    };
+
+    const flushText = () => {
+      if (!currentText) {
+        return;
+      }
+      content.push({ type: 'text', text: currentText } as TextBlock);
+      currentText = '';
+    };
+
+    const flushToolUse = () => {
+      if (!currentToolUse) {
+        return;
+      }
+      const parsedInput = currentToolUse.parsedInput !== undefined
+        ? currentToolUse.parsedInput
+        : safeJsonParse(currentToolUse.inputJson || '{}', {});
+      content.push({
+        type: 'tool_use',
+        id: currentToolUse.id,
+        name: currentToolUse.name,
+        input: parsedInput,
+      } as ToolUseBlock);
+      currentToolUse = null;
+    };
+
+    for await (const event of this.createMessageStream(messages, tools, systemPrompt, options)) {
+      switch (event.type) {
+        case 'thinking':
+          if (event.thinking) {
+            if (currentText) {
+              flushText();
+            }
+            currentThinking += event.thinking;
+          }
+          break;
+
+        case 'text':
+          flushThinking();
+          if (event.text) {
+            currentText += event.text;
+          }
+          break;
+
+        case 'tool_use_start':
+          flushThinking();
+          flushText();
+          flushToolUse();
+          currentToolUse = {
+            id: event.id || `call_${Date.now()}`,
+            name: event.name || 'unknown_tool',
+            inputJson: '',
+          };
+          break;
+
+        case 'tool_use_delta':
+          if (currentToolUse && event.input) {
+            currentToolUse.inputJson += event.input;
+          }
+          break;
+
+        case 'tool_use_complete':
+          if (currentToolUse && currentToolUse.id === event.id) {
+            currentToolUse.parsedInput = event.input ?? {};
+            break;
+          }
+          if (event.id) {
+            for (const block of content) {
+              if (block.type === 'tool_use' && block.id === event.id) {
+                (block as ToolUseBlock).input = event.input ?? {};
+                break;
+              }
+            }
+          }
+          break;
+
+        case 'usage':
+          if (event.usage) {
+            usage = {
+              inputTokens: event.usage.inputTokens || 0,
+              outputTokens: event.usage.outputTokens || 0,
+              ...(event.usage.cacheReadTokens != null ? { cacheReadTokens: event.usage.cacheReadTokens } : {}),
+              ...(event.usage.cacheCreationTokens != null ? { cacheCreationTokens: event.usage.cacheCreationTokens } : {}),
+              ...(event.usage.thinkingTokens != null ? { thinkingTokens: event.usage.thinkingTokens } : {}),
+            };
+          }
+          break;
+
+        case 'stop':
+          flushThinking();
+          flushText();
+          flushToolUse();
+          stopReason = event.stopReason || (content.some(block => block.type === 'tool_use') ? 'tool_use' : 'end_turn');
+          break;
+
+        case 'error':
+          throw new Error(event.error || 'Codex stream aggregation failed');
+      }
+    }
+
+    flushThinking();
+    flushText();
+    flushToolUse();
+
+    return {
+      content: content.length > 0 ? content : [{ type: 'text', text: '' } as TextBlock],
+      stopReason,
+      usage,
+      model: this.resolveModelName(),
     };
   }
 
@@ -1263,5 +1809,21 @@ export class CodexConversationClient implements ConversationClient {
 
   private supportsReasoning(model: string): boolean {
     return isCodexCompatibleModel(model);
+  }
+
+  setModel(model: string): void {
+    this.model = model;
+  }
+
+  getModel(): string {
+    return this.model;
+  }
+
+  getIsOAuth(): boolean {
+    return !this.apiKey && !!this.authToken;
+  }
+
+  getAnthropicClient(): Anthropic | undefined {
+    return undefined;
   }
 }

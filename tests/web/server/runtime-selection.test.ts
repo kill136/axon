@@ -35,6 +35,22 @@ describe('runtime selection', () => {
     expect(selection.normalizedModel).toBe('gpt-5.4');
   });
 
+  it('routes Axon Cloud by the active normalized model instead of the stored default model', () => {
+    const selection = resolveRuntimeSelection({
+      runtimeBackend: 'axon-cloud',
+      model: 'opus',
+      defaultModelByBackend: {
+        'axon-cloud': 'gpt-5.4',
+      },
+      codexModelName: undefined,
+      customModelName: undefined,
+    });
+
+    expect(selection.customModelName).toBe('gpt-5.4');
+    expect(selection.provider).toBe('anthropic');
+    expect(selection.normalizedModel).toBe('opus');
+  });
+
   it('keeps anthropic defaults for Claude-compatible backends', () => {
     expect(
       getConfiguredRuntimeModelName(
@@ -56,5 +72,34 @@ describe('runtime selection', () => {
     expect(selection.provider).toBe('anthropic');
     expect(selection.customModelName).toBe('claude-sonnet-4-5-20250929');
     expect(selection.normalizedModel).toBe('sonnet');
+  });
+
+  it('preserves legacy arbitrary custom model ids for openai-compatible backends', () => {
+    const selection = resolveRuntimeSelection({
+      runtimeBackend: 'openai-compatible-api',
+      defaultModelByBackend: {},
+      codexModelName: undefined,
+      customModelName: 'deepseek-v3',
+    });
+
+    expect(selection.customModelName).toBe('deepseek-v3');
+    expect(selection.provider).toBe('codex');
+    expect(selection.normalizedModel).toBe('deepseek-v3');
+  });
+
+  it('can fall back to the runtime model catalog for dynamic backends', () => {
+    const selection = resolveRuntimeSelection({
+      runtimeBackend: 'openai-compatible-api',
+      defaultModelByBackend: {},
+      customModelCatalogByBackend: {
+        'openai-compatible-api': ['deepseek-v3', 'qwen-max'],
+      },
+      codexModelName: undefined,
+      customModelName: undefined,
+    });
+
+    expect(selection.customModelName).toBeUndefined();
+    expect(selection.provider).toBe('codex');
+    expect(selection.normalizedModel).toBe('deepseek-v3');
   });
 });

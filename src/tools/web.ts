@@ -7,6 +7,9 @@
  */
 
 import axios, { AxiosProxyConfig } from 'axios';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import TurndownService from 'turndown';
 import { gfm } from 'turndown-plugin-gfm';
 import { LRUCache } from 'lru-cache';
@@ -20,6 +23,8 @@ import { t } from '../i18n/index.js';
  * 响应体大小限制 (10MB)
  */
 const MAX_RESPONSE_SIZE = 10 * 1024 * 1024;
+const WEBFETCH_SETTINGS_PATH_ENV = 'AXON_WEBFETCH_SETTINGS_PATH';
+
 
 /**
  * 缓存接口
@@ -260,16 +265,53 @@ Usage notes:
     return false;
   }
 
+  private getSettingsPath(): string {
+    return process.env[WEBFETCH_SETTINGS_PATH_ENV] || path.join(os.homedir(), '.axon', 'settings.json');
+  }
+
   /**
-   * 获取代理配置（从环境变量和 settings.json）
-   *
-   * v2.1.33 修复: 现在也从 settings.json 中配置的环境变量读取代理设置
-   * 之前只从进程环境变量读取，导致通过 settings.json environment 配置的
-   * 代理设置不会应用到 WebFetch 和其他 HTTP 请求
+   * 从 settings.json 读取 Axon 代理配置
+   */
+  private getSettingsProxyConfig(): AxiosProxyConfig | undefined {
+    try {
+      const settingsPath = this.getSettingsPath();
+      if (!fs.existsSync(settingsPath)) {
+        return undefined;
+      }
+
+      const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+      const proxy = settings?.proxy;
+      const proxyUrl = proxy?.https || proxy?.http;
+      if (!proxyUrl || typeof proxyUrl !== 'string') {
+        return undefined;
+      }
+
+      const url = new URL(proxyUrl);
+      return {
+        host: url.hostname,
+        port: parseInt(url.port || '80', 10),
+        protocol: url.protocol.replace(':', ''),
+        ...(url.username && {
+          auth: {
+            username: url.username,
+            password: url.password,
+          },
+        }),
+      };
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * 获取代理配置（优先 settings.json，其次环境变量）
    */
   private getProxyConfig(): AxiosProxyConfig | undefined {
-    // v2.1.33: 先从环境变量读取，settings.json 的 environment 会在启动时
-    // 被加载到 process.env 中，所以这里可以统一读取
+    const settingsProxy = this.getSettingsProxyConfig();
+    if (settingsProxy) {
+      return settingsProxy;
+    }
+
     const httpProxy = process.env.HTTP_PROXY || process.env.http_proxy;
     const httpsProxy = process.env.HTTPS_PROXY || process.env.https_proxy;
     const allProxy = process.env.ALL_PROXY || process.env.all_proxy;

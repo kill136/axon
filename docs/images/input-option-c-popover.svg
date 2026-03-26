@@ -1,0 +1,57 @@
+<svg width="1600" height="960" viewBox="0 0 1600 960" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgC" x1="140" y1="80" x2="1460" y2="940" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#09111F"/>
+      <stop offset="1" stop-color="#131A2B"/>
+    </linearGradient>
+    <linearGradient id="baseC" x1="130" y1="690" x2="1470" y2="900" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F7F4EE"/>
+      <stop offset="1" stop-color="#E9E4DC"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="960" fill="url(#bgC)"/>
+  <circle cx="1240" cy="180" r="250" fill="#6366F1" opacity="0.08"/>
+  <text x="800" y="220" text-anchor="middle" fill="#F8FAFC" font-family="Georgia, serif" font-size="64" font-weight="700">Option C</text>
+  <text x="800" y="272" text-anchor="middle" fill="#9AA4B5" font-family="Segoe UI, sans-serif" font-size="28" font-weight="500">Popover More</text>
+  <text x="800" y="344" text-anchor="middle" fill="#B6C0D2" font-family="Segoe UI, sans-serif" font-size="22" font-weight="500">Keep the dock short. Move secondary tools into a light popover.</text>
+
+  <rect x="104" y="702" width="1392" height="174" rx="36" fill="url(#baseC)" stroke="#D7D0C6" stroke-width="2"/>
+  <rect x="132" y="732" width="1336" height="84" rx="24" fill="#FCFAF7" stroke="#E8DFD3"/>
+  <text x="160" y="782" fill="#8A8176" font-family="Segoe UI, sans-serif" font-size="25" font-weight="500">Tell Axon what to do next</text>
+
+  <circle cx="158" cy="842" r="26" fill="#FFFDF9" stroke="#D7CFC4"/>
+  <path d="M158 829V855" stroke="#7E756A" stroke-width="2.6" stroke-linecap="round"/>
+  <path d="M145 842H171" stroke="#7E756A" stroke-width="2.6" stroke-linecap="round"/>
+  <rect x="198" y="820" width="126" height="44" rx="22" fill="#FFFDF9" stroke="#D7CFC4"/>
+  <text x="236" y="848" fill="#4E473F" font-family="Segoe UI, sans-serif" font-size="18" font-weight="600">gpt-5</text>
+  <rect x="338" y="820" width="122" height="44" rx="22" fill="#FFFDF9" stroke="#D7CFC4"/>
+  <text x="374" y="848" fill="#4E473F" font-family="Segoe UI, sans-serif" font-size="18" font-weight="600">Think</text>
+  <rect x="474" y="820" width="110" height="44" rx="22" fill="#FFFDF9" stroke="#D7CFC4"/>
+  <text x="511" y="848" fill="#4E473F" font-family="Segoe UI, sans-serif" font-size="18" font-weight="600">Mode</text>
+  <rect x="598" y="820" width="112" height="44" rx="22" fill="#F1EBE2" stroke="#CDBFAE"/>
+  <text x="635" y="848" fill="#3E372F" font-family="Segoe UI, sans-serif" font-size="18" font-weight="700">More</text>
+  <path d="M688 837L698 847L708 837" stroke="#5A5147" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <circle cx="1414" cy="842" r="27" fill="#171717"/>
+  <path d="M1414 828V854" stroke="white" stroke-width="3.2" stroke-linecap="round"/>
+  <path d="M1403 839L1414 828L1425 839" stroke="white" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <rect x="980" y="492" width="360" height="236" rx="28" fill="#171F31" stroke="#314056" stroke-width="2"/>
+  <text x="1012" y="532" fill="#F8FAFC" font-family="Segoe UI, sans-serif" font-size="22" font-weight="700">Secondary tools</text>
+  <rect x="1012" y="560" width="104" height="40" rx="20" fill="#202A3E" stroke="#35425B"/>
+  <text x="1043" y="586" fill="#E2E8F0" font-family="Segoe UI, sans-serif" font-size="16" font-weight="600">Lock</text>
+  <rect x="1128" y="560" width="104" height="40" rx="20" fill="#202A3E" stroke="#35425B"/>
+  <text x="1164" y="586" fill="#E2E8F0" font-family="Segoe UI, sans-serif" font-size="16" font-weight="600">Git</text>
+  <rect x="1244" y="560" width="64" height="40" rx="20" fill="#5B63F6" fill-opacity="0.18" stroke="#7C83FF"/>
+  <text x="1266" y="586" fill="#E0E7FF" font-family="Segoe UI, sans-serif" font-size="16" font-weight="700">3</text>
+
+  <rect x="1012" y="614" width="104" height="40" rx="20" fill="#202A3E" stroke="#35425B"/>
+  <text x="1043" y="640" fill="#E2E8F0" font-family="Segoe UI, sans-serif" font-size="16" font-weight="600">Logs</text>
+  <rect x="1128" y="614" width="104" height="40" rx="20" fill="#202A3E" stroke="#35425B"/>
+  <text x="1152" y="640" fill="#E2E8F0" font-family="Segoe UI, sans-serif" font-size="16" font-weight="600">Terminal</text>
+  <rect x="1244" y="614" width="64" height="40" rx="20" fill="#202A3E" stroke="#35425B"/>
+  <text x="1264" y="640" fill="#E2E8F0" font-family="Segoe UI, sans-serif" font-size="16" font-weight="600">...</text>
+
+  <text x="1012" y="690" fill="#9FB0C6" font-family="Segoe UI, sans-serif" font-size="16" font-weight="500">This keeps the base composer flat while still exposing power tools.</text>
+  <text x="118" y="656" fill="#CBD5E1" font-family="Segoe UI, sans-serif" font-size="18" font-weight="600">Best when you want a compact default state but still need discoverable secondary actions.</text>
+</svg>

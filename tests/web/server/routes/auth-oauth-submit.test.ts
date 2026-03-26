@@ -14,6 +14,7 @@ const mockConfigSet = vi.fn();
 const mockSaveOAuthConfig = vi.fn();
 const mockExchangeAuthorizationCode = vi.fn();
 const mockCreateOAuthApiKey = vi.fn();
+const mockImportOfficialClaudeCodeAuth = vi.fn();
 
 vi.mock('../../../../src/config/index.js', () => ({
   configManager: {
@@ -74,6 +75,7 @@ vi.mock('../../../../src/auth/index.js', () => ({
   },
   exchangeAuthorizationCode: (...args: any[]) => mockExchangeAuthorizationCode(...args),
   createOAuthApiKey: (...args: any[]) => mockCreateOAuthApiKey(...args),
+  importOfficialClaudeCodeAuth: (...args: any[]) => mockImportOfficialClaudeCodeAuth(...args),
 }));
 
 vi.mock('../../../../src/utils/env-check.js', () => ({
@@ -154,6 +156,7 @@ describe('OAuth submit-code sets authPriority and runtimeBackend', () => {
     mockSaveOAuthConfig.mockClear();
     mockExchangeAuthorizationCode.mockReset();
     mockCreateOAuthApiKey.mockReset();
+    mockImportOfficialClaudeCodeAuth.mockReset();
 
     vi.resetModules();
 

@@ -44,6 +44,10 @@ function sanitizeProjectPath(projectPath: string): string {
   return sanitized || 'default';
 }
 
+export function getSessionMemoryProjectDir(projectPath: string): string {
+  return getProjectBaseDir(projectPath);
+}
+
 /**
  * 获取 session memory 目录
  * 官方: lz1() -> ~/.axon/projects/{path}/{session-id}/session-memory/

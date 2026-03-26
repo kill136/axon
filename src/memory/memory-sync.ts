@@ -12,6 +12,7 @@ import type { LongTermStore, FileEntry } from './long-term-store.js';
 import type { MemorySource } from './types.js';
 import type { EmbeddingProvider } from './embedding-provider.js';
 import type { EmbeddingCache } from './embedding-cache.js';
+import type { NotebookType } from './notebook.js';
 
 /**
  * 同步结果统计
@@ -22,6 +23,14 @@ export interface SyncResult {
   removed: number;
   unchanged: number;
 }
+
+const NOTEBOOK_INDEX_PATHS: Record<NotebookType, string> = {
+  profile: 'notebook:profile.md',
+  experience: 'notebook:experience.md',
+  project: 'notebook:project.md',
+  identity: 'notebook:identity.md',
+  'tools-notes': 'notebook:tools-notes.md',
+};
 
 /**
  * 递归列出目录下的所有 .md 文件
@@ -74,6 +83,27 @@ async function buildFileEntry(
 
   return {
     path: relativePath,
+    absPath,
+    source,
+    hash,
+    mtime: stats.mtimeMs,
+    size: stats.size,
+  };
+}
+
+/**
+ * 构建虚拟路径文件条目（用于 notebook 等逻辑来源）
+ */
+async function buildVirtualFileEntry(
+  absPath: string,
+  indexPath: string,
+  source: MemorySource,
+): Promise<FileEntry> {
+  const stats = await fs.stat(absPath);
+  const hash = await computeFileHash(absPath);
+
+  return {
+    path: indexPath,
     absPath,
     source,
     hash,
@@ -156,6 +186,72 @@ export class MemorySyncEngine {
 
     } catch (error) {
       console.error('[MemorySync] Failed to sync memory files:', error);
+    }
+
+    return result;
+  }
+
+  /**
+   * 同步 notebook 文件
+   */
+  async syncNotebookFiles(notebookPaths: Partial<Record<NotebookType, string>>): Promise<SyncResult> {
+    const result: SyncResult = {
+      added: 0,
+      updated: 0,
+      removed: 0,
+      unchanged: 0,
+    };
+
+    try {
+      const processedPaths = new Set<string>();
+
+      for (const [type, indexPath] of Object.entries(NOTEBOOK_INDEX_PATHS) as Array<[NotebookType, string]>) {
+        const absPath = notebookPaths[type];
+        if (!absPath) {
+          continue;
+        }
+
+        try {
+          const stats = await fs.lstat(absPath);
+          if (!stats.isFile() || stats.isSymbolicLink()) {
+            continue;
+          }
+
+          const entry = await buildVirtualFileEntry(absPath, indexPath, 'notebook');
+          processedPaths.add(indexPath);
+
+          const existingHash = this.store.getFileHash(indexPath);
+          if (!existingHash) {
+            const content = await fs.readFile(absPath, 'utf-8');
+            this.store.indexFile(entry, content);
+            result.added++;
+          } else if (existingHash !== entry.hash) {
+            const content = await fs.readFile(absPath, 'utf-8');
+            this.store.indexFile(entry, content);
+            result.updated++;
+          } else {
+            result.unchanged++;
+          }
+        } catch (error) {
+          const errorCode = error && typeof error === 'object' && 'code' in error
+            ? (error as NodeJS.ErrnoException).code
+            : undefined;
+
+          if (errorCode !== 'ENOENT') {
+            console.warn(`[MemorySync] Failed to process notebook ${type}:`, error);
+          }
+        }
+      }
+
+      const indexedPaths = this.store.listFilePaths('notebook');
+      for (const indexedPath of indexedPaths) {
+        if (!processedPaths.has(indexedPath)) {
+          this.store.removeFile(indexedPath);
+          result.removed++;
+        }
+      }
+    } catch (error) {
+      console.error('[MemorySync] Failed to sync notebook files:', error);
     }
 
     return result;
@@ -408,14 +504,17 @@ export class MemorySyncEngine {
     memoryDir?: string;
     sessionsDir?: string;
     transcriptsDir?: string;
+    notebookPaths?: Partial<Record<NotebookType, string>>;
   }): Promise<{
     memory: SyncResult;
     sessions: SyncResult;
     transcripts: SyncResult;
+    notebooks: SyncResult;
   }> {
     const memoryDir = opts?.memoryDir;
     const sessionsDir = opts?.sessionsDir;
     const transcriptsDir = opts?.transcriptsDir;
+    const notebookPaths = opts?.notebookPaths;
 
     const memoryResult: SyncResult = memoryDir
       ? await this.syncMemoryFiles(memoryDir)
@@ -429,10 +528,15 @@ export class MemorySyncEngine {
       ? await this.syncTranscriptFiles(transcriptsDir)
       : { added: 0, updated: 0, removed: 0, unchanged: 0 };
 
+    const notebooksResult: SyncResult = notebookPaths
+      ? await this.syncNotebookFiles(notebookPaths)
+      : { added: 0, updated: 0, removed: 0, unchanged: 0 };
+
     return {
       memory: memoryResult,
       sessions: sessionsResult,
       transcripts: transcriptsResult,
+      notebooks: notebooksResult,
     };
   }
 

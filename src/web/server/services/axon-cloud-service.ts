@@ -12,6 +12,7 @@ export interface RegisterRequest {
   username: string;
   password: string;
   email: string;
+  verificationCode?: string;
 }
 
 export interface LoginRequest {
@@ -36,6 +37,32 @@ export interface TokenInfo {
   remain_quota: number;
 }
 
+export interface AxonCloudTopupProduct {
+  productId: string;
+  name?: string;
+  description?: string;
+  price?: number;
+  amount?: number;
+  currency?: string;
+  bonus?: number;
+}
+
+export interface AxonCloudPayMethod {
+  type: string;
+  name?: string;
+  color?: string;
+  minTopup?: number;
+}
+
+export interface AxonCloudTopupInfo {
+  enableCreemTopup: boolean;
+  creemProducts: AxonCloudTopupProduct[];
+  enableOnlineTopup: boolean;
+  payMethods: AxonCloudPayMethod[];
+  minTopup?: number;
+  amountOptions: number[];
+}
+
 export interface AxonCloudSession {
   accessToken: string;
   userId: string;
@@ -48,6 +75,8 @@ export interface AxonCloudAuthResult {
   apiKey: string;
   apiBaseUrl: string;
   session?: AxonCloudSession;
+  requiresLogin?: boolean;
+  message?: string;
   error?: string;
 }
 
@@ -57,7 +86,7 @@ export class AxonCloudService {
   private readonly API_BASE_URL = 'https://api.chatbi.site';
 
   /**
-   * 用户注册，注册成功后自动登录
+   * 用户注册。NewAPI 开启邮箱验证时需要 verification_code，且成功后不一定自动登录。
    */
   async register(data: RegisterRequest): Promise<AxonCloudAuthResult> {
     try {
@@ -68,16 +97,42 @@ export class AxonCloudService {
           username: data.username,
           password: data.password,
           email: data.email,
+          ...(data.verificationCode ? { verification_code: data.verificationCode } : {}),
         }),
       });
 
       const result = await res.json() as any;
       if (!result.success) {
-        throw new Error(result.message || 'Registration failed');
+        throw new Error(this.getResultMessage(result, 'Registration failed'));
       }
 
-      console.log('[AxonCloud] Registration successful, auto-login...');
-      return await this.login({ username: data.username, password: data.password });
+      try {
+        console.log('[AxonCloud] Registration successful, attempting auto-login...');
+        const loginResult = await this.login({ username: data.username, password: data.password });
+        if (loginResult.success) {
+          return loginResult;
+        }
+
+        return {
+          success: true,
+          username: data.username,
+          quota: 0,
+          apiKey: '',
+          apiBaseUrl: this.API_BASE_URL,
+          requiresLogin: true,
+          message: this.getResultMessage(result, 'Registration successful, please login'),
+        };
+      } catch {
+        return {
+          success: true,
+          username: data.username,
+          quota: 0,
+          apiKey: '',
+          apiBaseUrl: this.API_BASE_URL,
+          requiresLogin: true,
+          message: this.getResultMessage(result, 'Registration successful, please login'),
+        };
+      }
     } catch (error) {
       console.error('[AxonCloud] Register error:', error);
       return {
@@ -88,12 +143,19 @@ export class AxonCloudService {
     }
   }
 
-  /**
-   * 用户登录
-   * 1. POST /api/user/login → session cookie + userId
-   * 2. GET /api/user/token → access token
-   * 3. 用 access token 获取用户信息、确保有 API token
-   */
+  async sendVerificationCode(email: string): Promise<void> {
+    const normalizedEmail = email.trim();
+    if (!normalizedEmail) {
+      throw new Error('Email is required');
+    }
+
+    const res = await fetch(`${this.NEWAPI_BASE}/api/verification?email=${encodeURIComponent(normalizedEmail)}`);
+    const result = await res.json() as any;
+    if (!result.success) {
+      throw new Error(this.getResultMessage(result, 'Failed to send verification code'));
+    }
+  }
+
   async login(data: LoginRequest): Promise<AxonCloudAuthResult> {
     try {
       // 1. 登录
@@ -161,6 +223,84 @@ export class AxonCloudService {
       'Authorization': `Bearer ${accessToken}`,
       'New-Api-User': userId,
     };
+  }
+
+  private getResultMessage(result: any, fallback: string): string {
+    const message = typeof result?.message === 'string' ? result.message.trim() : '';
+    if (message && message.toLowerCase() !== 'error' && message.toLowerCase() !== 'success') {
+      return message;
+    }
+    if (typeof result?.error === 'string' && result.error.trim()) {
+      return result.error;
+    }
+    if (typeof result?.data === 'string' && result.data.trim()) {
+      return result.data;
+    }
+    if (message) {
+      return message;
+    }
+    return fallback;
+  }
+
+  private normalizeOptionalNumber(value: unknown): number | undefined {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === 'string') {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+    return undefined;
+  }
+
+  private normalizeOptionalString(value: unknown): string | undefined {
+    return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+  }
+
+  private normalizePayMethods(value: unknown): AxonCloudPayMethod[] {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    return value
+      .map((method: any) => ({
+        type: String(method?.type ?? '').trim(),
+        name: this.normalizeOptionalString(method?.name),
+        color: this.normalizeOptionalString(method?.color),
+        minTopup: this.normalizeOptionalNumber(method?.min_topup ?? method?.minTopup),
+      }))
+      .filter((method: AxonCloudPayMethod) => !!method.type);
+  }
+
+  private normalizeAmountOptions(value: unknown): number[] {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    return value
+      .map((amount) => this.normalizeOptionalNumber(amount))
+      .filter((amount): amount is number => typeof amount === 'number' && amount > 0);
+  }
+
+  private normalizeTopupProducts(value: unknown): any[] {
+    if (Array.isArray(value)) {
+      return value;
+    }
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (!trimmed) {
+        return [];
+      }
+      try {
+        const parsed = JSON.parse(trimmed);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
   }
 
   /**
@@ -274,6 +414,108 @@ export class AxonCloudService {
   async getBalance(accessToken: string, userId: string): Promise<{ quota: number; used: number }> {
     const userInfo = await this.getUserInfo(accessToken, userId);
     return { quota: userInfo.quota, used: userInfo.usedQuota };
+  }
+
+  /**
+   * 获取充值信息和可用的支付方式
+   */
+  async getTopupInfo(accessToken: string, userId: string): Promise<AxonCloudTopupInfo> {
+    const res = await fetch(`${this.NEWAPI_BASE}/api/user/topup/info`, {
+      headers: this.authHeaders(accessToken, userId),
+    });
+
+    const result = await res.json() as any;
+    if (!result.success) {
+      throw new Error(this.getResultMessage(result, 'Failed to get top-up info'));
+    }
+
+    const data = result.data || {};
+    const rawProducts = this.normalizeTopupProducts(data.creem_products ?? data.creemProducts);
+
+    return {
+      enableCreemTopup: Boolean(data.enable_creem_topup ?? data.enableCreemTopup),
+      creemProducts: rawProducts
+        .map((product: any) => ({
+          productId: String(product?.product_id ?? product?.productId ?? product?.id ?? '').trim(),
+          name: typeof product?.name === 'string' ? product.name : undefined,
+          description: typeof product?.description === 'string' ? product.description : undefined,
+          price: this.normalizeOptionalNumber(product?.price),
+          amount: this.normalizeOptionalNumber(product?.amount),
+          currency: typeof product?.currency === 'string' ? product.currency : undefined,
+          bonus: this.normalizeOptionalNumber(product?.bonus ?? product?.gift_amount ?? product?.giftAmount),
+        }))
+        .filter((product: AxonCloudTopupProduct) => !!product.productId),
+      enableOnlineTopup: Boolean(data.enable_online_topup ?? data.enableOnlineTopup),
+      payMethods: this.normalizePayMethods(data.pay_methods ?? data.payMethods),
+      minTopup: this.normalizeOptionalNumber(data.min_topup ?? data.minTopup),
+      amountOptions: this.normalizeAmountOptions(data.amount_options ?? data.amountOptions),
+    };
+  }
+
+  /**
+   * 创建易支付 Checkout，会返回最终支付页 URL
+   */
+  async createEpayCheckout(
+    accessToken: string,
+    userId: string,
+    amount: number,
+    paymentMethod: string,
+  ): Promise<string> {
+    const res = await fetch(`${this.NEWAPI_BASE}/api/user/pay`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...this.authHeaders(accessToken, userId),
+      },
+      body: JSON.stringify({
+        amount,
+        payment_method: paymentMethod,
+      }),
+    });
+
+    const result = await res.json() as any;
+    const isSuccess = result?.success === true || result?.message === 'success';
+    if (!isSuccess) {
+      throw new Error(this.getResultMessage(result, 'Failed to create Epay checkout'));
+    }
+
+    const checkoutUrl = typeof result?.url === 'string' ? result.url : undefined;
+    if (!checkoutUrl) {
+      throw new Error('Epay checkout URL missing from response');
+    }
+
+    return checkoutUrl;
+  }
+
+  /**
+   * 创建 Creem Checkout，会返回最终支付页 URL
+   */
+  async createCreemCheckout(accessToken: string, userId: string, productId: string): Promise<string> {
+    const res = await fetch(`${this.NEWAPI_BASE}/api/user/creem/pay`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...this.authHeaders(accessToken, userId),
+      },
+      body: JSON.stringify({
+        product_id: productId,
+        payment_method: 'creem',
+      }),
+    });
+
+    const result = await res.json() as any;
+    const isSuccess = result?.success === true || result?.message === 'success';
+    if (!isSuccess) {
+      throw new Error(this.getResultMessage(result, 'Failed to create Creem checkout'));
+    }
+
+    const payload = result?.data && typeof result.data === 'object' ? result.data : result;
+    const checkoutUrl = payload?.checkout_url || payload?.checkoutUrl;
+    if (!checkoutUrl || typeof checkoutUrl !== 'string') {
+      throw new Error('Creem checkout URL missing from response');
+    }
+
+    return checkoutUrl;
   }
 }
 

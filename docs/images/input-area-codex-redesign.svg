@@ -1,0 +1,206 @@
+<svg width="1600" height="1180" viewBox="0 0 1600 1180" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="180" y1="40" x2="1400" y2="1080" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0A1220"/>
+      <stop offset="1" stop-color="#151B2E"/>
+    </linearGradient>
+    <linearGradient id="hero" x1="162" y1="132" x2="1438" y2="504" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F6F7FB"/>
+      <stop offset="1" stop-color="#ECEFF6"/>
+    </linearGradient>
+    <linearGradient id="drawer" x1="915" y1="582" x2="1400" y2="874" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#151C2E"/>
+      <stop offset="1" stop-color="#101726"/>
+    </linearGradient>
+    <filter id="softShadow" x="54" y="88" width="1492" height="468" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+      <feOffset dy="24"/>
+      <feGaussianBlur stdDeviation="28"/>
+      <feComposite in2="hardAlpha" operator="out"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.0196078 0 0 0 0 0.0313726 0 0 0 0 0.0823529 0 0 0 0.34 0"/>
+      <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_1_2"/>
+      <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_1_2" result="shape"/>
+    </filter>
+    <filter id="panelShadow" x="826" y="542" width="563" height="364" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+      <feOffset dy="14"/>
+      <feGaussianBlur stdDeviation="18"/>
+      <feComposite in2="hardAlpha" operator="out"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.0156863 0 0 0 0 0.0235294 0 0 0 0 0.0588235 0 0 0 0.32 0"/>
+      <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_1_2"/>
+      <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_1_2" result="shape"/>
+    </filter>
+    <filter id="mobileShadow" x="62" y="564" width="540" height="442" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+      <feOffset dy="20"/>
+      <feGaussianBlur stdDeviation="20"/>
+      <feComposite in2="hardAlpha" operator="out"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.0196078 0 0 0 0 0.0313726 0 0 0 0 0.0823529 0 0 0 0.32 0"/>
+      <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_1_2"/>
+      <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_1_2" result="shape"/>
+    </filter>
+  </defs>
+
+  <rect width="1600" height="1180" fill="url(#bg)"/>
+  <circle cx="1278" cy="132" r="212" fill="#4F46E5" opacity="0.08"/>
+  <circle cx="212" cy="1010" r="292" fill="#22C55E" opacity="0.06"/>
+
+  <text x="112" y="86" fill="#F8FAFC" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="34" font-weight="700">AXON 输入框重设计</text>
+  <text x="112" y="126" fill="#98A2B3" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="20" font-weight="500">参考 Codex 的“单一主输入面”结构，目标是减掉层级噪音，不减掉能力。</text>
+
+  <text x="112" y="178" fill="#D8DEEA" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="18" font-weight="600">Desktop Composer</text>
+
+  <g filter="url(#softShadow)">
+    <rect x="110" y="198" width="1380" height="356" rx="40" fill="url(#hero)"/>
+    <rect x="110.75" y="198.75" width="1378.5" height="354.5" rx="39.25" stroke="#D3D8E5" stroke-opacity="0.9" stroke-width="1.5"/>
+  </g>
+
+  <rect x="148" y="232" width="194" height="56" rx="28" fill="#FFFFFF" stroke="#D7DBE6" stroke-width="1.5"/>
+  <circle cx="181" cy="260" r="18" fill="#111827"/>
+  <text x="205" y="268" fill="#111827" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="18" font-weight="600">image.png</text>
+
+  <text x="146" y="352" fill="#161B26" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="34" font-weight="500">目前的输入框太繁琐了，参考一些 Codex 的设计，</text>
+  <text x="146" y="400" fill="#161B26" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="34" font-weight="500">把高频能力留在首层，把调试能力收进“更多”。</text>
+
+  <rect x="146" y="454" width="26" height="26" rx="8" fill="#FFFFFF"/>
+  <path d="M159 461V473" stroke="#7C879B" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M153 467H165" stroke="#7C879B" stroke-width="2.5" stroke-linecap="round"/>
+
+  <rect x="196" y="447" width="132" height="42" rx="21" fill="#FFFFFF"/>
+  <path d="M228 464H236L232 472L228 464Z" fill="#7C879B"/>
+  <text x="246" y="474" fill="#4B5565" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="600">GPT-5.4</text>
+  <path d="M301 463L309 471L317 463" stroke="#7C879B" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <rect x="344" y="447" width="120" height="42" rx="21" fill="#FFFFFF"/>
+  <text x="377" y="474" fill="#4B5565" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="600">超高</text>
+  <path d="M429 463L437 471L445 463" stroke="#7C879B" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <rect x="480" y="447" width="116" height="42" rx="21" fill="#FFFFFF"/>
+  <text x="516" y="474" fill="#4B5565" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="600">工作区</text>
+  <path d="M563 463L571 471L579 463" stroke="#7C879B" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <rect x="612" y="447" width="104" height="42" rx="21" fill="#EEF1F7"/>
+  <text x="646" y="474" fill="#334155" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="600">更多</text>
+  <circle cx="680" cy="468" r="2.4" fill="#64748B"/>
+  <circle cx="689" cy="468" r="2.4" fill="#64748B"/>
+  <circle cx="698" cy="468" r="2.4" fill="#64748B"/>
+
+  <path d="M1355 454C1361.63 454 1367 459.373 1367 466V476C1367 482.627 1361.63 488 1355 488C1348.37 488 1343 482.627 1343 476V466C1343 459.373 1348.37 454 1355 454Z" stroke="#8B8B8B" stroke-width="2.4"/>
+  <path d="M1338 480C1338.9 489.5 1346.97 496.5 1356.5 496.5C1366.03 496.5 1374.1 489.5 1375 480" stroke="#8B8B8B" stroke-width="2.4" stroke-linecap="round"/>
+  <path d="M1356.5 496.5V507" stroke="#8B8B8B" stroke-width="2.4" stroke-linecap="round"/>
+  <path d="M1349 507H1364" stroke="#8B8B8B" stroke-width="2.4" stroke-linecap="round"/>
+
+  <circle cx="1441" cy="468" r="28" fill="#111111"/>
+  <path d="M1441 454V481" stroke="white" stroke-width="3" stroke-linecap="round"/>
+  <path d="M1431 464L1441 454L1451 464" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <rect x="1122" y="214" width="206" height="38" rx="19" fill="#111827" fill-opacity="0.8"/>
+  <circle cx="1150" cy="233" r="5" fill="#22C55E"/>
+  <text x="1164" y="239" fill="#F8FAFC" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="600">上下文 42% · 连通正常</text>
+
+  <path d="M716 468H1310" stroke="#D7DCE7" stroke-width="1.2" stroke-dasharray="5 7"/>
+
+  <circle cx="112" cy="310" r="17" fill="#4F46E5"/>
+  <text x="106.2" y="317" fill="white" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="700">1</text>
+  <path d="M129 310H78" stroke="#818CF8" stroke-width="2"/>
+  <text x="42" y="295" fill="#C6D0E0" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="600">附件以 chip 呈现</text>
+  <text x="42" y="318" fill="#8EA0B8" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="14">不再占一整排预览区</text>
+
+  <circle cx="1502" cy="328" r="17" fill="#4F46E5"/>
+  <text x="1496.2" y="335" fill="white" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="700">2</text>
+  <path d="M1485 328H1544" stroke="#818CF8" stroke-width="2"/>
+  <text x="1258" y="311" fill="#C6D0E0" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="600">主视觉只服务输入</text>
+  <text x="1258" y="334" fill="#8EA0B8" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="14">让文本区成为唯一焦点</text>
+
+  <circle cx="760" cy="530" r="17" fill="#4F46E5"/>
+  <text x="754.2" y="537" fill="white" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="700">3</text>
+  <path d="M760 513V569" stroke="#818CF8" stroke-width="2"/>
+  <text x="632" y="607" fill="#C6D0E0" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="600">底栏只保留高频能力</text>
+  <text x="632" y="630" fill="#8EA0B8" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="14">附件 / 模型 / 思考 / 模式 / 语音 / 发送</text>
+
+  <text x="912" y="606" fill="#D8DEEA" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="18" font-weight="600">More Drawer</text>
+
+  <g filter="url(#panelShadow)">
+    <rect x="862" y="582" width="491" height="292" rx="28" fill="url(#drawer)"/>
+    <rect x="862.75" y="582.75" width="489.5" height="290.5" rx="27.25" stroke="#2B3850" stroke-width="1.5"/>
+  </g>
+
+  <text x="896" y="626" fill="#F8FAFC" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="20" font-weight="700">更多操作</text>
+  <text x="896" y="654" fill="#8EA0B8" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="500">默认收起，避免输入框被调试按钮切碎。</text>
+
+  <rect x="896" y="690" width="130" height="42" rx="21" fill="#162133" stroke="#2F3B53"/>
+  <text x="939" y="717" fill="#E5E7EB" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="600">新对话</text>
+  <rect x="1040" y="690" width="112" height="42" rx="21" fill="#162133" stroke="#2F3B53"/>
+  <text x="1080" y="717" fill="#E5E7EB" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="600">锁定</text>
+  <rect x="1166" y="690" width="112" height="42" rx="21" fill="#162133" stroke="#2F3B53"/>
+  <text x="1206" y="717" fill="#E5E7EB" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="600">终端</text>
+
+  <rect x="896" y="748" width="102" height="42" rx="21" fill="#162133" stroke="#2F3B53"/>
+  <text x="930" y="775" fill="#E5E7EB" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="600">Git</text>
+  <rect x="1012" y="748" width="102" height="42" rx="21" fill="#162133" stroke="#2F3B53"/>
+  <text x="1046" y="775" fill="#E5E7EB" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="600">日志</text>
+  <rect x="1128" y="748" width="112" height="42" rx="21" fill="#162133" stroke="#2F3B53"/>
+  <text x="1162" y="775" fill="#E5E7EB" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="600">探针</text>
+  <rect x="1254" y="748" width="66" height="42" rx="21" fill="#4F46E5" fill-opacity="0.18" stroke="#818CF8"/>
+  <text x="1277" y="775" fill="#E0E7FF" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="700">2</text>
+
+  <path d="M896 814H1318" stroke="#273449" stroke-width="1.2"/>
+  <text x="896" y="844" fill="#A8B5C9" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="500">这里也可以放：Transcript 切换、上下文统计、API 额度、快捷键提示。</text>
+
+  <circle cx="834" cy="640" r="17" fill="#4F46E5"/>
+  <text x="828.2" y="647" fill="white" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="700">4</text>
+  <path d="M817 640H772" stroke="#818CF8" stroke-width="2"/>
+  <text x="616" y="625" fill="#C6D0E0" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="600">次级控制进入抽屉</text>
+  <text x="616" y="648" fill="#8EA0B8" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="14">保留能力，但不常驻占屏</text>
+
+  <text x="112" y="606" fill="#D8DEEA" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="18" font-weight="600">Mobile Preview</text>
+
+  <g filter="url(#mobileShadow)">
+    <rect x="100" y="580" width="464" height="366" rx="34" fill="#F4F6FA"/>
+    <rect x="100.75" y="580.75" width="462.5" height="364.5" rx="33.25" stroke="#D5DAE6" stroke-width="1.5"/>
+  </g>
+
+  <rect x="128" y="608" width="144" height="48" rx="24" fill="#FFFFFF" stroke="#D7DBE6"/>
+  <circle cx="156" cy="632" r="14" fill="#111827"/>
+  <text x="178" y="639" fill="#111827" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="600">图片.png</text>
+
+  <text x="128" y="718" fill="#161B26" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="26" font-weight="500">把输入框做轻一点，</text>
+  <text x="128" y="754" fill="#161B26" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="26" font-weight="500">像 Codex 那样更直接。</text>
+
+  <rect x="128" y="846" width="22" height="22" rx="7" fill="#FFFFFF"/>
+  <path d="M139 851V863" stroke="#7C879B" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M133 857H145" stroke="#7C879B" stroke-width="2.2" stroke-linecap="round"/>
+
+  <rect x="170" y="838" width="116" height="38" rx="19" fill="#FFFFFF"/>
+  <text x="198" y="862" fill="#4B5565" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="600">GPT-5.4</text>
+  <path d="M257 852L264 859L271 852" stroke="#7C879B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <rect x="298" y="838" width="88" height="38" rx="19" fill="#FFFFFF"/>
+  <text x="327" y="862" fill="#4B5565" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="600">超高</text>
+
+  <rect x="398" y="838" width="72" height="38" rx="19" fill="#EEF1F7"/>
+  <text x="421" y="862" fill="#334155" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="600">更多</text>
+
+  <circle cx="518" cy="858" r="24" fill="#111111"/>
+  <path d="M518 846V868" stroke="white" stroke-width="2.8" stroke-linecap="round"/>
+  <path d="M509 854L518 845L527 854" stroke="white" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <circle cx="594" cy="722" r="17" fill="#4F46E5"/>
+  <text x="588.2" y="729" fill="white" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="700">5</text>
+  <path d="M577 722H628" stroke="#818CF8" stroke-width="2"/>
+  <text x="634" y="705" fill="#C6D0E0" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="600">手机端仍是一块卡片</text>
+  <text x="634" y="728" fill="#8EA0B8" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="14">不拆成上下两层碎按钮</text>
+
+  <text x="112" y="1032" fill="#F8FAFC" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="22" font-weight="700">结构原则</text>
+  <text x="112" y="1072" fill="#D4DAE6" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="600">1. 首层只保留高频动作，其他全部后撤一层。</text>
+  <text x="112" y="1102" fill="#D4DAE6" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="600">2. 文字输入区必须占最大视觉权重，不能被图标包围。</text>
+  <text x="112" y="1132" fill="#D4DAE6" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="600">3. Context / API / 调试信息保留，但改为次级可见，不长期霸占底栏。</text>
+
+  <text x="900" y="1032" fill="#F8FAFC" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="22" font-weight="700">实现时不动的能力</text>
+  <text x="900" y="1072" fill="#D4DAE6" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="600">附件上传、模型切换、思考强度、模式预设、语音、发送、停止。</text>
+  <text x="900" y="1102" fill="#D4DAE6" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="600">只是改信息层级，不砍真实能力；便于基于现有 `InputArea.tsx` 渐进实现。</text>
+  <text x="900" y="1132" fill="#8EA0B8" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="500">v1 先收敛结构，视觉细节可在落地时再微调深浅主题。</text>
+</svg>

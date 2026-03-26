@@ -73,6 +73,26 @@
   color: var(--accent-error);
 }
 
+.api-usage-bar__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.api-usage-bar__badge--cache {
+  background: color-mix(in srgb, var(--accent-success) 18%, var(--bg-tertiary));
+  color: var(--accent-success);
+}
+
 /* 内联重置时间 */
 .api-usage-bar__reset {
   color: var(--accent-info, #818cf8);

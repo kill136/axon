@@ -196,6 +196,7 @@ export interface SessionMetadata {
     total: number;
   };
   tags?: string[];
+  temporarySessionIds?: string[]; // 临时 WebSocket 会话 ID 别名，用于重启后恢复
   summary?: string;
   // 项目路径（用于按项目过滤会话，null 表示全局会话）
   projectPath?: string | null;

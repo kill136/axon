@@ -21,10 +21,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { VERSION } from '../../../version.js';
-import {
-  getWebModelLabel,
-  getWebModelOptionsForBackend,
-} from '../../shared/model-catalog.js';
+import { buildCurrentRuntimeModelListResponse } from '../runtime/runtime-model-list.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -162,31 +159,26 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
   });
 
   // 获取模型列表
-  app.get('/api/models', (req: Request, res: Response) => {
-    const provider = webAuth.getRuntimeProvider();
-    const runtimeBackend = webAuth.getRuntimeBackend();
-    const currentModel = webAuth.getDefaultModelByBackend()[runtimeBackend];
-    const backendLabel =
-      runtimeBackend === 'codex-subscription' ? 'Codex' :
-      runtimeBackend === 'openai-compatible-api' ? 'OpenAI Compatible' :
-      runtimeBackend === 'claude-compatible-api' ? 'Claude Compatible' :
-      runtimeBackend === 'axon-cloud' ? 'Axon Cloud' :
-      'Claude';
-    const models = getWebModelOptionsForBackend(runtimeBackend, currentModel, currentModel).map(model => ({
-      id: model.value,
-      name: `${backendLabel} ${getWebModelLabel(model.value, provider)}`,
-      description: model.description || (provider === 'codex'
-        ? 'Current or configured responses-compatible model'
-        : 'Claude-family model'),
-      modelId: model.value,
-      provider: model.provider,
-    }));
+  app.get('/api/models', async (req: Request, res: Response) => {
+    try {
+      const runtimeBackend = webAuth.getRuntimeBackend();
+      const availableModels = await apiManager.getAvailableModels();
 
-    res.json({
-      provider,
-      runtimeBackend,
-      models,
-    });
+      res.json(buildCurrentRuntimeModelListResponse({
+        runtimeBackend,
+        defaultModelByBackend: webAuth.getDefaultModelByBackend(),
+        customModelCatalogByBackend: webAuth.getCustomModelCatalogByBackend(),
+        codexModelName: webAuth.getCodexModelName(),
+        customModelName: webAuth.getCustomModelName(),
+        availableModels,
+      }));
+    } catch (error) {
+      console.error('[API] Failed to get models:', error);
+      res.status(500).json({
+        error: 'Failed to get model list',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
   });
 
   // 获取会话信息
