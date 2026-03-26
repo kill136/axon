@@ -41,8 +41,8 @@ const MODEL_DIMENSIONS: Record<string, number> = {
 
 const DEFAULT_MODEL = 'text-embedding-3-small';
 const DEFAULT_BASE_URL = 'https://api.openai.com/v1';
-const BATCH_SIZE = 100; // 每批最多 100 个文本
-const REQUEST_TIMEOUT_MS = 15000;
+const BATCH_SIZE = 20; // 每批最多 20 个文本
+const REQUEST_TIMEOUT_MS = 30000;
 const MAX_RETRIES = 2;
 
 function isTransientEmbeddingError(error: unknown): boolean {
