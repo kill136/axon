@@ -21,8 +21,6 @@ export interface ElicitationHandlerConfig extends HandlerConfig {
  * 处理 MCP 服务器请求用户输入前的准备
  */
 export class ElicitationHandler extends BaseHookHandler {
-  private config: ElicitationHandlerConfig;
-
   constructor(config: ElicitationHandlerConfig = {}) {
     super({
       name: 'ElicitationHandler',
@@ -30,10 +28,12 @@ export class ElicitationHandler extends BaseHookHandler {
       silent: true,
       ...config,
     });
-    this.config = config;
   }
 
   async execute(input: HookInput): Promise<HookResult> {
+    // Cast config to access extended properties
+    const cfg = this.config as unknown as ElicitationHandlerConfig;
+
     // 验证必要字段
     if (!input.mcpServer) {
       return {
@@ -47,14 +47,14 @@ export class ElicitationHandler extends BaseHookHandler {
     const fieldCount = Object.keys(requiredFields).length;
 
     // 如果有表单 URL，返回浏览器操作
-    if (input.formUrl && this.config.useBrowser !== false) {
+    if (input.formUrl && cfg.useBrowser !== false) {
       return {
         success: true,
         output: JSON.stringify({
           action: 'open_browser',
           url: input.formUrl,
           fields: Object.keys(requiredFields),
-          timeout: this.config.formTimeout || 600000,
+          timeout: cfg.formTimeout || 600000,
         }),
       };
     }

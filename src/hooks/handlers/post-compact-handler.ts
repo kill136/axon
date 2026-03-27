@@ -21,8 +21,6 @@ export interface PostCompactHandlerConfig extends HandlerConfig {
  * 处理 Context 压缩完成后的回调
  */
 export class PostCompactHandler extends BaseHookHandler {
-  private config: PostCompactHandlerConfig;
-
   constructor(config: PostCompactHandlerConfig = {}) {
     super({
       name: 'PostCompactHandler',
@@ -30,10 +28,12 @@ export class PostCompactHandler extends BaseHookHandler {
       silent: true,
       ...config,
     });
-    this.config = config;
   }
 
   async execute(input: HookInput): Promise<HookResult> {
+    // Cast config to access extended properties
+    const cfg = this.config as unknown as PostCompactHandlerConfig;
+
     // 验证必要字段
     if (input.originalTokens === undefined || input.compressedTokens === undefined) {
       return {
@@ -43,9 +43,9 @@ export class PostCompactHandler extends BaseHookHandler {
     }
 
     // 检查压缩阈值
-    if (this.config.compressionThreshold !== undefined) {
+    if (cfg.compressionThreshold !== undefined) {
       const ratio = input.compressedTokens / input.originalTokens;
-      if (ratio > this.config.compressionThreshold) {
+      if (ratio > cfg.compressionThreshold) {
         // 压缩不足，跳过处理
         return {
           success: true,
@@ -55,7 +55,7 @@ export class PostCompactHandler extends BaseHookHandler {
     }
 
     // 记录统计信息
-    if (this.config.logStats !== false) {
+    if (cfg.logStats !== false) {
       const ratio = ((1 - input.compressedTokens / input.originalTokens) * 100).toFixed(2);
       const stats = {
         event: 'PostCompact',

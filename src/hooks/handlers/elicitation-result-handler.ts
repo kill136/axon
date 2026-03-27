@@ -21,8 +21,6 @@ export interface ElicitationResultHandlerConfig extends HandlerConfig {
  * 处理用户完成输入后的结果处理
  */
 export class ElicitationResultHandler extends BaseHookHandler {
-  private config: ElicitationResultHandlerConfig;
-
   constructor(config: ElicitationResultHandlerConfig = {}) {
     super({
       name: 'ElicitationResultHandler',
@@ -30,10 +28,12 @@ export class ElicitationResultHandler extends BaseHookHandler {
       silent: true,
       ...config,
     });
-    this.config = config;
   }
 
   async execute(input: HookInput): Promise<HookResult> {
+    // Cast config to access extended properties
+    const cfg = this.config as unknown as ElicitationResultHandlerConfig;
+
     // 验证必要字段
     if (!input.userInput) {
       return {
@@ -43,7 +43,7 @@ export class ElicitationResultHandler extends BaseHookHandler {
     }
 
     // 验证用户输入
-    if (this.config.validateInput !== false) {
+    if (cfg.validateInput !== false) {
       const validation = this.validateUserInput(input.userInput);
       if (!validation.valid) {
         return {
@@ -54,7 +54,7 @@ export class ElicitationResultHandler extends BaseHookHandler {
     }
 
     // 记录输入（如果启用且安全）
-    if (this.config.logInput) {
+    if (cfg.logInput) {
       this.logUserInput(input);
     }
 

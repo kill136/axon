@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import fs from 'fs';
-import path from 'path';
-import os from 'os';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 import {
   RalphLoopTool,
   parseRalphLoopState,
   updateRalphLoopIteration,
   hasCompletionPromise,
-} from './ralph-loop';
+} from './ralph-loop.js';
 
 let testDir: string;
 let originalCwd: string;
@@ -34,9 +34,10 @@ describe('RalphLoopTool', () => {
         prompt: 'Test prompt',
       });
 
-      expect(result.message).toContain('Ralph loop started');
-      expect(result.stateFile).toContain('ralph-loop.local.md');
-      expect(fs.existsSync(result.stateFile)).toBe(true);
+      expect(result.success).toBe(true);
+      expect(result.output).toContain('Ralph loop started');
+      expect(result.data?.stateFile).toContain('ralph-loop.local.md');
+      expect(fs.existsSync(result.data?.stateFile!)).toBe(true);
     });
 
     it('should create state file with default values', async () => {

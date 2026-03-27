@@ -16,7 +16,7 @@ import {
   type ApiReadableStream,
   type StreamReader,
   type StreamHandlerOptions,
-} from '../stream-handler';
+} from '../stream-handler.js';
 
 // Mock stream reader
 class MockStreamReader implements StreamReader {

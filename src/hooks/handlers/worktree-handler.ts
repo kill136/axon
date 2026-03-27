@@ -22,8 +22,6 @@ export interface WorktreeHandlerConfig extends HandlerConfig {
  * 处理 Worktree 创建事件
  */
 export class WorktreeCreateHandler extends BaseHookHandler {
-  private config: WorktreeHandlerConfig;
-
   constructor(config: WorktreeHandlerConfig = {}) {
     super({
       name: 'WorktreeCreateHandler',
@@ -31,10 +29,12 @@ export class WorktreeCreateHandler extends BaseHookHandler {
       silent: true,
       ...config,
     });
-    this.config = config;
   }
 
   async execute(input: HookInput): Promise<HookResult> {
+    // Cast config to access extended properties
+    const cfg = this.config as unknown as WorktreeHandlerConfig;
+
     // 验证必要字段
     if (!input.worktreePath || !input.worktreeName) {
       return {
@@ -51,14 +51,14 @@ export class WorktreeCreateHandler extends BaseHookHandler {
       timestamp: new Date().toISOString(),
     };
 
-    if (this.config.logEvent !== false) {
+    if (cfg.logEvent !== false) {
       // 这里可以进行日志记录
     }
 
     // 如果配置了回调 URL，可以发送通知
-    if (this.config.callbackUrl) {
+    if (cfg.callbackUrl) {
       try {
-        await this.sendCallback(this.config.callbackUrl, event);
+        await this.sendCallback(cfg.callbackUrl, event);
       } catch (err) {
         // 回调失败不应该中断主流程
         console.warn('Worktree create callback failed:', err);
@@ -91,8 +91,6 @@ export class WorktreeCreateHandler extends BaseHookHandler {
  * 处理 Worktree 删除事件
  */
 export class WorktreeRemoveHandler extends BaseHookHandler {
-  private config: WorktreeHandlerConfig;
-
   constructor(config: WorktreeHandlerConfig = {}) {
     super({
       name: 'WorktreeRemoveHandler',
@@ -100,10 +98,12 @@ export class WorktreeRemoveHandler extends BaseHookHandler {
       silent: true,
       ...config,
     });
-    this.config = config;
   }
 
   async execute(input: HookInput): Promise<HookResult> {
+    // Cast config to access extended properties
+    const cfg = this.config as unknown as WorktreeHandlerConfig;
+
     // 验证必要字段
     if (!input.worktreePath || !input.worktreeName) {
       return {
@@ -119,14 +119,14 @@ export class WorktreeRemoveHandler extends BaseHookHandler {
       timestamp: new Date().toISOString(),
     };
 
-    if (this.config.logEvent !== false) {
+    if (cfg.logEvent !== false) {
       // 这里可以进行日志记录和清理
     }
 
     // 如果配置了回调 URL，可以发送通知
-    if (this.config.callbackUrl) {
+    if (cfg.callbackUrl) {
       try {
-        await this.sendCallback(this.config.callbackUrl, event);
+        await this.sendCallback(cfg.callbackUrl, event);
       } catch (err) {
         // 回调失败不应该中断主流程
         console.warn('Worktree remove callback failed:', err);

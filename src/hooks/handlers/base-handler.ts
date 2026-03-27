@@ -10,7 +10,7 @@ import { HookInput, HookResult } from '../index.js';
  */
 export interface HandlerConfig {
   /** 处理器名称 */
-  name: string;
+  name?: string;
   /** 处理超时（毫秒，默认 10 分钟） */
   timeout?: number;
   /** 是否在错误时静默失败 */

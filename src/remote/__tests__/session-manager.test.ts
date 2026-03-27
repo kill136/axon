@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { RemoteSession, RemoteSessionRegistry } from '../session-manager';
+import { RemoteSession, RemoteSessionRegistry } from '../session-manager.js';
 
 describe('Remote Session Manager', () => {
   describe('RemoteSession', () => {
@@ -126,18 +126,17 @@ describe('Remote Session Manager', () => {
       expect(stats.isIdle).toBe(false);
     });
 
-    it('should track idle state', (done) => {
+    it('should track idle state', async () => {
       const shortIdleSession = new RemoteSession('idle-test', {
         idleTimeout: 100,
         cleanupInterval: 50,
       });
 
-      setTimeout(() => {
-        const stats = shortIdleSession.getStats();
-        expect(stats.isIdle).toBe(true);
-        shortIdleSession.close();
-        done();
-      }, 150);
+      await new Promise((resolve) => setTimeout(resolve, 150));
+
+      const stats = shortIdleSession.getStats();
+      expect(stats.isIdle).toBe(true);
+      shortIdleSession.close();
     });
 
     it('should update last activity time on addToolUse', async () => {
@@ -153,7 +152,7 @@ describe('Remote Session Manager', () => {
       expect(newStats.lastActivityTime).toBeGreaterThan(initialTime);
     });
 
-    it('should close and cleanup timer', (done) => {
+    it('should close and cleanup timer', () => {
       const testSession = new RemoteSession('cleanup-test', {
         cleanupInterval: 100,
       });
@@ -164,8 +163,6 @@ describe('Remote Session Manager', () => {
 
       // After close, session should not be able to accept new tool uses
       expect(testSession.getToolUseCount()).toBe(0);
-
-      done();
     });
   });
 

@@ -25,21 +25,20 @@ export interface StopFailureHandlerConfig extends HandlerConfig {
  * 处理 API 错误或其他导致 turn 失败的情况
  */
 export class StopFailureHandler extends BaseHookHandler {
-  private config: StopFailureHandlerConfig;
   private retryCount: number = 0;
 
   constructor(config: StopFailureHandlerConfig = {}) {
-    super({
-      name: 'StopFailureHandler',
-      timeout: 60000, // 60 seconds
-      silent: true,
-      ...config,
-    });
-    this.config = {
+    const mergedConfig = {
       maxRetries: 3,
       retryDelay: 5000,
       ...config,
     };
+    super({
+      name: 'StopFailureHandler',
+      timeout: 60000, // 60 seconds
+      silent: true,
+      ...mergedConfig,
+    });
   }
 
   async execute(input: HookInput): Promise<HookResult> {
@@ -51,16 +50,19 @@ export class StopFailureHandler extends BaseHookHandler {
       };
     }
 
+    // Cast config to access extended properties
+    const cfg = this.config as unknown as StopFailureHandlerConfig;
+
     // 分析错误类型
     const errorAnalysis = this.analyzeError(input);
 
     // 如果启用自动重试，检查是否应该重试
-    if (this.config.autoRetry && this.shouldRetry(input)) {
+    if (cfg.autoRetry && this.shouldRetry(input)) {
       this.retryCount++;
 
-      if (this.retryCount <= (this.config.maxRetries || 3)) {
+      if (this.retryCount <= (cfg.maxRetries || 3)) {
         // 延迟后重试
-        await this.delay(this.config.retryDelay || 5000);
+        await this.delay(cfg.retryDelay || 5000);
 
         return {
           success: true,
@@ -68,7 +70,7 @@ export class StopFailureHandler extends BaseHookHandler {
             action: 'retry',
             retry_count: this.retryCount,
             retry_reason: errorAnalysis.recoverable,
-            next_retry_delay_ms: this.config.retryDelay,
+            next_retry_delay_ms: cfg.retryDelay,
           }),
         };
       }
@@ -76,14 +78,14 @@ export class StopFailureHandler extends BaseHookHandler {
       // 已达到最大重试次数
       return {
         success: false,
-        error: `Max retries (${this.config.maxRetries}) exceeded`,
+        error: `Max retries (${cfg.maxRetries}) exceeded`,
       };
     }
 
     // 发送错误通知
-    if (this.config.notificationUrl) {
+    if (cfg.notificationUrl) {
       try {
-        await this.sendNotification(this.config.notificationUrl, {
+        await this.sendNotification(cfg.notificationUrl, {
           stop_reason: input.stopReason,
           error: input.apiError || 'Unknown error',
           http_status: input.httpStatus,

@@ -1,33 +1,44 @@
-import { z } from 'zod';
-import { BaseTool } from './base';
-import fs from 'fs';
-import path from 'path';
+import { BaseTool } from './base.js';
+import type { ToolDefinition, ToolResult } from '../types/index.js';
+import * as fs from 'fs';
+import * as path from 'path';
+
+interface RalphLoopInput {
+  prompt: string;
+  maxIterations?: number;
+  completionPromise?: string;
+}
 
 /**
  * Ralph Loop Tool: Create self-iterating tasks
  */
-export class RalphLoopTool extends BaseTool {
+export class RalphLoopTool extends BaseTool<RalphLoopInput, ToolResult> {
   name = 'RalphLoop';
   description =
     'Create a self-iterating task that automatically re-runs until a completion promise is output or max iterations reached';
 
-  inputSchema = z.object({
-    prompt: z.string().describe('The prompt that will be repeatedly submitted'),
-    maxIterations: z
-      .number()
-      .optional()
-      .describe('Maximum number of iterations (default: 10)'),
-    completionPromise: z
-      .string()
-      .optional()
-      .describe('Completion marker text that signals when to stop (default: "✅ TASK COMPLETE")'),
-  });
+  getInputSchema(): ToolDefinition['inputSchema'] {
+    return {
+      type: 'object',
+      properties: {
+        prompt: {
+          type: 'string',
+          description: 'The prompt that will be repeatedly submitted',
+        },
+        maxIterations: {
+          type: 'number',
+          description: 'Maximum number of iterations (default: 10)',
+        },
+        completionPromise: {
+          type: 'string',
+          description: 'Completion marker text that signals when to stop (default: "✅ TASK COMPLETE")',
+        },
+      },
+      required: ['prompt'],
+    };
+  }
 
-  async execute(input: z.infer<typeof this.inputSchema>): Promise<{
-    message: string;
-    stateFile: string;
-    prompt: string;
-  }> {
+  async execute(input: RalphLoopInput): Promise<ToolResult> {
     const {
       prompt,
       maxIterations = 10,
@@ -67,9 +78,14 @@ completion_promise: "${completionPromise}"
     fs.writeFileSync(stateFile, content, 'utf-8');
 
     return {
-      message: `🔄 Ralph loop started (max ${maxIterations} iterations). Looking for: <promise>${completionPromise}</promise>`,
-      stateFile,
-      prompt,
+      success: true,
+      output: `🔄 Ralph loop started (max ${maxIterations} iterations). Looking for: <promise>${completionPromise}</promise>`,
+      data: {
+        stateFile,
+        prompt,
+        iteration: 1,
+        maxIterations,
+      },
     };
   }
 }

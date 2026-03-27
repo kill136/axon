@@ -22,8 +22,6 @@ export interface CwdChangedHandlerConfig extends HandlerConfig {
  * 处理当前工作目录改变事件（用于目录相关的环境设置）
  */
 export class CwdChangedHandler extends BaseHookHandler {
-  private config: CwdChangedHandlerConfig;
-
   constructor(config: CwdChangedHandlerConfig = {}) {
     super({
       name: 'CwdChangedHandler',
@@ -31,10 +29,12 @@ export class CwdChangedHandler extends BaseHookHandler {
       silent: true,
       ...config,
     });
-    this.config = config;
   }
 
   async execute(input: HookInput): Promise<HookResult> {
+    // Cast config to access extended properties
+    const cfg = this.config as unknown as CwdChangedHandlerConfig;
+
     // 验证必要字段
     if (!input.newCwd) {
       return {
@@ -43,12 +43,12 @@ export class CwdChangedHandler extends BaseHookHandler {
       };
     }
 
-    if (this.config.logChange !== false) {
+    if (cfg.logChange !== false) {
       // 记录目录变化
     }
 
     // 尝试加载 direnv（如果启用）
-    if (this.config.loadDirenv) {
+    if (cfg.loadDirenv) {
       try {
         // 这里可以调用 direnv 加载环境
         // 示例：exec('direnv allow .');
@@ -86,8 +86,6 @@ export interface FileChangedHandlerConfig extends HandlerConfig {
  * 处理文件变更事件（用于配置热重载等）
  */
 export class FileChangedHandler extends BaseHookHandler {
-  private config: FileChangedHandlerConfig;
-
   constructor(config: FileChangedHandlerConfig = {}) {
     super({
       name: 'FileChangedHandler',
@@ -95,10 +93,12 @@ export class FileChangedHandler extends BaseHookHandler {
       silent: true,
       ...config,
     });
-    this.config = config;
   }
 
   async execute(input: HookInput): Promise<HookResult> {
+    // Cast config to access extended properties
+    const cfg = this.config as unknown as FileChangedHandlerConfig;
+
     // 验证必要字段
     if (!input.filePath) {
       return {
@@ -108,19 +108,19 @@ export class FileChangedHandler extends BaseHookHandler {
     }
 
     // 检查是否应该监视此文件
-    if (this.config.patterns && !this.matchesPattern(input.filePath)) {
+    if (cfg.patterns && !this.matchesPattern(input.filePath)) {
       return {
         success: true,
         output: 'File does not match monitored patterns',
       };
     }
 
-    if (this.config.logChange !== false) {
+    if (cfg.logChange !== false) {
       // 记录文件变化
     }
 
     // 对配置文件进行 hot reload
-    if (this.config.hotReloadConfig && this.isConfigFile(input.filePath)) {
+    if (cfg.hotReloadConfig && this.isConfigFile(input.filePath)) {
       try {
         // 这里可以实现配置文件的热重载逻辑
       } catch (err) {
@@ -144,11 +144,13 @@ export class FileChangedHandler extends BaseHookHandler {
    * 检查文件路径是否匹配监视模式
    */
   private matchesPattern(filePath: string): boolean {
-    if (!this.config.patterns || this.config.patterns.length === 0) {
+    const cfg = this.config as unknown as FileChangedHandlerConfig;
+
+    if (!cfg.patterns || cfg.patterns.length === 0) {
       return true;
     }
 
-    return this.config.patterns.some((pattern) =>
+    return cfg.patterns.some((pattern) =>
       new RegExp(this.globToRegex(pattern)).test(filePath)
     );
   }
