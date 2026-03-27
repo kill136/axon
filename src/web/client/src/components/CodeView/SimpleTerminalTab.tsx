@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type MutableRefObject } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
@@ -35,10 +35,19 @@ interface SimpleTerminalTabProps {
   projectPath?: string;
   /** 是否为当前活跃 tab（控制 display 可见性） */
   active?: boolean;
+  /** 服务端分配的 terminalId（由父组件管理，解决多实例消息路由问题） */
+  terminalId?: string | null;
+  /** 同步 terminalId 映射 ref（解决 React 异步渲染导致的早期消息丢失） */
+  terminalIdSyncRef?: MutableRefObject<Record<string, string | null>>;
+  /** 当前 tab 的路径标识（配合 terminalIdSyncRef 使用） */
+  tabPath?: string;
 }
 
 /**
  * 简单终端 Tab - 仅显示 xterm 终端，无任何额外UI
+ *
+ * 多实例模式：当传入 terminalId 时，不自行创建终端，仅处理匹配 terminalId 的消息。
+ * 单实例模式（向后兼容）：不传 terminalId 时，自行发送 terminal:create。
  */
 export function SimpleTerminalTab({
   send,
@@ -46,12 +55,27 @@ export function SimpleTerminalTab({
   connected,
   projectPath,
   active = true,
+  terminalId: externalTerminalId,
+  terminalIdSyncRef,
+  tabPath,
 }: SimpleTerminalTabProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
-  const terminalIdRef = useRef<string | null>(null);
+  const terminalIdRef = useRef<string | null>(externalTerminalId ?? null);
   const [terminalReady, setTerminalReady] = useState(false);
+  // 是否由父组件管理终端创建
+  const managedExternally = externalTerminalId !== undefined;
+
+  // 同步外部 terminalId
+  useEffect(() => {
+    if (managedExternally) {
+      terminalIdRef.current = externalTerminalId ?? null;
+      if (externalTerminalId) {
+        setTerminalReady(true);
+      }
+    }
+  }, [externalTerminalId, managedExternally]);
 
   // 初始化 xterm
   useEffect(() => {
@@ -109,9 +133,43 @@ export function SimpleTerminalTab({
       }
     });
 
+    // 剪贴板图片粘贴：拦截 paste 事件，保存图片为临时文件，将路径写入终端
+    const container = containerRef.current;
+    const handlePaste = (e: ClipboardEvent) => {
+      if (!e.clipboardData) return;
+      const items = Array.from(e.clipboardData.items);
+      const imageItem = items.find(item => item.type.startsWith('image/'));
+      if (!imageItem) return; // 非图片粘贴，交给 xterm 默认处理
+
+      e.preventDefault();
+      e.stopPropagation();
+      const blob = imageItem.getAsFile();
+      if (!blob) return;
+
+      const tid = terminalIdRef.current;
+      if (!tid) return;
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        const base64 = dataUrl.split(',')[1];
+        send({
+          type: 'terminal:paste-image',
+          payload: {
+            terminalId: tid,
+            data: base64,
+            mimeType: imageItem.type,
+          },
+        });
+      };
+      reader.readAsDataURL(blob);
+    };
+    container?.addEventListener('paste', handlePaste);
+
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
+      container?.removeEventListener('paste', handlePaste);
       resizeObserver?.disconnect();
       term.dispose();
       xtermRef.current = null;
@@ -119,24 +177,36 @@ export function SimpleTerminalTab({
     };
   }, [send]);
 
-  // 创建终端会话
+  // 单实例模式：自行创建终端会话
   useEffect(() => {
+    if (managedExternally) return;
     if (!connected) return;
 
     send({
       type: 'terminal:create',
       payload: { cwd: projectPath || undefined },
     });
-  }, [connected, projectPath, send]);
+  }, [connected, projectPath, send, managedExternally]);
 
   // 监听 WebSocket 消息
   useEffect(() => {
+    // 获取当前实例的 terminalId（优先从同步 ref 读取，避免 React 渲染延迟导致丢消息）
+    const getMyTerminalId = (): string | null => {
+      if (terminalIdSyncRef && tabPath) {
+        return terminalIdSyncRef.current[tabPath] ?? null;
+      }
+      return terminalIdRef.current;
+    };
+
     const unsubscribe = addMessageHandler((msg: any) => {
       if (!msg.type?.startsWith('terminal:')) return;
+      const payload = msg.payload as Record<string, unknown>;
 
       switch (msg.type) {
         case 'terminal:created': {
-          terminalIdRef.current = msg.payload.terminalId as string;
+          // 多实例模式下不处理 created（由父组件管理）
+          if (managedExternally) break;
+          terminalIdRef.current = payload.terminalId as string;
           setTerminalReady(true);
 
           // fit + resize
@@ -161,16 +231,22 @@ export function SimpleTerminalTab({
         }
 
         case 'terminal:output': {
-          const data = msg.payload.data as string;
-          if (data && xtermRef.current) {
+          const tid = payload.terminalId as string;
+          const data = payload.data as string;
+          const myTid = getMyTerminalId();
+          // 只处理属于自己的终端输出
+          if (tid && tid === myTid && data && xtermRef.current) {
             xtermRef.current.write(data);
           }
           break;
         }
 
         case 'terminal:exit': {
-          const exitCode = msg.payload.exitCode as number;
-          if (xtermRef.current) {
+          const tid = payload.terminalId as string;
+          const myTid = getMyTerminalId();
+          // 只处理属于自己的终端退出
+          if (tid && tid === myTid && xtermRef.current) {
+            const exitCode = payload.exitCode as number;
             xtermRef.current.write(
               `\r\n\x1b[90m[Process exited with code ${exitCode}]\x1b[0m\r\n`
             );
@@ -182,8 +258,8 @@ export function SimpleTerminalTab({
 
     return () => {
       unsubscribe();
-      // 清理终端
-      if (terminalIdRef.current) {
+      // 仅单实例模式下清理终端（多实例模式由父组件管理生命周期）
+      if (!managedExternally && terminalIdRef.current) {
         send({
           type: 'terminal:destroy',
           payload: { terminalId: terminalIdRef.current },
@@ -191,7 +267,7 @@ export function SimpleTerminalTab({
         terminalIdRef.current = null;
       }
     };
-  }, [addMessageHandler, send]);
+  }, [addMessageHandler, send, managedExternally]);
 
   // 处理 fit 当容器可见时（包括 active 切换回来时）
   useEffect(() => {

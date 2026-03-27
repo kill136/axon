@@ -173,6 +173,15 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
     // 追踪当前打开的文件路径（供 LSP provider 使用，避免 stale closure）
     const currentTabPathRef = useRef<string | null>(null);
 
+    // 终端 tab 计数器（用于生成唯一路径）
+    const terminalCounterRef = useRef(0);
+    // 终端 tab 的 terminalId 映射：tabPath -> serverId（state 用于触发渲染）
+    const [terminalIdMap, setTerminalIdMap] = useState<Record<string, string | null>>({});
+    // 同步版本的 terminalId 映射（ref，不等 React 渲染，避免丢失早期 terminal:output）
+    const terminalIdSyncRef = useRef<Record<string, string | null>>({});
+    // 待关联的终端 tab 路径队列（FIFO，解决多实例 terminal:created 路由问题）
+    const pendingTerminalTabsRef = useRef<string[]>([]);
+
     // 文件内容缓存：关闭 tab 后再次打开无需重新请求后端
     const fileCacheRef = useRef<Map<string, { content: string; language: string; timestamp: number }>>(new Map());
     const FILE_CACHE_TTL = 5 * 60 * 1000; // 5 分钟过期
@@ -703,12 +712,11 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
         }
       },
       openTerminal: () => {
-        const terminalIndex = tabs.findIndex(t => t.path === '__terminal__');
-        if (terminalIndex !== -1) {
-          setActiveTabIndex(terminalIndex);
-        } else {
+        const createTerminalTab = () => {
+          terminalCounterRef.current += 1;
+          const tabPath = `__terminal__${terminalCounterRef.current}`;
           const terminalTab: EditorTab = {
-            path: '__terminal__',
+            path: tabPath,
             content: '',
             language: '',
             modified: false,
@@ -718,9 +726,77 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
           const newTabs = [...tabs, terminalTab];
           setTabs(newTabs);
           setActiveTabIndex(newTabs.length - 1);
+          // 注册 pending 并发送创建请求
+          pendingTerminalTabsRef.current.push(tabPath);
+          setTerminalIdMap(prev => ({ ...prev, [tabPath]: null }));
+          if (connected && send) {
+            send({ type: 'terminal:create', payload: { cwd: projectPath || undefined } });
+          }
+        };
+
+        const currentTab = activeTabIndex >= 0 ? tabs[activeTabIndex] : null;
+        if (currentTab?.fileType === 'terminal') {
+          // 当前已在终端 tab，创建新的终端
+          createTerminalTab();
+        } else {
+          // 否则切到已有的终端 tab，或创建第一个
+          const terminalIndex = tabs.findIndex(t => t.fileType === 'terminal');
+          if (terminalIndex !== -1) {
+            setActiveTabIndex(terminalIndex);
+          } else {
+            createTerminalTab();
+          }
         }
       },
     }));
+
+    // ========================================================================
+    // 终端消息路由：将 terminal:created 的 terminalId 分配给对应的 tab
+    // ========================================================================
+    useEffect(() => {
+      if (!addMessageHandler) return;
+      const unsub = addMessageHandler((msg: any) => {
+        if (msg.type === 'terminal:created') {
+          const serverTerminalId = msg.payload?.terminalId as string;
+          if (!serverTerminalId) return;
+          const pendingTabPath = pendingTerminalTabsRef.current.shift();
+          if (pendingTabPath) {
+            // 先同步更新 ref（SimpleTerminalTab 的消息处理器能立即读到）
+            terminalIdSyncRef.current[pendingTabPath] = serverTerminalId;
+            // 再异步更新 state（触发 React 渲染传递 prop）
+            setTerminalIdMap(prev => ({ ...prev, [pendingTabPath]: serverTerminalId }));
+          }
+        }
+      });
+      return unsub;
+    }, [addMessageHandler]);
+
+    // 终端 tab 关闭时清理 terminalId 并销毁服务端终端
+    useEffect(() => {
+      const terminalTabPaths = new Set(tabs.filter(t => t.fileType === 'terminal').map(t => t.path));
+      // 同步清理 ref
+      for (const path of Object.keys(terminalIdSyncRef.current)) {
+        if (!terminalTabPaths.has(path)) {
+          const tid = terminalIdSyncRef.current[path];
+          if (tid && send) {
+            send({ type: 'terminal:destroy', payload: { terminalId: tid } });
+          }
+          delete terminalIdSyncRef.current[path];
+        }
+      }
+      // 异步清理 state
+      setTerminalIdMap(prev => {
+        const next = { ...prev };
+        let changed = false;
+        for (const path of Object.keys(next)) {
+          if (!terminalTabPaths.has(path)) {
+            delete next[path];
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+    }, [tabs, send]);
 
     // ========================================================================
     // Monaco Editor 事件处理
@@ -1395,7 +1471,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
                 onClick={() => setActiveTabIndex(index)}
               >
                 <span className={styles.tabName}>
-                  {tab.fileType === 'terminal' ? '📱 Terminal' : getFileName(tab.path)}
+                  {tab.fileType === 'terminal' ? `Terminal ${tab.path.replace('__terminal__', '')}` : getFileName(tab.path)}
                   {tab.modified && <span className={styles.modifiedDot}>●</span>}
                 </span>
                 <button
@@ -1610,16 +1686,23 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
 
         {/* 编辑器区域 */}
         <div className={styles.editorContainer}>
-          {/* 持久化终端实例：始终挂载，通过 display 切换可见性，避免 tab 切换时销毁/重建 */}
-          {tabs.some(t => t.fileType === 'terminal') && send && addMessageHandler && connected !== undefined && (
-            <SimpleTerminalTab
-              send={send}
-              addMessageHandler={addMessageHandler}
-              connected={connected}
-              projectPath={projectPath}
-              active={currentTab?.fileType === 'terminal'}
-            />
-          )}
+          {/* 持久化终端实例：每个终端 tab 独立挂载，通过 display 切换可见性 */}
+          {send && addMessageHandler && connected !== undefined && tabs
+            .filter(t => t.fileType === 'terminal')
+            .map(tab => (
+              <SimpleTerminalTab
+                key={tab.path}
+                send={send}
+                addMessageHandler={addMessageHandler}
+                connected={connected}
+                projectPath={projectPath}
+                active={currentTab?.path === tab.path}
+                terminalId={terminalIdMap[tab.path] ?? null}
+                terminalIdSyncRef={terminalIdSyncRef}
+                tabPath={tab.path}
+              />
+            ))
+          }
           {currentTab?.fileType === 'terminal' ? null : tourState.active ? (
             /* 导游模式：编辑器 + 导游面板 二栏布局 */
             <div className={styles.codeEditorWithTour}>

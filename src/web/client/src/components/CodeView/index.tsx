@@ -316,9 +316,9 @@ export const CodeView = forwardRef<CodeViewRef, CodeViewProps>(({
           </div>
         </div>
 
-        {/* Panel Content: 条件渲染 FileTree 或 SearchPanel */}
+        {/* Panel Content: 始终挂载，display 切换可见性，保持目录展开/搜索状态 */}
         <div className={styles.panelContent}>
-          {activePanel === 'explorer' ? (
+          <div style={{ display: activePanel === 'explorer' ? 'contents' : 'none' }}>
             <FileTree
               projectPath={projectPath}
               projectName={projectPath.split(/[\\/]/).pop() || 'Project'}
@@ -328,7 +328,8 @@ export const CodeView = forwardRef<CodeViewRef, CodeViewProps>(({
               cursorLine={cursorLine}
               onSymbolClick={handleSymbolClick}
             />
-          ) : (
+          </div>
+          <div style={{ display: activePanel === 'search' ? 'contents' : 'none' }}>
             <SearchPanel
               projectPath={projectPath}
               onFileSelect={handleFileSelect}
@@ -339,7 +340,7 @@ export const CodeView = forwardRef<CodeViewRef, CodeViewProps>(({
                 }, 100);
               }}
             />
-          )}
+          </div>
         </div>
       </div>
 
@@ -371,32 +372,30 @@ export const CodeView = forwardRef<CodeViewRef, CodeViewProps>(({
         />
       )}
 
-      {/* CompactChatPanel 面板 */}
-      {!isChatPanelCollapsed && (
-        <div
-          className={styles.chatPanel}
-          style={{ width: `${chatPanelWidth}px` }}
-        >
-            <CompactChatPanel
-              messages={messages}
-              onSend={onSendMessage}
-              onClose={handleChatPanelToggle}
-              onOpenFile={handleOpenFileFromChat}
-              status={status}
-              model={model}
-              availableModels={availableModels}
-              runtimeProvider={runtimeProvider}
-              runtimeBackend={runtimeBackend}
-              onModelChange={onModelChange}
-              permissionMode={permissionMode}
-              onPermissionModeChange={onPermissionModeChange}
+      {/* CompactChatPanel 面板 - 始终挂载，display 控制可见性，保持输入文本 */}
+      <div
+        className={styles.chatPanel}
+        style={{ width: `${chatPanelWidth}px`, display: isChatPanelCollapsed ? 'none' : undefined }}
+      >
+          <CompactChatPanel
+            messages={messages}
+            onSend={onSendMessage}
+            onClose={handleChatPanelToggle}
+            onOpenFile={handleOpenFileFromChat}
+            status={status}
+            model={model}
+            availableModels={availableModels}
+            runtimeProvider={runtimeProvider}
+            runtimeBackend={runtimeBackend}
+            onModelChange={onModelChange}
+            permissionMode={permissionMode}
+            onPermissionModeChange={onPermissionModeChange}
             connected={connected}
             isStreaming={isStreaming}
             currentMessageId={currentMessageId}
             inputRef={chatInputRef}
           />
-        </div>
-      )}
+      </div>
 
       {/* 收起状态的展开按钮 */}
       {isChatPanelCollapsed && (

@@ -28,6 +28,7 @@ export * from './schedule.js';
 export * from './self-evolve.js';
 export * from './browser.js';
 export * from './create-tool.js';
+export * from './custom-tool-loader.js';
 // mcp-manage.ts removed: McpManage merged into Mcp tool (action parameter)
 export * from './eye.js';
 export * from './ear.js';
@@ -59,6 +60,7 @@ import { SelfEvolveTool } from './self-evolve.js';
 import { BrowserTool } from './browser.js';
 import { MemorySearchTool } from './memory-search.js';
 import { CreateToolTool } from './create-tool.js';
+import { loadCustomTools } from './custom-tool-loader.js';
 import { DatabaseTool } from './database.js';
 import { EyeTool } from './eye.js';
 import { EarTool } from './ear.js';
@@ -178,6 +180,11 @@ export function registerCoreTools(): void {
 
   // 24. AgentNetwork Agent 间通信协作工具
   toolRegistry.register(new NetworkTool());
+
+  // 25. 加载外挂自定义工具 (~/.axon/custom-tools/*.js)
+  loadCustomTools().catch(err => {
+    console.warn('[Tools] Failed to load custom tools:', err);
+  });
 }
 
 /**

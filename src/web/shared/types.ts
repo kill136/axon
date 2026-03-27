@@ -212,6 +212,7 @@ export type ClientMessage =
   | { type: 'terminal:input'; payload: { terminalId: string; data: string } }
   | { type: 'terminal:resize'; payload: { terminalId: string; cols: number; rows: number } }
   | { type: 'terminal:destroy'; payload: { terminalId: string } }
+  | { type: 'terminal:paste-image'; payload: { terminalId: string; data: string; mimeType: string } }
   // 日志消息
   | { type: 'logs:read'; payload?: { count?: number; level?: string } }
   | { type: 'logs:subscribe' }

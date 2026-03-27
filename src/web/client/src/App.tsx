@@ -403,8 +403,11 @@ function AppContent({
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.key === '`') {
-        e.preventDefault();
-        setShowTerminal(prev => !prev);
+        // CodeView 激活时由 CodeView 自己处理终端快捷键，避免冲突
+        if (!codeViewActive) {
+          e.preventDefault();
+          setShowTerminal(prev => !prev);
+        }
       }
       if (e.ctrlKey && e.key === 'o') {
         e.preventDefault();
@@ -432,7 +435,7 @@ function AppContent({
     };
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [setIsTranscriptMode, artifactsState.setIsPanelOpen, onToggleCodeView]);
+  }, [setIsTranscriptMode, artifactsState.setIsPanelOpen, onToggleCodeView, codeViewActive]);
 
   // 处理代码引用跳转：拦截 onNavigateToCode，支持 { filePath, line } 参数
   const handleNavigateToCode = useCallback((context?: any) => {
@@ -652,8 +655,8 @@ function AppContent({
   return (
     <div style={{ display: 'flex', height: '100%', width: '100%', flex: 1 }}>
       <UpdateBanner />
-      {codeViewActive ? (
-        // 代码视图模式
+      {/* 代码视图模式 - 始终挂载，通过 display 切换可见性，保持编辑器/终端状态 */}
+      <div style={{ display: codeViewActive ? 'flex' : 'none', flex: 1, minHeight: 0, minWidth: 0 }}>
         <CodeView
           ref={codeViewRef}
           messages={messages}
@@ -673,8 +676,9 @@ function AppContent({
           send={send}
           addMessageHandler={addMessageHandler}
         />
-      ) : (
-        // 对话视图模式（原有的全屏聊天界面）
+      </div>
+      {/* 对话视图模式（原有的全屏聊天界面） - 始终挂载 */}
+      <div style={{ display: codeViewActive ? 'none' : 'flex', flex: 1, minHeight: 0, minWidth: 0, flexDirection: 'column' }}>
         <div className="main-content" style={{ flex: 1, flexDirection: showSplitLayout ? 'row' : 'column' }}>
           {/* 左侧：聊天 + 输入 + 终端 */}
           <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, minHeight: 0 }}>
@@ -883,8 +887,8 @@ function AppContent({
             />
           </div>
 
-          {/* 右侧：产物面板 */}
-          {artifactsState.isPanelOpen && (
+          {/* 右侧：产物面板 - 始终挂载，display 控制可见性 */}
+          <div style={{ display: artifactsState.isPanelOpen ? 'flex' : 'none' }}>
             <ArtifactsPanel
               groups={artifactsState.groups}
               artifacts={artifactsState.artifacts}
@@ -897,10 +901,10 @@ function AppContent({
               selectedScheduleArtifact={scheduleState.selectedScheduleArtifact}
               onSelectScheduleArtifact={scheduleState.setSelectedScheduleId}
             />
-          )}
+          </div>
 
-          {/* 右侧：Git 面板 */}
-          {showGitPanel && (
+          {/* 右侧：Git 面板 - 始终挂载，display 控制可见性 */}
+          <div style={{ display: showGitPanel ? 'flex' : 'none' }}>
             <GitPanel
               isOpen={showGitPanel}
               onClose={() => setShowGitPanel(false)}
@@ -908,28 +912,26 @@ function AppContent({
               addMessageHandler={addMessageHandler}
               projectPath={currentProjectPath}
             />
-          )}
+          </div>
 
-          {/* 右侧：日志面板 */}
-          {showLogsPanel && (
-            <div className="logs-side-panel">
-              <div className="logs-side-panel-header">
-                <span className="logs-side-panel-title">{t('logs.title')}</span>
-                <button className="logs-side-panel-close" onClick={() => setShowLogsPanel(false)} title={t('common.close')}>
-                  &#215;
-                </button>
-              </div>
-              <LogsView
-                active={true}
-                panelVisible={true}
-                connected={connected}
-                send={send}
-                addMessageHandler={addMessageHandler}
-              />
+          {/* 右侧：日志面板 - 始终挂载，display 控制可见性 */}
+          <div className="logs-side-panel" style={{ display: showLogsPanel ? 'flex' : 'none' }}>
+            <div className="logs-side-panel-header">
+              <span className="logs-side-panel-title">{t('logs.title')}</span>
+              <button className="logs-side-panel-close" onClick={() => setShowLogsPanel(false)} title={t('common.close')}>
+                &#215;
+              </button>
             </div>
-          )}
+            <LogsView
+              active={showLogsPanel}
+              panelVisible={showLogsPanel}
+              connected={connected}
+              send={send}
+              addMessageHandler={addMessageHandler}
+            />
+          </div>
         </div>
-      )}
+      </div>
 
       {userQuestion && (
         <UserQuestionDialog question={userQuestion} onAnswer={chatInput.handleAnswerQuestion} />
