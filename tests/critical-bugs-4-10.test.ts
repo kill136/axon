@@ -268,10 +268,13 @@ describe('Bug 7: Worktree - Name Validation', () => {
 describe('Bug 8: Bash Parser - Heredoc and Complex Syntax', () => {
   function parseBashCommand(cmd: string): string {
     // Simulate the parser function with fixes
+    // Strategy: Extract everything before the heredoc operator (<<)
+    // Then split by command separators (|, &&, ||, ;)
+
     let cleaned = cmd;
 
-    // Remove heredoc (<<EOF ... EOF) - including quoted delimiters
-    cleaned = cleaned.replace(/<<'?\w+'?[\s\S]*?\n\w+\n/g, '');
+    // Remove heredoc - everything from << onwards
+    cleaned = cleaned.split('<<')[0];
 
     // Remove embedded newlines (backslash followed by newline)
     cleaned = cleaned.replace(/\\\n/g, ' ');
