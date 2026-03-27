@@ -1342,7 +1342,22 @@ export const FileTree: React.FC<FileTreeProps> = ({
   }, [selectedPaths]);
 
   const handleDragOver = useCallback((e: React.DragEvent, node: FileTreeNode) => {
-    if (!dragState.dragging) return;
+    // 检测是否是从 OS 拖拽的文件（而不是树内部的拖拽）
+    const isExternalFiles = e.dataTransfer.types.includes('Files');
+
+    // 如果既不是内部拖拽，也不是 OS 文件拖拽，直接返回
+    if (!dragState.dragging && !isExternalFiles) return;
+
+    // 处理 OS 文件拖拽
+    if (isExternalFiles) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+      const targetDir = node.type === 'directory' ? node.path : getParentPath(node.path);
+      setDragState(prev => ({ ...prev, overPath: targetDir }));
+      return;
+    }
+
+    // 以下是原有的内部拖拽逻辑
 
     // 不能拖到自身或自身的子目录
     for (const srcPath of dragState.sourcePaths) {
@@ -1389,6 +1404,41 @@ export const FileTree: React.FC<FileTreeProps> = ({
       dragExpandTimerRef.current = null;
     }
 
+    // ==================== 处理 OS 文件拖拽 ====================
+    const externalFiles = e.dataTransfer.files;
+    if (externalFiles && externalFiles.length > 0) {
+      setDragState({ dragging: false, sourcePaths: new Set(), overPath: null });
+      const destDir = node.type === 'directory' ? node.path : getParentPath(node.path);
+      const errors: string[] = [];
+
+      for (const file of Array.from(externalFiles)) {
+        try {
+          const content = await file.text();
+          const filePath = `${destDir}/${file.name}`;
+          const response = await fetch('/api/files/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: filePath, content, root: projectPath }),
+          });
+
+          if (!response.ok) {
+            const err = await response.json();
+            errors.push(`${file.name}: ${err.error}`);
+          }
+        } catch (err) {
+          errors.push(`${file.name}: ${t('fileTree.createFailed')}`);
+        }
+      }
+
+      if (errors.length > 0) {
+        alert(errors.join('\n'));
+      }
+
+      await fetchTree();
+      return;
+    }
+
+    // ==================== 处理内部文件拖拽（move）====================
     if (!dragState.dragging || dragState.sourcePaths.size === 0) {
       setDragState({ dragging: false, sourcePaths: new Set(), overPath: null });
       return;
@@ -1430,7 +1480,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
     }
 
     await fetchTree();
-  }, [dragState, projectPath, fetchTree]);
+  }, [dragState, projectPath, fetchTree, t]);
 
   const handleDragEnd = useCallback(() => {
     if (dragExpandTimerRef.current) {
@@ -1612,6 +1662,20 @@ export const FileTree: React.FC<FileTreeProps> = ({
         tabIndex={0}
         onContextMenu={handleContainerContextMenu}
         onKeyDown={handleKeyDown}
+        onDragOver={(e) => {
+          // 处理空白区域的拖拽（拖到没有节点的地方）
+          if (e.dataTransfer.types.includes('Files')) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy';
+          }
+        }}
+        onDrop={async (e) => {
+          // 处理空白区域的放下（拖到没有节点的地方，默认创建到根目录）
+          if (!e.dataTransfer.files.length) return;
+          e.preventDefault();
+          const rootNode: FileTreeNode = { name: '.', path: '.', type: 'directory' };
+          await handleDrop(e, rootNode);
+        }}
       >
         {tree && (
           <TreeNode
