@@ -155,6 +155,7 @@
     "cloudflared": "^0.7.1",
     "commander": "^12.0.0",
     "cos-nodejs-sdk-v5": "^2.15.4",
+    "cron-parser": "^5.5.0",
     "diff": "^8.0.3",
     "discord.js": "^14.25.1",
     "eventsource": "^4.1.0",

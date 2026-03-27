@@ -228,7 +228,7 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<We
 
   // AutoComplete API 路由（路径补全、AI Inline 补全）
   const autocompleteRouter = await import('./routes/autocomplete-api.js');
-  app.use('/api/ai-editor', autocompleteRouter.default);
+  app.use('/api/autocomplete', autocompleteRouter.default);
 
   // 定时任务管理 API 路由
   const scheduleRouter = await import('./routes/schedule-api.js');

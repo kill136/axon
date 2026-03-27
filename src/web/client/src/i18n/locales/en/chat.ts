@@ -35,6 +35,8 @@ const chat = {
   'input.permAutoEdit': 'Auto Edit',
   'input.permPlan': 'Plan',
   'input.permYolo': 'YOLO',
+  'input.permDontAsk': "Don't Ask",
+  'input.permDelegate': 'Delegate',
   'input.permissionMode': 'Permission mode',
   'input.pinLock': 'Lock input - prevent auto-hide',
   'input.pinLockShort': 'Lock',

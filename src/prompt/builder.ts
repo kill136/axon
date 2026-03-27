@@ -22,7 +22,10 @@ import {
   getMcpInstructions,
   getMcpCliInstructions,
   getOutputStylePrompt,
+  getAutoMemoryPrompt,
+  getAutoMemoryContext,
 } from './templates.js';
+import { getAutoMemoryDir, ensureAutoMemoryDir, loadMemoryIndex } from '../memory/auto-memory-dir.js';
 import { AttachmentManager, attachmentManager as defaultAttachmentManager } from './attachments.js';
 import { PromptCache, promptCache, generateCacheKey } from './cache.js';
 import * as os from 'os';
@@ -238,6 +241,28 @@ Always respond in ${context.language}. Use ${context.language} for all explanati
     for (const attachment of attachments) {
       if (attachment.content) {
         dynamicParts.push(attachment.content);
+      }
+    }
+
+    // 19. Auto Memory（对齐官方 ID1 函数）
+    // 环境变量 AXON_DISABLE_AUTO_MEMORY=1 可禁用
+    if (!process.env.AXON_DISABLE_AUTO_MEMORY) {
+      try {
+        const memDir = getAutoMemoryDir();
+        ensureAutoMemoryDir(memDir);
+        const memoryContent = loadMemoryIndex(memDir);
+        const autoMemoryPrompt = getAutoMemoryPrompt(memDir);
+        const autoMemoryContext = getAutoMemoryContext(memDir, memoryContent);
+        if (autoMemoryPrompt) {
+          dynamicParts.push(autoMemoryPrompt);
+        }
+        if (autoMemoryContext) {
+          dynamicParts.push(autoMemoryContext);
+        }
+      } catch (error) {
+        if (this.debug) {
+          console.debug('[SystemPromptBuilder] Failed to load auto memory:', error);
+        }
       }
     }
 

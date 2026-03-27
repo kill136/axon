@@ -7,7 +7,7 @@
  * - Properly handles stream errors
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   streamFromAPI,
   streamWithTimeout,
@@ -16,7 +16,7 @@ import {
   type ApiReadableStream,
   type StreamReader,
   type StreamHandlerOptions,
-} from '../stream-handler';
+} from '../stream-handler.js';
 
 // Mock stream reader
 class MockStreamReader implements StreamReader {

@@ -35,6 +35,8 @@ const chat = {
   'input.permAutoEdit': '自动编辑',
   'input.permPlan': '计划',
   'input.permYolo': 'YOLO',
+  'input.permDontAsk': '自动拒绝',
+  'input.permDelegate': '委托',
   'input.permissionMode': '权限模式',
   'input.pinLock': '锁定输入框 - 防止自动隐藏',
   'input.pinLockShort': '锁定',

@@ -66,6 +66,8 @@ import {
 import { modelConfig, type ThinkingConfig } from '../models/index.js';
 import { initAuth, getAuth, ensureOAuthApiKey } from '../auth/index.js';
 import { runPermissionRequestHooks } from '../hooks/index.js';
+import { PermissionEngine } from '../permissions/permission-engine.js';
+import { PermissionRelay } from '../permissions/permission-relay.js';
 import * as readline from 'readline';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -1966,6 +1968,13 @@ export class ConversationLoop {
   /** 最近一次成功处理完成的可记忆对话消息数，作为增量提取游标 */
   private lastAutoMemorizedMessageCount: number = 0;
 
+  // 权限系统
+  private permissionEngine: PermissionEngine | null = null;
+  private permissionRelay: PermissionRelay | null = null;
+  private permissionDecisionCache: Map<string, boolean> = new Map();
+  private permissionCacheExpiry: Map<string, number> = new Map();
+  private readonly PERMISSION_CACHE_TTL = 5000; // 5 秒 TTL
+
   /**
    * 获取当前权限模式 - 官方 v2.1.2 响应式实现
    *
@@ -2123,11 +2132,25 @@ export class ConversationLoop {
     toolInput: unknown,
     message?: string
   ): Promise<boolean> {
+    // 0. 检查权限缓存（5秒 TTL）
+    const cacheKey = `${toolName}:${JSON.stringify(toolInput || {})}`.substring(0, 100);
+    const cachedResult = this.permissionDecisionCache.get(cacheKey);
+    const cacheExpiry = this.permissionCacheExpiry.get(cacheKey) || 0;
+    if (cachedResult !== undefined && Date.now() < cacheExpiry) {
+      if (this.options.verbose && process.env.AXON_DEBUG) {
+        console.log(chalk.gray(`[Permission] Using cached decision for ${toolName}`));
+      }
+      return cachedResult;
+    }
+
     // 1. 检查会话级权限记忆
     if (this.session.isToolAlwaysAllowed(toolName)) {
       if (this.options.verbose) {
         console.log(chalk.green(`[Permission] Auto-allowed by session permission: ${toolName}`));
       }
+      // 缓存结果
+      this.permissionDecisionCache.set(cacheKey, true);
+      this.permissionCacheExpiry.set(cacheKey, Date.now() + this.PERMISSION_CACHE_TTL);
       return true;
     }
 
@@ -2143,7 +2166,7 @@ export class ConversationLoop {
       if (this.options.verbose) {
         console.log(chalk.green(`[Permission] Allowed by hook: ${hookResult.message || 'No reason provided'}`));
       }
-      return true;
+      return this.cachePermissionDecision(cacheKey, true);
     } else if (hookResult.decision === 'deny') {
       const reason = hookResult.message || 'No reason provided';
       if (this.options.verbose) {
@@ -2151,7 +2174,7 @@ export class ConversationLoop {
       }
       // v2.1.27: 记录到调试日志
       logPermissionDenied(toolName, `Denied by hook: ${reason}`, this.session.sessionId);
-      return false;
+      return this.cachePermissionDecision(cacheKey, false);
     }
 
     // 3. 检查权限模式 - 官方 v2.1.2 使用响应式状态
@@ -2161,7 +2184,7 @@ export class ConversationLoop {
       if (this.options.verbose) {
         console.log(chalk.yellow('[Permission] Bypassed due to permission mode'));
       }
-      return true;
+      return this.cachePermissionDecision(cacheKey, true);
     }
 
     if (currentMode === 'dontAsk') {
@@ -2171,7 +2194,7 @@ export class ConversationLoop {
       }
       // v2.1.27: 记录到调试日志
       logPermissionDenied(toolName, 'Auto-denied in dontAsk mode', this.session.sessionId);
-      return false;
+      return this.cachePermissionDecision(cacheKey, false);
     }
 
     // 3.5 plan 模式 - 官方 v2.1.2 Shift+Tab 双击切换
@@ -2184,10 +2207,10 @@ export class ConversationLoop {
         }
         // v2.1.27: 记录到调试日志
         logPermissionDenied(toolName, 'Denied in plan mode (non-readonly tool)', this.session.sessionId);
-        return false;
+        return this.cachePermissionDecision(cacheKey, false);
       }
       // 只读工具在 plan 模式下允许执行
-      return true;
+      return this.cachePermissionDecision(cacheKey, true);
     }
 
     // 3.6 acceptEdits 模式 - 官方 v2.1.2 Shift+Tab 单击切换
@@ -2198,7 +2221,7 @@ export class ConversationLoop {
         if (this.options.verbose) {
           console.log(chalk.green(`[Permission] Auto-accepted edit tool in acceptEdits mode: ${toolName}`));
         }
-        return true;
+        return this.cachePermissionDecision(cacheKey, true);
       }
       // 非编辑工具继续走后面的询问流程
     }
@@ -2237,24 +2260,33 @@ export class ConversationLoop {
         switch (choice) {
           case 'y':
             console.log(chalk.green('✓ Permission granted for this request'));
-            resolve(true);
+            resolve(this.cachePermissionDecision(cacheKey, true));
             break;
 
           case 'a':
             console.log(chalk.green(`✓ Permission granted for all '${toolName}' requests in this session`));
             // 实现会话级权限记忆
             this.session.addAlwaysAllowedTool(toolName);
-            resolve(true);
+            resolve(this.cachePermissionDecision(cacheKey, true));
             break;
 
           case 'n':
           default:
             console.log(chalk.red('✗ Permission denied'));
-            resolve(false);
+            resolve(this.cachePermissionDecision(cacheKey, false));
             break;
         }
       });
     });
+  }
+
+  /**
+   * 缓存权限决策，返回决策结果
+   */
+  private cachePermissionDecision(cacheKey: string, decision: boolean): boolean {
+    this.permissionDecisionCache.set(cacheKey, decision);
+    this.permissionCacheExpiry.set(cacheKey, Date.now() + this.PERMISSION_CACHE_TTL);
+    return decision;
   }
 
   constructor(options: LoopOptions = {}) {
@@ -2409,6 +2441,39 @@ export class ConversationLoop {
       }
     }
 
+    // 初始化权限系统
+    this.initializePermissionSystem(effectiveWorkingDir, options.permissionMode);
+
+  }
+
+  /**
+   * 初始化权限系统
+   * - 权限引擎（决策）
+   * - 权限中继（跨进程）
+   * - 审计日志
+   */
+  private initializePermissionSystem(workingDir: string, permissionMode?: PermissionMode): void {
+    try {
+      // 初始化权限引擎
+      this.permissionEngine = new PermissionEngine();
+
+      // 初始化权限中继（如果指定了通道）
+      const channels = process.env.AXON_PERMISSION_CHANNELS;
+      if (channels) {
+        this.permissionRelay = new PermissionRelay(undefined, path.join(os.homedir(), '.axon', 'permissions'));
+        if (this.options.verbose) {
+          console.log(chalk.cyan(`[Permission] Relay initialized with channels: ${channels}`));
+        }
+      }
+
+      // 权限系统初始化成功
+      if (this.options.verbose) {
+        console.log(chalk.cyan('[Permission] System initialized successfully'));
+      }
+    } catch (err) {
+      console.warn('[Permission] System initialization failed:', err);
+      // 权限系统初始化失败不应阻止 CLI 运行，但要告知用户
+    }
   }
 
   /**

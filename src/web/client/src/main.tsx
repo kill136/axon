@@ -60,9 +60,7 @@ function reportClientError(info: {
 (window as any).__reportClientError = reportClientError;
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <Root />
-  </React.StrictMode>
+  <Root />
 );
 
 // 注册 Service Worker (PWA) - 仅在生产模式下注册

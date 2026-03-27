@@ -19,7 +19,7 @@ import { createAssistantMessage } from '../utils/assistantMessage';
 import { normalizeUserQuestionPayload } from '../utils/userQuestion';
 
 export type Status = 'idle' | 'thinking' | 'streaming' | 'tool_executing';
-export type PermissionMode = 'default' | 'bypassPermissions' | 'acceptEdits' | 'plan';
+export type PermissionMode = 'default' | 'bypassPermissions' | 'acceptEdits' | 'plan' | 'dontAsk' | 'delegate';
 
 /**
  * API 速率限制信息

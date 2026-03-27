@@ -218,7 +218,11 @@ export function InputArea({
         ? t('input.permYolo')
         : activePresetId === 'plan'
           ? t('input.permPlan')
-          : t('input.permAsk'));
+          : activePresetId === 'dontAsk'
+            ? t('input.permDontAsk')
+            : activePresetId === 'delegate'
+              ? t('input.permDelegate')
+              : t('input.permAsk'));
 
   useEffect(() => {
     if (input.trim() || status !== 'idle') return;
@@ -499,9 +503,16 @@ export function InputArea({
                     <option value="acceptEdits">{`📝 ${t('input.permAutoEdit')}`}</option>
                     <option value="bypassPermissions">{'⚡ YOLO'}</option>
                     <option value="plan">{`📋 ${t('input.permPlan')}`}</option>
+                    <option value="dontAsk">{`🚫 ${t('input.permDontAsk')}`}</option>
+                    <option value="delegate">{`🔗 ${t('input.permDelegate')}`}</option>
                   </>
                 )}
               </select>
+              {permissionMode === 'dontAsk' && (
+                <span className="permission-dontask-warning" title="All sensitive tool operations will be automatically rejected">
+                  ⚠️
+                </span>
+              )}
               {isVoiceSupported && onToggleConversationMode && (
                 <button
                   type="button"

@@ -614,6 +614,56 @@ body {
   color: #38bdf8;
 }
 
+.permission-mode-selector.mode-dontAsk {
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #f87171;
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.permission-mode-selector.mode-delegate {
+  border-color: rgba(168, 85, 247, 0.3);
+  color: #c084fc;
+}
+
+.permission-dontask-warning {
+  display: inline-flex;
+  align-items: center;
+  font-size: 14px;
+  color: #f87171;
+  margin-left: -2px;
+  animation: pulse-warning 2s ease-in-out infinite;
+}
+
+@keyframes pulse-warning {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.permission-cached-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fbbf24;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 4px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+
+.permission-warning {
+  margin-top: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: #f87171;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 6px;
+  line-height: 1.4;
+}
+
 .thinking-toggle-btn {
   width: auto !important;
   min-width: 72px;

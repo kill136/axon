@@ -265,6 +265,7 @@ program
     new Option('--permission-mode <mode>', 'Permission mode for the session')
       .choices(['acceptEdits', 'bypassPermissions', 'default', 'delegate', 'dontAsk', 'plan'])
   )
+  .option('--channels <channels...>', 'Permission relay channels for cross-process permission delegation')
   // 会话选项
   .option('-c, --continue', 'Continue the most recent conversation')
   .option('-r, --resume [value]', 'Resume by session ID, or open interactive picker')
@@ -348,6 +349,21 @@ program
     // Solo 模式 - 禁用后台进程和并行执行
     if (options.solo) {
       process.env.AXON_SOLO_MODE = 'true';
+    }
+
+    // 权限模式初始化 - 支持环境变量 AXON_PERMISSION_MODE
+    const permissionMode = options.permissionMode || process.env.AXON_PERMISSION_MODE;
+    if (permissionMode) {
+      process.env.AXON_PERMISSION_MODE = permissionMode;
+    }
+
+    // 权限中继通道初始化
+    if (options.channels && Array.isArray(options.channels)) {
+      const channelStr = options.channels.join(',');
+      process.env.AXON_PERMISSION_CHANNELS = channelStr;
+      if (options.verbose) {
+        console.log(chalk.cyan(`[Permission] Relay channels initialized: ${channelStr}`));
+      }
     }
 
     // v2.1.33: 将 settings.json 中配置的环境变量应用到 process.env

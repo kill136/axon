@@ -1,6 +1,6 @@
-import fs from 'fs';
-import path from 'path';
-import os from 'os';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 
 /**
  * CronJob interface represents a scheduled task
@@ -77,9 +77,13 @@ export function saveCronJobs(jobs: CronJob[]): void {
   };
 
   try {
+    // Write to temp file first
     fs.writeFileSync(tempPath, JSON.stringify(container, null, 2), 'utf-8');
+
+    // Atomic rename (move) to actual location
     fs.renameSync(tempPath, cronPath);
   } catch (error) {
+    // Clean up temp file if it exists
     if (fs.existsSync(tempPath)) {
       try {
         fs.unlinkSync(tempPath);

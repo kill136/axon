@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { RemoteSession, RemoteSessionRegistry } from '../session-manager';
+import { RemoteSession, RemoteSessionRegistry } from '../session-manager.js';
 
 describe('Remote Session Manager', () => {
   describe('RemoteSession', () => {
@@ -66,7 +66,6 @@ describe('Remote Session Manager', () => {
       const maxHistory = 100;
       const testSession = new RemoteSession('test-session-bounded', {
         maxToolUseHistory: maxHistory,
-        cleanupInterval: 10000,
       });
 
       try {
@@ -75,7 +74,7 @@ describe('Remote Session Manager', () => {
           await testSession.addToolUse(`tool_${i}`);
         }
 
-        // Count should be trimmed to 0.9*100 = 90
+        // Count should not exceed max
         const count = testSession.getToolUseCount();
         expect(count).toBeLessThanOrEqual(maxHistory);
 
@@ -100,8 +99,8 @@ describe('Remote Session Manager', () => {
       }
       const elapsed = performance.now() - start;
 
-      // Should be very fast (< 100ms for 1000 lookups on CI)
-      expect(elapsed).toBeLessThan(100);
+      // Should be very fast (< 1ms for 1000 lookups)
+      expect(elapsed).toBeLessThan(10);
     });
 
     it('should clear all tool uses', async () => {
@@ -133,14 +132,11 @@ describe('Remote Session Manager', () => {
         cleanupInterval: 50,
       });
 
-      await new Promise((resolve) => {
-        setTimeout(() => {
-          const stats = shortIdleSession.getStats();
-          expect(stats.isIdle).toBe(true);
-          shortIdleSession.close();
-          resolve(null);
-        }, 150);
-      });
+      await new Promise((resolve) => setTimeout(resolve, 150));
+
+      const stats = shortIdleSession.getStats();
+      expect(stats.isIdle).toBe(true);
+      shortIdleSession.close();
     });
 
     it('should update last activity time on addToolUse', async () => {
@@ -156,7 +152,7 @@ describe('Remote Session Manager', () => {
       expect(newStats.lastActivityTime).toBeGreaterThan(initialTime);
     });
 
-    it('should close and cleanup timer', async () => {
+    it('should close and cleanup timer', () => {
       const testSession = new RemoteSession('cleanup-test', {
         cleanupInterval: 100,
       });
@@ -184,11 +180,11 @@ describe('Remote Session Manager', () => {
 
         const count = session.getToolUseCount();
 
-        // Count should be trimmed to 0.9*500 = 450
+        // Count should be bounded by max limit
         expect(count).toBeLessThanOrEqual(500);
 
         // v2.1.67 fix: Should not grow indefinitely
-        expect(count).toBeGreaterThan(400);
+        expect(count).toBeGreaterThan(400); // Should keep most recent
       } finally {
         session.close();
       }
@@ -226,7 +222,6 @@ describe('Remote Session Manager', () => {
           await session.addToolUse(`tool_${i}`);
         }
 
-        // After trimming, should be ~90
         expect(session.getToolUseCount()).toBeLessThanOrEqual(100);
       } finally {
         session.close();
@@ -345,7 +340,6 @@ describe('Remote Session Manager', () => {
     it('should prevent unbounded array growth', async () => {
       const session = new RemoteSession('unbounded-test', {
         maxToolUseHistory: 100,
-        cleanupInterval: 10000,
       });
 
       try {
@@ -359,9 +353,8 @@ describe('Remote Session Manager', () => {
 
         const count = session.getToolUseCount();
 
-        // Should be bounded to 0.9*100 = 90
+        // Should be bounded, not 1000
         expect(count).toBeLessThanOrEqual(100);
-        expect(count).toBeLessThan(1000);
 
         // Should have substantial recovery
         const recoveryPercent = ((1000 - count) / 1000) * 100;
@@ -393,8 +386,8 @@ describe('Remote Session Manager', () => {
 
         const elapsed = performance.now() - startTime;
 
-        // Set lookup should be very fast (< 100ms for 10k lookups on CI)
-        expect(elapsed).toBeLessThan(100);
+        // Set lookup should be very fast
+        expect(elapsed).toBeLessThan(5); // < 5ms for 10k lookups
       } finally {
         session.close();
       }
