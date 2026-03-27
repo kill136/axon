@@ -290,10 +290,97 @@ describe('ConversationLoop auto memory', () => {
       hasCompactSummary: false,
     }));
 
+    expect(plan.transcriptResults).toHaveLength(0);
     expect(plan.formatted).toContain('[Current session background]');
     expect(plan.formatted).toContain('Session summary keeps current task state.');
     expect(plan.formatted).toContain('[Notebook]');
   }, 15000);
+
+  it('adds transcript recall as past session evidence for the same project', async () => {
+    const loop = new ConversationLoop({
+      workingDir: projectDir,
+      apiKey: 'test-key',
+      model: 'sonnet',
+    }) as any;
+
+    const notebookMgr = getNotebookManagerForProject(projectDir)!;
+    notebookMgr.write(
+      'project',
+      '# Project Notebook\n- recall indexing path bug should first be diagnosed from notebook context.',
+    );
+
+    const projectHash = require('crypto').createHash('md5').update(projectDir).digest('hex').slice(0, 12);
+    await initMemorySearchManager(projectDir, projectHash, undefined);
+
+    const transcriptPath = path.join(configDir, 'sessions', 'past-session.json');
+    fs.mkdirSync(path.dirname(transcriptPath), { recursive: true });
+    fs.writeFileSync(transcriptPath, JSON.stringify({
+      metadata: {
+        id: 'past-session',
+        name: 'Past recall bug fix',
+        createdAt: Date.now() - 7200000,
+        updatedAt: Date.now() - 3600000,
+        workingDirectory: projectDir,
+        projectPath: projectDir,
+        model: 'sonnet',
+      },
+      messages: [
+        { role: 'user', content: 'We hit this recall indexing bug before.' },
+        { role: 'assistant', content: 'The fix was to align the summary indexing path with session-memory storage.' },
+      ],
+    }), 'utf-8');
+
+    await loop.refreshPromptMemoryContext('recall indexing path bug');
+
+    expect(typeof loop.promptContext.memoryRecall).toBe('string');
+    expect(loop.promptContext.memoryRecall).toContain('[Notebook]');
+    expect(loop.promptContext.memoryRecall).toContain('[Past session evidence]');
+    expect(loop.promptContext.memoryRecall).toContain('recall indexing path bug');
+    expect(loop.promptContext.memoryRecall).toContain('The fix');
+  });
+
+  it('does not pull transcript recall from a different project', async () => {
+    const loop = new ConversationLoop({
+      workingDir: projectDir,
+      apiKey: 'test-key',
+      model: 'sonnet',
+    }) as any;
+
+    const notebookMgr = getNotebookManagerForProject(projectDir)!;
+    notebookMgr.write(
+      'project',
+      '# Project Notebook\n- same phrase exists in another project must stay isolated to that project.',
+    );
+
+    const projectHash = require('crypto').createHash('md5').update(projectDir).digest('hex').slice(0, 12);
+    await initMemorySearchManager(projectDir, projectHash, undefined);
+
+    const otherProjectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'axon-other-project-'));
+    const transcriptPath = path.join(configDir, 'sessions', 'other-project-session.json');
+    fs.mkdirSync(path.dirname(transcriptPath), { recursive: true });
+    fs.writeFileSync(transcriptPath, JSON.stringify({
+      metadata: {
+        id: 'other-project-session',
+        name: 'Other project bug',
+        createdAt: Date.now() - 7200000,
+        updatedAt: Date.now() - 3600000,
+        workingDirectory: otherProjectDir,
+        projectPath: otherProjectDir,
+        model: 'sonnet',
+      },
+      messages: [
+        { role: 'user', content: 'This same phrase exists in another project.' },
+        { role: 'assistant', content: 'But it should not be recalled into the current project.' },
+      ],
+    }), 'utf-8');
+
+    await loop.refreshPromptMemoryContext('same phrase exists in another project');
+
+    expect(typeof loop.promptContext.memoryRecall).toBe('string');
+    expect(loop.promptContext.memoryRecall).toContain('[Notebook]');
+    expect(loop.promptContext.memoryRecall).not.toContain('[Past session evidence]');
+    expect(loop.promptContext.memoryRecall).not.toContain('should not be recalled into the current project');
+  });
 
   it('skips session summary recall when compact summary already exists in session messages', async () => {
     const loop = new ConversationLoop({
@@ -302,24 +389,11 @@ describe('ConversationLoop auto memory', () => {
       model: 'sonnet',
     }) as any;
 
-    loop.promptBuilder = {
-      build: vi.fn().mockImplementation(async (context: any) => ({
-        content: 'mock-system-prompt',
-        blocks: [],
-        hashInfo: {
-          hash: 'mock-hash',
-          computedAt: Date.now(),
-          length: 18,
-          estimatedTokens: 5,
-        },
-        attachments: [],
-        truncated: false,
-        buildTimeMs: 1,
-      })),
-    };
-
     const notebookMgr = getNotebookManagerForProject(projectDir)!;
-    notebookMgr.write('project', '# Project Notebook\n- Notebook recall remains available.');
+    notebookMgr.write(
+      'project',
+      '# Project Notebook\n- current task state should come from notebook recall when compact summaries already exist in messages.',
+    );
 
     const summaryPath = getSummaryPath(projectDir, loop.session.sessionId);
     fs.mkdirSync(path.dirname(summaryPath), { recursive: true });
@@ -333,13 +407,7 @@ describe('ConversationLoop auto memory', () => {
       isCompactSummary: true,
     });
 
-    loop.client.createMessage = vi.fn().mockResolvedValue({
-      content: [{ type: 'text', text: '好的' }],
-      stopReason: 'end_turn',
-      usage: { inputTokens: 10, outputTokens: 5 },
-    });
-
-    await loop.processMessage('current task state');
+    await loop.refreshPromptMemoryContext('current task state');
 
     expect(typeof loop.promptContext.memoryRecall).toBe('string');
     expect(loop.promptContext.memoryRecall).toContain('[Notebook]');

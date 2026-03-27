@@ -7,6 +7,7 @@ export interface LayeredRecallOptions {
   hasCompactSummary?: boolean;
   notebookLimit?: number;
   sessionSummaryLimit?: number;
+  transcriptLimit?: number;
   searchPoolSize?: number;
 }
 
@@ -14,6 +15,7 @@ export interface LayeredRecallPlan {
   formatted: string | null;
   notebookResults: MemorySearchResult[];
   sessionSummaryResults: MemorySearchResult[];
+  transcriptResults: MemorySearchResult[];
 }
 
 function formatAge(ms: number): string {
@@ -37,6 +39,17 @@ function sanitizeSummaryText(snippet: string): string {
     .trim();
 }
 
+function sanitizeTranscriptText(snippet: string): string {
+  return snippet
+    .replace(/^#\s+.*$/gm, '')
+    .replace(/^Date:\s+.*$/gm, '')
+    .replace(/^Model:\s+.*$/gm, '')
+    .replace(/^Project:\s+.*$/gm, '')
+    .replace(/^##\s+(User|Assistant)\s*$/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 function isCurrentSessionSummary(result: MemorySearchResult, sessionId?: string): boolean {
   if (!sessionId) return false;
   if (getRecallSourceKind(result) !== 'session-summary') return false;
@@ -44,6 +57,10 @@ function isCurrentSessionSummary(result: MemorySearchResult, sessionId?: string)
   return normalized === `${sessionId}/session-memory/summary.md`
     || normalized.endsWith(`/${sessionId}/session-memory/summary.md`)
     || normalized.endsWith(`${sessionId}/session-memory/summary.md`);
+}
+
+function isTranscriptResult(result: MemorySearchResult): boolean {
+  return getRecallSourceKind(result) === 'transcript';
 }
 
 function dedupeSecondaryBySnippet(
@@ -65,9 +82,12 @@ function formatSection(title: string, results: MemorySearchResult[]): string | n
 
   const lines = [title];
   for (const result of results) {
-    const text = getRecallSourceKind(result) === 'session-summary'
+    const sourceKind = getRecallSourceKind(result);
+    const text = sourceKind === 'session-summary'
       ? sanitizeSummaryText(result.snippet)
-      : result.snippet;
+      : sourceKind === 'transcript'
+        ? sanitizeTranscriptText(result.snippet)
+        : result.snippet;
     lines.push(`- (${formatAge(result.age)} ago) ${text}`);
   }
   return lines.join('\n');
@@ -79,6 +99,7 @@ export function planLayeredRecallFromResults(
 ): LayeredRecallPlan {
   const notebookLimit = opts.notebookLimit ?? 2;
   const sessionSummaryLimit = opts.sessionSummaryLimit ?? 1;
+  const transcriptLimit = opts.transcriptLimit ?? 0;
 
   const notebookResults = results
     .filter(result => getRecallSourceKind(result) === 'notebook')
@@ -92,15 +113,24 @@ export function planLayeredRecallFromResults(
     ).slice(0, sessionSummaryLimit);
   }
 
+  const transcriptResults = transcriptLimit > 0
+    ? dedupeSecondaryBySnippet(
+        [...notebookResults, ...sessionSummaryResults],
+        results.filter(result => isTranscriptResult(result)),
+      ).slice(0, transcriptLimit)
+    : [];
+
   const sections = [
     formatSection('[Notebook]', notebookResults),
     formatSection('[Current session background]', sessionSummaryResults),
+    formatSection('[Past session evidence]', transcriptResults),
   ].filter((section): section is string => Boolean(section));
 
   return {
     formatted: sections.length > 0 ? sections.join('\n\n') : null,
     notebookResults,
     sessionSummaryResults,
+    transcriptResults,
   };
 }
 
@@ -114,14 +144,16 @@ export async function buildLayeredMemoryRecall(
       formatted: null,
       notebookResults: [],
       sessionSummaryResults: [],
+      transcriptResults: [],
     };
   }
 
   const notebookLimit = opts.notebookLimit ?? 2;
   const sessionSummaryLimit = opts.sessionSummaryLimit ?? 1;
+  const transcriptLimit = opts.transcriptLimit ?? 1;
   const searchPoolSize = opts.searchPoolSize ?? 8;
 
-  const [notebookRaw, sessionRaw] = await Promise.all([
+  const [notebookRaw, sessionRaw, transcriptRaw] = await Promise.all([
     manager.hybridSearch(query, {
       source: 'notebook',
       maxResults: Math.max(searchPoolSize, notebookLimit * 2),
@@ -132,6 +164,12 @@ export async function buildLayeredMemoryRecall(
           source: 'session',
           maxResults: Math.max(searchPoolSize, sessionSummaryLimit * 4),
         }),
+    transcriptLimit > 0
+      ? manager.hybridSearch(query, {
+          source: 'session',
+          maxResults: Math.max(searchPoolSize, transcriptLimit * 6),
+        })
+      : Promise.resolve([]),
   ]);
 
   const notebookResults = notebookRaw
@@ -145,14 +183,23 @@ export async function buildLayeredMemoryRecall(
         sessionRaw.filter(result => result.score > 0.1 && isCurrentSessionSummary(result, opts.sessionId)),
       ).slice(0, sessionSummaryLimit);
 
+  const transcriptResults = transcriptLimit > 0
+    ? dedupeSecondaryBySnippet(
+        [...notebookResults, ...sessionSummaryResults],
+        transcriptRaw.filter(result => result.score > 0.1 && isTranscriptResult(result)),
+      ).slice(0, transcriptLimit)
+    : [];
+
   const sections = [
     formatSection('[Notebook]', notebookResults),
     formatSection('[Current session background]', sessionSummaryResults),
+    formatSection('[Past session evidence]', transcriptResults),
   ].filter((section): section is string => Boolean(section));
 
   return {
     formatted: sections.length > 0 ? sections.join('\n\n') : null,
     notebookResults,
     sessionSummaryResults,
+    transcriptResults,
   };
 }

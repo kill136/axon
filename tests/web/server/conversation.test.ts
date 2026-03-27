@@ -1,4 +1,9 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { initNotebookManager, resetNotebookManager } from '../../../src/memory/notebook.js';
+import { initMemorySearchManager, resetMemorySearchManager } from '../../../src/memory/memory-search.js';
 
 const mockSystemPromptBuild = vi.fn();
 const mockWebAuth = {
@@ -30,7 +35,18 @@ vi.mock('../../../src/prompt/index.js', () => ({
 }));
 
 describe('ConversationManager startup', () => {
+  let tmpConfigDir: string;
+  let tmpProjectDir: string;
+  const originalConfigDir = process.env.AXON_CONFIG_DIR;
+  const originalDisableBuiltinEmbedding = process.env.AXON_DISABLE_BUILTIN_EMBEDDING;
+
   beforeEach(() => {
+    tmpConfigDir = fs.mkdtempSync(path.join(os.tmpdir(), 'axon-web-conversation-'));
+    tmpProjectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'axon-web-project-'));
+    process.env.AXON_CONFIG_DIR = tmpConfigDir;
+    process.env.AXON_DISABLE_BUILTIN_EMBEDDING = '1';
+    resetNotebookManager();
+    resetMemorySearchManager();
     vi.clearAllMocks();
     mockWebAuth.getRuntimeBackend.mockReturnValue('codex-subscription');
     mockWebAuth.getDefaultModelByBackend.mockReturnValue({});
@@ -53,6 +69,23 @@ describe('ConversationManager startup', () => {
       buildTimeMs: 0,
       hashInfo: { estimatedTokens: 0 },
     });
+  });
+
+  afterEach(() => {
+    resetNotebookManager();
+    resetMemorySearchManager();
+    if (originalConfigDir) {
+      process.env.AXON_CONFIG_DIR = originalConfigDir;
+    } else {
+      delete process.env.AXON_CONFIG_DIR;
+    }
+    if (originalDisableBuiltinEmbedding) {
+      process.env.AXON_DISABLE_BUILTIN_EMBEDDING = originalDisableBuiltinEmbedding;
+    } else {
+      delete process.env.AXON_DISABLE_BUILTIN_EMBEDDING;
+    }
+    try { fs.rmSync(tmpConfigDir, { recursive: true, force: true }); } catch {}
+    try { fs.rmSync(tmpProjectDir, { recursive: true, force: true }); } catch {}
   });
 
   it('constructs without recursive runtime resolution on codex backends', async () => {
@@ -134,6 +167,131 @@ describe('ConversationManager startup', () => {
     expect(guidance).toContain('ImageGen tool usage');
     expect(guidance).toContain('edit_strength');
     expect(guidance).toContain('image attachment edit preferences');
+  });
+
+  it('injects layered memory recall into web system prompts for the active project', async () => {
+    const { ConversationManager } = await import('../../../src/web/server/conversation.js');
+    const manager = new ConversationManager(tmpProjectDir, 'opus') as any;
+
+    const notebookMgr = initNotebookManager(tmpProjectDir);
+    notebookMgr.write('project', '# Project Notebook\n- recall indexing path bug should first be diagnosed from notebook context.');
+    await initMemorySearchManager(tmpProjectDir, require('crypto').createHash('md5').update(tmpProjectDir).digest('hex').slice(0, 12), undefined);
+
+    const transcriptPath = path.join(tmpConfigDir, 'sessions', 'past-session.json');
+    fs.mkdirSync(path.dirname(transcriptPath), { recursive: true });
+    fs.writeFileSync(transcriptPath, JSON.stringify({
+      metadata: {
+        id: 'past-session',
+        projectPath: tmpProjectDir,
+        workingDirectory: tmpProjectDir,
+        model: 'sonnet',
+        createdAt: Date.now() - 60000,
+      },
+      messages: [
+        { role: 'user', content: 'We hit this recall indexing bug before.' },
+        { role: 'assistant', content: 'The fix was to align the summary indexing path with session-memory storage.' },
+      ],
+    }), 'utf-8');
+
+    manager.sessions.set('memory-session', {
+      session: { cwd: tmpProjectDir, sessionId: 'memory-session' },
+      client: {},
+      messages: [{ role: 'user', content: 'recall indexing path bug' }],
+      model: 'sonnet',
+      runtimeBackend: 'codex-subscription',
+      cancelled: false,
+      chatHistory: [],
+      userInteractionHandler: {},
+      taskManager: {},
+      permissionHandler: {},
+      rewindManager: {},
+      toolFilterConfig: { mode: 'all' },
+      systemPromptConfig: { useDefault: true },
+      isProcessing: false,
+      processingGeneration: 0,
+      lastActualInputTokens: 0,
+      messagesLenAtLastApiCall: 0,
+      pendingContinuationAfterRestore: false,
+      latestImageAttachments: [],
+      lastPersistedMessageCount: 1,
+    });
+
+    await manager.getSystemPrompt('memory-session');
+
+    const context = mockSystemPromptBuild.mock.calls.at(-1)?.[0];
+    expect(context.notebookSummary).toContain('recall indexing path bug');
+    expect(context.memoryRecall).toContain('[Notebook]');
+    expect(context.memoryRecall).toContain('[Past session evidence]');
+    expect(context.memoryRecall).toContain('The fix');
+  });
+
+  it('uses per-project memory search manager for web sessions', async () => {
+    const { ConversationManager } = await import('../../../src/web/server/conversation.js');
+    const otherProjectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'axon-web-project-other-'));
+    const manager = new ConversationManager(tmpProjectDir, 'opus') as any;
+
+    initNotebookManager(tmpProjectDir).write('project', '# Project Notebook\n- alpha bug belongs to project alpha.');
+    initNotebookManager(otherProjectDir).write('project', '# Project Notebook\n- beta bug belongs to project beta.');
+    await initMemorySearchManager(tmpProjectDir, require('crypto').createHash('md5').update(tmpProjectDir).digest('hex').slice(0, 12), undefined);
+    await initMemorySearchManager(otherProjectDir, require('crypto').createHash('md5').update(otherProjectDir).digest('hex').slice(0, 12), undefined);
+
+    manager.sessions.set('project-alpha', {
+      session: { cwd: tmpProjectDir, sessionId: 'project-alpha' },
+      client: {},
+      messages: [{ role: 'user', content: 'alpha bug' }],
+      model: 'sonnet',
+      runtimeBackend: 'codex-subscription',
+      cancelled: false,
+      chatHistory: [],
+      userInteractionHandler: {},
+      taskManager: {},
+      permissionHandler: {},
+      rewindManager: {},
+      toolFilterConfig: { mode: 'all' },
+      systemPromptConfig: { useDefault: true },
+      isProcessing: false,
+      processingGeneration: 0,
+      lastActualInputTokens: 0,
+      messagesLenAtLastApiCall: 0,
+      pendingContinuationAfterRestore: false,
+      latestImageAttachments: [],
+      lastPersistedMessageCount: 1,
+    });
+
+    manager.sessions.set('project-beta', {
+      session: { cwd: otherProjectDir, sessionId: 'project-beta' },
+      client: {},
+      messages: [{ role: 'user', content: 'beta bug' }],
+      model: 'sonnet',
+      runtimeBackend: 'codex-subscription',
+      cancelled: false,
+      chatHistory: [],
+      userInteractionHandler: {},
+      taskManager: {},
+      permissionHandler: {},
+      rewindManager: {},
+      toolFilterConfig: { mode: 'all' },
+      systemPromptConfig: { useDefault: true },
+      isProcessing: false,
+      processingGeneration: 0,
+      lastActualInputTokens: 0,
+      messagesLenAtLastApiCall: 0,
+      pendingContinuationAfterRestore: false,
+      latestImageAttachments: [],
+      lastPersistedMessageCount: 1,
+    });
+
+    await manager.getSystemPrompt('project-alpha');
+    const alphaContext = mockSystemPromptBuild.mock.calls.at(-1)?.[0];
+    expect(alphaContext.notebookSummary).toContain('alpha bug belongs to project alpha');
+    expect(alphaContext.notebookSummary).not.toContain('beta bug belongs to project beta');
+
+    await manager.getSystemPrompt('project-beta');
+    const betaContext = mockSystemPromptBuild.mock.calls.at(-1)?.[0];
+    expect(betaContext.notebookSummary).toContain('beta bug belongs to project beta');
+    expect(betaContext.notebookSummary).not.toContain('alpha bug belongs to project alpha');
+
+    try { fs.rmSync(otherProjectDir, { recursive: true, force: true }); } catch {}
   });
 
   it('maps assistant thinking blocks into Web chat history', async () => {

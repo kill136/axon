@@ -41,7 +41,8 @@ import {
   isEmptyTemplate,
 } from '../../context/session-memory.js';
 import { initNotebookManager, getNotebookManager, activateNotebookManager } from '../../memory/notebook.js';
-import { initMemorySearchManager, getMemorySearchManager } from '../../memory/memory-search.js';
+import { initMemorySearchManager, getMemorySearchManager, ensureMemorySearchManager } from '../../memory/memory-search.js';
+import { buildLayeredMemoryRecall } from '../../memory/recall-planner.js';
 import { registerMcpServer, connectMcpServer, createMcpTools, getMcpServers, callMcpTool, disconnectMcpServer, unregisterMcpServer, MCPSearchTool, isThirdPartyApiEndpoint, getMcpMode, type McpToolDefinition } from '../../tools/mcp.js';
 import { isDeferredTool } from '../../mcp/tools.js';
 import { getChromeIntegrationConfig } from '../../chrome-mcp/index.js';
@@ -4327,6 +4328,42 @@ Respond ONLY with valid JSON, no other text.`;
     return langMap[ext || ''] || 'text';
   }
 
+  private extractRecallQuery(content: string | ContentBlock[] | unknown): string | null {
+    if (typeof content === 'string') {
+      const text = content.trim();
+      return text.length > 0 ? text : null;
+    }
+
+    if (!Array.isArray(content)) {
+      return null;
+    }
+
+    const text = content
+      .filter((block: any) => block?.type === 'text' && typeof block.text === 'string')
+      .map((block: any) => block.text.trim())
+      .filter(Boolean)
+      .join('\n')
+      .trim();
+
+    return text.length > 0 ? text : null;
+  }
+
+  private getLatestUserRecallQuery(state: SessionState): string | null {
+    for (let i = state.messages.length - 1; i >= 0; i--) {
+      const message = state.messages[i];
+      if (message.role !== 'user') {
+        continue;
+      }
+
+      const query = this.extractRecallQuery(message.content);
+      if (query) {
+        return query;
+      }
+    }
+
+    return null;
+  }
+
   /**
    * 构建系统提示（与 CLI 完全一致，仅在末尾追加记忆单元）
    */
@@ -4350,12 +4387,31 @@ Respond ONLY with valid JSON, no other text.`;
       // 使用 activateNotebookManager 确保读取的是当前会话项目的笔记本
       let notebookSummary: string | undefined;
       try {
-        const nbMgr = activateNotebookManager(state.session.cwd) || getNotebookManager();
+        const nbMgr = activateNotebookManager(state.session.cwd) || initNotebookManager(state.session.cwd);
         if (nbMgr) {
           notebookSummary = nbMgr.getNotebookSummaryForPrompt() || undefined;
         }
       } catch {
         // 笔记本加载失败不影响主流程
+      }
+
+      let memoryRecall: string | undefined;
+      try {
+        const recallQuery = this.getLatestUserRecallQuery(state);
+        if (recallQuery && recallQuery.trim().length >= 3) {
+          const embeddingConfig = configManager.get('embedding') as any;
+          const memSearchMgr = await ensureMemorySearchManager(state.session.cwd, embeddingConfig || undefined);
+          const hasCompactSummary = state.messages.some(msg => msg.role === 'user' && msg.isCompactSummary);
+          const recallPlan = await buildLayeredMemoryRecall(memSearchMgr, recallQuery, {
+            sessionId: state.session.sessionId,
+            hasCompactSummary,
+          });
+          memoryRecall = recallPlan.formatted || undefined;
+        }
+      } catch (error) {
+        if (this.options?.verbose || process.env.AXON_DEBUG) {
+          console.warn('[ConversationManager] Failed to refresh memory recall context:', error);
+        }
       }
 
       // autoRecall 已移除：信噪比太低，Notebook 已覆盖有用记忆，用户可主动调用 MemorySearch 工具
@@ -4402,6 +4458,7 @@ Respond ONLY with valid JSON, no other text.`;
           : undefined,
         // Agent 笔记本内容
         notebookSummary,
+        memoryRecall,
         // MCP 服务器信息（用于系统提示中的 MCP 指令）
         mcpServers: mcpServerInfos.length > 0 ? mcpServerInfos : undefined,
         // MCP CLI 模式：通过 Bash 调用 mcp-cli 而非直接注入 MCP 工具定义
