@@ -44,6 +44,50 @@ describe('MemorySyncEngine bug fixes', () => {
       expect(matches.some(match => match.path === 'session-1/session-memory/summary.md')).toBe(true);
     });
 
+    it('should index transcript files only for the current project', async () => {
+      const transcriptsDir = path.join(tmpDir, 'sessions');
+      const projectDir = path.join(tmpDir, 'project-a');
+      const otherProjectDir = path.join(tmpDir, 'project-b');
+      fs.mkdirSync(transcriptsDir, { recursive: true });
+
+      const sameProjectTranscript = path.join(transcriptsDir, 'same-project.json');
+      fs.writeFileSync(sameProjectTranscript, JSON.stringify({
+        metadata: {
+          id: 'same-project',
+          workingDirectory: projectDir,
+          projectPath: projectDir,
+          model: 'sonnet',
+          createdAt: Date.now(),
+        },
+        messages: [
+          { role: 'user', content: 'same project transcript evidence' },
+          { role: 'assistant', content: 'useful fix from same project' },
+        ],
+      }), 'utf-8');
+
+      const otherProjectTranscript = path.join(transcriptsDir, 'other-project.json');
+      fs.writeFileSync(otherProjectTranscript, JSON.stringify({
+        metadata: {
+          id: 'other-project',
+          workingDirectory: otherProjectDir,
+          projectPath: otherProjectDir,
+          model: 'sonnet',
+          createdAt: Date.now(),
+        },
+        messages: [
+          { role: 'user', content: 'other project transcript evidence' },
+          { role: 'assistant', content: 'should not leak across projects' },
+        ],
+      }), 'utf-8');
+
+      syncEngine = new MemorySyncEngine(store, { projectDir });
+      const result = await syncEngine.syncTranscriptFiles(transcriptsDir);
+
+      expect(result.added).toBe(1);
+      expect(store.hasFile('transcript:same-project.json')).toBe(true);
+      expect(store.hasFile('transcript:other-project.json')).toBe(false);
+    });
+
     it('should preserve transcript: entries when syncing session files', async () => {
       // Pre-populate store with a transcript entry (as if syncTranscriptFiles ran before)
       const crypto = require('crypto');

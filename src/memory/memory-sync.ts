@@ -57,6 +57,17 @@ async function listMarkdownFiles(dir: string): Promise<string[]> {
   }
 }
 
+function normalizeProjectPathForCompare(projectPath: string | null | undefined): string | null {
+  if (!projectPath || !projectPath.trim()) return null;
+
+  try {
+    const normalized = path.resolve(projectPath).replace(/\\/g, '/');
+    return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * 计算文件 hash (SHA-256)
  */
@@ -356,7 +367,6 @@ export class MemorySyncEngine {
       for (const dirent of jsonFiles) {
         const absPath = path.join(transcriptsDir, dirent.name);
         const indexPath = `transcript:${dirent.name}`;
-        processedPaths.add(indexPath);
 
         try {
           const stat = await fs.stat(absPath);
@@ -379,6 +389,12 @@ export class MemorySyncEngine {
           } catch {
             continue; // 跳过损坏的 JSON
           }
+
+          if (!this.shouldIndexTranscriptForCurrentProject(data)) {
+            continue;
+          }
+
+          processedPaths.add(indexPath);
 
           // 提取对话文本
           const markdown = this.extractTranscriptMarkdown(data);
@@ -417,6 +433,40 @@ export class MemorySyncEngine {
     }
 
     return result;
+  }
+
+  /**
+   * 判断 transcript 是否属于当前项目。
+   * 没有可判定的工作目录时，宁可不索引，避免把其他项目会话混进当前项目 recall。
+   */
+  private shouldIndexTranscriptForCurrentProject(data: any): boolean {
+    if (!this.projectDir) return true;
+
+    const transcriptProjectPath = this.extractTranscriptProjectPath(data);
+    if (!transcriptProjectPath) return false;
+
+    return normalizeProjectPathForCompare(transcriptProjectPath) === normalizeProjectPathForCompare(this.projectDir);
+  }
+
+  /**
+   * 从 transcript JSON 中提取所属项目路径。
+   */
+  private extractTranscriptProjectPath(data: any): string | null {
+    const metadata = data?.metadata;
+
+    const candidates = [
+      metadata?.projectPath,
+      metadata?.workingDirectory,
+      data?.state?.cwd,
+    ];
+
+    for (const candidate of candidates) {
+      if (typeof candidate === 'string' && candidate.trim().length > 0) {
+        return candidate;
+      }
+    }
+
+    return null;
   }
 
   /**

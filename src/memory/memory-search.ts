@@ -15,6 +15,7 @@ import { createOpenAIEmbeddingProvider, type EmbeddingProvider } from './embeddi
 import { EmbeddingCache } from './embedding-cache.js';
 import { mergeHybridResults } from './hybrid-search.js';
 import { applyMMRToResults, type MMRConfig } from './mmr.js';
+import { getCurrentCwd, isInCwdContext } from '../core/cwd-context.js';
 
 /**
  * 搜索选项
@@ -84,6 +85,20 @@ function getClaudeDir(): string {
  */
 function hashProjectPath(projectPath: string): string {
   return crypto.createHash('md5').update(projectPath).digest('hex').slice(0, 12);
+}
+
+function normalizeProjectPath(projectPath: string): string {
+  const normalized = path.resolve(projectPath).replace(/\\/g, '/');
+  return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+}
+
+const GLOBAL_MAP_KEY = '__axon_memory_search_managers__' as const;
+
+function getManagersMap(): Map<string, MemorySearchManager> {
+  if (!(globalThis as any)[GLOBAL_MAP_KEY]) {
+    (globalThis as any)[GLOBAL_MAP_KEY] = new Map<string, MemorySearchManager>();
+  }
+  return (globalThis as any)[GLOBAL_MAP_KEY];
 }
 
 /**
@@ -465,28 +480,78 @@ export async function initMemorySearchManager(
   projectHash: string,
   embeddingConfig?: EmbeddingConfig,
 ): Promise<MemorySearchManager> {
-  // Close previous instance to avoid SQLite connection leak
-  if (managerInstance) {
-    try { managerInstance.close(); } catch { /* ignore */ }
+  const key = normalizeProjectPath(projectDir);
+  const map = getManagersMap();
+  const existing = map.get(key);
+  if (existing) {
+    try { existing.close(); } catch { /* ignore */ }
   }
+
   const resolved = resolveEmbeddingConfig(embeddingConfig);
   managerInstance = await MemorySearchManager.create({ projectDir, projectHash, embeddingConfig: resolved });
+  map.set(key, managerInstance);
   return managerInstance;
+}
+
+export async function ensureMemorySearchManager(
+  projectDir: string,
+  embeddingConfig?: EmbeddingConfig,
+): Promise<MemorySearchManager> {
+  const existing = getMemorySearchManager(projectDir);
+  if (existing) {
+    return existing;
+  }
+
+  return initMemorySearchManager(projectDir, hashProjectPath(projectDir), embeddingConfig);
 }
 
 /**
  * 获取 MemorySearchManager 实例
  */
-export function getMemorySearchManager(): MemorySearchManager | null {
+export function getMemorySearchManager(projectDir?: string): MemorySearchManager | null {
+  const map = getManagersMap();
+
+  if (projectDir) {
+    const manager = map.get(normalizeProjectPath(projectDir)) || null;
+    if (manager) {
+      managerInstance = manager;
+    }
+    return manager;
+  }
+
+  if (isInCwdContext()) {
+    const manager = map.get(normalizeProjectPath(getCurrentCwd())) || null;
+    if (manager) {
+      managerInstance = manager;
+      return manager;
+    }
+  }
+
   return managerInstance;
 }
 
 /**
  * 重置 MemorySearchManager 实例
  */
-export function resetMemorySearchManager(): void {
-  if (managerInstance) {
-    managerInstance.close();
-    managerInstance = null;
+export function resetMemorySearchManager(projectDir?: string): void {
+  const map = getManagersMap();
+
+  if (projectDir) {
+    const key = normalizeProjectPath(projectDir);
+    const manager = map.get(key);
+    if (manager) {
+      try { manager.close(); } catch { /* ignore */ }
+      map.delete(key);
+      if (managerInstance === manager) {
+        managerInstance = null;
+      }
+    }
+    return;
   }
+
+  for (const manager of map.values()) {
+    try { manager.close(); } catch { /* ignore */ }
+  }
+  map.clear();
+  managerInstance = null;
 }
