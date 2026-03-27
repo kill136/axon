@@ -16,7 +16,7 @@ import type { Message, ContentBlock, ThinkingBlock, ToolUseBlock, TextBlock } fr
 import type { ChatMessage, ChatContent, ToolResultData, PermissionConfigPayload, PermissionRequestPayload, SystemPromptConfig, SystemPromptGetPayload, DebugMessagesPayload } from '../shared/types.js';
 import { UserInteractionHandler } from './user-interaction.js';
 import { PermissionHandler, type PermissionConfig, type PermissionRequest, type PermissionDestination } from './permission-handler.js';
-import { runPreToolUseHooks, runPostToolUseHooks, runPostToolUseFailureHooks, getHookCount } from '../../hooks/index.js';
+import { runPreToolUseHooks, runPostToolUseHooks, runPostToolUseFailureHooks, getHookCount, runHooks, getRegisteredHooks, registerHook, type HookEvent, type HookConfig } from '../../hooks/index.js';
 import { getChangeTracker } from '../../hooks/auto-verify.js';
 import type { WebSocket } from 'ws';
 import { WebSessionManager, type WebSessionData } from './session-manager.js';
@@ -1567,6 +1567,18 @@ export class ConversationManager {
     state.pendingContinuationAfterRestore = false;
     const currentGeneration = ++state.processingGeneration;
 
+    // SessionStart Hook（对齐 CLI Hook 系统）
+    try {
+      await runHooks({
+        event: 'SessionStart',
+        sessionId,
+        message: `Session started with model ${model}`,
+      });
+    } catch (e) {
+      // 非阻塞：Hook 失败不影响主流程
+      console.warn('[Hook] SessionStart hook execution failed:', e);
+    }
+
     // 关键修复：确保会话的 WebSocket 已设置
     // 在 getOrCreateSession 后设置 WebSocket，保证 UserInteractionHandler 可用
     if (ws && ws.readyState === 1 /* WebSocket.OPEN */) {
@@ -1663,6 +1675,19 @@ export class ConversationManager {
       if (state.processingGeneration === currentGeneration) {
         state.isProcessing = false;
       }
+
+      // SessionEnd Hook（对齐 CLI Hook 系统）
+      try {
+        await runHooks({
+          event: 'SessionEnd',
+          sessionId,
+          message: 'Chat turn completed',
+        });
+      } catch (e) {
+        // 非阻塞
+        console.warn('[Hook] SessionEnd hook execution failed:', e);
+      }
+
       // 自动 disable AI 临时启用的 MCP 服务器（对话轮次结束后统一清理）
       if (this.temporarilyEnabledMcpServers.size > 0) {
         const servers = [...this.temporarilyEnabledMcpServers];
@@ -1924,6 +1949,18 @@ export class ConversationManager {
               savedTokens: compactResult.savedTokens || 0,
               summaryText: compactResult.summaryText,
             });
+
+            // PostCompact Hook（对齐 CLI Hook 系统）
+            try {
+              await runHooks({
+                event: 'PostCompact',
+                sessionId,
+                message: `Context compacted, saved ${(compactResult.savedTokens || 0).toLocaleString()} tokens`,
+              });
+            } catch (e) {
+              // 非阻塞
+              console.warn('[Hook] PostCompact hook execution failed:', e);
+            }
 
             // 异步记忆整理：利用 AI 从被压缩的对话中提取关键发现
             // fire-and-forget，不阻塞主对话流
@@ -2483,6 +2520,18 @@ export class ConversationManager {
             cacheReadTokens: totalCacheReadTokens,
             cacheCreationTokens: totalCacheCreationTokens,
           });
+
+          // MessageComplete Hook（对齐 CLI Hook 系统）
+          try {
+            await runHooks({
+              event: 'Stop',
+              sessionId,
+              message: `Message completed with stop reason: ${stopReason || 'end_turn'}`,
+            });
+          } catch (e) {
+            // 非阻塞
+            console.warn('[Hook] MessageComplete (Stop) hook execution failed:', e);
+          }
         }
 
       } catch (error) {
@@ -2565,6 +2614,19 @@ export class ConversationManager {
                 savedTokens: compactResult.savedTokens || 0,
                 summaryText: compactResult.summaryText,
               });
+
+              // PostCompact Hook（对齐 CLI Hook 系统）
+              try {
+                await runHooks({
+                  event: 'PostCompact',
+                  sessionId,
+                  message: `Force compaction succeeded, saved ${(compactResult.savedTokens || 0).toLocaleString()} tokens`,
+                });
+              } catch (e) {
+                // 非阻塞
+                console.warn('[Hook] PostCompact hook execution failed:', e);
+              }
+
               continue; // 重新进入循环
             }
 
@@ -5415,6 +5477,18 @@ Guidelines:
       state.lastActualInputTokens = 0;
       if (compactResult.boundaryUuid) {
         state.lastCompactedUuid = compactResult.boundaryUuid;
+      }
+
+      // PostCompact Hook（对齐 CLI Hook 系统）
+      try {
+        await runHooks({
+          event: 'PostCompact',
+          sessionId,
+          message: `Manual compaction completed, saved ${(compactResult.savedTokens || 0).toLocaleString()} tokens`,
+        });
+      } catch (e) {
+        // 非阻塞
+        console.warn('[Hook] PostCompact hook execution failed:', e);
       }
 
       return {

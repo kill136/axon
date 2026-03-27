@@ -64,3 +64,4 @@ src/web/server/public/index.html
 
 # 错误嵌套的构建产物副本
 src/web/client/src/web/
+public/assets/

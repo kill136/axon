@@ -914,6 +914,52 @@ export const FileTree: React.FC<FileTreeProps> = ({
 
   // ==================== 粘贴处理（系统剪贴板 + 内部文件节点） ====================
 
+  const handlePaste = useCallback(async (targetNode: FileTreeNode) => {
+    if (!clipboard || clipboard.nodes.length === 0) return;
+
+    const destDir = targetNode.type === 'directory' ? targetNode.path : getParentPath(targetNode.path);
+    const errors: string[] = [];
+
+    for (const srcNode of clipboard.nodes) {
+      const destPath = `${destDir}/${srcNode.name}`;
+      try {
+        if (clipboard.operation === 'cut') {
+          const response = await fetch('/api/files/move', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sourcePath: srcNode.path, destPath, root: projectPath }),
+          });
+          if (!response.ok) {
+            const error = await response.json();
+            errors.push(`${srcNode.name}: ${error.error}`);
+          }
+        } else {
+          const response = await fetch('/api/files/copy', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sourcePath: srcNode.path, destPath, root: projectPath }),
+          });
+          if (!response.ok) {
+            const error = await response.json();
+            errors.push(`${srcNode.name}: ${error.error}`);
+          }
+        }
+      } catch (err) {
+        errors.push(`${srcNode.name}: ${t('fileTree.operationFailed')}`);
+      }
+    }
+
+    if (clipboard.operation === 'cut') {
+      setClipboard(null);
+    }
+
+    if (errors.length > 0) {
+      alert(`${t('fileTree.partialOperationFailed')}\n${errors.join('\n')}`);
+    }
+
+    await fetchTree();
+  }, [clipboard, projectPath, fetchTree, t]);
+
   const handlePasteEvent = useCallback(async (e: React.ClipboardEvent<HTMLDivElement>) => {
     // 1. 优先处理系统剪贴板图片
     const items = Array.from(e.clipboardData.items);
@@ -1185,52 +1231,6 @@ export const FileTree: React.FC<FileTreeProps> = ({
       setClipboard({ node: nodes[0], nodes, operation: 'copy' });
     }
   }, [selectedPaths, focusedPath, nodeByPath]);
-
-  const handlePaste = useCallback(async (targetNode: FileTreeNode) => {
-    if (!clipboard || clipboard.nodes.length === 0) return;
-
-    const destDir = targetNode.type === 'directory' ? targetNode.path : getParentPath(targetNode.path);
-    const errors: string[] = [];
-
-    for (const srcNode of clipboard.nodes) {
-      const destPath = `${destDir}/${srcNode.name}`;
-      try {
-        if (clipboard.operation === 'cut') {
-          const response = await fetch('/api/files/move', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sourcePath: srcNode.path, destPath, root: projectPath }),
-          });
-          if (!response.ok) {
-            const error = await response.json();
-            errors.push(`${srcNode.name}: ${error.error}`);
-          }
-        } else {
-          const response = await fetch('/api/files/copy', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sourcePath: srcNode.path, destPath, root: projectPath }),
-          });
-          if (!response.ok) {
-            const error = await response.json();
-            errors.push(`${srcNode.name}: ${error.error}`);
-          }
-        }
-      } catch (err) {
-        errors.push(`${srcNode.name}: ${t('fileTree.operationFailed')}`);
-      }
-    }
-
-    if (clipboard.operation === 'cut') {
-      setClipboard(null);
-    }
-
-    if (errors.length > 0) {
-      alert(`${t('fileTree.partialOperationFailed')}\n${errors.join('\n')}`);
-    }
-
-    await fetchTree();
-  }, [clipboard, projectPath, fetchTree]);
 
   const handleRename = useCallback((node: FileTreeNode) => {
     setInlineEdit({
@@ -1579,8 +1579,8 @@ export const FileTree: React.FC<FileTreeProps> = ({
         { label: t('fileTree.copyItems', { count: selCount }), shortcut: 'Ctrl+C', onClick: () => handleCopy(targetNode) },
         { label: t('fileTree.paste'), shortcut: 'Ctrl+V', disabled: !clipboard, onClick: () => handlePaste(targetNode) },
         { divider: true } as ContextMenuItem,
-        { label: t('fileTree.copyPaths', { count: selCount }), onClick: () => handleCopyPath(targetNode, false) },
-        { label: t('fileTree.copyRelativePaths', { count: selCount }), onClick: () => handleCopyPath(targetNode, true) },
+        { label: t('fileTree.copyPaths', { count: selCount }), onClick: () => handleCopyPath(targetNode, false) } as ContextMenuItem,
+        { label: t('fileTree.copyRelativePaths', { count: selCount }), onClick: () => handleCopyPath(targetNode, true) } as ContextMenuItem,
         { divider: true } as ContextMenuItem,
         { label: t('fileTree.deleteItems', { count: selCount }), shortcut: 'Delete', onClick: () => handleBatchDelete(selectedPaths) },
       ];
@@ -1588,7 +1588,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
 
     if (targetNode) {
       const isFile = targetType === 'file';
-      return [
+      const items: ContextMenuItem[] = [
         { label: t('fileTree.cut'), shortcut: 'Ctrl+X', onClick: () => handleCut(targetNode) },
         { label: t('fileTree.copy'), shortcut: 'Ctrl+C', onClick: () => handleCopy(targetNode) },
         { label: t('fileTree.paste'), shortcut: 'Ctrl+V', disabled: !clipboard, onClick: () => handlePaste(targetNode) },
@@ -1596,16 +1596,24 @@ export const FileTree: React.FC<FileTreeProps> = ({
         { label: t('fileTree.copyPath'), onClick: () => handleCopyPath(targetNode, false) },
         { label: t('fileTree.copyRelativePath'), onClick: () => handleCopyPath(targetNode, true) },
         { divider: true } as ContextMenuItem,
-        ...(isFile ? [] : [
-          { label: t('fileTree.newFile'), onClick: () => handleNewFile(targetNode) } as ContextMenuItem,
-          { label: t('fileTree.newFolder'), onClick: () => handleNewFolder(targetNode) } as ContextMenuItem,
-          { divider: true } as ContextMenuItem,
-        ]),
+      ];
+
+      if (!isFile) {
+        items.push(
+          { label: t('fileTree.newFile'), onClick: () => handleNewFile(targetNode) },
+          { label: t('fileTree.newFolder'), onClick: () => handleNewFolder(targetNode) },
+          { divider: true } as ContextMenuItem
+        );
+      }
+
+      items.push(
         { label: t('fileTree.rename'), shortcut: 'F2', onClick: () => handleRename(targetNode) },
         { label: t('fileTree.delete'), shortcut: 'Delete', onClick: () => handleDelete(targetNode) },
         { divider: true } as ContextMenuItem,
-        { label: t('fileTree.revealInExplorer'), onClick: () => handleReveal(targetNode) },
-      ];
+        { label: t('fileTree.revealInExplorer'), onClick: () => handleReveal(targetNode) }
+      );
+
+      return items;
     }
 
     return [];

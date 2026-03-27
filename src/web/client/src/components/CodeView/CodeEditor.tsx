@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import Editor, { OnMount } from '@monaco-editor/react';
 import type * as Monaco from 'monaco-editor';
 import styles from './CodeEditor.module.css';
+import { FilePreviewPanel } from './FilePreviewPanel';
 import { useAIHover, type LineAnalysisData } from '../../hooks/useAIHover';
 import { useSelectionExplain } from '../../hooks/useSelectionExplain';
 import { useCodeTour } from '../../hooks/useCodeTour';
@@ -23,6 +24,7 @@ import { getSyntaxExplanation, extractKeywordsFromLine } from '../../utils/synta
 import { aiHoverApi, TourStep } from '../../api/ai-editor';
 import { analyzeCodeStructure } from '../../utils/codeStructureAnalyzer';
 import SemanticMap from './SemanticMap';
+import { SimpleTerminalTab } from './SimpleTerminalTab';
 
 /**
  * CodeEditor Props
@@ -32,6 +34,9 @@ export interface CodeEditorProps {
   onSelectionChange?: (selection: string, filePath: string, startLine: number, endLine: number) => void;
   onActiveFileChange?: (filePath: string | null, content: string, language: string) => void;
   onCursorLineChange?: (line: number) => void;
+  send?: (msg: any) => void;
+  addMessageHandler?: (handler: (msg: any) => void) => () => void;
+  connected?: boolean;
 }
 
 /**
@@ -42,7 +47,13 @@ export interface CodeEditorRef {
   getActiveFilePath: () => string | null;
   getCurrentContent: () => string | null;
   goToLine: (line: number) => void;
+  openTerminal: () => void;
 }
+
+/**
+ * 文件类型定义
+ */
+type EditorFileType = 'code' | 'image' | 'pdf' | 'excel' | 'word' | 'unsupported' | 'terminal';
 
 /**
  * Tab 状态接口
@@ -53,6 +64,7 @@ interface EditorTab {
   language: string;
   modified: boolean;
   originalContent: string;
+  fileType: EditorFileType;
 }
 
 /**
@@ -85,6 +97,48 @@ function getLanguage(filePath: string): string {
 }
 
 /**
+ * 根据文件扩展名判断文件类型
+ */
+function getFileType(filePath: string): EditorFileType {
+  const ext = filePath.split('.').pop()?.toLowerCase() ?? '';
+
+  // 图片格式
+  if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico'].includes(ext)) {
+    return 'image';
+  }
+
+  // PDF
+  if (ext === 'pdf') {
+    return 'pdf';
+  }
+
+  // Excel
+  if (['xlsx', 'xls', 'csv'].includes(ext)) {
+    return 'excel';
+  }
+
+  // Word
+  if (['docx', 'doc'].includes(ext)) {
+    return 'word';
+  }
+
+  // 代码文件
+  const codeExts = [
+    'ts', 'tsx', 'js', 'jsx', 'py', 'go', 'rs', 'java', 'cpp', 'c',
+    'css', 'json', 'md', 'yaml', 'yml', 'xml', 'sh', 'sql', 'html',
+    'txt', 'toml', 'ini', 'env', 'log', 'java', 'rb', 'php', 'swift',
+    'kotlin', 'scala', 'groovy', 'gradle', 'maven', 'pom',
+  ];
+
+  if (codeExts.includes(ext)) {
+    return 'code';
+  }
+
+  // 默认作为代码处理
+  return 'code';
+}
+
+/**
  * 从完整路径提取文件名
  */
 function getFileName(path: string): string {
@@ -110,7 +164,7 @@ const CloseIcon: React.FC = () => (
  * Monaco Editor 包装器，支持多 Tab、文件打开/保存，集成 AI 增强功能
  */
 export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
-  ({ projectPath, onSelectionChange, onActiveFileChange, onCursorLineChange }, ref) => {
+  ({ projectPath, onSelectionChange, onActiveFileChange, onCursorLineChange, send, addMessageHandler, connected }, ref) => {
     const { t, locale } = useLanguage();
     const [tabs, setTabs] = useState<EditorTab[]>([]);
     const [activeTabIndex, setActiveTabIndex] = useState<number>(-1);
@@ -118,6 +172,15 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
     const monacoRef = useRef<typeof Monaco | null>(null);
     // 追踪当前打开的文件路径（供 LSP provider 使用，避免 stale closure）
     const currentTabPathRef = useRef<string | null>(null);
+
+    // 终端 tab 计数器（用于生成唯一路径）
+    const terminalCounterRef = useRef(0);
+    // 终端 tab 的 terminalId 映射：tabPath -> serverId（state 用于触发渲染）
+    const [terminalIdMap, setTerminalIdMap] = useState<Record<string, string | null>>({});
+    // 同步版本的 terminalId 映射（ref，不等 React 渲染，避免丢失早期 terminal:output）
+    const terminalIdSyncRef = useRef<Record<string, string | null>>({});
+    // 待关联的终端 tab 路径队列（FIFO，解决多实例 terminal:created 路由问题）
+    const pendingTerminalTabsRef = useRef<string[]>([]);
 
     // 文件内容缓存：关闭 tab 后再次打开无需重新请求后端
     const fileCacheRef = useRef<Map<string, { content: string; language: string; timestamp: number }>>(new Map());
@@ -531,6 +594,58 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
           return;
         }
 
+        const fileType = getFileType(path);
+
+        // ============= 处理图片和 PDF：直接打开，不加载内容 =============
+        if (fileType === 'image' || fileType === 'pdf') {
+          const newTab: EditorTab = {
+            path,
+            content: '',
+            language: '',
+            modified: false,
+            originalContent: '',
+            fileType,
+          };
+          setTabs(prev => [...prev, newTab]);
+          setActiveTabIndex(tabs.length);
+          return;
+        }
+
+        // ============= 处理 Excel 和 Word：获取 Blob URL =============
+        if (fileType === 'excel' || fileType === 'word') {
+          try {
+            const response = await fetch(
+              `/api/files/download?inline=1&path=${encodeURIComponent(path)}${projectPath ? `&root=${encodeURIComponent(projectPath)}` : ''}`
+            );
+
+            if (!response.ok) {
+              console.error('[CodeEditor] 读取文件失败');
+              alert(t('codeEditor.readFileFailed', { error: 'Failed to read file' }));
+              return;
+            }
+
+            const blob = await response.blob();
+            const blobUrl = URL.createObjectURL(blob);
+
+            const newTab: EditorTab = {
+              path,
+              content: blobUrl,
+              language: '',
+              modified: false,
+              originalContent: '',
+              fileType,
+            };
+
+            setTabs(prev => [...prev, newTab]);
+            setActiveTabIndex(tabs.length);
+          } catch (err) {
+            console.error('[CodeEditor] 读取文件异常:', err);
+            alert(t('codeEditor.readFileError', { error: err instanceof Error ? err.message : 'Unknown error' }));
+          }
+          return;
+        }
+
+        // ============= 处理代码文件：原有逻辑 =============
         // 优先从缓存加载
         const cached = fileCacheRef.current.get(path);
         if (cached && Date.now() - cached.timestamp < FILE_CACHE_TTL) {
@@ -540,6 +655,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
             language: cached.language,
             modified: false,
             originalContent: cached.content,
+            fileType: 'code',
           };
           setTabs(prev => [...prev, newTab]);
           setActiveTabIndex(tabs.length);
@@ -549,7 +665,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
         // 从后端加载文件内容
         try {
           const response = await fetch(`/api/files/read?path=${encodeURIComponent(path)}${projectPath ? `&root=${encodeURIComponent(projectPath)}` : ''}`);
-          
+
           if (!response.ok) {
             const errorData = await response.json();
             console.error('[CodeEditor] 读取文件失败:', errorData.error);
@@ -576,6 +692,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
             language,
             modified: false,
             originalContent: content,
+            fileType: 'code',
           };
 
           setTabs(prev => [...prev, newTab]);
@@ -594,7 +711,92 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
           editorRef.current.focus();
         }
       },
+      openTerminal: () => {
+        const createTerminalTab = () => {
+          terminalCounterRef.current += 1;
+          const tabPath = `__terminal__${terminalCounterRef.current}`;
+          const terminalTab: EditorTab = {
+            path: tabPath,
+            content: '',
+            language: '',
+            modified: false,
+            originalContent: '',
+            fileType: 'terminal',
+          };
+          const newTabs = [...tabs, terminalTab];
+          setTabs(newTabs);
+          setActiveTabIndex(newTabs.length - 1);
+          // 注册 pending 并发送创建请求
+          pendingTerminalTabsRef.current.push(tabPath);
+          setTerminalIdMap(prev => ({ ...prev, [tabPath]: null }));
+          if (connected && send) {
+            send({ type: 'terminal:create', payload: { cwd: projectPath || undefined } });
+          }
+        };
+
+        const currentTab = activeTabIndex >= 0 ? tabs[activeTabIndex] : null;
+        if (currentTab?.fileType === 'terminal') {
+          // 当前已在终端 tab，创建新的终端
+          createTerminalTab();
+        } else {
+          // 否则切到已有的终端 tab，或创建第一个
+          const terminalIndex = tabs.findIndex(t => t.fileType === 'terminal');
+          if (terminalIndex !== -1) {
+            setActiveTabIndex(terminalIndex);
+          } else {
+            createTerminalTab();
+          }
+        }
+      },
     }));
+
+    // ========================================================================
+    // 终端消息路由：将 terminal:created 的 terminalId 分配给对应的 tab
+    // ========================================================================
+    useEffect(() => {
+      if (!addMessageHandler) return;
+      const unsub = addMessageHandler((msg: any) => {
+        if (msg.type === 'terminal:created') {
+          const serverTerminalId = msg.payload?.terminalId as string;
+          if (!serverTerminalId) return;
+          const pendingTabPath = pendingTerminalTabsRef.current.shift();
+          if (pendingTabPath) {
+            // 先同步更新 ref（SimpleTerminalTab 的消息处理器能立即读到）
+            terminalIdSyncRef.current[pendingTabPath] = serverTerminalId;
+            // 再异步更新 state（触发 React 渲染传递 prop）
+            setTerminalIdMap(prev => ({ ...prev, [pendingTabPath]: serverTerminalId }));
+          }
+        }
+      });
+      return unsub;
+    }, [addMessageHandler]);
+
+    // 终端 tab 关闭时清理 terminalId 并销毁服务端终端
+    useEffect(() => {
+      const terminalTabPaths = new Set(tabs.filter(t => t.fileType === 'terminal').map(t => t.path));
+      // 同步清理 ref
+      for (const path of Object.keys(terminalIdSyncRef.current)) {
+        if (!terminalTabPaths.has(path)) {
+          const tid = terminalIdSyncRef.current[path];
+          if (tid && send) {
+            send({ type: 'terminal:destroy', payload: { terminalId: tid } });
+          }
+          delete terminalIdSyncRef.current[path];
+        }
+      }
+      // 异步清理 state
+      setTerminalIdMap(prev => {
+        const next = { ...prev };
+        let changed = false;
+        for (const path of Object.keys(next)) {
+          if (!terminalTabPaths.has(path)) {
+            delete next[path];
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+    }, [tabs, send]);
 
     // ========================================================================
     // Monaco Editor 事件处理
@@ -864,6 +1066,11 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
         );
       }
 
+      // Terminal tab：由 editorContainer 中的持久化 SimpleTerminalTab 处理，这里返回 null
+      if (currentTab.fileType === 'terminal') {
+        return null;
+      }
+
       const showReviewPanel = codeReview.enabled && codeReview.issues.length > 0;
       const showConversationPanel = conversation.state.visible;
       const showPatternPanel = pattern.enabled && pattern.patterns.length > 0;
@@ -871,44 +1078,53 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
 
       return (
         <div className={showAnyPanel ? styles.editorWithPanel : styles.editorFull}>
-          {/* Monaco 编辑器 */}
+          {/* 内容区域：根据文件类型渲染不同的预览器 */}
           <div className={styles.monacoContainer}>
-            <Editor
-              height="100%"
-              language={currentTab.language}
-              value={currentTab.content}
-              theme="vs-dark"
-              onMount={handleEditorDidMount}
-              onChange={handleEditorChange}
-              options={{
-                fontSize: 13,
-                fontFamily: 'JetBrains Mono, Consolas, monospace',
-                lineHeight: 20,
-                minimap: { enabled: false }, // 禁用 Monaco 内置 minimap，使用自定义语义地图
-                scrollBeyondLastLine: false,
-                automaticLayout: true,
-                tabSize: 2,
-                insertSpaces: true,
-                wordWrap: 'off',
-                cursorBlinking: 'smooth',
-                smoothScrolling: true,
-                renderWhitespace: 'selection',
-                bracketPairColorization: { enabled: true },
-                glyphMargin: true,
-                guides: {
-                  indentation: true,
-                  bracketPairs: true,
-                },
-                suggest: {
-                  showKeywords: true,
-                  showSnippets: true,
-                },
-                hover: {
-                  enabled: true,
-                  delay: 300,
-                },
-              }}
-            />
+            {currentTab.fileType === 'code' ? (
+              <Editor
+                height="100%"
+                language={currentTab.language}
+                value={currentTab.content}
+                theme="vs-dark"
+                onMount={handleEditorDidMount}
+                onChange={handleEditorChange}
+                options={{
+                  fontSize: 13,
+                  fontFamily: 'JetBrains Mono, Consolas, monospace',
+                  lineHeight: 20,
+                  minimap: { enabled: false }, // 禁用 Monaco 内置 minimap，使用自定义语义地图
+                  scrollBeyondLastLine: false,
+                  automaticLayout: true,
+                  tabSize: 2,
+                  insertSpaces: true,
+                  wordWrap: 'off',
+                  cursorBlinking: 'smooth',
+                  smoothScrolling: true,
+                  renderWhitespace: 'selection',
+                  bracketPairColorization: { enabled: true },
+                  glyphMargin: true,
+                  guides: {
+                    indentation: true,
+                    bracketPairs: true,
+                  },
+                  suggest: {
+                    showKeywords: true,
+                    showSnippets: true,
+                  },
+                  hover: {
+                    enabled: true,
+                    delay: 300,
+                  },
+                }}
+              />
+            ) : (
+              <FilePreviewPanel
+                filePath={currentTab.path}
+                fileType={currentTab.fileType}
+                content={currentTab.content}
+                projectPath={projectPath}
+              />
+            )}
             {/* LSP server 未安装提示 */}
             {lspNotification && (
               <div style={{
@@ -1255,7 +1471,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
                 onClick={() => setActiveTabIndex(index)}
               >
                 <span className={styles.tabName}>
-                  {getFileName(tab.path)}
+                  {tab.fileType === 'terminal' ? `Terminal ${tab.path.replace('__terminal__', '')}` : getFileName(tab.path)}
                   {tab.modified && <span className={styles.modifiedDot}>●</span>}
                 </span>
                 <button
@@ -1270,8 +1486,8 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
           </div>
         )}
 
-        {/* AI 工具栏 */}
-        {currentTab && (
+        {/* AI 工具栏 - 终端 tab 不显示 */}
+        {currentTab && currentTab.fileType !== 'terminal' && (
           <div className={styles.aiToolbar}>
             <div className={styles.aiToolGroup}>
               {visibleButtons.has('tour') && (
@@ -1470,7 +1686,24 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
 
         {/* 编辑器区域 */}
         <div className={styles.editorContainer}>
-          {tourState.active ? (
+          {/* 持久化终端实例：每个终端 tab 独立挂载，通过 display 切换可见性 */}
+          {send && addMessageHandler && connected !== undefined && tabs
+            .filter(t => t.fileType === 'terminal')
+            .map(tab => (
+              <SimpleTerminalTab
+                key={tab.path}
+                send={send}
+                addMessageHandler={addMessageHandler}
+                connected={connected}
+                projectPath={projectPath}
+                active={currentTab?.path === tab.path}
+                terminalId={terminalIdMap[tab.path] ?? null}
+                terminalIdSyncRef={terminalIdSyncRef}
+                tabPath={tab.path}
+              />
+            ))
+          }
+          {currentTab?.fileType === 'terminal' ? null : tourState.active ? (
             /* 导游模式：编辑器 + 导游面板 二栏布局 */
             <div className={styles.codeEditorWithTour}>
               <div className={styles.codeEditorMain}>

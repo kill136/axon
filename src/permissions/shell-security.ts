@@ -732,12 +732,22 @@ export function extractCommandPrefix(command: string): string {
  * @returns 规范化后的命令
  */
 export function normalizeCommand(command: string): string {
-  return command
-    .trim()
-    // 移除行续行符和后续换行
-    .replace(/\\\r?\n\s*/g, ' ')
-    // 压缩多个空格
-    .replace(/\s+/g, ' ');
+  let normalized = command.trim();
+
+  // v2.1.65: Bug fix - 移除 heredoc 及其内容
+  // 处理 <<DELIMITER ... DELIMITER 的 heredoc 语法
+  // 支持 <<EOF, <<-EOF, <<"EOF", <<'EOF' 等形式
+  // 策略：从 << 到第一个换行符（heredoc结束）之前的内容保留，
+  // 其余内容（heredoc体和结束符）都移除
+  normalized = normalized.split('<<')[0];
+
+  // 移除行续行符和后续换行（修改前的逻辑）
+  normalized = normalized.replace(/\\\r?\n\s*/g, ' ');
+
+  // 压缩多个空格
+  normalized = normalized.replace(/\s+/g, ' ');
+
+  return normalized.trim();
 }
 
 /**

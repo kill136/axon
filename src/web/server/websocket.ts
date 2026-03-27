@@ -6,6 +6,7 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { randomUUID } from 'crypto';
 import { ConversationManager } from './conversation.js';
+import { getRegisteredHooks, registerHook, type HookEvent, type HookConfig } from '../../hooks/index.js';
 import { isSlashCommand, executeSlashCommand } from './slash-commands.js';
 import { initializeSkills, getAllSkills, findSkill } from '../../tools/skill.js';
 import { runWithCwd, getCurrentCwd } from '../../core/cwd-context.js';
@@ -2260,6 +2261,39 @@ async function handleClientMessage(
       break;
     }
 
+    case 'terminal:paste-image': {
+      // 终端粘贴图片：保存为临时文件，将文件路径作为文本写入终端
+      const pastePayload = (message as any).payload;
+      if (pastePayload?.terminalId && pastePayload?.data && pastePayload?.mimeType) {
+        try {
+          const fs = await import('fs');
+          const path = await import('path');
+          const os = await import('os');
+
+          const tempDir = path.join(os.tmpdir(), 'claude-code-uploads');
+          if (!fs.existsSync(tempDir)) {
+            fs.mkdirSync(tempDir, { recursive: true });
+          }
+
+          const ext = pastePayload.mimeType.split('/')[1] || 'png';
+          const now = new Date();
+          const pad = (n: number) => String(n).padStart(2, '0');
+          const ts = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+          const fileName = `pasted-image-${ts}.${ext}`;
+          const tempFilePath = path.join(tempDir, fileName);
+
+          const buffer = Buffer.from(pastePayload.data, 'base64');
+          fs.writeFileSync(tempFilePath, buffer);
+
+          // 将文件路径作为文本写入终端
+          terminalManager.write(pastePayload.terminalId, tempFilePath);
+        } catch (err) {
+          console.error('[WebSocket] terminal:paste-image failed:', err);
+        }
+      }
+      break;
+    }
+
     // ========== 日志消息 ==========
     case 'logs:read': {
       const logsPayload = (message as any).payload || {};
@@ -2385,6 +2419,28 @@ async function handleClientMessage(
     case 'mode_preset_apply':
       await handleModePresetMessage(client, message as any, conversationManager);
       break;
+
+    // ======================== Hook 管理 ========================
+    case 'hook_list': {
+      const hooks = getRegisteredHooks();
+      sendMessage(client.ws, { type: 'hook_list', payload: hooks } as any);
+      break;
+    }
+
+    case 'hook_register': {
+      const { event, config } = (message as any).payload || {};
+      if (event && config) {
+        try {
+          registerHook(event as HookEvent, config as HookConfig);
+          sendMessage(client.ws, { type: 'hook_register_result', payload: { success: true, event } } as any);
+        } catch (err) {
+          sendMessage(client.ws, { type: 'hook_register_result', payload: { success: false, error: String(err) } } as any);
+        }
+      } else {
+        sendMessage(client.ws, { type: 'hook_register_result', payload: { success: false, error: 'Missing event or config in payload' } } as any);
+      }
+      break;
+    }
 
     default:
       console.warn('[WebSocket] Unknown message type:', (message as any).type);

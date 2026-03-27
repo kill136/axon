@@ -958,8 +958,7 @@ const MAX_SUBAGENT_DEPTH = 5;
 
 export class TaskTool extends BaseTool<AgentInput, ToolResult> {
   name = 'Task';
-  shouldDefer = true;
-  searchHint = 'parallel tasks, research codebase, explore files, delegate subtask, autonomous worker';
+  shouldDefer = false;
   
   // 全局跟踪当前嵌套深度
   private static currentDepth: number = 0;

@@ -212,6 +212,7 @@ export type ClientMessage =
   | { type: 'terminal:input'; payload: { terminalId: string; data: string } }
   | { type: 'terminal:resize'; payload: { terminalId: string; cols: number; rows: number } }
   | { type: 'terminal:destroy'; payload: { terminalId: string } }
+  | { type: 'terminal:paste-image'; payload: { terminalId: string; data: string; mimeType: string } }
   // 日志消息
   | { type: 'logs:read'; payload?: { count?: number; level?: string } }
   | { type: 'logs:subscribe' }
@@ -301,7 +302,10 @@ export type ClientMessage =
   | { type: 'mode_presets_get' }
   | { type: 'mode_preset_save'; payload: { preset: ModePreset } }
   | { type: 'mode_preset_delete'; payload: { id: string } }
-  | { type: 'mode_preset_apply'; payload: { id: string } };
+  | { type: 'mode_preset_apply'; payload: { id: string } }
+  // Hook 管理
+  | { type: 'hook_list' }
+  | { type: 'hook_register'; payload: { event: string; config: unknown } };
 
 /**
  * 服务端发送的消息类型

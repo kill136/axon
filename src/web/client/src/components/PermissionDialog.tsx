@@ -39,6 +39,8 @@ interface PermissionDialogProps {
   defaultDestination?: PermissionDestination;
   /** 是否紧凑模式 */
   compact?: boolean;
+  /** 权限决策是否来自缓存 */
+  isCached?: boolean;
 }
 
 export function PermissionDialog({
@@ -48,6 +50,7 @@ export function PermissionDialog({
   showFullSelector = true,
   defaultDestination = 'session',
   compact = false,
+  isCached = false,
 }: PermissionDialogProps) {
   const [remember, setRemember] = useState(false);
   const [destination, setDestination] = useState<PermissionDestination>(defaultDestination);
@@ -142,6 +145,11 @@ export function PermissionDialog({
         {/* 头部 */}
         <div className="permission-header">
           <span className={`risk-badge ${getRiskClass()}`}>{getRiskLabel()}</span>
+          {isCached && (
+            <span className="permission-cached-badge" title="This decision is cached for 5 seconds">
+              ⚡ Cached
+            </span>
+          )}
           <h3>{t('permission.title')}</h3>
         </div>
 

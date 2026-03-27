@@ -10,6 +10,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { PermissionMode } from '../../types/index.js';
+import { matchesAnyCondition } from './permission-condition-matcher.js';
 
 /**
  * 权限保存目标类型
@@ -72,6 +73,9 @@ export interface PermissionConfig {
 export class PermissionHandler {
   private pendingRequests = new Map<string, PendingRequest>();
   private sessionMemory = new Map<string, boolean>(); // 会话级别的权限记忆
+  private decisionCache = new Map<string, boolean>(); // 决策缓存
+  private cacheExpiry = new Map<string, number>(); // 缓存过期时间
+  private readonly CACHE_TTL = 5000; // 5秒 TTL
   private config: PermissionConfig;
 
   // 需要权限确认的工具列表
@@ -111,6 +115,12 @@ export class PermissionHandler {
    * 检查工具是否需要权限确认
    */
   needsPermission(tool: string, args: unknown): boolean {
+    // 缓存检查（5秒 TTL）
+    const cached = this.getCachedDecision(tool, args);
+    if (cached !== null) {
+      return !cached; // cached=true 表示之前被允许, 所以不需要再次权限检查
+    }
+
     // 模式检查
     if (this.config.mode === 'bypassPermissions') {
       return false;
@@ -121,19 +131,38 @@ export class PermissionHandler {
       return true;
     }
 
-    // 检查配置的绕过列表
-    if (this.config.bypassTools?.includes(tool)) {
+    if (this.config.mode === 'dontAsk') {
+      // dontAsk 模式：不走权限弹窗流程，由 isAutoReject 判断是否拒绝执行
       return false;
     }
 
-    // 检查总是允许列表
-    if (this.config.alwaysAllow?.includes(tool)) {
+    if (this.config.mode === 'delegate') {
+      // delegate 模式：委托给外部系统处理，当前不走 WebUI 权限弹窗
       return false;
+    }
+
+    // 提取参数对象，供条件规则匹配使用
+    const argsObj = (args as Record<string, unknown>) || {};
+
+    // 检查配置的绕过列表（支持条件规则匹配）
+    if (this.config.bypassTools?.length) {
+      if (matchesAnyCondition(this.config.bypassTools, tool, argsObj)) {
+        return false;
+      }
+    }
+
+    // 检查总是允许列表（支持条件规则匹配）
+    if (this.config.alwaysAllow?.length) {
+      if (matchesAnyCondition(this.config.alwaysAllow, tool, argsObj)) {
+        return false;
+      }
     }
 
     // 检查总是拒绝列表（虽然会被拒绝，但仍然需要权限流程）
-    if (this.config.alwaysDeny?.includes(tool)) {
-      return true;
+    if (this.config.alwaysDeny?.length) {
+      if (matchesAnyCondition(this.config.alwaysDeny, tool, argsObj)) {
+        return true;
+      }
     }
 
     // acceptEdits 模式：自动允许文件编辑
@@ -161,6 +190,17 @@ export class PermissionHandler {
 
     // 其他敏感工具默认需要权限
     return true;
+  }
+
+  /**
+   * 检查当前模式是否自动拒绝
+   * dontAsk 模式下所有敏感操作自动被拒绝
+   */
+  isAutoReject(tool: string, args: unknown): boolean {
+    if (this.config.mode !== 'dontAsk') return false;
+    // 只有敏感工具被自动拒绝
+    return PermissionHandler.SENSITIVE_TOOLS.has(tool) ||
+      (tool === 'Bash' && this.isBashCommandDangerous(args));
   }
 
   /**
@@ -412,6 +452,9 @@ export class PermissionHandler {
       this.savePermissionToDestination(pending.request.tool, pending.request.args, approved, destination);
     }
 
+    // 缓存决策
+    this.cacheDecision(pending.request.tool, pending.request.args, approved);
+
     // 解析 Promise
     pending.resolve(approved);
 
@@ -635,6 +678,51 @@ export class PermissionHandler {
   }
 
   /**
+   * 检查缓存中是否有有效的权限决策
+   */
+  private getCachedDecision(tool: string, args: unknown): boolean | null {
+    const key = this.getCacheKey(tool, args as Record<string, unknown>);
+    const expiry = this.cacheExpiry.get(key);
+    if (expiry && Date.now() < expiry) {
+      return this.decisionCache.get(key) ?? null;
+    }
+    // 过期清理
+    this.decisionCache.delete(key);
+    this.cacheExpiry.delete(key);
+    return null;
+  }
+
+  /**
+   * 缓存权限决策
+   */
+  private cacheDecision(tool: string, args: unknown, decision: boolean): void {
+    const key = this.getCacheKey(tool, args as Record<string, unknown>);
+    this.decisionCache.set(key, decision);
+    this.cacheExpiry.set(key, Date.now() + this.CACHE_TTL);
+  }
+
+  /**
+   * 生成缓存键（比记忆键更精确）
+   */
+  private getCacheKey(tool: string, args: Record<string, unknown>): string {
+    // 截断到100字符防止过长
+    return `${tool}:${JSON.stringify(args || {})}`.substring(0, 100);
+  }
+
+  /**
+   * 清除过期缓存
+   */
+  clearExpiredCache(): void {
+    const now = Date.now();
+    for (const [key, expiry] of this.cacheExpiry) {
+      if (now >= expiry) {
+        this.decisionCache.delete(key);
+        this.cacheExpiry.delete(key);
+      }
+    }
+  }
+
+  /**
    * 生成记忆键
    */
   private getMemoryKey(tool: string, args: Record<string, unknown>): string {
@@ -695,6 +783,8 @@ export class PermissionHandler {
    */
   clearSessionMemory(): void {
     this.sessionMemory.clear();
+    this.decisionCache.clear();
+    this.cacheExpiry.clear();
   }
 
   /**
@@ -712,6 +802,11 @@ export class PermissionHandler {
     if (config.mode === 'bypassPermissions') {
       this.approveAllPending();
     }
+
+    // 切换到 dontAsk 模式时，自动拒绝所有待处理的权限请求
+    if (config.mode === 'dontAsk') {
+      this.rejectAllPending();
+    }
   }
 
   /**
@@ -723,6 +818,19 @@ export class PermissionHandler {
     this.pendingRequests.forEach((pending, requestId) => {
       clearTimeout(pending.timeout);
       pending.resolve(true);
+      this.pendingRequests.delete(requestId);
+    });
+  }
+
+  /**
+   * 自动拒绝所有待处理的权限请求
+   */
+  private rejectAllPending(): void {
+    if (this.pendingRequests.size === 0) return;
+    console.log(`[PermissionHandler] dontAsk mode activated, rejecting ${this.pendingRequests.size} pending requests`);
+    this.pendingRequests.forEach((pending, requestId) => {
+      clearTimeout(pending.timeout);
+      pending.resolve(false);
       this.pendingRequests.delete(requestId);
     });
   }

@@ -138,9 +138,43 @@ function TerminalInstance({
       }
     });
 
+    // 剪贴板图片粘贴：保存图片为临时文件，将路径写入终端
+    const container = containerRef.current;
+    const handlePaste = (e: ClipboardEvent) => {
+      if (!e.clipboardData) return;
+      const items = Array.from(e.clipboardData.items);
+      const imageItem = items.find(item => item.type.startsWith('image/'));
+      if (!imageItem) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+      const blob = imageItem.getAsFile();
+      if (!blob) return;
+
+      const tid = terminalIdRef.current;
+      if (!tid) return;
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        const base64 = dataUrl.split(',')[1];
+        send({
+          type: 'terminal:paste-image',
+          payload: {
+            terminalId: tid,
+            data: base64,
+            mimeType: imageItem.type,
+          },
+        });
+      };
+      reader.readAsDataURL(blob);
+    };
+    container?.addEventListener('paste', handlePaste);
+
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
+      container?.removeEventListener('paste', handlePaste);
       resizeObserver?.disconnect();
       term.dispose();
       xtermRef.current = null;

@@ -77,6 +77,7 @@ export function getToolGuidelines(
     'Call multiple tools in a single response when there are no dependencies between them. If calls depend on previous results, run them sequentially.',
     toolNames.has('Browser') ? 'Browser is a LAST RESORT. Use CLI tools (Bash, WebFetch, gh, curl) first. Only use Browser when the task requires visual rendering or interactive UI testing.' : null,
     toolNames.has('Mcp') ? `MCP-First Rule: For tasks beyond code editing, FIRST search for MCP tools: (1) Mcp tool search, (2) Mcp action=list + action=enable, (3) tool-discovery skill for community registries. Only after all MCP options exhausted, consider alternatives.` : null,
+    toolNames.has('CreateTool') ? `Self-Extension: You can create new tools for yourself using CreateTool. Custom tools are saved to ~/.axon/custom-tools/ as JS files and registered to ToolRegistry immediately. When you identify a recurring task that would benefit from a dedicated tool, use CreateTool to extend your own capabilities. Custom tools persist across sessions.` : null,
   ];
 
   return ['# Using your tools', ...items.filter(item => item !== null).flatMap(item =>
@@ -764,6 +765,54 @@ Search for error messages, file paths, function names, commands, or keywords rel
 }
 
 /**
+ * 生成 auto memory 系统提示词
+ * 对齐官方 uv9() 函数
+ */
+export function getAutoMemoryPrompt(memoryDir: string): string {
+  return `# auto memory
+
+You have a persistent auto memory directory at \`${memoryDir}\`. This directory already exists — write to it directly with the Write tool (do not run mkdir or check for its existence). Its contents persist across conversations.
+
+As you work, consult your memory files to build on previous experience.
+
+## How to save memories:
+- Organize memory semantically by topic, not chronologically
+- Use the Write and Edit tools to update your memory files
+- \`MEMORY.md\` is always loaded into your conversation context — lines after 200 will be truncated, so keep it concise
+- Create separate topic files (e.g., \`debugging.md\`, \`patterns.md\`) for detailed notes and link to them from MEMORY.md
+- Update or remove memories that turn out to be wrong or outdated
+- Do not write duplicate memories. First check if there is an existing memory you can update before writing a new one.
+
+## What to save:
+- Stable patterns and conventions confirmed across multiple interactions
+- Key architectural decisions, important file paths, and project structure
+- User preferences for workflow, tools, and communication style
+- Solutions to recurring problems and debugging insights
+
+## What NOT to save:
+- Session-specific context (current task details, in-progress work, temporary state)
+- Information that might be incomplete — verify against project docs before writing
+- Anything that duplicates or contradicts existing CLAUDE.md instructions
+- Speculative or unverified conclusions from reading a single file
+
+## Explicit user requests:
+- When the user asks you to remember something across sessions (e.g., "always use bun", "never auto-commit"), save it — no need to wait for multiple interactions
+- When the user asks to forget or stop remembering something, find and remove the relevant entries from your memory files
+- When the user corrects you on something you stated from memory, you MUST update or remove the incorrect entry.`;
+}
+
+/**
+ * 生成 auto memory 上下文内容（注入 system prompt）
+ * 包含 MEMORY.md 的内容
+ */
+export function getAutoMemoryContext(memoryDir: string, memoryContent: string | null): string {
+  if (!memoryContent) {
+    return '';
+  }
+  return `Contents of ${memoryDir}/MEMORY.md (user's auto-memory, persists across conversations):\n\n${memoryContent}`;
+}
+
+/**
  * 完整的提示词模板集合
  */
 export const PromptTemplates = {
@@ -791,4 +840,6 @@ export const PromptTemplates = {
   getGitStatusInfo,
   getMemoryInfo,
   getTodoListInfo,
+  getAutoMemoryPrompt,
+  getAutoMemoryContext,
 };

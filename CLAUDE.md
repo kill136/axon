@@ -4,7 +4,7 @@
 
 ## Project Overview
 
-This is an educational reverse-engineering project that recreates @anthropic-ai/claude-code v2.1.4. It's a TypeScript-based terminal application that provides an AI assistant with 25+ tools for file operations, code analysis, web access, and system commands.
+This is an educational reverse-engineering project that recreates @anthropic-ai/claude-code v2.1.85. It's a TypeScript-based terminal application that provides an AI assistant with 25+ tools for file operations, code analysis, web access, and system commands.
 
 ## 铁律（每条都是硬性约束，没有例外）
 

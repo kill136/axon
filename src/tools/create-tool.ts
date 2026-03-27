@@ -1,54 +1,45 @@
 /**
- * CreateTool - 创建自定义 Skill
+ * CreateTool - 创建自定义外挂工具
  *
- * 通过在 ~/.axon/skills/<name>/SKILL.md 写入 skill 文件来扩展能力。
- * 利用现有 Skill 系统：
- * - system-reminder 中只占一行描述（低上下文开销）
- * - 通过 Skill 工具按需调用（加载完整内容）
- * - 支持 frontmatter 元数据（description, allowed-tools, when-to-use 等）
- * - 下次启动自动发现加载
+ * 通过在 ~/.axon/custom-tools/ 写入 JS 文件来扩展能力。
+ * 工具以标准 ES Module 格式导出，启动时自动加载，运行时可热重载。
  *
- * 与注册 Tool 的区别：
- * - Tool：每个都要把 name + description + inputSchema 塞进 API tools 列表，token 开销大
- * - Skill：只在 system-reminder 占一行，按需通过 Skill 工具调用，上下文开销极小
+ * 与 Skill 的区别：
+ * - Skill：Markdown 文件，模型读取后自行解释执行，需要通过 Bash node -e 运行
+ * - CustomTool：JS 文件，直接注册为 ToolRegistry 中的工具，模型可直接调用
  */
 
 import { BaseTool } from './base.js';
 import type { ToolDefinition, ToolResult } from '../types/index.js';
-import { clearSkillCache, initializeSkills } from './skill.js';
-import { t } from '../i18n/index.js';
+import {
+  getCustomToolsDir,
+  reloadCustomTools,
+  listCustomToolFiles,
+} from './custom-tool-loader.js';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
 
 export interface CreateToolInput {
-  /** skill 名称（英文，kebab-case 或 camelCase，会作为目录名和调用名） */
+  /** 工具名称（英文，PascalCase 推荐） */
   name: string;
-  /** skill 描述（显示在 system-reminder 中，告诉模型何时使用） */
+  /** 工具描述（告诉模型何时使用、做什么） */
   description?: string;
-  /** skill 执行代码（JavaScript async 函数体，接收 input 参数） */
+  /** JavaScript async 函数体，接收 input 参数 */
   executeCode?: string;
-  /** JSON Schema 定义 skill 的输入参数 */
+  /** JSON Schema 定义工具的输入参数 */
   inputSchema?: Record<string, any>;
   /** 操作类型 */
-  action?: 'create' | 'delete' | 'list';
+  action?: 'create' | 'delete' | 'list' | 'reload';
 }
 
 /**
- * 获取用户级 skills 目录
- */
-function getUserSkillsDir(): string {
-  return path.join(os.homedir(), '.axon', 'skills');
-}
-
-/**
- * CreateTool - 创建/管理自定义 Skills
+ * CreateTool - 创建/管理自定义外挂工具
  */
 export class CreateToolTool extends BaseTool<CreateToolInput, ToolResult> {
   name = 'CreateTool';
   shouldDefer = true;
-  searchHint = 'create new skill, extend capabilities, custom automation, add new command';
-  description = `Create, cancel, or list custom tools at runtime. Custom tools are persisted to ~/.axon/custom-tools/ and auto-loaded on startup.
+  searchHint = 'create new tool, extend capabilities, custom automation, add new command';
+  description = `Create, delete, list, or reload custom tools at runtime. Custom tools are persisted to ~/.axon/custom-tools/ as JS files and auto-loaded on startup.
 
 Use this to create new tools that extend your capabilities:
 - Shell command wrappers
@@ -56,8 +47,14 @@ Use this to create new tools that extend your capabilities:
 - Data processing utilities
 - Custom automation scripts
 
-The executeCode is a JavaScript async function body that receives 'input' and should return { success: boolean, output?: string, error?: string }.
-Available in executeCode: require (Node.js modules), process, Buffer, console, fetch, setTimeout.`;
+The executeCode is a JavaScript async function body that receives 'input' and should return { success: boolean, output?: string, error?: string } or a plain string.
+Available in executeCode: import() for any Node.js module, process, Buffer, console, fetch, setTimeout.
+
+Actions:
+- create: Write a new tool JS file and register it immediately
+- delete: Remove a tool file and unregister it
+- list: Show all custom tools
+- reload: Reload all custom tools from disk`;
 
   getInputSchema(): ToolDefinition['inputSchema'] {
     return {
@@ -65,7 +62,7 @@ Available in executeCode: require (Node.js modules), process, Buffer, console, f
       properties: {
         action: {
           type: 'string',
-          enum: ['create', 'delete', 'list'],
+          enum: ['create', 'delete', 'list', 'reload'],
           description: 'Action to perform. Defaults to "create".',
         },
         name: {
@@ -74,7 +71,7 @@ Available in executeCode: require (Node.js modules), process, Buffer, console, f
         },
         description: {
           type: 'string',
-          description: 'Tool description shown in system prompt. Required for create.',
+          description: 'Tool description shown to the model. Required for create.',
         },
         inputSchema: {
           type: 'object',
@@ -82,7 +79,7 @@ Available in executeCode: require (Node.js modules), process, Buffer, console, f
         },
         executeCode: {
           type: 'string',
-          description: 'JavaScript async function body. Receives "input" parameter. Available globals: require, process, Buffer, console, fetch, setTimeout. Must return { success, output?, error? } or a string. Required for create.',
+          description: 'JavaScript async function body. Receives "input" parameter. Can use import() for Node.js modules. Must return { success, output?, error? } or a string. Required for create.',
         },
       },
       required: ['name'],
@@ -94,183 +91,185 @@ Available in executeCode: require (Node.js modules), process, Buffer, console, f
 
     switch (action) {
       case 'list':
-        return this.listSkills();
+        return this.listTools();
       case 'delete':
-        return this.deleteSkill(input.name);
+        return this.deleteTool(input.name);
+      case 'reload':
+        return this.reloadTools();
       case 'create':
-        return this.createSkill(input);
+        return this.createTool(input);
       default:
-        return this.error(`Unknown action: ${action}. Use 'create', 'delete', or 'list'.`);
+        return this.error(`Unknown action: ${action}. Use 'create', 'delete', 'list', or 'reload'.`);
     }
   }
 
   /**
-   * 列出所有用户自定义 skills
+   * 列出所有自定义工具
    */
-  private listSkills(): ToolResult {
-    const dir = getUserSkillsDir();
-    if (!fs.existsSync(dir)) {
-      return this.success(t('createTool.noSkills'));
+  private listTools(): ToolResult {
+    const tools = listCustomToolFiles();
+
+    if (tools.length === 0) {
+      const dir = getCustomToolsDir();
+      return this.success(`No custom tools found.\nDirectory: ${dir}\n\nUse CreateTool with action="create" to add new tools.`);
     }
 
-    const entries = fs.readdirSync(dir, { withFileTypes: true });
-    const skillDirs = entries.filter(e => e.isDirectory());
+    const lines = tools.map(t => {
+      const status = t.loaded ? '✓' : '✗';
+      const name = t.name || '(parse error)';
+      const desc = t.description || '(no description)';
+      return `  ${status} ${name} — ${desc} [${t.file}]`;
+    });
 
-    if (skillDirs.length === 0) {
-      return this.success(t('createTool.noSkills'));
-    }
-
-    const skills: string[] = [];
-    for (const entry of skillDirs) {
-      const skillMd = path.join(dir, entry.name, 'SKILL.md');
-      if (fs.existsSync(skillMd)) {
-        const content = fs.readFileSync(skillMd, 'utf-8');
-        // 提取 description
-        const descMatch = content.match(/^description:\s*["']?(.+?)["']?\s*$/m);
-        const desc = descMatch ? descMatch[1] : '(no description)';
-        skills.push(`- ${entry.name}: ${desc}`);
-      } else {
-        skills.push(`- ${entry.name}: (missing SKILL.md)`);
-      }
-    }
-
-    return this.success(`User skills (${skills.length}):\n\n${skills.join('\n')}\n\nPath: ${dir}`);
-  }
-
-  /**
-   * 删除自定义 skill
-   */
-  private deleteSkill(name: string): ToolResult {
-    if (!name) {
-      return this.error(t('createTool.nameRequiredDelete'));
-    }
-
-    const dir = getUserSkillsDir();
-    const skillDir = path.join(dir, name);
-
-    if (!fs.existsSync(skillDir)) {
-      return this.error(`Skill '${name}' not found at ${skillDir}`);
-    }
-
-    try {
-      fs.rmSync(skillDir, { recursive: true, force: true });
-
-      // 刷新 skill 缓存
-      clearSkillCache();
-      initializeSkills().catch(() => {});
-
-      return this.success(`Skill '${name}' deleted.\nPath: ${skillDir}`);
-    } catch (err: any) {
-      return this.error(`Failed to delete skill: ${err.message}`);
-    }
-  }
-
-  /**
-   * 创建或更新自定义 skill
-   */
-  private createSkill(input: CreateToolInput): ToolResult {
-    const { name, description, executeCode, inputSchema } = input;
-
-    // 验证
-    if (!name) return this.error(t('createTool.nameRequired'));
-    if (!description) return this.error(t('createTool.descRequired'));
-    if (!executeCode) return this.error(t('createTool.codeRequired'));
-
-    // 名称格式验证（允许 kebab-case, camelCase, PascalCase, snake_case）
-    if (!/^[A-Za-z][A-Za-z0-9_-]*$/.test(name)) {
-      return this.error(t('createTool.invalidName'));
-    }
-
-    // 构建 SKILL.md 内容
-    const skillContent = this.buildSkillMd(name, description, executeCode, inputSchema);
-
-    // 写入文件
-    const dir = getUserSkillsDir();
-    const skillDir = path.join(dir, name);
-    const skillMd = path.join(skillDir, 'SKILL.md');
-    const isUpdate = fs.existsSync(skillMd);
-
-    if (!fs.existsSync(skillDir)) {
-      fs.mkdirSync(skillDir, { recursive: true });
-    }
-    fs.writeFileSync(skillMd, skillContent, 'utf-8');
-
-    // 刷新 skill 缓存使其立即生效
-    clearSkillCache();
-    initializeSkills().catch(() => {});
-
-    const action = isUpdate ? 'Updated' : 'Created';
     return this.success(
-      `${action} skill '${name}'.\n\n` +
-      `Path: ${skillMd}\n` +
-      `Invoke: Use the Skill tool with skill="${name}"\n\n` +
-      `The skill is now available in the system-reminder and can be invoked immediately.`
+      `Custom tools (${tools.length}):\n\n${lines.join('\n')}\n\nDirectory: ${getCustomToolsDir()}`
     );
   }
 
   /**
-   * 构建 SKILL.md 文件内容
-   *
-   * 生成一个带 frontmatter 的 markdown 文件，body 部分包含：
-   * - 说明文字
-   * - executeCode 嵌入在 ```javascript 代码块中
-   * - 输入参数的 schema 说明
-   *
-   * 调用时由 Skill 工具加载完整内容注入对话，模型读取后用 Bash 执行 node -e
+   * 删除自定义工具
    */
-  private buildSkillMd(
+  private async deleteTool(name: string): Promise<ToolResult> {
+    if (!name) {
+      return this.error('Tool name is required for delete action.');
+    }
+
+    const dir = getCustomToolsDir();
+    // 查找匹配的文件
+    const fileName = this.toFileName(name);
+    const filePath = path.join(dir, fileName);
+
+    if (!fs.existsSync(filePath)) {
+      return this.error(`Tool file not found: ${filePath}`);
+    }
+
+    try {
+      fs.unlinkSync(filePath);
+      // 重新加载以更新注册表
+      await reloadCustomTools();
+      return this.success(`Deleted tool "${name}".\nFile: ${filePath}`);
+    } catch (err: any) {
+      return this.error(`Failed to delete tool: ${err.message}`);
+    }
+  }
+
+  /**
+   * 重新加载所有自定义工具
+   */
+  private async reloadTools(): Promise<ToolResult> {
+    const { loaded, errors } = await reloadCustomTools();
+
+    const parts: string[] = [];
+    if (loaded.length > 0) {
+      parts.push(`Loaded ${loaded.length} tool(s): ${loaded.join(', ')}`);
+    } else {
+      parts.push('No custom tools loaded.');
+    }
+    if (errors.length > 0) {
+      parts.push(`\nErrors:\n${errors.map(e => `  - ${e}`).join('\n')}`);
+    }
+    parts.push(`\nDirectory: ${getCustomToolsDir()}`);
+
+    return this.success(parts.join('\n'));
+  }
+
+  /**
+   * 创建自定义工具
+   */
+  private async createTool(input: CreateToolInput): Promise<ToolResult> {
+    const { name, description, executeCode, inputSchema } = input;
+
+    // 验证
+    if (!name) return this.error('Tool name is required.');
+    if (!description) return this.error('Tool description is required.');
+    if (!executeCode) return this.error('executeCode is required.');
+
+    if (!/^[A-Za-z][A-Za-z0-9_-]*$/.test(name)) {
+      return this.error(`Invalid tool name "${name}". Must start with a letter, contain only letters, digits, _ or -.`);
+    }
+
+    // 构建 JS 文件内容
+    const jsContent = this.buildToolFile(name, description, executeCode, inputSchema);
+
+    // 写入文件
+    const dir = getCustomToolsDir();
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+
+    const fileName = this.toFileName(name);
+    const filePath = path.join(dir, fileName);
+    const isUpdate = fs.existsSync(filePath);
+
+    fs.writeFileSync(filePath, jsContent, 'utf-8');
+
+    // 重新加载使其立即生效
+    const { loaded, errors } = await reloadCustomTools();
+
+    const actionWord = isUpdate ? 'Updated' : 'Created';
+    const parts = [
+      `${actionWord} custom tool "${name}".`,
+      `File: ${filePath}`,
+    ];
+
+    if (loaded.includes(name)) {
+      parts.push(`Status: Registered and ready to use.`);
+      parts.push(`The tool "${name}" is now available and can be called directly.`);
+    } else {
+      parts.push(`Status: File saved but registration failed.`);
+      if (errors.length > 0) {
+        parts.push(`Errors: ${errors.join('; ')}`);
+      }
+    }
+
+    return this.success(parts.join('\n'));
+  }
+
+  /**
+   * 将工具名转换为文件名
+   * PascalCase → kebab-case.js
+   */
+  private toFileName(name: string): string {
+    const kebab = name
+      .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+      .replace(/([A-Z])([A-Z][a-z])/g, '$1-$2')
+      .toLowerCase();
+    return `${kebab}.js`;
+  }
+
+  /**
+   * 构建工具 JS 文件内容
+   */
+  private buildToolFile(
     name: string,
     description: string,
     executeCode: string,
-    inputSchema?: Record<string, any>
+    inputSchema?: Record<string, any>,
   ): string {
-    const lines: string[] = [];
+    const schema = inputSchema || { type: 'object', properties: {} };
+    const schemaStr = JSON.stringify(schema, null, 2)
+      .split('\n')
+      .map((line, i) => i === 0 ? line : '  ' + line)
+      .join('\n');
 
-    // Frontmatter
-    lines.push('---');
-    lines.push(`description: "${description.replace(/"/g, '\\"')}"`);
-    lines.push(`when-to-use: "${description.replace(/"/g, '\\"')}"`);
-    lines.push(`allowed-tools: "Bash"`);
-    lines.push('---');
-    lines.push('');
+    // 转义 description 中的反引号
+    const escapedDesc = description.replace(/`/g, '\\`');
 
-    // Body: 执行说明
-    lines.push(`# ${name}`);
-    lines.push('');
-    lines.push(`${description}`);
-    lines.push('');
-    lines.push('## How to Execute');
-    lines.push('');
-    lines.push('Run the following code using the Bash tool with `node -e`:');
-    lines.push('');
+    return `/**
+ * Custom Tool: ${name}
+ * ${description}
+ *
+ * Auto-generated by CreateTool. Feel free to edit.
+ */
 
-    // 如果有 inputSchema，生成参数说明
-    if (inputSchema && inputSchema.properties) {
-      lines.push('### Parameters');
-      lines.push('');
-      lines.push('Pass arguments via `$ARGUMENTS` substitution or parse from the user\'s request:');
-      lines.push('');
-      for (const [key, prop] of Object.entries(inputSchema.properties) as [string, any][]) {
-        const desc = prop.description || '';
-        const type = prop.type || 'any';
-        const required = inputSchema.required?.includes(key) ? ' (required)' : '';
-        lines.push(`- \`${key}\` (${type})${required}: ${desc}`);
-      }
-      lines.push('');
-    }
-
-    // 嵌入执行代码
-    lines.push('### Code');
-    lines.push('');
-    lines.push('```javascript');
-    lines.push(executeCode);
-    lines.push('```');
-    lines.push('');
-    lines.push('### Usage');
-    lines.push('');
-    lines.push('Wrap the code above in `node -e \'...\'` via the Bash tool. Substitute parameter values from the user\'s input into the code.');
-    lines.push('');
-
-    return lines.join('\n');
+export default {
+  name: "${name}",
+  description: \`${escapedDesc}\`,
+  inputSchema: ${schemaStr},
+  async execute(input) {
+    ${executeCode}
+  },
+};
+`;
   }
 }

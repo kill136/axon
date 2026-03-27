@@ -509,19 +509,6 @@ const en = {
   'team.planApproved': 'Plan approved for {{recipient}}',
   'team.planRejected': 'Plan rejected for {{recipient}}: {{reason}}',
 
-  // agent-teams.ts - TeammateTool
-  'agentTeams.notEnabled': 'Agent Teams feature is not enabled. Set AXON_EXPERIMENTAL_AGENT_TEAMS=1 to enable.',
-  'agentTeams.unknownOperation': 'Unknown operation: {{operation}}. Use \'spawnTeam\' or \'cleanup\'.',
-  'agentTeams.teamNameRequired': 'team_name is required for spawnTeam operation',
-  'agentTeams.teamAlreadyExists': 'Team \'{{teamName}}\' already exists. Use \'cleanup\' first to remove it.',
-  'agentTeams.createSuccess': 'Team \'{{teamName}}\' created successfully.\nTeam ID: {{teamId}}\nTask List: {{taskListId}}\n\nNext steps:\n1. Spawn teammates using the Task tool with team_name="{{teamName}}" and name="<agent-name>"\n2. Create tasks using TaskCreate\n3. Assign tasks to teammates using TaskUpdate with owner="<teammate-name>"',
-  'agentTeams.createFailed': 'Failed to create team: {{error}}',
-  'agentTeams.noActiveTeam': 'No active team context. Create a team first with spawnTeam.',
-  'agentTeams.teamNotFound': 'Team \'{{teamName}}\' not found.',
-  'agentTeams.activeMembers': 'Team \'{{teamName}}\' still has {{count}} active member(s): {{names}}. Send shutdown_request to all members first.',
-  'agentTeams.cleanupFailed': 'Failed to cleanup team \'{{teamName}}\'.',
-  'agentTeams.cleanupSuccess': 'Team \'{{teamName}}\' cleaned up successfully. Team config and task directories removed.',
-
   // blueprint.ts
   'blueprint.unknownAction': 'Unknown action: {{action}}',
   'blueprint.generated': 'Blueprint generated!',
