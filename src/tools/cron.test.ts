@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { CronCreateTool, CronDeleteTool, CronListTool } from './cron.ts';
-import { loadCronJobs } from '../automation/cron-storage';
+import { CronCreateTool, CronDeleteTool, CronListTool } from './cron.js';
+import { loadCronJobs } from '../automation/cron-storage.js';
 
 let testCronPath: string;
 
@@ -33,10 +33,11 @@ describe('CronCreateTool', () => {
       prompt: 'Daily standup',
     });
 
-    expect(result.jobId).toBeDefined();
-    expect(result.jobId).toMatch(/^cron-/);
-    expect(result.nextRun).toBeDefined();
-    expect(result.message).toContain('✅');
+    expect(result.success).toBe(true);
+    expect(result.data?.jobId).toBeDefined();
+    expect(result.data?.jobId).toMatch(/^cron-/);
+    expect(result.data?.nextRun).toBeDefined();
+    expect(result.output).toContain('✅');
   });
 
   it('should create recurring job by default', async () => {
@@ -66,13 +67,13 @@ describe('CronCreateTool', () => {
 
   it('should reject invalid cron expression', async () => {
     const tool = new CronCreateTool();
+    const result = await tool.execute({
+      cron: 'invalid expression',
+      prompt: 'Task',
+    });
 
-    await expect(
-      tool.execute({
-        cron: 'invalid expression',
-        prompt: 'Task',
-      })
-    ).rejects.toThrow('Invalid cron expression');
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Invalid cron expression');
   });
 
   it('should compute next run time correctly', async () => {
@@ -82,7 +83,8 @@ describe('CronCreateTool', () => {
       prompt: 'Task',
     });
 
-    const nextRunDate = new Date(result.nextRun);
+    expect(result.success).toBe(true);
+    const nextRunDate = new Date(result.data?.nextRun!);
     expect(nextRunDate).toBeInstanceOf(Date);
     expect(nextRunDate.getTime()).toBeGreaterThan(Date.now());
   });
@@ -103,8 +105,9 @@ describe('CronCreateTool', () => {
         prompt: `Task for ${expr}`,
       });
 
-      expect(result.jobId).toBeDefined();
-      expect(result.nextRun).toBeDefined();
+      expect(result.success).toBe(true);
+      expect(result.data?.jobId).toBeDefined();
+      expect(result.data?.nextRun).toBeDefined();
     }
 
     const jobs = loadCronJobs();
@@ -137,11 +140,11 @@ describe('CronDeleteTool', () => {
     });
 
     const result = await deleteTool.execute({
-      jobId: created.jobId,
+      jobId: created.data!.jobId,
     });
 
-    expect(result.deleted).toBe(true);
-    expect(result.message).toContain('✅');
+    expect(result.success).toBe(true);
+    expect(result.output).toContain('✅');
 
     const jobs = loadCronJobs();
     expect(jobs).toHaveLength(0);
@@ -153,8 +156,8 @@ describe('CronDeleteTool', () => {
       jobId: 'non-existent-job',
     });
 
-    expect(result.deleted).toBe(false);
-    expect(result.message).toContain('not found');
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('not found');
   });
 
   it('should only delete the specified job', async () => {
@@ -172,12 +175,12 @@ describe('CronDeleteTool', () => {
     });
 
     await deleteTool.execute({
-      jobId: job1.jobId,
+      jobId: job1.data!.jobId,
     });
 
     const jobs = loadCronJobs();
     expect(jobs).toHaveLength(1);
-    expect(jobs[0].id).toBe(job2.jobId);
+    expect(jobs[0].id).toBe(job2.data!.jobId);
   });
 });
 
@@ -198,8 +201,9 @@ describe('CronListTool', () => {
 
     const result = await listTool.execute({});
 
-    expect(result.total).toBe(2);
-    expect(result.jobs).toHaveLength(2);
+    expect(result.success).toBe(true);
+    expect(result.data?.total).toBe(2);
+    expect(result.data?.jobs).toHaveLength(2);
   });
 
   it('should show correct job properties', async () => {
@@ -213,15 +217,16 @@ describe('CronListTool', () => {
 
     const result = await listTool.execute({});
 
-    expect(result.jobs[0]).toHaveProperty('id');
-    expect(result.jobs[0]).toHaveProperty('cron');
-    expect(result.jobs[0]).toHaveProperty('status');
-    expect(result.jobs[0]).toHaveProperty('nextRun');
-    expect(result.jobs[0]).toHaveProperty('recurring');
+    expect(result.success).toBe(true);
+    expect(result.data?.jobs[0]).toHaveProperty('id');
+    expect(result.data?.jobs[0]).toHaveProperty('cron');
+    expect(result.data?.jobs[0]).toHaveProperty('status');
+    expect(result.data?.jobs[0]).toHaveProperty('nextRun');
+    expect(result.data?.jobs[0]).toHaveProperty('recurring');
 
-    expect(result.jobs[0].cron).toBe('0 9 * * 1-5');
-    expect(result.jobs[0].recurring).toBe(true);
-    expect(result.jobs[0].status).toBe('scheduled');
+    expect(result.data?.jobs[0].cron).toBe('0 9 * * 1-5');
+    expect(result.data?.jobs[0].recurring).toBe(true);
+    expect(result.data?.jobs[0].status).toBe('scheduled');
   });
 
   it('should filter by status', async () => {
@@ -237,8 +242,9 @@ describe('CronListTool', () => {
       status: 'scheduled',
     });
 
-    expect(result.total).toBe(1);
-    expect(result.jobs[0].status).toBe('scheduled');
+    expect(result.success).toBe(true);
+    expect(result.data?.total).toBe(1);
+    expect(result.data?.jobs[0].status).toBe('scheduled');
   });
 
   it('should return empty list for non-existent status', async () => {
@@ -254,15 +260,17 @@ describe('CronListTool', () => {
       status: 'completed',
     });
 
-    expect(result.total).toBe(0);
-    expect(result.jobs).toHaveLength(0);
+    expect(result.success).toBe(true);
+    expect(result.data?.total).toBe(0);
+    expect(result.data?.jobs).toHaveLength(0);
   });
 
   it('should handle empty job list', async () => {
     const listTool = new CronListTool();
     const result = await listTool.execute({});
 
-    expect(result.total).toBe(0);
-    expect(result.jobs).toHaveLength(0);
+    expect(result.success).toBe(true);
+    expect(result.data?.total).toBe(0);
+    expect(result.data?.jobs).toHaveLength(0);
   });
 });

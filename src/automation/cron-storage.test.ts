@@ -11,7 +11,7 @@ import {
   getScheduledJobsDue,
   getJobsByStatus,
   CronJob,
-} from './cron-storage';
+} from './cron-storage.js';
 
 /**
  * Mock the cron-jobs.json location for testing

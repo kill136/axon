@@ -1,5 +1,5 @@
-import cronParser from 'cron-parser';
-import { CronJob, loadCronJobs, updateCronJob } from './cron-storage';
+import { CronExpressionParser } from 'cron-parser';
+import { CronJob, loadCronJobs, updateCronJob } from './cron-storage.js';
 
 /**
  * Type for the prompt submission callback
@@ -125,7 +125,7 @@ export class CronScheduler {
    */
   public computeNextRunTime(cronExpression: string): Date | null {
     try {
-      const interval = cronParser.parseExpression(cronExpression);
+      const interval = CronExpressionParser.parse(cronExpression);
       const nextDate = interval.next();
       return nextDate.toDate();
     } catch (error) {

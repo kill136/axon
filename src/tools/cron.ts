@@ -1,57 +1,79 @@
-import { z } from 'zod';
-import { BaseTool } from './base';
+import { BaseTool } from './base.js';
+import type { ToolDefinition, ToolResult } from '../types/index.js';
 import { v4 as uuidv4 } from 'uuid';
-import cronParser from 'cron-parser';
+import { CronExpressionParser } from 'cron-parser';
 import {
   loadCronJobs,
   saveCronJobs,
   findCronJobById,
   deleteCronJobById,
   CronJob,
-} from '../automation/cron-storage';
+} from '../automation/cron-storage.js';
+
+interface CronCreateInput {
+  cron: string;
+  prompt: string;
+  recurring?: boolean;
+  maxIterations?: number;
+}
 
 /**
  * CronCreate tool: Schedule a cron job
  */
-export class CronCreateTool extends BaseTool {
+export class CronCreateTool extends BaseTool<CronCreateInput, ToolResult> {
   name = 'CronCreate';
   description = 'Create a new scheduled cron job that will run according to the cron expression';
 
-  inputSchema = z.object({
-    cron: z
-      .string()
-      .describe(
-        'Cron expression in standard format (e.g., "0 9 * * 1-5" for 9 AM on weekdays)'
-      ),
-    prompt: z.string().describe('The prompt or task description to execute when the job runs'),
-    recurring: z.boolean().optional().describe('Whether this job should recur (default: true)'),
-    maxIterations: z
-      .number()
-      .optional()
-      .describe(
-        'Maximum iterations if the job uses ralph-loop (default: 0 meaning no limit)'
-      ),
-  });
+  getInputSchema(): ToolDefinition['inputSchema'] {
+    return {
+      type: 'object',
+      properties: {
+        cron: {
+          type: 'string',
+          description:
+            'Cron expression in standard format (e.g., "0 9 * * 1-5" for 9 AM on weekdays)',
+        },
+        prompt: {
+          type: 'string',
+          description: 'The prompt or task description to execute when the job runs',
+        },
+        recurring: {
+          type: 'boolean',
+          description: 'Whether this job should recur (default: true)',
+        },
+        maxIterations: {
+          type: 'number',
+          description: 'Maximum iterations if the job uses ralph-loop (default: 0 meaning no limit)',
+        },
+      },
+      required: ['cron', 'prompt'],
+    };
+  }
 
-  async execute(input: z.infer<typeof this.inputSchema>): Promise<{
-    jobId: string;
-    nextRun: string;
-    message: string;
-  }> {
+  async execute(input: CronCreateInput): Promise<ToolResult> {
     const { cron, prompt, recurring = true, maxIterations = 0 } = input;
 
     // Validate cron expression
+    let interval;
     try {
-      cronParser.parseExpression(cron);
+      interval = CronExpressionParser.parse(cron);
     } catch (error) {
-      throw new Error(
-        `Invalid cron expression: "${cron}". Example: "0 9 * * 1-5" for 9 AM on weekdays`
-      );
+      return {
+        success: false,
+        error: `Invalid cron expression: "${cron}". Example: "0 9 * * 1-5" for 9 AM on weekdays`,
+      };
     }
 
     // Calculate next run time
-    const interval = cronParser.parseExpression(cron);
-    const nextRunDate = interval.next().toDate();
+    let nextRunDate: Date;
+    try {
+      nextRunDate = interval.next().toDate();
+    } catch (error) {
+      return {
+        success: false,
+        error: `Failed to calculate next run time: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
 
     // Create job record
     const jobId = `cron-${uuidv4().slice(0, 8)}`;
@@ -73,73 +95,94 @@ export class CronCreateTool extends BaseTool {
     saveCronJobs(jobs);
 
     return {
-      jobId,
-      nextRun: nextRunDate.toISOString(),
-      message: `✅ Cron job scheduled: ${cron} (Next run: ${nextRunDate.toLocaleString()})`,
+      success: true,
+      output: `✅ Cron job scheduled: ${cron} (Job ID: ${jobId}, Next run: ${nextRunDate.toLocaleString()})`,
+      data: {
+        jobId,
+        nextRun: nextRunDate.toISOString(),
+      },
     };
   }
+}
+
+interface CronDeleteInput {
+  jobId: string;
 }
 
 /**
  * CronDelete tool: Delete a scheduled cron job
  */
-export class CronDeleteTool extends BaseTool {
+export class CronDeleteTool extends BaseTool<CronDeleteInput, ToolResult> {
   name = 'CronDelete';
   description = 'Delete a scheduled cron job by its ID';
 
-  inputSchema = z.object({
-    jobId: z.string().describe('The ID of the cron job to delete'),
-  });
+  getInputSchema(): ToolDefinition['inputSchema'] {
+    return {
+      type: 'object',
+      properties: {
+        jobId: {
+          type: 'string',
+          description: 'The ID of the cron job to delete',
+        },
+      },
+      required: ['jobId'],
+    };
+  }
 
-  async execute(input: z.infer<typeof this.inputSchema>): Promise<{
-    message: string;
-    deleted: boolean;
-  }> {
+  async execute(input: CronDeleteInput): Promise<ToolResult> {
     const { jobId } = input;
 
     // Check if job exists
     const job = findCronJobById(jobId);
     if (!job) {
       return {
-        message: `Job ${jobId} not found`,
-        deleted: false,
+        success: false,
+        error: `Job ${jobId} not found`,
       };
     }
 
     // Delete the job
     const deleted = deleteCronJobById(jobId);
 
+    if (!deleted) {
+      return {
+        success: false,
+        error: `Failed to delete job ${jobId}`,
+      };
+    }
+
     return {
-      message: deleted ? `✅ Cron job ${jobId} deleted` : `Failed to delete job ${jobId}`,
-      deleted,
+      success: true,
+      output: `✅ Cron job ${jobId} deleted`,
     };
   }
+}
+
+interface CronListInput {
+  status?: 'scheduled' | 'running' | 'completed' | 'failed';
 }
 
 /**
  * CronList tool: List all cron jobs
  */
-export class CronListTool extends BaseTool {
+export class CronListTool extends BaseTool<CronListInput, ToolResult> {
   name = 'CronList';
   description = 'List all scheduled cron jobs with their status and next run time';
 
-  inputSchema = z.object({
-    status: z
-      .enum(['scheduled', 'running', 'completed', 'failed'])
-      .optional()
-      .describe('Filter by job status (optional)'),
-  });
+  getInputSchema(): ToolDefinition['inputSchema'] {
+    return {
+      type: 'object',
+      properties: {
+        status: {
+          type: 'string',
+          enum: ['scheduled', 'running', 'completed', 'failed'],
+          description: 'Filter by job status (optional)',
+        },
+      },
+    };
+  }
 
-  async execute(input: z.infer<typeof this.inputSchema>): Promise<{
-    jobs: Array<{
-      id: string;
-      cron: string;
-      status: string;
-      nextRun: string;
-      recurring: boolean;
-    }>;
-    total: number;
-  }> {
+  async execute(input: CronListInput): Promise<ToolResult> {
     const { status } = input;
 
     let jobs = loadCronJobs();
@@ -157,9 +200,22 @@ export class CronListTool extends BaseTool {
       recurring: job.recurring,
     }));
 
+    const output = result.length > 0
+      ? result
+          .map(
+            (job) =>
+              `- [${job.status.toUpperCase()}] ${job.id}: ${job.cron} (Next: ${job.nextRun})`
+          )
+          .join('\n')
+      : 'No cron jobs found';
+
     return {
-      jobs: result,
-      total: result.length,
+      success: true,
+      output,
+      data: {
+        jobs: result,
+        total: result.length,
+      },
     };
   }
 }

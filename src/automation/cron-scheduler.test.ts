@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { CronScheduler, getGlobalScheduler, initializeGlobalScheduler } from './cron-scheduler';
-import { saveCronJobs, CronJob } from './cron-storage';
+import { CronScheduler, getGlobalScheduler, initializeGlobalScheduler } from './cron-scheduler.js';
+import { saveCronJobs, CronJob } from './cron-storage.js';
 import os from 'os';
 import path from 'path';
 import fs from 'fs';
