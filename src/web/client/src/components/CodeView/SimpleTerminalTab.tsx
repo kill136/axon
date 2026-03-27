@@ -33,6 +33,8 @@ interface SimpleTerminalTabProps {
   addMessageHandler: (handler: (msg: any) => void) => () => void;
   connected: boolean;
   projectPath?: string;
+  /** 是否为当前活跃 tab（控制 display 可见性） */
+  active?: boolean;
 }
 
 /**
@@ -43,6 +45,7 @@ export function SimpleTerminalTab({
   addMessageHandler,
   connected,
   projectPath,
+  active = true,
 }: SimpleTerminalTabProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
@@ -190,28 +193,30 @@ export function SimpleTerminalTab({
     };
   }, [addMessageHandler, send]);
 
-  // 处理 fit 当容器可见时
+  // 处理 fit 当容器可见时（包括 active 切换回来时）
   useEffect(() => {
-    if (terminalReady && fitAddonRef.current) {
+    if (terminalReady && active && fitAddonRef.current) {
       requestAnimationFrame(() => {
-        try {
-          fitAddonRef.current?.fit();
-          if (xtermRef.current && terminalIdRef.current) {
-            send({
-              type: 'terminal:resize',
-              payload: {
-                terminalId: terminalIdRef.current,
-                cols: xtermRef.current.cols,
-                rows: xtermRef.current.rows,
-              },
-            });
+        requestAnimationFrame(() => {
+          try {
+            fitAddonRef.current?.fit();
+            if (xtermRef.current && terminalIdRef.current) {
+              send({
+                type: 'terminal:resize',
+                payload: {
+                  terminalId: terminalIdRef.current,
+                  cols: xtermRef.current.cols,
+                  rows: xtermRef.current.rows,
+                },
+              });
+            }
+          } catch {
+            // ignore
           }
-        } catch {
-          // ignore
-        }
+        });
       });
     }
-  }, [terminalReady, send]);
+  }, [terminalReady, active, send]);
 
   return (
     <div
@@ -220,6 +225,7 @@ export function SimpleTerminalTab({
         width: '100%',
         height: '100%',
         flex: 1,
+        display: active ? 'block' : 'none',
       }}
     />
   );

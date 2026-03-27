@@ -990,25 +990,9 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
         );
       }
 
-      // Terminal tab 特殊处理
+      // Terminal tab：由 editorContainer 中的持久化 SimpleTerminalTab 处理，这里返回 null
       if (currentTab.fileType === 'terminal') {
-        if (!send || !addMessageHandler || connected === undefined) {
-          return (
-            <div className={styles.emptyState}>
-              <p className={styles.emptyText}>Terminal not available</p>
-              <p className={styles.emptyHint}>WebSocket connection required</p>
-            </div>
-          );
-        }
-
-        return (
-          <SimpleTerminalTab
-            send={send}
-            addMessageHandler={addMessageHandler}
-            connected={connected}
-            projectPath={projectPath}
-          />
-        );
+        return null;
       }
 
       const showReviewPanel = codeReview.enabled && codeReview.issues.length > 0;
@@ -1426,8 +1410,8 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
           </div>
         )}
 
-        {/* AI 工具栏 */}
-        {currentTab && (
+        {/* AI 工具栏 - 终端 tab 不显示 */}
+        {currentTab && currentTab.fileType !== 'terminal' && (
           <div className={styles.aiToolbar}>
             <div className={styles.aiToolGroup}>
               {visibleButtons.has('tour') && (
