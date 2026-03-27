@@ -18,7 +18,7 @@ interface ConfigPanelProps {
 }
 
 interface PermissionsConfig {
-  defaultMode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
+  defaultMode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk' | 'delegate';
   tools?: {
     allow?: string[];
     deny?: string[];
@@ -200,12 +200,21 @@ export function PermissionsConfigPanel({ onSave, onClose, initialConfig, onSendM
             <option value="acceptEdits">{t('permissions.mode.acceptEdits')}</option>
             <option value="bypassPermissions">{t('permissions.mode.bypassPermissions')}</option>
             <option value="plan">{t('permissions.mode.plan')}</option>
+            <option value="dontAsk">{t('permissions.mode.dontAsk')}</option>
+            <option value="delegate">{t('permissions.mode.delegate')}</option>
           </select>
+          {config.defaultMode === 'dontAsk' && (
+            <div className="permission-warning">
+              ⚠️ {t('permissions.mode.hint.dontAsk')}
+            </div>
+          )}
           <div className="setting-hint">
             {config.defaultMode === 'default' && t('permissions.mode.hint.default')}
             {config.defaultMode === 'acceptEdits' && t('permissions.mode.hint.acceptEdits')}
             {config.defaultMode === 'bypassPermissions' && t('permissions.mode.hint.bypassPermissions')}
             {config.defaultMode === 'plan' && t('permissions.mode.hint.plan')}
+            {config.defaultMode === 'dontAsk' && t('permissions.mode.hint.dontAsk')}
+            {config.defaultMode === 'delegate' && t('permissions.mode.hint.delegate')}
           </div>
         </div>
       </section>
