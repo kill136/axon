@@ -30,7 +30,7 @@ export async function testAll8NewHookEvents(): Promise<void> {
     'CwdChanged',
     'FileChanged',
     'StopFailure',
-  ] as const;
+  ];
 
   for (const event of events) {
     const hook: CommandHookConfig = {
@@ -38,7 +38,7 @@ export async function testAll8NewHookEvents(): Promise<void> {
       command: `echo "${event} hook executed"`,
       blocking: false,
     };
-    registerHook(event, hook);
+    registerHook(event as any, hook);
   }
 
   // 验证都注册成功（应该有 8 个）

@@ -6,7 +6,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import PermissionEngine, { type PermissionContext } from '../../../src/permissions/permission-engine';
+import PermissionEngine, { type PermissionContext } from '../../../src/permissions/permission-engine.js';
 
 describe('PermissionEngine', () => {
   let engine: PermissionEngine;

@@ -206,7 +206,7 @@ export class ManagedPoliciesManager {
       // 合并boolean字段 - 仅当未设置时才被覆盖
       for (const field of booleanFields) {
         if (policy[field] !== undefined && merged[field] === undefined) {
-          merged[field] = policy[field];
+          (merged as any)[field] = policy[field];
         }
       }
 

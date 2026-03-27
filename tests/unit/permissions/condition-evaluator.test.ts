@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import ConditionEvaluator from '../../../src/permissions/condition-evaluator';
+import ConditionEvaluator from '../../../src/permissions/condition-evaluator.js';
 
 describe('ConditionEvaluator', () => {
   let evaluator: ConditionEvaluator;

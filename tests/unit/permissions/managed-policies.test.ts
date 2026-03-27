@@ -6,7 +6,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import ManagedPoliciesManager, { type ManagedPolicy } from '../../../src/permissions/managed-policies';
+import ManagedPoliciesManager, { type ManagedPolicy } from '../../../src/permissions/managed-policies.js';
 
 describe('ManagedPoliciesManager', () => {
   let tempDir: string;
