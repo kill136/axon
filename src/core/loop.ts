@@ -4073,8 +4073,20 @@ Guidelines:
 
       const messages = this.session.getMessages();
       const meaningfulMessages = messages.filter((message) => this.extractAutoMemoryText(message));
+
+      // 计算有效的消息范围边界
       const endMessageCount = Math.min(options?.endMessageCount ?? meaningfulMessages.length, meaningfulMessages.length);
-      const startMessageCount = Math.max(0, Math.min(options?.startMessageCount ?? this.lastAutoMemorizedMessageCount, endMessageCount));
+
+      // 防守：如果游标超过当前消息数（比如消息被删除），重置游标
+      const normalizedLastMemorized = Math.min(this.lastAutoMemorizedMessageCount, meaningfulMessages.length);
+      const startMessageCount = Math.max(0, Math.min(options?.startMessageCount ?? normalizedLastMemorized, endMessageCount));
+
+      // 防守：确保 startMessageCount <= endMessageCount
+      if (startMessageCount >= endMessageCount) {
+        // 没有新消息要处理
+        return false;
+      }
+
       const messagesToSummarize = meaningfulMessages.slice(startMessageCount, endMessageCount);
       const shouldAdvanceSuccessCursor = options?.updateSuccessCursor ?? true;
 
