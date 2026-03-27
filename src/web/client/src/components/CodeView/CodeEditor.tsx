@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import Editor, { OnMount } from '@monaco-editor/react';
 import type * as Monaco from 'monaco-editor';
 import styles from './CodeEditor.module.css';
+import { FilePreviewPanel } from './FilePreviewPanel';
 import { useAIHover, type LineAnalysisData } from '../../hooks/useAIHover';
 import { useSelectionExplain } from '../../hooks/useSelectionExplain';
 import { useCodeTour } from '../../hooks/useCodeTour';
@@ -23,6 +24,7 @@ import { getSyntaxExplanation, extractKeywordsFromLine } from '../../utils/synta
 import { aiHoverApi, TourStep } from '../../api/ai-editor';
 import { analyzeCodeStructure } from '../../utils/codeStructureAnalyzer';
 import SemanticMap from './SemanticMap';
+import { SimpleTerminalTab } from './SimpleTerminalTab';
 
 /**
  * CodeEditor Props
@@ -32,6 +34,9 @@ export interface CodeEditorProps {
   onSelectionChange?: (selection: string, filePath: string, startLine: number, endLine: number) => void;
   onActiveFileChange?: (filePath: string | null, content: string, language: string) => void;
   onCursorLineChange?: (line: number) => void;
+  send?: (msg: any) => void;
+  addMessageHandler?: (handler: (msg: any) => void) => () => void;
+  connected?: boolean;
 }
 
 /**
@@ -42,7 +47,13 @@ export interface CodeEditorRef {
   getActiveFilePath: () => string | null;
   getCurrentContent: () => string | null;
   goToLine: (line: number) => void;
+  openTerminal: () => void;
 }
+
+/**
+ * 文件类型定义
+ */
+type EditorFileType = 'code' | 'image' | 'pdf' | 'excel' | 'word' | 'unsupported' | 'terminal';
 
 /**
  * Tab 状态接口
@@ -53,6 +64,7 @@ interface EditorTab {
   language: string;
   modified: boolean;
   originalContent: string;
+  fileType: EditorFileType;
 }
 
 /**
@@ -85,6 +97,48 @@ function getLanguage(filePath: string): string {
 }
 
 /**
+ * 根据文件扩展名判断文件类型
+ */
+function getFileType(filePath: string): EditorFileType {
+  const ext = filePath.split('.').pop()?.toLowerCase() ?? '';
+
+  // 图片格式
+  if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico'].includes(ext)) {
+    return 'image';
+  }
+
+  // PDF
+  if (ext === 'pdf') {
+    return 'pdf';
+  }
+
+  // Excel
+  if (['xlsx', 'xls', 'csv'].includes(ext)) {
+    return 'excel';
+  }
+
+  // Word
+  if (['docx', 'doc'].includes(ext)) {
+    return 'word';
+  }
+
+  // 代码文件
+  const codeExts = [
+    'ts', 'tsx', 'js', 'jsx', 'py', 'go', 'rs', 'java', 'cpp', 'c',
+    'css', 'json', 'md', 'yaml', 'yml', 'xml', 'sh', 'sql', 'html',
+    'txt', 'toml', 'ini', 'env', 'log', 'java', 'rb', 'php', 'swift',
+    'kotlin', 'scala', 'groovy', 'gradle', 'maven', 'pom',
+  ];
+
+  if (codeExts.includes(ext)) {
+    return 'code';
+  }
+
+  // 默认作为代码处理
+  return 'code';
+}
+
+/**
  * 从完整路径提取文件名
  */
 function getFileName(path: string): string {
@@ -110,7 +164,7 @@ const CloseIcon: React.FC = () => (
  * Monaco Editor 包装器，支持多 Tab、文件打开/保存，集成 AI 增强功能
  */
 export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
-  ({ projectPath, onSelectionChange, onActiveFileChange, onCursorLineChange }, ref) => {
+  ({ projectPath, onSelectionChange, onActiveFileChange, onCursorLineChange, send, addMessageHandler, connected }, ref) => {
     const { t, locale } = useLanguage();
     const [tabs, setTabs] = useState<EditorTab[]>([]);
     const [activeTabIndex, setActiveTabIndex] = useState<number>(-1);
@@ -531,6 +585,58 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
           return;
         }
 
+        const fileType = getFileType(path);
+
+        // ============= 处理图片和 PDF：直接打开，不加载内容 =============
+        if (fileType === 'image' || fileType === 'pdf') {
+          const newTab: EditorTab = {
+            path,
+            content: '',
+            language: '',
+            modified: false,
+            originalContent: '',
+            fileType,
+          };
+          setTabs(prev => [...prev, newTab]);
+          setActiveTabIndex(tabs.length);
+          return;
+        }
+
+        // ============= 处理 Excel 和 Word：获取 Blob URL =============
+        if (fileType === 'excel' || fileType === 'word') {
+          try {
+            const response = await fetch(
+              `/api/files/download?inline=1&path=${encodeURIComponent(path)}${projectPath ? `&root=${encodeURIComponent(projectPath)}` : ''}`
+            );
+
+            if (!response.ok) {
+              console.error('[CodeEditor] 读取文件失败');
+              alert(t('codeEditor.readFileFailed', { error: 'Failed to read file' }));
+              return;
+            }
+
+            const blob = await response.blob();
+            const blobUrl = URL.createObjectURL(blob);
+
+            const newTab: EditorTab = {
+              path,
+              content: blobUrl,
+              language: '',
+              modified: false,
+              originalContent: '',
+              fileType,
+            };
+
+            setTabs(prev => [...prev, newTab]);
+            setActiveTabIndex(tabs.length);
+          } catch (err) {
+            console.error('[CodeEditor] 读取文件异常:', err);
+            alert(t('codeEditor.readFileError', { error: err instanceof Error ? err.message : 'Unknown error' }));
+          }
+          return;
+        }
+
+        // ============= 处理代码文件：原有逻辑 =============
         // 优先从缓存加载
         const cached = fileCacheRef.current.get(path);
         if (cached && Date.now() - cached.timestamp < FILE_CACHE_TTL) {
@@ -540,6 +646,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
             language: cached.language,
             modified: false,
             originalContent: cached.content,
+            fileType: 'code',
           };
           setTabs(prev => [...prev, newTab]);
           setActiveTabIndex(tabs.length);
@@ -549,7 +656,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
         // 从后端加载文件内容
         try {
           const response = await fetch(`/api/files/read?path=${encodeURIComponent(path)}${projectPath ? `&root=${encodeURIComponent(projectPath)}` : ''}`);
-          
+
           if (!response.ok) {
             const errorData = await response.json();
             console.error('[CodeEditor] 读取文件失败:', errorData.error);
@@ -576,6 +683,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
             language,
             modified: false,
             originalContent: content,
+            fileType: 'code',
           };
 
           setTabs(prev => [...prev, newTab]);
@@ -592,6 +700,24 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
           editorRef.current.revealLineInCenter(line);
           editorRef.current.setPosition({ lineNumber: line, column: 1 });
           editorRef.current.focus();
+        }
+      },
+      openTerminal: () => {
+        const terminalIndex = tabs.findIndex(t => t.path === '__terminal__');
+        if (terminalIndex !== -1) {
+          setActiveTabIndex(terminalIndex);
+        } else {
+          const terminalTab: EditorTab = {
+            path: '__terminal__',
+            content: '',
+            language: '',
+            modified: false,
+            originalContent: '',
+            fileType: 'terminal',
+          };
+          const newTabs = [...tabs, terminalTab];
+          setTabs(newTabs);
+          setActiveTabIndex(newTabs.length - 1);
         }
       },
     }));
@@ -864,6 +990,27 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
         );
       }
 
+      // Terminal tab 特殊处理
+      if (currentTab.fileType === 'terminal') {
+        if (!send || !addMessageHandler || connected === undefined) {
+          return (
+            <div className={styles.emptyState}>
+              <p className={styles.emptyText}>Terminal not available</p>
+              <p className={styles.emptyHint}>WebSocket connection required</p>
+            </div>
+          );
+        }
+
+        return (
+          <SimpleTerminalTab
+            send={send}
+            addMessageHandler={addMessageHandler}
+            connected={connected}
+            projectPath={projectPath}
+          />
+        );
+      }
+
       const showReviewPanel = codeReview.enabled && codeReview.issues.length > 0;
       const showConversationPanel = conversation.state.visible;
       const showPatternPanel = pattern.enabled && pattern.patterns.length > 0;
@@ -871,44 +1018,53 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
 
       return (
         <div className={showAnyPanel ? styles.editorWithPanel : styles.editorFull}>
-          {/* Monaco 编辑器 */}
+          {/* 内容区域：根据文件类型渲染不同的预览器 */}
           <div className={styles.monacoContainer}>
-            <Editor
-              height="100%"
-              language={currentTab.language}
-              value={currentTab.content}
-              theme="vs-dark"
-              onMount={handleEditorDidMount}
-              onChange={handleEditorChange}
-              options={{
-                fontSize: 13,
-                fontFamily: 'JetBrains Mono, Consolas, monospace',
-                lineHeight: 20,
-                minimap: { enabled: false }, // 禁用 Monaco 内置 minimap，使用自定义语义地图
-                scrollBeyondLastLine: false,
-                automaticLayout: true,
-                tabSize: 2,
-                insertSpaces: true,
-                wordWrap: 'off',
-                cursorBlinking: 'smooth',
-                smoothScrolling: true,
-                renderWhitespace: 'selection',
-                bracketPairColorization: { enabled: true },
-                glyphMargin: true,
-                guides: {
-                  indentation: true,
-                  bracketPairs: true,
-                },
-                suggest: {
-                  showKeywords: true,
-                  showSnippets: true,
-                },
-                hover: {
-                  enabled: true,
-                  delay: 300,
-                },
-              }}
-            />
+            {currentTab.fileType === 'code' ? (
+              <Editor
+                height="100%"
+                language={currentTab.language}
+                value={currentTab.content}
+                theme="vs-dark"
+                onMount={handleEditorDidMount}
+                onChange={handleEditorChange}
+                options={{
+                  fontSize: 13,
+                  fontFamily: 'JetBrains Mono, Consolas, monospace',
+                  lineHeight: 20,
+                  minimap: { enabled: false }, // 禁用 Monaco 内置 minimap，使用自定义语义地图
+                  scrollBeyondLastLine: false,
+                  automaticLayout: true,
+                  tabSize: 2,
+                  insertSpaces: true,
+                  wordWrap: 'off',
+                  cursorBlinking: 'smooth',
+                  smoothScrolling: true,
+                  renderWhitespace: 'selection',
+                  bracketPairColorization: { enabled: true },
+                  glyphMargin: true,
+                  guides: {
+                    indentation: true,
+                    bracketPairs: true,
+                  },
+                  suggest: {
+                    showKeywords: true,
+                    showSnippets: true,
+                  },
+                  hover: {
+                    enabled: true,
+                    delay: 300,
+                  },
+                }}
+              />
+            ) : (
+              <FilePreviewPanel
+                filePath={currentTab.path}
+                fileType={currentTab.fileType}
+                content={currentTab.content}
+                projectPath={projectPath}
+              />
+            )}
             {/* LSP server 未安装提示 */}
             {lspNotification && (
               <div style={{
@@ -1255,7 +1411,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
                 onClick={() => setActiveTabIndex(index)}
               >
                 <span className={styles.tabName}>
-                  {getFileName(tab.path)}
+                  {tab.fileType === 'terminal' ? '📱 Terminal' : getFileName(tab.path)}
                   {tab.modified && <span className={styles.modifiedDot}>●</span>}
                 </span>
                 <button

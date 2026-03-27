@@ -670,6 +670,8 @@ function AppContent({
           currentMessageId={currentMessageRef.current?.id}
           isStreaming={status !== 'idle'}
           projectPath={currentProjectPath || ''}
+          send={send}
+          addMessageHandler={addMessageHandler}
         />
       ) : (
         // 对话视图模式（原有的全屏聊天界面）

@@ -24,10 +24,20 @@ export type HookEvent =
   | 'SubagentStart'        // 子代理开始
   | 'SubagentStop'         // 子代理停止
   | 'PreCompact'           // 压缩前
+  | 'PostCompact'          // 压缩后（v2.1.85: Context压缩完成）
   | 'PermissionRequest'    // 权限请求
   // v2.1.33: 多代理工作流事件
   | 'TeammateIdle'         // 当 teammate 即将进入空闲状态
   | 'TaskCompleted'        // 当任务被标记为已完成
+  // v2.1.85: MCP和Worktree事件
+  | 'Elicitation'          // MCP服务器请求用户输入前
+  | 'ElicitationResult'    // 用户完成输入后
+  | 'WorktreeCreate'       // Worktree创建时
+  | 'WorktreeRemove'       // Worktree删除时
+  // v2.1.85: 文件系统和错误事件
+  | 'CwdChanged'           // 当前工作目录改变时
+  | 'FileChanged'          // 文件变更时
+  | 'StopFailure'          // API错误导致turn结束时
   // CLI 级别事件（新增）
   | 'Setup'                // v2.1.10: 仓库设置/维护（通过 --init/--init-only/--maintenance 触发）
   | 'BeforeSetup'          // 设置前（对应 action_before_setup）
@@ -76,6 +86,12 @@ export interface CommandHookConfig {
   async?: boolean;
   /** 匹配条件（工具名或正则） */
   matcher?: string;
+  /**
+   * v2.1.85: 条件执行规则
+   * 格式: "ToolName(pattern)" 例如 "Bash(git *)" 或 "Write(src/*)"
+   * 条件不满足时，Hook会被跳过（不打日志）
+   */
+  if?: string;
 }
 
 /**
@@ -93,6 +109,12 @@ export interface PromptHookConfig {
   blocking?: boolean;
   /** 匹配条件（工具名或正则） */
   matcher?: string;
+  /**
+   * v2.1.85: 条件执行规则
+   * 格式: "ToolName(pattern)" 例如 "Bash(git *)" 或 "Write(src/*)"
+   * 条件不满足时，Hook会被跳过（不打日志）
+   */
+  if?: string;
 }
 
 /**
@@ -110,6 +132,12 @@ export interface AgentHookConfig {
   blocking?: boolean;
   /** 匹配条件（工具名或正则） */
   matcher?: string;
+  /**
+   * v2.1.85: 条件执行规则
+   * 格式: "ToolName(pattern)" 例如 "Bash(git *)" 或 "Write(src/*)"
+   * 条件不满足时，Hook会被跳过（不打日志）
+   */
+  if?: string;
 }
 
 /**
@@ -129,6 +157,12 @@ export interface McpHookConfig {
   blocking?: boolean;
   /** 匹配条件（工具名或正则） */
   matcher?: string;
+  /**
+   * v2.1.85: 条件执行规则
+   * 格式: "ToolName(pattern)" 例如 "Bash(git *)" 或 "Write(src/*)"
+   * 条件不满足时，Hook会被跳过（不打日志）
+   */
+  if?: string;
 }
 
 /**
@@ -148,6 +182,12 @@ export interface UrlHookConfig {
   blocking?: boolean;
   /** 匹配条件（工具名或正则） */
   matcher?: string;
+  /**
+   * v2.1.85: 条件执行规则
+   * 格式: "ToolName(pattern)" 例如 "Bash(git *)" 或 "Write(src/*)"
+   * 条件不满足时，Hook会被跳过（不打日志）
+   */
+  if?: string;
 }
 
 /**
@@ -209,6 +249,40 @@ export interface HookInput {
   trigger?: 'manual' | 'auto';
   currentTokens?: number;
 
+  // v2.1.85: PostCompact 专用字段
+  originalTokens?: number;
+  compressedTokens?: number;
+  compressionRatio?: number;
+  summary?: string;
+
+  // v2.1.85: Elicitation 专用字段
+  mcpServer?: string;
+  requiredFields?: Record<string, unknown>;
+  formUrl?: string;
+
+  // v2.1.85: ElicitationResult 专用字段
+  userInput?: Record<string, unknown>;
+  elicitationId?: string;
+
+  // v2.1.85: WorktreeCreate/WorktreeRemove 专用字段
+  worktreePath?: string;
+  worktreeName?: string;
+  branchName?: string;
+
+  // v2.1.85: CwdChanged 专用字段
+  previousCwd?: string;
+  newCwd?: string;
+
+  // v2.1.85: FileChanged 专用字段
+  filePath?: string;
+  changeType?: 'created' | 'modified' | 'deleted';
+  fileSize?: number;
+
+  // v2.1.85: StopFailure 专用字段
+  stopReason?: 'api_error' | 'rate_limit' | 'timeout' | 'quota_exceeded';
+  apiError?: string;
+  httpStatus?: number;
+
   // v2.1.33: TeammateIdle 专用字段
   teammate_name?: string;
   team_name?: string;
@@ -236,6 +310,11 @@ export interface HookResult {
    * 会被添加到发送给模型的消息中
    */
   additionalContext?: string;
+  /**
+   * v2.1.85: PreToolUse hooks 可以修改工具输入
+   * Hook返回此字段时，工具执行前会应用修改
+   */
+  updatedInput?: Record<string, unknown>;
 }
 
 /**
@@ -331,10 +410,20 @@ function isValidHookEvent(event: string): boolean {
     'SubagentStart',
     'SubagentStop',
     'PreCompact',
+    'PostCompact',
     'PermissionRequest',
     // v2.1.33: 多代理工作流事件
     'TeammateIdle',
     'TaskCompleted',
+    // v2.1.85: MCP和Worktree事件
+    'Elicitation',
+    'ElicitationResult',
+    'WorktreeCreate',
+    'WorktreeRemove',
+    // v2.1.85: 文件系统和错误事件
+    'CwdChanged',
+    'FileChanged',
+    'StopFailure',
     // CLI 级别事件
     'Setup',             // v2.1.10
     'BeforeSetup',
@@ -487,6 +576,33 @@ async function executeCommandHook(
       // PreCompact 专用字段
       trigger: input.trigger,
       currentTokens: input.currentTokens,
+      // v2.1.85: PostCompact 专用字段
+      originalTokens: input.originalTokens,
+      compressedTokens: input.compressedTokens,
+      compressionRatio: input.compressionRatio,
+      summary: input.summary,
+      // v2.1.85: Elicitation 专用字段
+      mcpServer: input.mcpServer,
+      requiredFields: input.requiredFields,
+      formUrl: input.formUrl,
+      // v2.1.85: ElicitationResult 专用字段
+      userInput: input.userInput,
+      elicitationId: input.elicitationId,
+      // v2.1.85: WorktreeCreate/WorktreeRemove 专用字段
+      worktreePath: input.worktreePath,
+      worktreeName: input.worktreeName,
+      branchName: input.branchName,
+      // v2.1.85: CwdChanged 专用字段
+      previousCwd: input.previousCwd,
+      newCwd: input.newCwd,
+      // v2.1.85: FileChanged 专用字段
+      filePath: input.filePath,
+      changeType: input.changeType,
+      fileSize: input.fileSize,
+      // v2.1.85: StopFailure 专用字段
+      stopReason: input.stopReason,
+      apiError: input.apiError,
+      httpStatus: input.httpStatus,
       // v2.1.33: TeammateIdle 专用字段
       teammate_name: input.teammate_name,
       team_name: input.team_name,
@@ -613,7 +729,31 @@ async function executePromptHook(
       .replace(/\{NOTIFICATION_TYPE\}/g, input.notification_type || '')
       .replace(/\{SOURCE\}/g, input.source || '')
       .replace(/\{REASON\}/g, input.reason || '')
-      .replace(/\{TRIGGER\}/g, input.trigger || '');
+      .replace(/\{TRIGGER\}/g, input.trigger || '')
+      // v2.1.85: PostCompact 变量
+      .replace(/\{ORIGINAL_TOKENS\}/g, String(input.originalTokens || ''))
+      .replace(/\{COMPRESSED_TOKENS\}/g, String(input.compressedTokens || ''))
+      .replace(/\{COMPRESSION_RATIO\}/g, String(input.compressionRatio || ''))
+      .replace(/\{SUMMARY\}/g, input.summary || '')
+      // v2.1.85: Elicitation 变量
+      .replace(/\{MCP_SERVER\}/g, input.mcpServer || '')
+      .replace(/\{REQUIRED_FIELDS\}/g, JSON.stringify(input.requiredFields || {}))
+      .replace(/\{FORM_URL\}/g, input.formUrl || '')
+      // v2.1.85: WorktreeCreate/Remove 变量
+      .replace(/\{WORKTREE_PATH\}/g, input.worktreePath || '')
+      .replace(/\{WORKTREE_NAME\}/g, input.worktreeName || '')
+      .replace(/\{BRANCH_NAME\}/g, input.branchName || '')
+      // v2.1.85: CwdChanged 变量
+      .replace(/\{PREVIOUS_CWD\}/g, input.previousCwd || '')
+      .replace(/\{NEW_CWD\}/g, input.newCwd || '')
+      // v2.1.85: FileChanged 变量
+      .replace(/\{FILE_PATH\}/g, input.filePath || '')
+      .replace(/\{CHANGE_TYPE\}/g, input.changeType || '')
+      .replace(/\{FILE_SIZE\}/g, String(input.fileSize || ''))
+      // v2.1.85: StopFailure 变量
+      .replace(/\{STOP_REASON\}/g, input.stopReason || '')
+      .replace(/\{API_ERROR\}/g, input.apiError || '')
+      .replace(/\{HTTP_STATUS\}/g, String(input.httpStatus || ''));
 
     // 动态导入 ClaudeClient 以避免循环依赖
     const { ClaudeClient } = await import('../core/client.js');
@@ -747,6 +887,25 @@ ${input.notification_type ? `Notification Type: ${input.notification_type}` : ''
 ${input.source ? `Source: ${input.source}` : ''}
 ${input.reason ? `Reason: ${input.reason}` : ''}
 ${input.trigger ? `Trigger: ${input.trigger}` : ''}
+${input.originalTokens ? `Original Tokens: ${input.originalTokens}` : ''}
+${input.compressedTokens ? `Compressed Tokens: ${input.compressedTokens}` : ''}
+${input.compressionRatio ? `Compression Ratio: ${input.compressionRatio}` : ''}
+${input.mcpServer ? `MCP Server: ${input.mcpServer}` : ''}
+${input.requiredFields ? `Required Fields: ${JSON.stringify(input.requiredFields)}` : ''}
+${input.formUrl ? `Form URL: ${input.formUrl}` : ''}
+${input.userInput ? `User Input: ${JSON.stringify(input.userInput)}` : ''}
+${input.elicitationId ? `Elicitation ID: ${input.elicitationId}` : ''}
+${input.worktreePath ? `Worktree Path: ${input.worktreePath}` : ''}
+${input.worktreeName ? `Worktree Name: ${input.worktreeName}` : ''}
+${input.branchName ? `Branch Name: ${input.branchName}` : ''}
+${input.previousCwd ? `Previous CWD: ${input.previousCwd}` : ''}
+${input.newCwd ? `New CWD: ${input.newCwd}` : ''}
+${input.filePath ? `File Path: ${input.filePath}` : ''}
+${input.changeType ? `Change Type: ${input.changeType}` : ''}
+${input.fileSize ? `File Size: ${input.fileSize}` : ''}
+${input.stopReason ? `Stop Reason: ${input.stopReason}` : ''}
+${input.apiError ? `API Error: ${input.apiError}` : ''}
+${input.httpStatus ? `HTTP Status: ${input.httpStatus}` : ''}
 
 ${hook.agentConfig ? `Agent Configuration: ${JSON.stringify(hook.agentConfig, null, 2)}` : ''}
 
@@ -1116,6 +1275,21 @@ export async function runHooks(input: HookInput): Promise<HookResult[]> {
   const results: HookResult[] = [];
 
   for (const hook of matchingHooks) {
+    // v2.1.85: 检查条件执行
+    if (hook.if) {
+      const { parseConditionRule, matchesCondition } = await import('./condition-parser.js');
+      const condition = parseConditionRule(hook.if);
+      const hookContext = {
+        toolName: input.toolName,
+        toolInput: input.toolInput as Record<string, unknown>,
+      };
+
+      if (!matchesCondition(condition, hookContext)) {
+        // 条件不满足，跳过此 hook（不打日志）
+        continue;
+      }
+    }
+
     const result = await executeHook(hook, input);
     results.push(result);
 

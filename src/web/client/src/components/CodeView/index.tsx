@@ -27,6 +27,8 @@ export interface CodeViewProps {
   currentMessageId?: string;
   isStreaming?: boolean;
   projectPath: string;
+  send?: (msg: any) => void;
+  addMessageHandler?: (handler: (msg: any) => void) => () => void;
 }
 
 /**
@@ -55,6 +57,8 @@ export const CodeView = forwardRef<CodeViewRef, CodeViewProps>(({
   currentMessageId,
   isStreaming = false,
   projectPath,
+  send,
+  addMessageHandler,
 }, ref) => {
   const { t } = useLanguage();
   // 面板宽度和状态
@@ -205,7 +209,14 @@ export const CodeView = forwardRef<CodeViewRef, CodeViewProps>(({
         setActivePanel('search');
         return;
       }
-      
+
+      // Ctrl+` (Windows/Linux) 或 Cmd+` (macOS): 打开终端
+      if ((e.ctrlKey || e.metaKey) && e.key === '`') {
+        e.preventDefault();
+        codeEditorRef.current?.openTerminal();
+        return;
+      }
+
       // Ctrl+L (Windows/Linux) 或 Cmd+L (macOS)
       if ((e.ctrlKey || e.metaKey) && e.key === 'l') {
         e.preventDefault();
@@ -346,6 +357,9 @@ export const CodeView = forwardRef<CodeViewRef, CodeViewProps>(({
           onSelectionChange={handleSelectionChange}
           onActiveFileChange={handleActiveFileChange}
           onCursorLineChange={handleCursorLineChange}
+          send={send}
+          addMessageHandler={addMessageHandler}
+          connected={connected}
         />
       </div>
 
