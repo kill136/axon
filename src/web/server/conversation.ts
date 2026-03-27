@@ -4881,7 +4881,6 @@ Guidelines:
     'TaskGet',          // Agent Teams 专用
     'TaskUpdate',       // Agent Teams 专用
     'TaskList',         // Agent Teams 专用
-    'NotebookWrite',    // 已移除 - Notebook 通过附件自动管理
   ]);
 
   private getFilteredTools(sessionId: string): any[] {
