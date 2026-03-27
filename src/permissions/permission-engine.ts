@@ -22,8 +22,8 @@
  * 5. 最终决策
  */
 
-import ConditionEvaluator from './condition-evaluator';
-import ManagedPoliciesManager, { type ManagedPolicy } from './managed-policies';
+import ConditionEvaluator from './condition-evaluator.js';
+import ManagedPoliciesManager, { type ManagedPolicy } from './managed-policies.js';
 
 /**
  * 权限决策结果

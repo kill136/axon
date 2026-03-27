@@ -93,9 +93,12 @@ export class ConditionEvaluator {
     const toolName = match[1];
     const pattern = match[2];
 
+    // Empty pattern () becomes undefined
+    const finalPattern = pattern === undefined || pattern === '' ? undefined : pattern;
+
     return {
       toolName,
-      pattern: pattern || undefined,
+      pattern: finalPattern,
     };
   }
 
@@ -114,7 +117,8 @@ export class ConditionEvaluator {
 
   /**
    * Glob模式匹配，支持 * 和 ?
-   * - * 匹配任意字符串
+   * - * 匹配任意字符串（不包括/）
+   * - ** 匹配任意字符串（包括/）
    * - ? 匹配单个字符
    * - 缓存已编译的regex
    */

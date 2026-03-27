@@ -1833,3 +1833,10 @@ export function getHooksLoadedSummary(): {
     events,
   };
 }
+
+// ================================================================================
+// v2.1.85: 条件执行引擎导出（重导出）
+// ================================================================================
+
+export { parseConditionRule, matchesCondition, clearConditionCache, getConditionCacheSize } from './condition-parser.js';
+export type { ConditionRule, HookContext } from './condition-parser.js';
