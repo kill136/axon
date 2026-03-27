@@ -70,6 +70,19 @@ describe('LongTermStore bug fixes', () => {
       // If we got here without error, version migration worked
     });
 
+    it('should recreate the parent directory if it disappears during async initialization', async () => {
+      const dbPath = path.join(tmpDir, 'race', 'nested', 'race.sqlite');
+      const createPromise = LongTermStore.create(dbPath);
+
+      try {
+        fs.rmSync(path.dirname(dbPath), { recursive: true, force: true });
+      } catch {}
+
+      const raceStore = await createPromise;
+      expect(fs.existsSync(path.dirname(dbPath))).toBe(true);
+      raceStore.close();
+    });
+
     it('should handle re-opening existing database', async () => {
       const dbPath = path.join(tmpDir, 'reopen.sqlite');
       const store1 = await LongTermStore.create(dbPath);

@@ -159,11 +159,64 @@ describe('MemorySearchManager', () => {
 
       expect(result.notebookResults).toHaveLength(1);
       expect(result.sessionSummaryResults).toHaveLength(1);
+      expect(result.transcriptResults).toHaveLength(0);
       expect(result.formatted).toContain('[Notebook]');
       expect(result.formatted).toContain('[Current session background]');
       expect(result.formatted).toContain('Project notebook says use direct, honest answers.');
       expect(result.formatted).toContain('Current session is evaluating layered recall for summary.md.');
       expect(result.formatted).not.toContain('Other session summary should not appear.');
+    });
+
+    it('adds transcript evidence only as a secondary layer after notebook and current session background', () => {
+      const now = Date.now();
+      const result = planLayeredRecallFromResults([
+        {
+          id: 'nb-1',
+          path: 'notebook:project.md',
+          startLine: 1,
+          endLine: 3,
+          score: 0.9,
+          snippet: 'Project notebook says prefer direct root-cause analysis.',
+          source: 'notebook',
+          timestamp: new Date(now).toISOString(),
+          age: 3600000,
+        },
+        {
+          id: 'ss-1',
+          path: 'session-123/session-memory/summary.md',
+          startLine: 5,
+          endLine: 8,
+          score: 0.7,
+          snippet: 'Current session is debugging layered recall rollout.',
+          source: 'session',
+          timestamp: new Date(now).toISOString(),
+          age: 7200000,
+        },
+        {
+          id: 'tr-1',
+          path: 'transcript:old-session.json',
+          startLine: 12,
+          endLine: 20,
+          score: 0.65,
+          snippet: '# Past session\nDate: 2026-03-20\nModel: sonnet\nProject: /repo\n\n## User\nWe hit the same recall bug before.\n\n## Assistant\nThe fix was to align summary indexing paths.',
+          source: 'session',
+          timestamp: new Date(now).toISOString(),
+          age: 10800000,
+        },
+      ], {
+        sessionId: 'session-123',
+        hasCompactSummary: false,
+        transcriptLimit: 1,
+      });
+
+      expect(result.notebookResults).toHaveLength(1);
+      expect(result.sessionSummaryResults).toHaveLength(1);
+      expect(result.transcriptResults).toHaveLength(1);
+      expect(result.formatted).toContain('[Past session evidence]');
+      expect(result.formatted).toContain('We hit the same recall bug before.');
+      expect(result.formatted).toContain('The fix was to align summary indexing paths.');
+      expect(result.formatted).not.toContain('Project: /repo');
+      expect(result.formatted).not.toContain('## User');
     });
 
     it('skips session summary fallback when compact summary already exists in messages', () => {

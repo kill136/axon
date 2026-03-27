@@ -93,6 +93,7 @@ export class LongTermStore {
         'Original error: ' + (e.message)
       );
     });
+    ensureDir(path.dirname(dbPath));
     this.db = new mod.default(dbPath);
 
     // 尝试加载 sqlite-vec 扩展
