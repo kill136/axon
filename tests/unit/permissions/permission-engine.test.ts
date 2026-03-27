@@ -36,8 +36,8 @@ describe('PermissionEngine', () => {
 
     it('should set multiple rules', () => {
       engine.setRules([
-        { type: 'deny', rule: 'Bash(rm *)' },
-        { type: 'allow', rule: 'Bash(git *)' },
+        { type: 'deny', rule: 'Bash(rm **)' },
+        { type: 'allow', rule: 'Bash(git **)' },
       ]);
 
       const allowContext: PermissionContext = {
@@ -65,7 +65,7 @@ describe('PermissionEngine', () => {
     });
 
     it('should deny when deny rule matches', () => {
-      engine.addRule('deny', 'Bash(rm *)');
+      engine.addRule('deny', 'Bash(rm **)');
       const context: PermissionContext = {
         toolName: 'Bash',
         toolInput: { command: 'rm -rf /' },
@@ -98,9 +98,9 @@ describe('PermissionEngine', () => {
   describe('decide - priority (deny > ask > allow)', () => {
     it('should prioritize deny over ask and allow', () => {
       engine.setRules([
-        { type: 'allow', rule: 'Bash(*)' },
-        { type: 'ask', rule: 'Bash(ls *)' },
-        { type: 'deny', rule: 'Bash(ls *)' },
+        { type: 'allow', rule: 'Bash(**)' },
+        { type: 'ask', rule: 'Bash(ls **)' },
+        { type: 'deny', rule: 'Bash(ls **)' },
       ]);
       const context: PermissionContext = {
         toolName: 'Bash',
@@ -112,8 +112,8 @@ describe('PermissionEngine', () => {
 
     it('should prioritize ask over allow', () => {
       engine.setRules([
-        { type: 'allow', rule: 'Bash(*)' },
-        { type: 'ask', rule: 'Bash(ls *)' },
+        { type: 'allow', rule: 'Bash(**)' },
+        { type: 'ask', rule: 'Bash(ls **)' },
       ]);
       const context: PermissionContext = {
         toolName: 'Bash',
