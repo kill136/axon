@@ -1293,3 +1293,7 @@ export * from './enhanced.js';
 export * from './summarizer.js';
 export * from './window.js';
 export * from './session-memory.js';
+
+// v2.1.85: PostCompact Hook 集成
+export { PostCompactExecutor, createDefaultPostCompactExecutor } from './post-compact-integration.js';
+export type { PostCompactHookConfig, PostCompactInput, PostCompactEventResult, HookExecutor } from './post-compact-integration.js';

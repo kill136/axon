@@ -13,3 +13,9 @@ export { MemorySearchManager, initMemorySearchManager, getMemorySearchManager, r
 export type { EmbeddingConfig } from './memory-search.js';
 export { LongTermStore } from './long-term-store.js';
 export type { MemorySource, MemorySearchResult } from './types.js';
+
+// v2.1.85: Auto-memory 打分系统和 Timestamp 管理
+export { AutoMemoryScorer, scoreMemory, scoreMemories } from './auto-memory-scorer.js';
+export type { MemoryType, FreshnessLevel, MemoryItem, ScoringResult, ScoringStats } from './auto-memory-scorer.js';
+export { MemoryTimestampManager } from './memory-timestamp.js';
+export type { TimestampedMemory, TimestampStats } from './memory-timestamp.js';
