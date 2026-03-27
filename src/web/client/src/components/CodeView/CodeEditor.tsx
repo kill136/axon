@@ -1610,7 +1610,17 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
 
         {/* 编辑器区域 */}
         <div className={styles.editorContainer}>
-          {tourState.active ? (
+          {/* 持久化终端实例：始终挂载，通过 display 切换可见性，避免 tab 切换时销毁/重建 */}
+          {tabs.some(t => t.fileType === 'terminal') && send && addMessageHandler && connected !== undefined && (
+            <SimpleTerminalTab
+              send={send}
+              addMessageHandler={addMessageHandler}
+              connected={connected}
+              projectPath={projectPath}
+              active={currentTab?.fileType === 'terminal'}
+            />
+          )}
+          {currentTab?.fileType === 'terminal' ? null : tourState.active ? (
             /* 导游模式：编辑器 + 导游面板 二栏布局 */
             <div className={styles.codeEditorWithTour}>
               <div className={styles.codeEditorMain}>
