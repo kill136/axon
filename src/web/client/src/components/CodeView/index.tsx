@@ -60,7 +60,7 @@ export const CodeView = forwardRef<CodeViewRef, CodeViewProps>(({
   // 面板宽度和状态
   const [fileTreeWidth, setFileTreeWidth] = useState(220);
   const [chatPanelWidth, setChatPanelWidth] = useState(360);
-  const [isChatPanelCollapsed, setIsChatPanelCollapsed] = useState(false);
+  const [isChatPanelCollapsed, setIsChatPanelCollapsed] = useState(true); // 默认隐藏聊天面板
   const [currentFile, setCurrentFile] = useState<string | undefined>(undefined);
   
   // 左侧面板切换状态
