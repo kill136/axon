@@ -28,7 +28,7 @@ export type HookEvent =
   // v2.1.33: 多代理工作流事件
   | 'TeammateIdle'         // 当 teammate 即将进入空闲状态
   | 'TaskCompleted'        // 当任务被标记为已完成
-  // CLI 级别事件（新增）
+  // CLI 级别事件
   | 'Setup'                // v2.1.10: 仓库设置/维护（通过 --init/--init-only/--maintenance 触发）
   | 'BeforeSetup'          // 设置前（对应 action_before_setup）
   | 'AfterSetup'           // 设置后（对应 action_after_setup）
@@ -36,7 +36,16 @@ export type HookEvent =
   | 'ToolsLoaded'          // 工具加载完成（对应 action_tools_loaded）
   | 'McpConfigsLoaded'     // MCP 配置加载完成（对应 action_mcp_configs_loaded）
   | 'PluginsInitialized'   // 插件初始化后（对应 action_after_plugins_init）
-  | 'AfterHooks';          // Hooks 执行后（对应 action_after_hooks）
+  | 'AfterHooks'           // Hooks 执行后（对应 action_after_hooks）
+  // v2.1.85: 8个新Hook事件（Context压缩、MCP、Worktree、文件系统、错误处理）
+  | 'PostCompact'          // 压缩后（Context压缩完成）
+  | 'Elicitation'          // MCP服务器请求用户输入前
+  | 'ElicitationResult'    // 用户完成输入后
+  | 'WorktreeCreate'       // Worktree创建时
+  | 'WorktreeRemove'       // Worktree删除时
+  | 'CwdChanged'           // 当前工作目录改变时
+  | 'FileChanged'          // 文件变更时
+  | 'StopFailure';         // API错误导致turn结束时
 
 /**
  * Hook 类型（对应官方 CLI 支持的类型 + 扩展类型）
@@ -236,6 +245,11 @@ export interface HookResult {
    * 会被添加到发送给模型的消息中
    */
   additionalContext?: string;
+  /**
+   * v2.1.85: PreToolUse hooks 可以修改工具输入
+   * Hook返回此字段时，工具执行前会应用修改
+   */
+  updatedInput?: Record<string, unknown>;
 }
 
 /**
