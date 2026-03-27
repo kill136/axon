@@ -19,6 +19,7 @@ import { configManager } from '../../../config/index.js';
 import { oauthManager } from '../oauth-manager.js';
 import { CODEX_OAUTH_CONFIG, codexAuthManager, type CodexAuthConfig } from '../codex-auth-manager.js';
 import { webAuth } from '../web-auth.js';
+import { broadcastMessage } from '../websocket.js';
 
 const router = Router();
 
@@ -434,6 +435,12 @@ router.post('/import-local', async (_req: Request, res: Response) => {
     configManager.set('runtimeProvider', 'anthropic');
     configManager.set('apiProvider', 'anthropic');
 
+    // 广播认证状态变更给所有连接的客户端，让它们刷新模型列表
+    broadcastMessage({
+      type: 'auth_status_changed',
+      payload: { reason: 'subscription_changed' },
+    });
+
     res.json({
       success: true,
       auth: {
@@ -547,6 +554,12 @@ router.post('/api-key', async (req: Request, res: Response) => {
       return res.status(500).json({ error: 'Failed to save API Key' });
     }
 
+    // 广播认证状态变更给所有连接的客户端，让它们刷新模型列表
+    broadcastMessage({
+      type: 'auth_status_changed',
+      payload: { reason: 'api_key_login_completed' },
+    });
+
     res.json({ success: true });
   } catch (error) {
     console.error('[Auth] API Key login error:', error);
@@ -561,6 +574,13 @@ router.post('/api-key', async (req: Request, res: Response) => {
 router.post('/logout', async (req: Request, res: Response) => {
   try {
     webAuth.clearAll();
+
+    // 广播认证状态变更给所有连接的客户端，让它们刷新模型列表
+    broadcastMessage({
+      type: 'auth_status_changed',
+      payload: { reason: 'logout_completed' },
+    });
+
     res.json({ success: true });
   } catch (error) {
     console.error('[OAuth] Logout error:', error);

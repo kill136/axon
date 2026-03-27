@@ -569,15 +569,16 @@ router.post('/delete', async (req: Request, res: Response) => {
 /**
  * POST /api/files/create
  * 新建文件
- * 
+ *
  * Body:
  * - path: 文件路径（相对）
  * - content: 文件内容（可选，默认为空字符串）
+ * - encoding: 内容编码（可选，'utf-8' 或 'base64'，默认 'utf-8'）
  */
 router.post('/create', async (req: Request, res: Response) => {
   try {
     const projectRoot = getProjectRoot(req);
-    const { path: filePath, content = '' } = req.body;
+    const { path: filePath, content = '', encoding = 'utf-8' } = req.body;
     
     if (!filePath) {
       res.status(400).json({
@@ -612,9 +613,13 @@ router.post('/create', async (req: Request, res: Response) => {
     // 确保目录存在
     const dirPath = path.dirname(validation.resolvedPath);
     await fs.mkdir(dirPath, { recursive: true });
-    
-    // 创建文件
-    await fs.writeFile(validation.resolvedPath, content, 'utf-8');
+
+    // 创建文件（支持 base64 编码）
+    if (encoding === 'base64') {
+      await fs.writeFile(validation.resolvedPath, Buffer.from(content, 'base64'));
+    } else {
+      await fs.writeFile(validation.resolvedPath, content, 'utf-8');
+    }
     
     res.json({
       success: true,

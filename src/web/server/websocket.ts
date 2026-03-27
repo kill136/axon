@@ -5809,6 +5809,12 @@ async function handleOAuthLogin(
       },
     });
 
+    // 广播认证状态变更给所有连接的客户端，让它们刷新模型列表
+    broadcastMessage({
+      type: 'auth_status_changed',
+      payload: { reason: 'oauth_login_completed' },
+    });
+
     console.log('[WebSocket] OAuth login successful');
   } catch (error) {
     console.error('[WebSocket] OAuth login failed:', error);
@@ -5930,6 +5936,12 @@ async function handleOAuthLogout(
       payload: {
         success: true,
       },
+    });
+
+    // 广播认证状态变更给所有连接的客户端，让它们刷新模型列表
+    broadcastMessage({
+      type: 'auth_status_changed',
+      payload: { reason: 'oauth_logout_completed' },
     });
 
     console.log('[WebSocket] OAuth logout successful');

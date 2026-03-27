@@ -912,6 +912,76 @@ export const FileTree: React.FC<FileTreeProps> = ({
     }
   }, [flatNodes, lastClickedPath, currentFile, outlineSymbols, onFileSelect, handleToggleDir]);
 
+  // ==================== 粘贴处理（系统剪贴板 + 内部文件节点） ====================
+
+  const handlePasteEvent = useCallback(async (e: React.ClipboardEvent<HTMLDivElement>) => {
+    // 1. 优先处理系统剪贴板图片
+    const items = Array.from(e.clipboardData.items);
+    const imageItem = items.find(item => item.type.startsWith('image/'));
+
+    if (imageItem) {
+      e.preventDefault();
+      const blob = imageItem.getAsFile();
+      if (!blob) return;
+
+      // 生成文件名：pasted-image-YYYY-MM-DD-HHmmss.ext
+      const ext = imageItem.type.split('/')[1] || 'png';
+      const now = new Date();
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const ts = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+      const fileName = `pasted-image-${ts}.${ext}`;
+
+      // 目标目录：当前焦点节点的目录 或 根目录
+      let targetDir = '.';
+      if (focusedPath) {
+        const node = nodeByPath.get(focusedPath);
+        if (node) {
+          targetDir = node.type === 'directory' ? node.path : getParentPath(node.path);
+        }
+      }
+
+      // 读取为 base64
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const dataUrl = reader.result as string;
+        const base64 = dataUrl.split(',')[1];
+
+        try {
+          const response = await fetch('/api/files/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              path: `${targetDir}/${fileName}`,
+              content: base64,
+              encoding: 'base64',
+              root: projectPath,
+            }),
+          });
+
+          if (!response.ok) {
+            const err = await response.json();
+            alert(`${fileName}: ${err.error}`);
+          } else {
+            await fetchTree();
+          }
+        } catch (err) {
+          alert(`${fileName}: ${t('fileTree.createFailed')}`);
+        }
+      };
+      reader.readAsDataURL(blob);
+      return;
+    }
+
+    // 2. 无图片数据 → 回退到内部文件节点粘贴
+    e.preventDefault();
+    if (focusedPath) {
+      const node = nodeByPath.get(focusedPath);
+      if (node) {
+        handlePaste(node);
+      }
+    }
+  }, [focusedPath, nodeByPath, projectPath, fetchTree, handlePaste, t]);
+
   // ==================== 键盘导航 ====================
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -1075,15 +1145,8 @@ export const FileTree: React.FC<FileTreeProps> = ({
       }
       case 'v':
       case 'V': {
-        if (e.ctrlKey || e.metaKey) {
-          e.preventDefault();
-          if (focusedPath) {
-            const node = nodeByPath.get(focusedPath);
-            if (node) {
-              handlePaste(node);
-            }
-          }
-        }
+        // Ctrl+V 由 onPaste 事件处理（支持系统剪贴板图片和内部文件节点粘贴）
+        // 这里不做任何处理，让 paste 事件自然触发
         break;
       }
     }
@@ -1662,6 +1725,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
         tabIndex={0}
         onContextMenu={handleContainerContextMenu}
         onKeyDown={handleKeyDown}
+        onPaste={handlePasteEvent}
         onDragOver={(e) => {
           // 处理空白区域的拖拽（拖到没有节点的地方）
           if (e.dataTransfer.types.includes('Files')) {
