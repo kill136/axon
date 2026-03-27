@@ -1481,8 +1481,7 @@ function registerSkillHooks(skillName: string, hooks: Record<string, any>): void
  */
 export class SkillTool extends BaseTool<SkillInput, any> {
   name = 'Skill';
-  shouldDefer = true;
-  searchHint = 'run skill, slash command, PDF Word Excel PPT, commit, review PR, create document';
+  shouldDefer = false;
 
   /**
    * 获取工具描述（对齐官网 A0A 缓存函数）

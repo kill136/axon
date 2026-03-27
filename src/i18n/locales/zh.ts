@@ -637,19 +637,6 @@ const zh: Record<LocaleKeys, string> = {
   'team.planApproved': '{{recipient}} 的计划已批准',
   'team.planRejected': '{{recipient}} 的计划被拒绝：{{reason}}',
 
-  // agent-teams.ts - TeammateTool
-  'agentTeams.notEnabled': 'Agent Teams 功能未启用。请设置 AXON_EXPERIMENTAL_AGENT_TEAMS=1 来启用。',
-  'agentTeams.unknownOperation': '未知操作：{{operation}}。请使用 \'spawnTeam\' 或 \'cleanup\'。',
-  'agentTeams.teamNameRequired': 'spawnTeam 操作需要 team_name 参数',
-  'agentTeams.teamAlreadyExists': '团队 \'{{teamName}}\' 已存在。请先使用 \'cleanup\' 移除。',
-  'agentTeams.createSuccess': '团队 \'{{teamName}}\' 创建成功。\n团队 ID：{{teamId}}\n任务列表：{{taskListId}}\n\n后续步骤：\n1. 使用 Task 工具，设置 team_name="{{teamName}}" 和 name="<agent-name>" 来生成队友\n2. 使用 TaskCreate 创建任务\n3. 使用 TaskUpdate 的 owner="<teammate-name>" 分配任务',
-  'agentTeams.createFailed': '创建团队失败：{{error}}',
-  'agentTeams.noActiveTeam': '没有活跃的团队上下文。请先使用 spawnTeam 创建团队。',
-  'agentTeams.teamNotFound': '团队 \'{{teamName}}\' 未找到。',
-  'agentTeams.activeMembers': '团队 \'{{teamName}}\' 仍有 {{count}} 个活跃成员：{{names}}。请先向所有成员发送 shutdown_request。',
-  'agentTeams.cleanupFailed': '清理团队 \'{{teamName}}\' 失败。',
-  'agentTeams.cleanupSuccess': '团队 \'{{teamName}}\' 已成功清理。团队配置和任务目录已移除。',
-
   // blueprint.ts
   'blueprint.unknownAction': '未知操作：{{action}}',
   'blueprint.generated': '蓝图已生成！',

@@ -29,7 +29,6 @@ export * from './self-evolve.js';
 export * from './browser.js';
 export * from './create-tool.js';
 export * from './custom-tool-loader.js';
-// mcp-manage.ts removed: McpManage merged into Mcp tool (action parameter)
 export * from './eye.js';
 export * from './ear.js';
 export * from './goal.js';

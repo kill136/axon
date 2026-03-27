@@ -143,8 +143,7 @@ const turndownService = createTurndownService();
 
 export class WebFetchTool extends BaseTool<WebFetchInput, ToolResult> {
   name = 'WebFetch';
-  shouldDefer = true;
-  searchHint = 'read webpage, fetch URL, extract web content, check documentation, scrape page';
+  shouldDefer = false;
   description = `
 - Fetches content from a specified URL and processes it using an AI model
 - Takes a URL and a prompt as input
