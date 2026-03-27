@@ -19,3 +19,13 @@ export { AutoMemoryScorer, scoreMemory, scoreMemories } from './auto-memory-scor
 export type { MemoryType, FreshnessLevel, MemoryItem, ScoringResult, ScoringStats } from './auto-memory-scorer.js';
 export { MemoryTimestampManager } from './memory-timestamp.js';
 export type { TimestampedMemory, TimestampStats } from './memory-timestamp.js';
+
+// v2.1.85: Auto-memory 目录管理
+export {
+  getAutoMemoryDir,
+  getProjectAutoMemoryDir,
+  ensureAutoMemoryDir,
+  loadMemoryIndex,
+  isAutoMemoryPath,
+  getAllMemoryFiles,
+} from './auto-memory-dir.js';
