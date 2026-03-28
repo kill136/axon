@@ -124,19 +124,22 @@ You: "Add a tool that queries weather data"
 Axon: *writes the tool code, compiles TypeScript, restarts, tool is ready*
 ```
 
-### 37+ Built-in Tools
+### 45+ Built-in Tools
 
 | Category | Tools |
 |---|---|
 | File ops | Read, Write, Edit, MultiEdit, Glob, Grep |
-| Execution | Bash, background tasks, scheduled jobs |
-| Web | Fetch pages, search the web |
-| Code | Jupyter notebooks, LSP, Tree-sitter parsing |
+| Execution | Bash, Cron (scheduled jobs), background tasks |
+| Web | WebFetch, WebSearch |
+| Code | Jupyter notebooks (edit + write), LSP integration |
 | Browser | Playwright-based full browser automation |
-| Planning | Plan mode, Blueprint, sub-agents |
-| Memory | Long-term memory with semantic search, vector store, BM25 |
-| Integration | MCP protocol, Skills marketplace, plugins |
-| Perception | Camera (Eye), Microphone (Ear), Speech (Mouth) |
+| Agents | Sub-agents (Explore, Plan, Guide, Monitor, Parallel) |
+| Blueprint | Task decomposition, Lead Agent, Dispatch Workers |
+| Planning | Plan mode, Goal tracking, Task management, TodoWrite |
+| Memory | Long-term memory with embedding vectors, BM25, hybrid search |
+| Integration | MCP protocol, Skills, custom tool creation, self-evolution |
+| Perception | Camera (Eye), Microphone (Ear) |
+| Structured | Structured output, code review submission |
 
 ### Extensible by Design
 

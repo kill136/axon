@@ -319,12 +319,36 @@ jobs:
             '> This URL can be used directly as DOWNLOAD_MIRROR_CN_AXON_SETUP_EXE_URL if the bucket/object is public-readable.'
           ) | Add-Content -Path $env:GITHUB_STEP_SUMMARY
 
+      - name: Generate latest.yml for electron-updater
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart('v')
+          $file = "Axon-Setup.exe"
+          $stream = [System.IO.File]::OpenRead((Resolve-Path $file))
+          $sha = [System.Security.Cryptography.SHA512]::Create()
+          $hashBase64 = [Convert]::ToBase64String($sha.ComputeHash($stream))
+          $stream.Close()
+          $size = (Get-Item $file).Length
+          $date = (Get-Date -Format "yyyy-MM-ddTHH:mm:ss.fffZ")
+          @"
+          version: $version
+          files:
+            - url: $file
+              sha512: $hashBase64
+              size: $size
+          path: $file
+          sha512: $hashBase64
+          releaseDate: '$date'
+          "@ | Set-Content -Path "latest.yml" -Encoding UTF8
+          Write-Host "Generated latest.yml for $file (v$version)"
+
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             Axon-Windows-Portable-${{ github.ref_name }}.zip
             Axon-Setup.exe
+            latest.yml
           fail_on_unmatched_files: true
 
   build-electron-macos:
@@ -495,10 +519,32 @@ jobs:
             echo "Notarization complete and stapled"
           fi
 
+      - name: Generate latest-mac.yml for electron-updater
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          FILE="release/Axon-Setup.dmg"
+          SHA512=$(shasum -a 512 "$FILE" | awk '{print $1}' | xxd -r -p | base64)
+          SIZE=$(stat -f%z "$FILE" 2>/dev/null || stat -c%s "$FILE")
+          DATE=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
+          cat > latest-mac.yml << YAML
+          version: ${VERSION}
+          files:
+            - url: Axon-Setup.dmg
+              sha512: ${SHA512}
+              size: ${SIZE}
+          path: Axon-Setup.dmg
+          sha512: ${SHA512}
+          releaseDate: '${DATE}'
+          YAML
+          echo "Generated latest-mac.yml for Axon-Setup.dmg (v${VERSION})"
+
       - name: Upload DMG to Release
         uses: softprops/action-gh-release@v2
         with:
-          files: release/Axon-Setup.dmg
+          files: |
+            release/Axon-Setup.dmg
+            latest-mac.yml
           fail_on_unmatched_files: true
 
   build-electron-linux:
@@ -548,8 +594,30 @@ jobs:
           chmod +x build-linux.sh
           ./build-linux.sh
 
+      - name: Generate latest-linux.yml for electron-updater
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          FILE="release/Axon-Setup.AppImage"
+          SHA512=$(sha512sum "$FILE" | awk '{print $1}' | xxd -r -p | base64)
+          SIZE=$(stat -c%s "$FILE")
+          DATE=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
+          cat > latest-linux.yml << YAML
+          version: ${VERSION}
+          files:
+            - url: Axon-Setup.AppImage
+              sha512: ${SHA512}
+              size: ${SIZE}
+          path: Axon-Setup.AppImage
+          sha512: ${SHA512}
+          releaseDate: '${DATE}'
+          YAML
+          echo "Generated latest-linux.yml for Axon-Setup.AppImage (v${VERSION})"
+
       - name: Upload AppImage to Release
         uses: softprops/action-gh-release@v2
         with:
-          files: release/Axon-Setup.AppImage
+          files: |
+            release/Axon-Setup.AppImage
+            latest-linux.yml
           fail_on_unmatched_files: true

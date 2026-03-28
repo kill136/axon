@@ -13,6 +13,7 @@
  */
 
 const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const { spawn } = require('child_process');
 const fs = require('fs');
@@ -20,6 +21,100 @@ const fs = require('fs');
 let mainWindow;
 let serverProcess;
 const SERVER_PORT = 3456;
+
+// ============================================================
+// Auto-Updater（VS Code / Cursor 风格无感更新）
+// ============================================================
+
+/** 向渲染进程发送更新状态 */
+function sendUpdateStatus(data) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('update-status', data);
+  }
+}
+
+function setupAutoUpdater() {
+  // 静默下载，不自动安装（等用户点"重启"）
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  // 开发模式下不检查更新
+  if (!app.isPackaged) {
+    return;
+  }
+
+  autoUpdater.on('checking-for-update', () => {
+    sendUpdateStatus({ status: 'checking' });
+  });
+
+  autoUpdater.on('update-available', (info) => {
+    sendUpdateStatus({
+      status: 'downloading',
+      version: info.version,
+      releaseDate: info.releaseDate,
+    });
+  });
+
+  autoUpdater.on('download-progress', (progress) => {
+    sendUpdateStatus({
+      status: 'downloading',
+      progress: {
+        percent: Math.round(progress.percent),
+        bytesPerSecond: progress.bytesPerSecond,
+        transferred: progress.transferred,
+        total: progress.total,
+      },
+    });
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    sendUpdateStatus({
+      status: 'ready',
+      version: info.version,
+      releaseDate: info.releaseDate,
+    });
+  });
+
+  autoUpdater.on('update-not-available', () => {
+    sendUpdateStatus({ status: 'idle' });
+  });
+
+  autoUpdater.on('error', (err) => {
+    sendUpdateStatus({
+      status: 'error',
+      error: err.message,
+    });
+  });
+
+  // 首次检查：启动后 10 秒
+  setTimeout(() => {
+    autoUpdater.checkForUpdates().catch(() => {});
+  }, 10_000);
+
+  // 定期检查：每 1 小时
+  setInterval(() => {
+    autoUpdater.checkForUpdates().catch(() => {});
+  }, 60 * 60 * 1000);
+}
+
+// IPC: 渲染进程请求检查更新
+ipcMain.handle('update-check', async () => {
+  if (!app.isPackaged) return { status: 'dev' };
+  try {
+    const result = await autoUpdater.checkForUpdates();
+    return { status: 'ok', version: result?.updateInfo?.version };
+  } catch (err) {
+    return { status: 'error', error: err.message };
+  }
+});
+
+// IPC: 渲染进程请求安装更新并重启
+ipcMain.on('update-install', () => {
+  // 先优雅关闭服务器子进程
+  killServer();
+  // 退出并安装
+  autoUpdater.quitAndInstall(false, true);
+});
 
 /** 向渲染进程发送启动日志 */
 function sendLog(msg) {
@@ -304,6 +399,7 @@ ipcMain.handle('open-external', async (_event, url) => {
 app.whenReady().then(async () => {
   createWindow();
   startServer();
+  setupAutoUpdater();
 
   const serverUrl = await waitForServer();
   if (serverUrl && mainWindow) {

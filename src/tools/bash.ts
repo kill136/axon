@@ -853,11 +853,12 @@ export class BashTool extends BaseTool<BashInput, BashResult> {
     const parts = [
       'Executes a given bash command and returns its output.',
       '',
-      'The working directory persists between commands, but shell state does not.',
+      'The working directory persists between commands, but shell state does not. The shell environment is initialized from the user\'s profile (bash or zsh).',
       '',
       'IMPORTANT: Avoid using this tool to run `find`, `grep`, `cat`, `head`, `tail`, `sed`, `awk`, or `echo` commands, unless explicitly instructed or after you have verified that a dedicated tool cannot accomplish your task. Instead, use the appropriate dedicated tool as this will provide a much better experience for the user:',
       '',
       ...toolAlternatives.map(s => `  - ${s}`),
+      `While the Bash tool can do similar things, it's better to use the built-in tools as they provide a better user experience and make it easier to review tool calls and give permission.`,
       '',
       '# Instructions',
       ...instructions.flatMap(item =>
@@ -884,15 +885,15 @@ export class BashTool extends BaseTool<BashInput, BashResult> {
         },
         description: {
           type: 'string',
-          description: 'Clear, concise description of what this command does in 5-10 words',
+          description: `Clear, concise description of what this command does in active voice. Never use words like "complex" or "risk" in the description - just describe what it does.\n\nFor simple commands (git, npm, standard CLI tools), keep it brief (5-10 words):\n- ls → "List files in current directory"\n- git status → "Show working tree status"\n- npm install → "Install package dependencies"\n\nFor commands that are harder to parse at a glance (piped commands, obscure flags, etc.), add enough context to clarify what it does:\n- find . -name "*.tmp" -exec rm {} \\; → "Find and delete all .tmp files recursively"\n- git reset --hard origin/main → "Discard all local changes and match remote main"\n- curl -s url | jq '.data[]' → "Fetch JSON from URL and extract data array elements"`,
         },
         run_in_background: {
           type: 'boolean',
-          description: 'Run command in the background',
+          description: 'Set to true to run this command in the background. Use TaskOutput to read the output later.',
         },
         dangerouslyDisableSandbox: {
           type: 'boolean',
-          description: 'Disable sandbox mode (dangerous)',
+          description: 'Set this to true to dangerously override sandbox mode and run commands without sandboxing.',
         },
         echoOutput: {
           type: 'boolean',

@@ -1,6 +1,6 @@
 {
   "name": "axon-code",
-  "version": "2.6.1",
+  "version": "2.6.2",
   "description": "AI coding assistant with Web IDE, multi-agent system, and self-evolution",
   "type": "module",
   "main": "electron/main.cjs",
@@ -98,11 +98,37 @@
       "node_modules/node-pty/**/*",
       "node_modules/sharp/**/*"
     ],
+    "publish": {
+      "provider": "github",
+      "owner": "kill136",
+      "repo": "axon"
+    },
     "win": {
       "target": [
-        "portable"
+        "nsis"
       ],
       "icon": "electron/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "differentialPackage": true
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "electron/icon.png",
+      "category": "public.app-category.developer-tools"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "icon": "electron/icon.png",
+      "category": "Development"
     }
   },
   "keywords": [
@@ -158,6 +184,7 @@
     "cron-parser": "^5.5.0",
     "diff": "^8.0.3",
     "discord.js": "^14.25.1",
+    "electron-updater": "^6.8.3",
     "eventsource": "^4.1.0",
     "express": "^5.2.1",
     "express-validator": "^7.3.1",

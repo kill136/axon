@@ -472,8 +472,7 @@ Assume this tool is able to read all files on the machine. If the User provides 
 Usage:
 - The file_path parameter must be an absolute path, not a relative path
 - By default, it reads up to 2000 lines starting from the beginning of the file
-- You can optionally specify a line offset and limit (especially handy for long files), but it's recommended to read the whole file by not providing these parameters
-- Any lines longer than 2000 characters will be truncated
+- When you already know which part of the file you need, only read that part. This can be important for larger files.
 - Results are returned using cat -n format, with line numbers starting at 1
 - This tool allows Axon to read images (eg PNG, JPG, etc). When reading an image file the contents are presented visually as Axon is a multimodal LLM.
 - This tool can read PDF files (.pdf). For large PDFs (more than 10 pages), you MUST provide the pages parameter to read specific page ranges (e.g., pages: "1-5"). Reading a large PDF without the pages parameter will fail. Maximum 20 pages per request.
@@ -1301,8 +1300,8 @@ export class WriteTool extends BaseTool<FileWriteInput, FileResult> {
 Usage:
 - This tool will overwrite the existing file if there is one at the provided path.
 - If this is an existing file, you MUST use the Read tool first to read the file's contents. This tool will fail if you did not read the file first.
-- ALWAYS prefer editing existing files in the codebase. NEVER write new files unless explicitly required.
-- NEVER proactively create documentation files (*.md) or README files. Only create documentation files if explicitly requested by the User.
+- Prefer the Edit tool for modifying existing files — it only sends the diff. Only use this tool to create new files or for complete rewrites.
+- NEVER create documentation files (*.md) or README files unless explicitly requested by the User.
 - Only use emojis if the user explicitly requests it. Avoid writing emojis to files unless asked.`;
 
   getInputSchema(): ToolDefinition['inputSchema'] {
@@ -1311,7 +1310,7 @@ Usage:
       properties: {
         file_path: {
           type: 'string',
-          description: 'The absolute path to the file to write',
+          description: 'The absolute path to the file to write (must be absolute, not relative)',
         },
         content: {
           type: 'string',
@@ -1501,38 +1500,15 @@ Usage:
         },
         old_string: {
           type: 'string',
-          description: 'The text to replace. Required for single-edit mode.',
+          description: 'The text to replace',
         },
         new_string: {
           type: 'string',
-          description: 'The text to replace it with (must be different from old_string). Required for single-edit mode.',
+          description: 'The text to replace it with (must be different from old_string)',
         },
         replace_all: {
           type: 'boolean',
-          description: 'Replace all occurrences (default false)',
-          default: false,
-        },
-        batch_edits: {
-          type: 'array',
-          description: 'Array of edit operations to perform atomically. If any edit fails, all changes are rolled back. When using batch_edits, omit top-level old_string/new_string.',
-          items: {
-            type: 'object',
-            properties: {
-              old_string: { type: 'string' },
-              new_string: { type: 'string' },
-              replace_all: { type: 'boolean', default: false },
-            },
-            required: ['old_string', 'new_string'],
-          },
-        },
-        show_diff: {
-          type: 'boolean',
-          description: 'Show unified diff preview of changes (default true)',
-          default: true,
-        },
-        require_confirmation: {
-          type: 'boolean',
-          description: 'Require user confirmation before applying changes (default false)',
+          description: 'Replace all occurrences of old_string (default false)',
           default: false,
         },
       },
