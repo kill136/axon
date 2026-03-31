@@ -1511,6 +1511,19 @@ Usage:
           description: 'Replace all occurrences of old_string (default false)',
           default: false,
         },
+        batch_edits: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              old_string: { type: 'string', description: 'The text to replace' },
+              new_string: { type: 'string', description: 'The replacement text' },
+              replace_all: { type: 'boolean', description: 'Replace all occurrences', default: false },
+            },
+            required: ['old_string', 'new_string'],
+          },
+          description: 'Array of edits to apply atomically',
+        },
       },
       required: ['file_path'],
     };

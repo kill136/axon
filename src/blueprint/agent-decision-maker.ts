@@ -14,7 +14,7 @@
  * - 复杂度评估：任务分解时已确定，不需要 AI 再评估
  */
 
-import { ClaudeClient, getDefaultClient } from '../core/client.js';
+import type { ConversationClient } from '../web/server/runtime/types.js';
 import { ConversationLoop } from '../core/loop.js';
 import type { SmartTask, TaskComplexity, Blueprint } from './types.js';
 
@@ -68,11 +68,11 @@ export interface ErrorDiagnosisDecision {
 // ============================================================================
 
 export class AgentDecisionMaker {
-  private client: ClaudeClient;
+  private client: ConversationClient;
   private debug: boolean;
 
-  constructor(client?: ClaudeClient, debug: boolean = false) {
-    this.client = client || getDefaultClient();
+  constructor(client: ConversationClient, debug: boolean = false) {
+    this.client = client;
     this.debug = debug;
   }
 
@@ -552,9 +552,16 @@ ${useTools ? '你可以使用工具来分析代码、检查文件，获取更准
 
 let defaultInstance: AgentDecisionMaker | null = null;
 
-export function getAgentDecisionMaker(debug: boolean = false): AgentDecisionMaker {
+export function getAgentDecisionMaker(client?: ConversationClient, debug: boolean = false): AgentDecisionMaker {
   if (!defaultInstance) {
-    defaultInstance = new AgentDecisionMaker(undefined, debug);
+    if (!client) {
+      throw new Error('[AgentDecisionMaker] No client provided and no existing instance. Call with a ConversationClient first.');
+    }
+    defaultInstance = new AgentDecisionMaker(client, debug);
   }
   return defaultInstance;
+}
+
+export function resetAgentDecisionMaker(): void {
+  defaultInstance = null;
 }

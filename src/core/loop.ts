@@ -2361,7 +2361,7 @@ export class ConversationLoop {
     let tools = toolRegistry.getDefinitions();
 
     // 应用工具过滤
-    if (options.allowedTools && options.allowedTools.length > 0) {
+    if (options.allowedTools && Array.isArray(options.allowedTools) && options.allowedTools.length > 0) {
       const allowed = new Set(options.allowedTools.flatMap(t => t.split(',')).map(t => t.trim()));
 
       // 如果包含通配符 '*'，允许所有工具
@@ -2521,8 +2521,16 @@ export class ConversationLoop {
       }
     }
 
-    // 重新创建客户端
-    this.client = new ClaudeClient(clientConfig);
+    // 重新创建客户端（保持原 provider 类型）
+    if (this.options.conversationClientConfig) {
+      this.client = createConversationClient({
+        ...this.options.conversationClientConfig,
+        apiKey: clientConfig.apiKey,
+        authToken: clientConfig.authToken,
+      });
+    } else {
+      this.client = new ClaudeClient(clientConfig);
+    }
     console.log('[Loop] Client reinitialized with new credentials');
     return true;
   }
@@ -2615,15 +2623,23 @@ export class ConversationLoop {
       if (apiKey) {
         // 重新创建客户端使用新的 API Key
         const resolvedModel = modelConfig.resolveAlias(this.options.model || 'sonnet');
-        this.client = new ClaudeClient({
-          model: resolvedModel,
-          maxTokens: this.options.maxTokens,
-          fallbackModel: this.options.fallbackModel,
-          thinking: this.options.thinking,
-          debug: this.options.debug,
-          timeout: 300000,  // 5分钟 API 请求超时
-          apiKey: apiKey,
-        });
+        if (this.options.conversationClientConfig) {
+          this.client = createConversationClient({
+            ...this.options.conversationClientConfig,
+            apiKey: apiKey,
+            model: this.options.conversationClientConfig.model || resolvedModel,
+          });
+        } else {
+          this.client = new ClaudeClient({
+            model: resolvedModel,
+            maxTokens: this.options.maxTokens,
+            fallbackModel: this.options.fallbackModel,
+            thinking: this.options.thinking,
+            debug: this.options.debug,
+            timeout: 300000,
+            apiKey: apiKey,
+          });
+        }
         return true;
       }
       return false;

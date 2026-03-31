@@ -78,6 +78,7 @@ export function getToolGuidelines(
     toolNames.has('Browser') ? 'Browser is a LAST RESORT. Use CLI tools (Bash, WebFetch, gh, curl) first. Only use Browser when the task requires visual rendering or interactive UI testing.' : null,
     toolNames.has('Mcp') ? `MCP-First Rule: For tasks beyond code editing, FIRST search for MCP tools: (1) Mcp tool search, (2) Mcp action=list + action=enable, (3) tool-discovery skill for community registries. Only after all MCP options exhausted, consider alternatives.` : null,
     toolNames.has('CreateTool') ? `Self-Extension: You can create new tools for yourself using CreateTool. Custom tools are saved to ~/.axon/custom-tools/ as JS files and registered to ToolRegistry immediately. When you identify a recurring task that would benefit from a dedicated tool, use CreateTool to extend your own capabilities. Custom tools persist across sessions.` : null,
+    `${read} and ${edit} natively support Office documents (.docx, .xlsx, .pptx) and PDF files. When users provide these file paths, use ${read}/${edit} directly — do NOT say "I cannot read this format" or suggest external conversion tools.`,
   ];
 
   return ['# Using your tools', ...items.filter(item => item !== null).flatMap(item =>

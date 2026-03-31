@@ -202,6 +202,9 @@ const swarm = {
   'projectSelector.recentProjects': 'Recent',
   'projectSelector.removeFromList': 'Remove from list',
   'projectSelector.removeProject': 'Remove {{name}} from list',
+
+  // Blueprint Detail Panel
+  'blueprintDetail.architectureDiagrams': 'Architecture Diagrams',
 } as const;
 
 export type SwarmKeys = keyof typeof swarm;

@@ -80,6 +80,11 @@ function TerminalInstance({
   // 使用 ref 追踪最新的 terminalId（避免 onData 闭包问题）
   const terminalIdRef = useRef<string | null>(terminalId);
   terminalIdRef.current = terminalId;
+  // 跟踪可见状态，供 ResizeObserver 等闭包读取
+  const activeRef = useRef(active);
+  activeRef.current = active;
+  const panelVisibleRef = useRef(panelVisible);
+  panelVisibleRef.current = panelVisible;
 
   // 初始化 xterm（组件挂载时执行一次）
   useEffect(() => {
@@ -103,6 +108,7 @@ function TerminalInstance({
 
     // 初始 fit：延迟执行，等容器有真实尺寸
     const fitWithRetry = () => {
+      if (!activeRef.current || !panelVisibleRef.current) return;
       try {
         fitAddon.fit();
       } catch {
@@ -115,9 +121,11 @@ function TerminalInstance({
     const t2 = setTimeout(fitWithRetry, 300);
 
     // 使用 ResizeObserver 监听容器尺寸变化，自动 fit
+    // 仅在 tab 可见时 fit，避免 display:none 下得到 0 尺寸导致 PTY resize 错误
     let resizeObserver: ResizeObserver | null = null;
     if (typeof ResizeObserver !== 'undefined' && containerRef.current) {
       resizeObserver = new ResizeObserver(() => {
+        if (!activeRef.current || !panelVisibleRef.current) return;
         try {
           fitAddon.fit();
         } catch {
@@ -138,49 +146,44 @@ function TerminalInstance({
       }
     });
 
-    // 剪贴板图片粘贴：保存图片为临时文件，将路径写入终端
-    const container = containerRef.current;
-    const handlePaste = (e: ClipboardEvent) => {
-      if (!e.clipboardData) return;
-      const items = Array.from(e.clipboardData.items);
-      const imageItem = items.find(item => item.type.startsWith('image/'));
-      if (!imageItem) return;
-
-      e.preventDefault();
-      e.stopPropagation();
-      const blob = imageItem.getAsFile();
-      if (!blob) return;
-
-      const tid = terminalIdRef.current;
-      if (!tid) return;
-
-      const reader = new FileReader();
-      reader.onload = () => {
-        const dataUrl = reader.result as string;
-        const base64 = dataUrl.split(',')[1];
-        send({
-          type: 'terminal:paste-image',
-          payload: {
-            terminalId: tid,
-            data: base64,
-            mimeType: imageItem.type,
-          },
-        });
-      };
-      reader.readAsDataURL(blob);
-    };
-    container?.addEventListener('paste', handlePaste);
+    // 阻止 xterm 将 Ctrl+V 作为 \x16 控制字符发送到 PTY
+    // 否则 Claude Code 等程序会收到 \x16 并尝试读取（不存在的）服务器系统剪贴板
+    // 返回 false 仅阻止 xterm 的键盘处理，不影响浏览器的 paste 事件触发
+    term.attachCustomKeyEventHandler((event: KeyboardEvent) => {
+      if (event.type === 'keydown' && (event.ctrlKey || event.metaKey) && event.key === 'v') {
+        return false;
+      }
+      return true;
+    });
 
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
-      container?.removeEventListener('paste', handlePaste);
       resizeObserver?.disconnect();
       term.dispose();
       xtermRef.current = null;
       fitAddonRef.current = null;
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 注册全局图片粘贴回调（供 index.html 中的 inline script 调用）
+  useEffect(() => {
+    if (!active) return;
+    const handler = (base64: string, mimeType: string) => {
+      const tid = terminalIdRef.current;
+      if (!tid) return;
+      send({
+        type: 'terminal:paste-image',
+        payload: { terminalId: tid, data: base64, mimeType },
+      });
+    };
+    (window as any).__axonTerminalPasteImage = handler;
+    return () => {
+      if ((window as any).__axonTerminalPasteImage === handler) {
+        (window as any).__axonTerminalPasteImage = null;
+      }
+    };
+  }, [active, send]);
 
   // 当变为活跃或面板变为可见时 fit
   useEffect(() => {
@@ -190,17 +193,20 @@ function TerminalInstance({
         requestAnimationFrame(() => {
           try {
             fitAddonRef.current?.fit();
-            // 同步大小到服务端
+            // 同步大小到服务端（仅在有效尺寸时）
             const tid = terminalIdRef.current;
             if (xtermRef.current && tid) {
-              send({
-                type: 'terminal:resize',
-                payload: {
-                  terminalId: tid,
-                  cols: xtermRef.current.cols,
-                  rows: xtermRef.current.rows,
-                },
-              });
+              const { cols, rows } = xtermRef.current;
+              if (cols > 0 && rows > 0) {
+                send({
+                  type: 'terminal:resize',
+                  payload: {
+                    terminalId: tid,
+                    cols,
+                    rows,
+                  },
+                });
+              }
             }
           } catch {}
         });
@@ -273,6 +279,13 @@ export function TerminalPanel({
   const counterRef = useRef(0);
   // terminalId -> tabId 的同步映射（不依赖 React state 的异步更新）
   const terminalIdMapRef = useRef<Map<string, string>>(new Map());
+  // 用 ref 追踪 activeTabId 和 onClose，避免消息处理 useEffect 频繁重建
+  const activeTabIdRef = useRef<string | null>(null);
+  activeTabIdRef.current = activeTabId;
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  // 输出缓冲：DOM 元素尚未挂载时暂存 terminal:output 数据，挂载后刷入
+  const pendingOutputRef = useRef<Map<string, string[]>>(new Map());
 
   // 查找某个 tab 对应的 xterm 实例 DOM
   const findInstanceEl = useCallback((tabId: string): HTMLElement | null => {
@@ -317,7 +330,7 @@ export function TerminalPanel({
       const newTabs = prev.filter(t => t.id !== tabId);
 
       // 如果关闭的是活跃 tab，切换到最后一个
-      if (tabId === activeTabId) {
+      if (tabId === activeTabIdRef.current) {
         const newActive = newTabs.length > 0 ? newTabs[newTabs.length - 1].id : null;
         // 用 setTimeout 避免 setState 嵌套
         setTimeout(() => setActiveTabId(newActive), 0);
@@ -325,12 +338,12 @@ export function TerminalPanel({
 
       // 如果没有 tab 了，关闭面板
       if (newTabs.length === 0) {
-        setTimeout(() => onClose(), 0);
+        setTimeout(() => onCloseRef.current(), 0);
       }
 
       return newTabs;
     });
-  }, [activeTabId, send, onClose]);
+  }, [send]);
 
   // 重启当前终端
   const restartTerminal = useCallback(() => {
@@ -392,11 +405,17 @@ export function TerminalPanel({
                 : t
             ));
 
-            // fit + resize（多次重试确保成功）
-            const fitAndResize = () => {
+            // fit + resize + 刷入缓冲数据（多次重试确保成功）
+            const fitResizeAndFlush = () => {
               const el = findInstanceEl(pendingTabId);
-              if (el) {
+              if (el && (el as any).__xtermWrite) {
                 (el as any).__xtermFit?.();
+                // 刷入在 DOM 挂载前缓冲的输出
+                const buffered = pendingOutputRef.current.get(serverTerminalId);
+                if (buffered) {
+                  for (const chunk of buffered) (el as any).__xtermWrite(chunk);
+                  pendingOutputRef.current.delete(serverTerminalId);
+                }
                 const size = (el as any).__xtermGetSize?.();
                 if (size && size.cols > 0 && size.rows > 0) {
                   send({
@@ -410,10 +429,10 @@ export function TerminalPanel({
             };
             // 多次尝试，兼容慢 layout 的浏览器/设备
             setTimeout(() => {
-              if (!fitAndResize()) {
+              if (!fitResizeAndFlush()) {
                 setTimeout(() => {
-                  if (!fitAndResize()) {
-                    setTimeout(fitAndResize, 500);
+                  if (!fitResizeAndFlush()) {
+                    setTimeout(fitResizeAndFlush, 500);
                   }
                 }, 200);
               }
@@ -429,12 +448,28 @@ export function TerminalPanel({
 
           // 使用同步映射查找 tabId（不依赖 React state 的异步更新）
           const container = instancesContainerRef.current;
-          if (container) {
-            const tabId = terminalIdMapRef.current.get(tid);
-            if (tabId) {
-              const el = container.querySelector(`[data-tab-id="${tabId}"]`);
-              if (el) (el as any).__xtermWrite?.(data);
+          const tabId = terminalIdMapRef.current.get(tid);
+          if (tabId && container) {
+            const el = container.querySelector(`[data-tab-id="${tabId}"]`);
+            if (el && (el as any).__xtermWrite) {
+              // DOM 已挂载：先刷入缓冲数据，再写入当前数据
+              const buffered = pendingOutputRef.current.get(tid);
+              if (buffered) {
+                for (const chunk of buffered) (el as any).__xtermWrite(chunk);
+                pendingOutputRef.current.delete(tid);
+              }
+              (el as any).__xtermWrite(data);
+            } else {
+              // DOM 尚未挂载：缓冲输出
+              const buf = pendingOutputRef.current.get(tid) || [];
+              buf.push(data);
+              pendingOutputRef.current.set(tid, buf);
             }
+          } else {
+            // tabId 映射还不存在：缓冲输出
+            const buf = pendingOutputRef.current.get(tid) || [];
+            buf.push(data);
+            pendingOutputRef.current.set(tid, buf);
           }
           break;
         }
@@ -452,8 +487,9 @@ export function TerminalPanel({
               );
             }
           }
-          // 清理同步映射
+          // 清理同步映射和缓冲
           terminalIdMapRef.current.delete(tid);
+          pendingOutputRef.current.delete(tid);
           setTabs(prev => prev.map(t =>
             t.terminalId === tid ? { ...t, isReady: false, terminalId: null } : t
           ));
@@ -539,14 +575,14 @@ export function TerminalPanel({
               const newTabs = prev.filter(t => !(t.isTask && t.taskId === taskId));
 
               // 如果关闭的是活跃 tab，切换到最后一个
-              if (taskTab.id === activeTabId) {
+              if (taskTab.id === activeTabIdRef.current) {
                 const newActive = newTabs.length > 0 ? newTabs[newTabs.length - 1].id : null;
                 setTimeout(() => setActiveTabId(newActive), 0);
               }
 
               // 如果没有 tab 了，关闭面板
               if (newTabs.length === 0) {
-                setTimeout(() => onClose(), 0);
+                setTimeout(() => onCloseRef.current(), 0);
               }
 
               return newTabs;
@@ -558,7 +594,7 @@ export function TerminalPanel({
     });
 
     return unsubscribe;
-  }, [addMessageHandler, send, findInstanceEl, activeTabId, onClose]);
+  }, [addMessageHandler, send, findInstanceEl]);
 
   // 窗口 resize 时 fit 活跃终端
   useEffect(() => {

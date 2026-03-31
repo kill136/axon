@@ -1268,6 +1268,92 @@
   border-color: var(--accent-primary);
 }
 
+/* Execution History */
+.executionHistory {
+  border-bottom: 1px solid var(--border-color);
+  font-size: 12px;
+}
+
+.executionHistoryToggle {
+  width: 100%;
+  padding: 6px 12px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  text-align: left;
+  font-size: 12px;
+}
+
+.executionHistoryToggle:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.executionHistoryContent {
+  padding: 8px 12px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.executionHistoryTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.executionHistoryTable th {
+  text-align: left;
+  padding: 3px 6px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-color);
+  font-weight: 500;
+}
+
+.executionHistoryTable td {
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--border-subtle, rgba(128,128,128,0.1));
+}
+
+.executionHistoryTable tr[data-status="failed"] td {
+  color: var(--error-color, #e74c3c);
+}
+
+.errorCell {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+
+.historyLoading,
+.historyEmpty,
+.historyError {
+  padding: 8px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.historyError {
+  color: var(--error-color, #e74c3c);
+}
+
+.refreshButton {
+  margin-top: 6px;
+  padding: 3px 10px;
+  font-size: 11px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.refreshButton:hover {
+  background: var(--bg-hover);
+}
+
 .planDetailsPanel {
   padding: 12px;
   background: var(--bg-tertiary);

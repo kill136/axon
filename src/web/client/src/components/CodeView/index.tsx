@@ -203,6 +203,9 @@ export const CodeView = forwardRef<CodeViewRef, CodeViewProps>(({
   // 全局快捷键
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // CodeView 不可见时不处理快捷键，避免与 App 全局快捷键冲突
+      if (containerRef.current && containerRef.current.offsetParent === null) return;
+
       // Ctrl+Shift+F: 切换到搜索面板
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'F') {
         e.preventDefault();

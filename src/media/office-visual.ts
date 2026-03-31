@@ -454,7 +454,7 @@ export interface CompressedImage {
 export async function compressExtractedImages(
   images: ExtractedImage[],
   maxDimension = 2000,
-  quality = 80,
+  quality = 92,
 ): Promise<CompressedImage[]> {
   let sharp: ((input?: string | Buffer) => any) | null = null;
   try {
@@ -464,7 +464,7 @@ export async function compressExtractedImages(
     // sharp 不可用，返回原始 base64
     return images.map(img => ({
       base64: img.data.toString('base64'),
-      mimeType: 'image/png' as const,
+      mimeType: (img.mimeType === 'image/png' ? 'image/png' : 'image/jpeg') as 'image/png' | 'image/jpeg',
       size: img.data.length,
       zipPath: img.zipPath,
       slideIndex: img.slideIndex,
@@ -482,6 +482,7 @@ export async function compressExtractedImages(
 
       const sharpInstance = sharp(img.data);
       const metadata = await sharpInstance.metadata();
+      const isPng = img.mimeType === 'image/png' || img.zipPath.endsWith('.png');
 
       // 只在超过最大尺寸时缩放
       let pipeline = sharp(img.data);
@@ -494,13 +495,20 @@ export async function compressExtractedImages(
         }
       }
 
-      const outputBuffer = await pipeline
-        .jpeg({ quality, mozjpeg: true })
-        .toBuffer();
+      // PNG 保持无损格式，避免科研/高精度图片 JPEG 压缩伪影
+      let outputBuffer: Buffer;
+      let outputMime: 'image/png' | 'image/jpeg';
+      if (isPng) {
+        outputBuffer = await pipeline.png({ compressionLevel: 6 }).toBuffer();
+        outputMime = 'image/png';
+      } else {
+        outputBuffer = await pipeline.jpeg({ quality, mozjpeg: true }).toBuffer();
+        outputMime = 'image/jpeg';
+      }
 
       results.push({
         base64: outputBuffer.toString('base64'),
-        mimeType: 'image/jpeg',
+        mimeType: outputMime,
         size: outputBuffer.length,
         zipPath: img.zipPath,
         slideIndex: img.slideIndex,

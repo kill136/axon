@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import styles from './BlueprintDetailPanel.module.css';
 import { FadeIn } from '../common/FadeIn';
 import { blueprintApi } from '../../../api/blueprint';
 import { useLanguage } from '../../../i18n';
+import { sanitizeSvg } from '../../../utils/sanitize';
 
 /**
  * 业务流程类型
@@ -66,6 +67,18 @@ interface DesignImage {
 }
 
 /**
+ * 架构图类型
+ */
+interface ArchitectureDiagram {
+  type: 'dataflow' | 'modulerelation' | 'full';
+  title: string;
+  description?: string;
+  mermaidCode: string;
+  nodePathMap?: Record<string, { path: string; type: 'file' | 'folder'; line?: number }>;
+  generatedAt: string;
+}
+
+/**
  * 技术栈类型
  */
 interface TechStack {
@@ -95,6 +108,7 @@ interface BlueprintDetail {
   techStack?: TechStack;
   constraints?: string[];
   brief?: string;
+  architectureDiagrams?: ArchitectureDiagram[];
   createdAt: string;
   updatedAt: string;
   approvedAt?: string;
@@ -138,6 +152,7 @@ export const BlueprintDetailPanel: React.FC<BlueprintDetailPanelProps> = ({
     techStack: true,
     constraints: true,
     brief: false,          // 项目简介默认折叠（内容较长）
+    architectureDiagrams: true,
     asIsProcesses: true,
     toBeProcesses: true,
     modules: true,
@@ -504,6 +519,45 @@ export const BlueprintDetailPanel: React.FC<BlueprintDetailPanelProps> = ({
               {expandedSections.brief && (
                 <div className={styles.sectionContent}>
                   <pre className={styles.briefContent}>{blueprint.brief}</pre>
+                </div>
+              )}
+            </section>
+          </FadeIn>
+        )}
+
+        {/* 架构图 */}
+        {blueprint.architectureDiagrams && blueprint.architectureDiagrams.length > 0 && (
+          <FadeIn delay={275}>
+            <section className={styles.section}>
+              <button
+                className={styles.sectionHeader}
+                onClick={() => toggleSection('architectureDiagrams')}
+              >
+                <span className={styles.sectionIcon}>🏗️</span>
+                <h3 className={styles.sectionTitle}>
+                  {t('blueprintDetail.architectureDiagrams')} ({blueprint.architectureDiagrams.length})
+                </h3>
+                <span className={styles.expandIcon}>
+                  {expandedSections.architectureDiagrams ? '▼' : '▶'}
+                </span>
+              </button>
+              {expandedSections.architectureDiagrams && (
+                <div className={styles.sectionContent}>
+                  {blueprint.architectureDiagrams.map((diagram, idx) => (
+                    <div key={idx} className={styles.diagramCard}>
+                      <div className={styles.diagramHeader}>
+                        <h4 className={styles.diagramTitle}>{diagram.title}</h4>
+                        <span className={styles.moduleType}>{diagram.type}</span>
+                      </div>
+                      {diagram.description && (
+                        <p className={styles.diagramDesc}>{diagram.description}</p>
+                      )}
+                      <MermaidRenderer
+                        mermaidCode={diagram.mermaidCode}
+                        diagramId={`blueprint-diagram-${idx}`}
+                      />
+                    </div>
+                  ))}
                 </div>
               )}
             </section>
@@ -880,3 +934,131 @@ export default BlueprintDetailPanel;
 
 // 同时导出内容组件
 export { BlueprintDetailContent } from './BlueprintDetailContent';
+
+/**
+ * 轻量 Mermaid 渲染器 — 用于蓝图详情面板内嵌的架构图
+ * 复用 ArchitectureFlowGraph 的 Mermaid CDN 加载逻辑，但不需要外部状态管理
+ */
+const MermaidRenderer: React.FC<{ mermaidCode: string; diagramId: string }> = ({
+  mermaidCode,
+  diagramId,
+}) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [scale, setScale] = useState(1);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartRef = useRef({ x: 0, y: 0, posX: 0, posY: 0 });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const render = async () => {
+      if (!containerRef.current || !mermaidCode) return;
+
+      // 加载 Mermaid
+      if (!(window as any).mermaid) {
+        await new Promise<void>((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js';
+          script.async = true;
+          script.onload = () => {
+            (window as any).mermaid.initialize({
+              startOnLoad: false,
+              theme: 'dark',
+              themeVariables: {
+                primaryColor: '#7c3aed',
+                primaryTextColor: '#fff',
+                primaryBorderColor: '#6d28d9',
+                lineColor: '#a78bfa',
+                secondaryColor: '#1e1b4b',
+                tertiaryColor: '#312e81',
+                background: '#0f0f23',
+                mainBkg: '#1e1b4b',
+                secondBkg: '#312e81',
+                fontFamily: 'JetBrains Mono, monospace',
+              },
+              flowchart: { htmlLabels: true, curve: 'basis' },
+            });
+            resolve();
+          };
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      if (cancelled) return;
+
+      try {
+        const mermaid = (window as any).mermaid;
+        const id = `mmd-${diagramId}-${Date.now()}`;
+        const { svg } = await mermaid.render(id, mermaidCode);
+        if (!cancelled && containerRef.current) {
+          containerRef.current.innerHTML = sanitizeSvg(svg);
+          const svgEl = containerRef.current.querySelector('svg');
+          if (svgEl) {
+            svgEl.style.maxWidth = '100%';
+            svgEl.style.height = 'auto';
+          }
+        }
+      } catch (err: any) {
+        if (!cancelled) setError(err.message || 'Mermaid render failed');
+      }
+    };
+
+    render();
+    return () => { cancelled = true; };
+  }, [mermaidCode, diagramId]);
+
+  // 滚轮缩放
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    setScale(s => Math.max(0.1, s * delta));
+  }, []);
+
+  // 拖拽
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    setIsDragging(true);
+    dragStartRef.current = { x: e.clientX, y: e.clientY, posX: position.x, posY: position.y };
+  }, [position]);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!isDragging) return;
+    const dx = e.clientX - dragStartRef.current.x;
+    const dy = e.clientY - dragStartRef.current.y;
+    setPosition({ x: dragStartRef.current.posX + dx, y: dragStartRef.current.posY + dy });
+  }, [isDragging]);
+
+  const handleMouseUp = useCallback(() => setIsDragging(false), []);
+
+  if (error) {
+    return <div className={styles.diagramError}>{error}</div>;
+  }
+
+  return (
+    <div
+      className={styles.diagramContainer}
+      onWheel={handleWheel}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
+    >
+      <div className={styles.diagramControls}>
+        <button onClick={() => setScale(s => s * 1.2)} title="Zoom in">+</button>
+        <button onClick={() => setScale(s => Math.max(0.1, s / 1.2))} title="Zoom out">-</button>
+        <button onClick={() => { setScale(1); setPosition({ x: 0, y: 0 }); }} title="Reset">↺</button>
+      </div>
+      <div
+        ref={containerRef}
+        style={{
+          transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
+          transformOrigin: 'center center',
+          cursor: isDragging ? 'grabbing' : 'grab',
+          transition: isDragging ? 'none' : 'transform 0.1s ease',
+        }}
+      />
+    </div>
+  );
+};

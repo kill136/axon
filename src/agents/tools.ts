@@ -96,7 +96,6 @@ export const AGENT_TOOL_CONFIGS: Record<string, AgentToolConfig> = {
     allowedTools: '*',
     // Chat Tab (planner 主 agent) 排除不属于当前角色的工具
     disallowedTools: [
-      'Blueprint',        // CLI 模式工具，Chat Tab 使用 GenerateBlueprint
       'UpdateTaskPlan',   // LeadAgent 专用 - 更新执行计划中的任务状态
       'DispatchWorker',   // LeadAgent 专用 - 派发任务给 Worker 执行
     ],

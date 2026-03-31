@@ -1561,6 +1561,27 @@ Important:
       };
     }
 
+    // 检查 skill 安装状态，对 degraded/failed 给出警告
+    try {
+      const { readSkillInstallState } = await import('../skills/installer.js');
+      const installState = readSkillInstallState(skill.baseDir);
+      if (installState) {
+        if (installState.status === 'failed') {
+          return {
+            success: false,
+            error: `Skill "${skill.skillName}" dependencies failed to install. Run \`/skill-hub install ${skill.skillName}\` to retry.\nErrors: ${installState.errors.join('; ')}`,
+          };
+        }
+        if (installState.status === 'degraded') {
+          const missingDeps = installState.runtimes
+            .flatMap(r => r.details.filter(d => d.status !== 'ok').map(d => d.name));
+          console.warn(`⚠️  Skill "${skill.skillName}" has missing dependencies: ${missingDeps.join(', ')}. Some features may not work.`);
+        }
+      }
+    } catch {
+      // installer 模块加载失败不阻断 skill 执行
+    }
+
     // 构建输出内容
     let skillContent = skill.markdownContent;
 
@@ -1700,10 +1721,15 @@ Important:
           let output = `Installed Skills (${skills.length}):\n\n`;
           for (const skill of skills) {
             const sourceIcon = skill.source === 'hub' ? '[hub]' : '[local]';
-            output += `${sourceIcon} **${skill.name}** (${skill.id})\n`;
+            const statusIcon = !skill.installStatus || skill.installStatus === 'installed' || skill.installStatus === 'installed_no_manifest'
+              ? '✅' : skill.installStatus === 'degraded' ? '⚠️' : '❌';
+            output += `${sourceIcon} ${statusIcon} **${skill.name}** (${skill.id})\n`;
             output += `   ${skill.description}\n`;
             if (skill.version) output += `   Version: ${skill.version}`;
             if (skill.author) output += ` | Author: ${skill.author}`;
+            if (skill.installStatus && skill.installStatus !== 'installed' && skill.installStatus !== 'installed_no_manifest') {
+              output += ` | Status: ${skill.installStatus}`;
+            }
             output += `\n   Path: ${skill.path}\n\n`;
           }
           return { success: true, output };

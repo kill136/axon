@@ -534,20 +534,41 @@ function TodoWriteContent({ input }: { input: any }) {
 }
 
 /**
- * 渲染 Read 工具内容 - 支持 Click to expand
+ * 渲染 Read 工具内容 - 支持 Click to expand + 图片渲染（Office/PDF 文档）
  */
 function ReadToolContent({ result }: { result?: any }) {
   const output = getToolResultText(result);
   const lineCount = output ? output.split('\n').length : 0;
+  const images = result?.data?.images as Array<{ type: string; source: { type: string; media_type: string; data: string } }> | undefined;
+  const hasImages = images && images.length > 0;
 
   return (
-    <HiddenOutputToolContent
-      output={output}
-      lineCount={lineCount}
-      containerClassName="cli-read-content"
-      infoClassName="cli-read-info"
-      previewClassName="cli-read-preview"
-    />
+    <>
+      <HiddenOutputToolContent
+        output={output}
+        lineCount={lineCount}
+        containerClassName="cli-read-content"
+        infoClassName="cli-read-info"
+        previewClassName="cli-read-preview"
+      />
+      {hasImages && (
+        <div className="cli-read-images" style={{ marginTop: '8px' }}>
+          {images.map((img, i) => (
+            <div key={i} style={{ marginTop: i > 0 ? '8px' : 0 }}>
+              <img
+                src={`data:${img.source.media_type};base64,${img.source.data}`}
+                alt={`Document image ${i + 1}`}
+                style={{
+                  maxWidth: '100%',
+                  borderRadius: '6px',
+                  border: '1px solid var(--border-color, #333)',
+                }}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+    </>
   );
 }
 

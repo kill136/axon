@@ -21,7 +21,7 @@ import type {
   MethodSignature,
   ParameterInfo
 } from '../../../map/types.js';
-import Anthropic from '@anthropic-ai/sdk';
+import type { ConversationClient } from '../runtime/types.js';
 
 // ============================================================================
 // TypeScript LSP 分析器
@@ -447,10 +447,10 @@ export class TypeScriptLSPAnalyzer {
 // ============================================================================
 
 export class AICallGraphAnalyzer {
-  private client: Anthropic;
+  private client: ConversationClient;
 
-  constructor(apiKey: string) {
-    this.client = new Anthropic({ apiKey });
+  constructor(client: ConversationClient) {
+    this.client = client;
   }
 
   /**
@@ -503,16 +503,14 @@ Notes:
 `;
 
     try {
-      const response = await this.client.messages.create({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 2000,
-        messages: [{
-          role: 'user',
-          content: prompt
-        }]
-      });
+      const response = await this.client.createMessage(
+        [{ role: 'user', content: prompt }],
+        undefined,
+        'You are a code analysis expert. Analyze TypeScript code and return structured JSON results.'
+      );
 
-      const text = response.content[0].type === 'text' ? response.content[0].text : '';
+      const textBlock = response.content.find((block: any) => block.type === 'text') as { type: 'text'; text: string } | undefined;
+      const text = textBlock?.text || '';
 
       // 提取 JSON
       const jsonMatch = text.match(/```json\n?([\s\S]*?)\n?```/) || text.match(/\{[\s\S]*\}/);

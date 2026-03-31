@@ -49,6 +49,14 @@ export interface GenerateBlueprintInput {
     category: string;
     description: string;
   }>;
+  // 架构图（Mermaid 代码）
+  architectureDiagrams?: Array<{
+    type: 'dataflow' | 'modulerelation' | 'full';
+    title: string;
+    description?: string;
+    mermaidCode: string;
+    nodePathMap?: Record<string, { path: string; type: 'file' | 'folder'; line?: number }>;
+  }>;
 }
 
 /**
@@ -79,6 +87,7 @@ When the user requests analysis of an existing codebase, first use Glob/Grep/Rea
 - modules: Identified system modules (for panoramic blueprint)
 - businessProcesses: Identified business processes (for panoramic blueprint)
 - nfrs: Non-functional requirements (for panoramic blueprint)
+- architectureDiagrams: Mermaid architecture diagrams (for panoramic blueprint). Generate 1-3 diagrams covering data flow, module relationships, or full architecture. Use Mermaid flowchart syntax (graph TD/LR).
 
 ## Notes
 - Requirements blueprint: Ensure user requirements are fully understood before calling
@@ -166,6 +175,24 @@ When the user requests analysis of an existing codebase, first use Glob/Grep/Rea
             required: ['name', 'category', 'description'],
           },
           description: 'For panoramic blueprint: non-functional requirements list',
+        },
+        architectureDiagrams: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              type: { type: 'string', description: 'dataflow|modulerelation|full' },
+              title: { type: 'string', description: 'Diagram title' },
+              description: { type: 'string', description: 'Diagram description' },
+              mermaidCode: { type: 'string', description: 'Mermaid code (flowchart, sequence, etc.)' },
+              nodePathMap: {
+                type: 'object',
+                description: 'Map node IDs to file paths for click-to-navigate. Keys are node IDs used in Mermaid code, values are {path, type, line?}',
+              },
+            },
+            required: ['type', 'title', 'mermaidCode'],
+          },
+          description: 'For panoramic blueprint: Mermaid architecture diagrams (data flow, module relations, full architecture)',
         },
       },
       required: ['name', 'description', 'brief'],

@@ -1,28 +1,39 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { CronCreateTool, CronDeleteTool, CronListTool } from './cron.js';
-import { loadCronJobs } from '../automation/cron-storage.js';
 
-let testCronPath: string;
+// 必须用 vi.mock 而非 vi.spyOn，因为 cron-storage.ts 使用 `import * as os`
+// 与本文件的 `import os` 是不同引用，spyOn 无法跨模块生效
+const realTmpdir = os.tmpdir();
+let testCronPath: string = '';
+
+vi.mock('os', async (importOriginal) => {
+  const orig = await importOriginal<typeof import('os')>();
+  return {
+    ...orig,
+    default: {
+      ...orig,
+      homedir: () => testCronPath || orig.homedir(),
+    },
+    homedir: () => testCronPath || orig.homedir(),
+  };
+});
+
+// 延迟导入，确保 mock 生效
+const { CronCreateTool, CronDeleteTool, CronListTool } = await import('./cron.js');
+const { loadCronJobs } = await import('../automation/cron-storage.js');
 
 beforeEach(() => {
-  testCronPath = path.join(os.tmpdir(), `axon-cron-tools-test-${Date.now()}`);
+  testCronPath = path.join(realTmpdir, `axon-cron-tools-test-${Date.now()}`);
   fs.mkdirSync(testCronPath, { recursive: true });
-
-  // Override home directory for this test
-  Object.defineProperty(os, 'homedir', {
-    value: () => testCronPath,
-    writable: true,
-    configurable: true,
-  });
 });
 
 afterEach(() => {
-  if (fs.existsSync(testCronPath)) {
+  if (testCronPath && fs.existsSync(testCronPath)) {
     fs.rmSync(testCronPath, { recursive: true });
   }
+  testCronPath = '';
 });
 
 describe('CronCreateTool', () => {

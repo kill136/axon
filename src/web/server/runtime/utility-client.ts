@@ -8,19 +8,21 @@ import type { ConversationClient } from './types.js';
 
 export function getUtilityModel(preferredAnthropicModel: string = 'haiku'): string {
   const runtimeBackend = webAuth.getRuntimeBackend();
+  const preferAnthropic = shouldPreferAnthropicUtilityModelForBackend(runtimeBackend);
   const selection = resolveRuntimeSelection({
     runtimeBackend,
-    model:
-      shouldPreferAnthropicUtilityModelForBackend(runtimeBackend)
-        ? preferredAnthropicModel
-        : undefined,
+    model: preferAnthropic ? preferredAnthropicModel : undefined,
     defaultModelByBackend: webAuth.getDefaultModelByBackend(),
     customModelCatalogByBackend: webAuth.getCustomModelCatalogByBackend(),
     codexModelName: webAuth.getCodexModelName(),
     customModelName: webAuth.getCustomModelName(),
   });
 
-  if (selection.provider === 'anthropic') {
+  // 只有明确偏好 Anthropic utility model 的后端（claude-subscription, claude-compatible-api）
+  // 才使用 Claude 模型别名。对于 axon-cloud、openai-compatible-api 等后端，
+  // 即使 model-routed 推断出 provider 为 anthropic，也应使用后端的默认模型，
+  // 避免向不支持 Claude 模型的代理发送 claude-haiku-4-5-20251001 等模型 ID。
+  if (preferAnthropic && selection.provider === 'anthropic') {
     return normalizeWebRuntimeModelForBackend(runtimeBackend, preferredAnthropicModel, selection.customModelName);
   }
 

@@ -681,7 +681,7 @@ function AppContent({
       <div style={{ display: codeViewActive ? 'none' : 'flex', flex: 1, minHeight: 0, minWidth: 0, flexDirection: 'column' }}>
         <div className="main-content" style={{ flex: 1, flexDirection: showSplitLayout ? 'row' : 'column' }}>
           {/* 左侧：聊天 + 输入 + 终端 */}
-          <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, minHeight: 0 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, minHeight: 0, position: 'relative' }}>
             <div className="chat-panel" style={{ flex: 1, minHeight: 0 }}>
               <div className={`chat-container ${!isInputVisible ? 'input-hidden' : ''}`} ref={chatContainerRef}>
               {visibleMessages.length === 0 && messages.length === 0 ? (

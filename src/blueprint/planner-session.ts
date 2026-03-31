@@ -12,7 +12,7 @@
 
 import { EventEmitter } from 'events';
 import type { Message, ToolDefinition } from '../types/index.js';
-import { ClaudeClient, getDefaultClient } from '../core/client.js';
+import type { ConversationClient } from '../web/server/runtime/types.js';
 
 // ============================================================================
 // 类型定义
@@ -62,13 +62,13 @@ const PLANNER_SYSTEM_PROMPT = `你是一个专业的需求分析和项目规划�
 // ============================================================================
 
 export class PlannerSession extends EventEmitter {
-  private client: ClaudeClient;
+  private client: ConversationClient;
   private messages: Message[] = [];
   private config: PlannerSessionConfig;
 
-  constructor(client?: ClaudeClient, config?: Partial<PlannerSessionConfig>) {
+  constructor(client: ConversationClient, config?: Partial<PlannerSessionConfig>) {
     super();
-    this.client = client || getDefaultClient();
+    this.client = client;
     this.config = { ...DEFAULT_CONFIG, ...config };
   }
 
@@ -146,6 +146,15 @@ export class PlannerSession extends EventEmitter {
         } else if (event.type === 'tool_use_delta' && event.input) {
           toolInputJson += event.input;
           yield { type: 'tool_delta', toolInput: event.input };
+        } else if (event.type === 'tool_use_complete' && event.input) {
+          // OpenAI 流式发送完整 tool input，优先使用
+          hasToolUse = true;
+          try {
+            const completeInput = typeof event.input === 'string' ? event.input : JSON.stringify(event.input);
+            if (completeInput.length > toolInputJson.length) {
+              toolInputJson = completeInput;
+            }
+          } catch { /* 保持 delta 拼接结果 */ }
         } else if (event.type === 'stop') {
           yield { type: 'done' };
         } else if (event.type === 'error') {

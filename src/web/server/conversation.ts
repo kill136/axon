@@ -621,6 +621,9 @@ export class ConversationManager {
     // 注册实时凭证提供者：每次启动执行时实时获取最新凭证
     // 避免用户在 UI 中切换认证方式（如删除 API Key 后改用 OAuth）后，子 agent 仍使用旧凭证
     executionManager.setCredentialsProvider(() => this.getClientConfig());
+    // 注入 runtime-aware 客户端工厂：蓝图系统通过此 factory 获取 ConversationClient
+    // 支持 OpenAI 等非 Anthropic 后端
+    executionManager.setClientFactory(() => this.createFactoryClient());
 
     // Skills 会在 SkillTool 第一次执行时延迟初始化
     // 此时在 runWithCwd 上下文中，可以正确获取工作目录
@@ -1048,6 +1051,16 @@ export class ConversationManager {
       baseUrl: config.baseUrl,
       accountId: config.accountId,
     };
+  }
+
+  /**
+   * 创建 runtime-aware 的 ConversationClient（供外部模块使用）
+   * 自动根据当前 runtimeBackend 选择 Anthropic 或 OpenAI 兼容客户端
+   */
+  createFactoryClient(model?: string): ConversationClient {
+    const runtimeBackend = this.getRuntimeBackend();
+    const resolvedModel = this.normalizeRuntimeModel(model || this.defaultModel, runtimeBackend);
+    return createConversationClient(this.buildClientConfig(resolvedModel, runtimeBackend));
   }
 
   /**
@@ -3529,6 +3542,16 @@ export class ConversationManager {
               priority: 'should' as const,
             }));
           }
+          if (input.architectureDiagrams) {
+            blueprint.architectureDiagrams = input.architectureDiagrams.map((d: any) => ({
+              type: d.type || 'full',
+              title: d.title || '',
+              description: d.description || '',
+              mermaidCode: d.mermaidCode || '',
+              nodePathMap: d.nodePathMap || undefined,
+              generatedAt: new Date().toISOString(),
+            }));
+          }
 
           blueprintStore.save(blueprint);
 
@@ -3778,9 +3801,27 @@ export class ConversationManager {
         console.warn(`[Hook] PostToolUse hook execution failed:`, hookError);
       }
 
-      // 通过 data 传递 images 给前端
-      const dataWithImages = images && images.length > 0
-        ? { ...data, images } as any
+      // 从 newMessages 中提取 image blocks（Read 读取 Office/PDF 等文件时图片在 newMessages 中）
+      const newMessageImages: Array<{ type: 'image'; source: { type: 'base64'; media_type: string; data: string } }> = [];
+      if (newMessages) {
+        for (const msg of newMessages) {
+          if (Array.isArray(msg.content)) {
+            for (const block of msg.content) {
+              if (block.type === 'image' && block.source) {
+                newMessageImages.push(block);
+              }
+            }
+          }
+        }
+      }
+
+      // 合并 images 和 newMessages 中的图片，通过 data 传递给前端
+      const allImages = [
+        ...(images || []),
+        ...newMessageImages,
+      ];
+      const dataWithImages = allImages.length > 0
+        ? { ...data, images: allImages } as any
         : data;
 
       callbacks.onToolResult?.(toolUse.id, true, output, undefined, dataWithImages);
@@ -4873,7 +4914,6 @@ Guidelines:
   // Chat Tab 不应暴露的工具（各 Agent 专用工具不应注入到 Chat Tab 上下文）
   // 避免浪费 token，也防止模型误调用不属于当前角色的工具
   private static readonly CHAT_EXCLUDED_TOOLS = new Set([
-    'Blueprint',        // CLI 模式工具，Chat Tab 应使用 GenerateBlueprint + StartLeadAgent
     'UpdateTaskPlan',   // LeadAgent 专用 - 更新执行计划中的任务状态
     'DispatchWorker',   // LeadAgent 专用 - 派发任务给 Worker 执行
     'TriggerE2ETest',   // LeadAgent 专用 - 触发 E2E 端到端测试

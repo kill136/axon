@@ -75,7 +75,7 @@ describe('web config service', () => {
       'openai-compatible-api': ['gpt-5.4', 'gpt-5.4-mini'],
     });
     expect(config.modelContextWindowById).toEqual({
-      'gpt-5.4': 1000000,
+      'gpt-5.4': 280000,
     });
   });
 

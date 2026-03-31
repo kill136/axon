@@ -52,6 +52,52 @@ export function isDocumentFile(filePath: string): boolean {
 }
 
 /**
+ * 尝试自动安装 LibreOffice（仅 Linux）
+ * 返回 true 表示安装成功
+ */
+let libreOfficeInstallAttempted = false;
+async function tryInstallLibreOffice(): Promise<boolean> {
+  if (libreOfficeInstallAttempted) return false;
+  libreOfficeInstallAttempted = true;
+
+  if (process.platform !== 'linux') return false;
+
+  try {
+    // 检测包管理器并安装
+    try {
+      await execFileAsync('which', ['apt-get'], { timeout: 5000 });
+      console.log('[Office] LibreOffice not found, attempting auto-install via apt-get...');
+      await execFileAsync('sudo', ['apt-get', 'install', '-y', 'libreoffice-impress', 'poppler-utils'], {
+        timeout: 300000, // 5 分钟超时
+      });
+      // 验证安装成功
+      await execFileAsync('which', ['soffice'], { timeout: 5000 });
+      console.log('[Office] LibreOffice installed successfully.');
+      return true;
+    } catch {
+      // apt-get 不可用或安装失败
+    }
+
+    try {
+      await execFileAsync('which', ['yum'], { timeout: 5000 });
+      console.log('[Office] LibreOffice not found, attempting auto-install via yum...');
+      await execFileAsync('sudo', ['yum', 'install', '-y', 'libreoffice-impress', 'poppler-utils'], {
+        timeout: 300000,
+      });
+      await execFileAsync('which', ['soffice'], { timeout: 5000 });
+      console.log('[Office] LibreOffice installed successfully.');
+      return true;
+    } catch {
+      // yum 不可用或安装失败
+    }
+
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * 将 docx 文件转换为 HTML
  */
 export async function docxToHtml(filePath: string): Promise<string> {
@@ -244,10 +290,25 @@ async function renderPresentationWithLibreOffice(
   try {
     await execFileAsync('soffice', convertArgs, { timeout: 30000, env: sofficeEnv });
   } catch (error) {
-    const reason = (error as any)?.code === 'ENOENT'
-      ? 'LibreOffice (soffice) is not available for PPT/PPTX rendering.'
-      : `PowerPoint to PDF conversion failed: ${toError(error).message}`;
-    throw new Error(reason);
+    if ((error as any)?.code === 'ENOENT') {
+      // soffice 不可用，尝试自动安装
+      const installed = await tryInstallLibreOffice();
+      if (installed) {
+        // 安装成功，重试
+        try {
+          await execFileAsync('soffice', convertArgs, { timeout: 30000, env: sofficeEnv });
+        } catch (retryError) {
+          throw new Error(`LibreOffice installed but conversion failed: ${toError(retryError).message}`);
+        }
+      } else {
+        throw new Error(
+          'LibreOffice (soffice) is not available for PPT/PPTX rendering. ' +
+          'Auto-install failed. Please install manually: sudo apt-get install -y libreoffice-impress',
+        );
+      }
+    } else {
+      throw new Error(`PowerPoint to PDF conversion failed: ${toError(error).message}`);
+    }
   }
 
   if (!fs.existsSync(pdfPath)) {

@@ -463,8 +463,8 @@ ${techStack.language}${techStack.framework ? ' + ' + techStack.framework : ''}`;
 
       // 从 AGENT_TOOL_CONFIGS 获取 Worker 的工具白名单，避免注入全量工具浪费 token
       const workerToolConfig = AGENT_TOOL_CONFIGS['worker'];
-      const allowedTools = workerToolConfig?.allowedTools !== '*'
-        ? workerToolConfig?.allowedTools as string[]
+      const allowedTools = workerToolConfig?.allowedTools !== '*' && Array.isArray(workerToolConfig?.allowedTools)
+        ? workerToolConfig.allowedTools
         : undefined;
 
       const loop = new ConversationLoop({

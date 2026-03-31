@@ -26,6 +26,7 @@ import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { fileURLToPath } from 'url';
 import { requestEvolveRestart, isEvolveEnabled } from '../web/server/evolve-state.js';
 
 export interface SelfEvolveInput {
@@ -252,34 +253,12 @@ export class SelfEvolveTool extends BaseTool<SelfEvolveInput, ToolResult> {
   }
 
   /**
-   * 获取项目根目录（通过查找 package.json）
+   * 获取项目根目录（SelfEvolve 只支持 Axon 自身源码目录）
    */
   private getProjectRoot(): string | null {
-    // 从当前文件位置向上查找
-    let dir = path.dirname(new URL(import.meta.url).pathname);
-    // Windows 路径修正：移除开头的 /
-    if (process.platform === 'win32' && dir.startsWith('/')) {
-      dir = dir.slice(1);
-    }
-
-    // 向上最多找 5 层
-    for (let i = 0; i < 5; i++) {
-      const pkgPath = path.join(dir, 'package.json');
-      if (fs.existsSync(pkgPath)) {
-        try {
-          const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
-          if (pkg.name === 'axon') {
-            return dir;
-          }
-        } catch {
-          // 继续向上找
-        }
-      }
-      const parent = path.dirname(dir);
-      if (parent === dir) break; // 到达根目录
-      dir = parent;
-    }
-
-    return null;
+    const toolFile = fileURLToPath(import.meta.url);
+    const projectRoot = path.resolve(path.dirname(toolFile), '..', '..');
+    const pkgPath = path.join(projectRoot, 'package.json');
+    return fs.existsSync(pkgPath) ? projectRoot : null;
   }
 }

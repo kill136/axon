@@ -577,6 +577,17 @@ class WebAuthProvider {
    * 验证 API Key 是否有效
    */
   async validateApiKey(key: string): Promise<boolean> {
+    const settings = this.readSettings();
+    const runtimeBackend = this.inferRuntimeBackend(settings);
+    const provider = getProviderForRuntimeBackend(runtimeBackend);
+
+    if (provider === 'codex') {
+      return this.validateOpenAIApiKey(key, settings.apiBaseUrl);
+    }
+    return this.validateAnthropicApiKey(key);
+  }
+
+  private async validateAnthropicApiKey(key: string): Promise<boolean> {
     try {
       const client = new Anthropic({ apiKey: key });
       await client.messages.create({
@@ -589,7 +600,24 @@ class WebAuthProvider {
       if (error?.status === 401 || error?.error?.type === 'authentication_error') {
         return false;
       }
-      // 非认证错误（网络等），认为 key 可能有效
+      return true;
+    }
+  }
+
+  private async validateOpenAIApiKey(key: string, baseUrl?: string): Promise<boolean> {
+    try {
+      const url = `${(baseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '')}/models`;
+      const resp = await fetch(url, {
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${key}` },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (resp.status === 401 || resp.status === 403) {
+        return false;
+      }
+      return true;
+    } catch {
+      // 网络错误，认为 key 可能有效
       return true;
     }
   }

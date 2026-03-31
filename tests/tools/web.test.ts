@@ -281,8 +281,8 @@ describe('WebFetchTool', () => {
         prompt: 'Test'
       });
 
-      expect(result.success).toBe(true);
-      expect(result.output).toContain('REDIRECT');
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('REDIRECT');
     });
 
     it('should handle timeout', async () => {

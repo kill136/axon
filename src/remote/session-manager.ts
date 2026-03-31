@@ -100,7 +100,7 @@ export class RemoteSession {
    * v2.1.67 fix: Keeps Set size bounded
    */
   private trimOldestIds(): void {
-    const keepCount = Math.max(this.maxToolUseHistory - 100, 500);
+    const keepCount = Math.floor(this.maxToolUseHistory * 0.75);
 
     // Sort by timestamp and keep the newest ones
     this.toolUseHistory.sort((a, b) => b.timestamp - a.timestamp);

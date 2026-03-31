@@ -180,7 +180,7 @@ export default function BlueprintPage({ initialBlueprintId, onNavigateToSwarm }:
       const response = await fetch('/api/blueprint/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectRoot: currentProjectPath }),
+        body: JSON.stringify({ projectRoot: currentProjectPath, name: currentProjectPath.split('/').pop() || 'project' }),
       });
 
       clearInterval(progressInterval);
@@ -223,10 +223,90 @@ export default function BlueprintPage({ initialBlueprintId, onNavigateToSwarm }:
   };
 
   /**
-   * 处理刷新
+   * 处理刷新：删除旧蓝图后重新生成
    */
-  const handleRefresh = () => {
-    loadBlueprints();
+  const handleRefresh = async () => {
+    if (isGenerating || !currentProjectPath) return;
+
+    // 保存旧蓝图信息用于重新生成
+    const oldBlueprint = blueprints[0];
+    const blueprintName = oldBlueprint?.name || currentProjectPath.split('/').pop() || 'project';
+    const blueprintDescription = oldBlueprint?.description || '';
+
+    // 删除当前项目的所有蓝图
+    for (const bp of blueprints) {
+      try {
+        await fetch(`/api/blueprint/blueprints/${bp.id}`, { method: 'DELETE' });
+      } catch (err) {
+        console.error(`删除蓝图 ${bp.id} 失败:`, err);
+      }
+    }
+
+    // 清空本地状态
+    setBlueprints([]);
+    setSelectedId(null);
+
+    // 直接触发生成（绕过 canCreateBlueprint 检查，因为 React 状态更新是异步的）
+    setGenerateResult(null);
+    setIsGenerating(true);
+    setGenerateProgress(t('blueprint.analyzingCodebase'));
+
+    try {
+      const progressSteps = [
+        t('blueprint.scanningFiles'),
+        t('blueprint.identifyingModules'),
+        t('blueprint.analyzingProcesses'),
+        t('blueprint.generatingBlueprint'),
+      ];
+
+      let stepIndex = 0;
+      const progressInterval = setInterval(() => {
+        if (stepIndex < progressSteps.length) {
+          setGenerateProgress(progressSteps[stepIndex]);
+          stepIndex++;
+        }
+      }, 1500);
+
+      const response = await fetch('/api/blueprint/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectRoot: currentProjectPath, name: blueprintName, description: blueprintDescription }),
+      });
+
+      clearInterval(progressInterval);
+      const result = await response.json();
+
+      if (result.success) {
+        setGenerateProgress('');
+        setGenerateResult({
+          type: 'success',
+          message: result.message || t('blueprint.generateSuccess', { count: result.data?.moduleCount || 0 }),
+        });
+
+        await loadBlueprints();
+        if (result.data?.id) {
+          setSelectedId(result.data.id);
+        }
+        setTimeout(() => setGenerateResult(null), 5000);
+      } else if (result.needsDialog) {
+        setGenerateProgress('');
+        setGenerateResult({
+          type: 'info',
+          message: result.message || t('blueprint.generateNeedsDialog'),
+        });
+      } else {
+        throw new Error(result.error || result.message || t('blueprint.generateFailed', { message: '' }));
+      }
+    } catch (err) {
+      console.error('重新生成蓝图失败:', err);
+      setGenerateProgress('');
+      setGenerateResult({
+        type: 'error',
+        message: t('blueprint.generateFailed', { message: err instanceof Error ? err.message : t('blueprint.unknownError') }),
+      });
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   /**
@@ -388,12 +468,13 @@ export default function BlueprintPage({ initialBlueprintId, onNavigateToSwarm }:
             <div className={styles.listHeader}>
               <h2 className={styles.listTitle}>{t('blueprint.listTitle')}</h2>
               <div className={styles.listActions}>
-                <button 
-                  className={styles.refreshButton} 
+                <button
+                  className={styles.refreshButton}
                   onClick={handleRefresh}
+                  disabled={isGenerating}
                   title={t('blueprint.refresh')}
                 >
-                  🔄
+                  {isGenerating ? '⏳' : '🔄'}
                 </button>
               </div>
             </div>

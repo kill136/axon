@@ -202,7 +202,6 @@ describe('InputArea compact composer', () => {
     expect(controlStrip.contains(screen.getByTitle('input.pinLock'))).toBe(true);
     expect(controlStrip.contains(screen.getByTitle('input.debugProbe'))).toBe(true);
     expect(controlStrip.contains(screen.getByTitle('input.logs'))).toBe(true);
-    expect(screen.getByText('input.gitShort')).toBeTruthy();
     expect(screen.getByText('input.terminalShort')).toBeTruthy();
     expect(screen.getByText('nav.startNewChat')).toBeTruthy();
     expect(controlStrip.contains(screen.getByTestId('api-usage-bar'))).toBe(true);

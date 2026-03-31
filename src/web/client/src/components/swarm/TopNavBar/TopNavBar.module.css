@@ -419,6 +419,28 @@
   border-color: var(--accent-primary);
 }
 
+/* Git 面板按钮 */
+.gitButton {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gitButton:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border-color: var(--accent-primary);
+}
+
 /* 设置按钮 */
 .settingsButton {
   width: 28px;
@@ -683,7 +705,8 @@
   }
 
   .settingsButton,
-  .searchButton {
+  .searchButton,
+  .gitButton {
     width: 26px;
     height: 26px;
   }
@@ -729,7 +752,8 @@
   }
 
   .settingsButton,
-  .searchButton {
+  .searchButton,
+  .gitButton {
     width: 24px;
     height: 24px;
   }

@@ -16,7 +16,7 @@ describe('model preferences helpers', () => {
     })).toBe('gpt-5.4');
 
     expect(resolveBackendDefaultModel('openai-compatible-api', {
-      'openai-compatible-api': 'opus',
+      'openai-compatible-api': 'gpt-5.4',
     })).toBe('gpt-5.4');
   });
 

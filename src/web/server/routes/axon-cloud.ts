@@ -4,6 +4,8 @@
  */
 
 import { Router, Request, Response } from 'express';
+import * as fs from 'fs';
+import * as path from 'path';
 import {
   axonCloudService,
   type AxonCloudSession,
@@ -13,17 +15,61 @@ import {
 } from '../services/axon-cloud-service.js';
 import { webConfigService } from '../services/config-service.js';
 import { webAuth } from '../web-auth.js';
+import { configManager } from '../../../config/index.js';
 
 const router = Router();
 
-/** 内存 session 存储，key = username */
+/** Session 存储，key = username，持久化到磁盘 */
 interface StoredSession extends AxonCloudSession {
   username: string;
   apiKey: string;
   createdAt: number;
+  /** 登录凭证，用于 session 过期后自动重新登录 */
+  loginCredentials?: { username: string; password: string };
 }
 
-const sessions = new Map<string, StoredSession>();
+const SESSION_TTL = 7 * 24 * 60 * 60 * 1000; // 7 天
+
+function getSessionFilePath(): string {
+  const globalConfigDir = configManager.getConfigPaths().globalConfigDir;
+  return path.join(globalConfigDir, 'axon-cloud-sessions.json');
+}
+
+function loadSessionsFromDisk(): Map<string, StoredSession> {
+  const result = new Map<string, StoredSession>();
+  try {
+    const filePath = getSessionFilePath();
+    if (fs.existsSync(filePath)) {
+      const raw = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+      const now = Date.now();
+      if (Array.isArray(raw)) {
+        for (const entry of raw) {
+          if (entry?.username && now - entry.createdAt < SESSION_TTL) {
+            result.set(entry.username, entry);
+          }
+        }
+      }
+    }
+  } catch {
+    // 文件损坏或不存在，从空开始
+  }
+  return result;
+}
+
+function saveSessionsToDisk(sessionMap: Map<string, StoredSession>): void {
+  try {
+    const filePath = getSessionFilePath();
+    const dir = path.dirname(filePath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(filePath, JSON.stringify(Array.from(sessionMap.values()), null, 2), 'utf-8');
+  } catch (err) {
+    console.error('[AxonCloud] Failed to persist sessions:', err);
+  }
+}
+
+const sessions = loadSessionsFromDisk();
 
 class AxonCloudRouteError extends Error {
   constructor(
@@ -499,6 +545,67 @@ function resolveCurrentSession(): StoredSession {
   );
 }
 
+/**
+ * 尝试使用已存储的凭证自动重新登录，恢复 session
+ * 返回恢复后的 session，失败则返回 null
+ */
+async function tryAutoRelogin(): Promise<StoredSession | null> {
+  // 查找有登录凭证的 session（即使已过期，凭证仍可用于重新登录）
+  const allSessions = Array.from(sessions.values());
+  const sessionWithCreds = allSessions.find((s) => s.loginCredentials?.username && s.loginCredentials?.password);
+  if (!sessionWithCreds?.loginCredentials) {
+    return null;
+  }
+
+  try {
+    console.log('[AxonCloud] Attempting auto-relogin for', sessionWithCreds.loginCredentials.username);
+    const result = await axonCloudService.login({
+      username: sessionWithCreds.loginCredentials.username,
+      password: sessionWithCreds.loginCredentials.password,
+    });
+
+    if (!result.success || !result.session) {
+      console.error('[AxonCloud] Auto-relogin failed:', result.error);
+      return null;
+    }
+
+    const newSession: StoredSession = {
+      ...result.session,
+      username: result.username,
+      apiKey: result.apiKey,
+      createdAt: Date.now(),
+      loginCredentials: sessionWithCreds.loginCredentials,
+    };
+
+    sessions.set(result.username, newSession);
+    saveSessionsToDisk(sessions);
+
+    await handleAuthSuccess(result);
+    console.log('[AxonCloud] Auto-relogin successful');
+    return newSession;
+  } catch (err) {
+    console.error('[AxonCloud] Auto-relogin error:', err);
+    return null;
+  }
+}
+
+/**
+ * 解析当前 session，如果过期则尝试自动重新登录
+ */
+async function resolveCurrentSessionAsync(): Promise<StoredSession> {
+  try {
+    return resolveCurrentSession();
+  } catch (error) {
+    if (error instanceof AxonCloudRouteError && error.statusCode === 401) {
+      const renewed = await tryAutoRelogin();
+      if (renewed) {
+        return renewed;
+      }
+    }
+    throw error;
+  }
+}
+
 function normalizePositiveNumberInput(value: unknown): number {
   const values = Array.isArray(value) ? value : [value];
   for (const candidate of values) {
@@ -524,25 +631,35 @@ function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
-// 清理过期 session（30 分钟）
+// 清理过期 session（7 天 TTL，每小时检查一次）
 setInterval(() => {
   const now = Date.now();
+  let changed = false;
   for (const [key, session] of sessions.entries()) {
-    if (now - session.createdAt > 30 * 60 * 1000) {
+    if (now - session.createdAt > SESSION_TTL) {
       sessions.delete(key);
+      changed = true;
     }
   }
-}, 5 * 60 * 1000);
+  if (changed) {
+    saveSessionsToDisk(sessions);
+  }
+}, 60 * 60 * 1000);
 
 /** 注册/登录成功后的公共处理：存 session + 配 API */
-async function handleAuthSuccess(result: { username: string; quota: number; apiKey: string; apiBaseUrl: string; session?: AxonCloudSession }) {
+async function handleAuthSuccess(
+  result: { username: string; quota: number; apiKey: string; apiBaseUrl: string; session?: AxonCloudSession },
+  loginCredentials?: { username: string; password: string },
+) {
   if (result.session) {
     sessions.set(result.username, {
       ...result.session,
       username: result.username,
       apiKey: result.apiKey,
       createdAt: Date.now(),
+      loginCredentials,
     });
+    saveSessionsToDisk(sessions);
   }
 
   try {
@@ -621,7 +738,7 @@ router.post('/login', async (req: Request, res: Response) => {
       return res.status(401).json({ success: false, error: result.error });
     }
 
-    await handleAuthSuccess(result);
+    await handleAuthSuccess(result, { username, password });
     res.json({ success: true, username: result.username, quota: result.quota });
   } catch (error) {
     console.error('[AxonCloud] Login error:', error);
@@ -708,7 +825,7 @@ router.get('/quota', async (req: Request, res: Response) => {
 
 router.get('/topup/info', async (req: Request, res: Response) => {
   try {
-    const session = resolveCurrentSession();
+    const session = await resolveCurrentSessionAsync();
     const info = await axonCloudService.getTopupInfo(session.accessToken, session.userId);
     res.json({
       success: true,
@@ -730,7 +847,7 @@ router.get('/topup/info', async (req: Request, res: Response) => {
 
 router.get('/topup', async (req: Request, res: Response) => {
   try {
-    const session = resolveCurrentSession();
+    const session = await resolveCurrentSessionAsync();
     const info = await axonCloudService.getTopupInfo(session.accessToken, session.userId);
 
     if (!info.enableCreemTopup && !info.enableOnlineTopup) {
@@ -767,7 +884,7 @@ router.post('/topup/checkout', async (req: Request, res: Response) => {
       ? body.amount
       : normalizePositiveNumberInput(body.amount ?? body.total_amount);
 
-    const session = resolveCurrentSession();
+    const session = await resolveCurrentSessionAsync();
 
     if (provider === 'epay' || paymentMethod) {
       if (!paymentMethod) {
@@ -777,13 +894,26 @@ router.post('/topup/checkout', async (req: Request, res: Response) => {
         throw new AxonCloudRouteError(400, 'Missing amount');
       }
 
-      const checkoutUrl = await axonCloudService.createEpayCheckout(
+      const { url: epayUrl, params: epayParams } = await axonCloudService.createEpayCheckout(
         session.accessToken,
         session.userId,
         amount,
         paymentMethod,
       );
-      return res.redirect(302, checkoutUrl);
+
+      // EPay requires POST with form params; render an auto-submit form
+      if (Object.keys(epayParams).length > 0) {
+        const hiddenFields = Object.entries(epayParams)
+          .map(([k, v]) => `<input type="hidden" name="${escapeHtml(k)}" value="${escapeHtml(v)}" />`)
+          .join('\n');
+        return res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"/></head><body>
+<form id="epay" method="POST" action="${escapeHtml(epayUrl)}">
+${hiddenFields}
+</form>
+<script>document.getElementById('epay').submit();</script>
+</body></html>`);
+      }
+      return res.redirect(302, epayUrl);
     }
 
     if (!productId) {
@@ -808,7 +938,10 @@ router.post('/topup/checkout', async (req: Request, res: Response) => {
 router.post('/logout', async (req: Request, res: Response) => {
   try {
     const { username } = req.body as { username?: string };
-    if (username) sessions.delete(username);
+    if (username) {
+      sessions.delete(username);
+      saveSessionsToDisk(sessions);
+    }
     res.json({ success: true });
   } catch (error) {
     console.error('[AxonCloud] Logout error:', error);

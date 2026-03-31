@@ -1390,6 +1390,9 @@ export function setupWebSocket(
     ws.on('message', async (data: Buffer) => {
       try {
         const message: ClientMessage = JSON.parse(data.toString());
+        if (message.type === 'terminal:paste-image') {
+          console.log('[WebSocket] Received terminal:paste-image, payload size:', (message as any).payload?.data?.length || 0);
+        }
         await handleClientMessage(client, message, conversationManager, swarmSubscriptions);
       } catch (error) {
         console.error('[WebSocket] Message handling error:', error);
@@ -2221,7 +2224,7 @@ async function handleClientMessage(
 
         sendMessage(client.ws, {
           type: 'terminal:created',
-          payload: { terminalId: termId },
+          payload: { terminalId: termId, requestId: termPayload.requestId },
         });
       } else {
         sendMessage(client.ws, {
@@ -2262,9 +2265,11 @@ async function handleClientMessage(
     }
 
     case 'terminal:paste-image': {
-      // 终端粘贴图片：保存为临时文件，将文件路径作为文本写入终端
+      // 终端粘贴图片：保存为临时文件，将路径写入终端
       const pastePayload = (message as any).payload;
-      if (pastePayload?.terminalId && pastePayload?.data && pastePayload?.mimeType) {
+      console.log('[WebSocket] paste-image handler, terminalId:', pastePayload?.terminalId, 'dataLen:', pastePayload?.data?.length, 'mime:', JSON.stringify(pastePayload?.mimeType), 'keys:', Object.keys(pastePayload || {}));
+      if (pastePayload?.terminalId && pastePayload?.data) {
+        const mimeType = pastePayload.mimeType || 'image/png';
         try {
           const fs = await import('fs');
           const path = await import('path');
@@ -2275,7 +2280,7 @@ async function handleClientMessage(
             fs.mkdirSync(tempDir, { recursive: true });
           }
 
-          const ext = pastePayload.mimeType.split('/')[1] || 'png';
+          const ext = mimeType.split('/')[1] || 'png';
           const now = new Date();
           const pad = (n: number) => String(n).padStart(2, '0');
           const ts = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
@@ -2284,9 +2289,11 @@ async function handleClientMessage(
 
           const buffer = Buffer.from(pastePayload.data, 'base64');
           fs.writeFileSync(tempFilePath, buffer);
+          console.log('[WebSocket] paste-image saved:', tempFilePath, buffer.length, 'bytes');
 
-          // 将文件路径作为文本写入终端
+          // 将文件路径写入终端供用户引用
           terminalManager.write(pastePayload.terminalId, tempFilePath);
+          console.log('[WebSocket] paste-image path written to terminal');
         } catch (err) {
           console.error('[WebSocket] terminal:paste-image failed:', err);
         }
@@ -5502,6 +5509,17 @@ async function handleSkillDelete(
         type: 'error',
         payload: {
           message: 'Skills inside a plugin cannot be deleted individually, please uninstall the corresponding plugin',
+        },
+      });
+      return;
+    }
+
+    // 不允许删除内置 skill
+    if (source === 'builtin') {
+      sendMessage(ws, {
+        type: 'error',
+        payload: {
+          message: 'Built-in skills cannot be deleted',
         },
       });
       return;

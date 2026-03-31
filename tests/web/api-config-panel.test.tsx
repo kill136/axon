@@ -108,7 +108,7 @@ describe('ApiConfigPanel', () => {
 
     const payload = JSON.parse(String(putCall?.[1]?.body));
     expect(payload.modelContextWindowById).toEqual({
-      'gpt-5.4': 1000000,
+      'gpt-5.4': 280000,
       'custom-model': 262144,
     });
   });

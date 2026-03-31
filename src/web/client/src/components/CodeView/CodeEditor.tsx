@@ -59,6 +59,7 @@ type EditorFileType = 'code' | 'image' | 'pdf' | 'excel' | 'word' | 'unsupported
  * Tab 状态接口
  */
 interface EditorTab {
+  id: number;
   path: string;
   content: string;
   language: string;
@@ -168,6 +169,8 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
     const { t, locale } = useLanguage();
     const [tabs, setTabs] = useState<EditorTab[]>([]);
     const [activeTabIndex, setActiveTabIndex] = useState<number>(-1);
+    const tabIdCounterRef = useRef(0);
+    const tabsRef = useRef<EditorTab[]>([]);
     const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
     const monacoRef = useRef<typeof Monaco | null>(null);
     // 追踪当前打开的文件路径（供 LSP provider 使用，避免 stale closure）
@@ -192,6 +195,9 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
       status: 'missing' | 'installing' | 'done' | 'error';
       message?: string;
     } | null>(null);
+
+    // 同步 tabsRef，供 openFile 闭包使用（避免 stale closure）
+    tabsRef.current = tabs;
 
     // AI 功能开关
     const [beginnerMode, setBeginnerMode] = useState(false);
@@ -587,8 +593,8 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
 
     useImperativeHandle(ref, () => ({
       openFile: async (path: string) => {
-        // 检查是否已打开
-        const existingIndex = tabs.findIndex(tab => tab.path === path);
+        // 使用 ref 检查是否已打开（避免 stale closure 导致重复 tab）
+        const existingIndex = tabsRef.current.findIndex(tab => tab.path === path);
         if (existingIndex !== -1) {
           setActiveTabIndex(existingIndex);
           return;
@@ -599,6 +605,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
         // ============= 处理图片和 PDF：直接打开，不加载内容 =============
         if (fileType === 'image' || fileType === 'pdf') {
           const newTab: EditorTab = {
+            id: tabIdCounterRef.current++,
             path,
             content: '',
             language: '',
@@ -607,7 +614,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
             fileType,
           };
           setTabs(prev => [...prev, newTab]);
-          setActiveTabIndex(tabs.length);
+          setActiveTabIndex(tabsRef.current.length);
           return;
         }
 
@@ -628,6 +635,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
             const blobUrl = URL.createObjectURL(blob);
 
             const newTab: EditorTab = {
+              id: tabIdCounterRef.current++,
               path,
               content: blobUrl,
               language: '',
@@ -637,7 +645,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
             };
 
             setTabs(prev => [...prev, newTab]);
-            setActiveTabIndex(tabs.length);
+            setActiveTabIndex(tabsRef.current.length);
           } catch (err) {
             console.error('[CodeEditor] 读取文件异常:', err);
             alert(t('codeEditor.readFileError', { error: err instanceof Error ? err.message : 'Unknown error' }));
@@ -650,6 +658,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
         const cached = fileCacheRef.current.get(path);
         if (cached && Date.now() - cached.timestamp < FILE_CACHE_TTL) {
           const newTab: EditorTab = {
+            id: tabIdCounterRef.current++,
             path,
             content: cached.content,
             language: cached.language,
@@ -658,7 +667,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
             fileType: 'code',
           };
           setTabs(prev => [...prev, newTab]);
-          setActiveTabIndex(tabs.length);
+          setActiveTabIndex(tabsRef.current.length);
           return;
         }
 
@@ -687,6 +696,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
           }
 
           const newTab: EditorTab = {
+            id: tabIdCounterRef.current++,
             path,
             content,
             language,
@@ -696,7 +706,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
           };
 
           setTabs(prev => [...prev, newTab]);
-          setActiveTabIndex(tabs.length);
+          setActiveTabIndex(tabsRef.current.length);
         } catch (err) {
           console.error('[CodeEditor] 读取文件异常:', err);
           alert(t('codeEditor.readFileError', { error: err instanceof Error ? err.message : 'Unknown error' }));
@@ -716,6 +726,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
           terminalCounterRef.current += 1;
           const tabPath = `__terminal__${terminalCounterRef.current}`;
           const terminalTab: EditorTab = {
+            id: tabIdCounterRef.current++,
             path: tabPath,
             content: '',
             language: '',
@@ -726,12 +737,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
           const newTabs = [...tabs, terminalTab];
           setTabs(newTabs);
           setActiveTabIndex(newTabs.length - 1);
-          // 注册 pending 并发送创建请求
-          pendingTerminalTabsRef.current.push(tabPath);
-          setTerminalIdMap(prev => ({ ...prev, [tabPath]: null }));
-          if (connected && send) {
-            send({ type: 'terminal:create', payload: { cwd: projectPath || undefined } });
-          }
+          // 终端创建由 SimpleTerminalTab 自行处理
         };
 
         const currentTab = activeTabIndex >= 0 ? tabs[activeTabIndex] : null;
@@ -750,53 +756,9 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
       },
     }));
 
-    // ========================================================================
-    // 终端消息路由：将 terminal:created 的 terminalId 分配给对应的 tab
-    // ========================================================================
-    useEffect(() => {
-      if (!addMessageHandler) return;
-      const unsub = addMessageHandler((msg: any) => {
-        if (msg.type === 'terminal:created') {
-          const serverTerminalId = msg.payload?.terminalId as string;
-          if (!serverTerminalId) return;
-          const pendingTabPath = pendingTerminalTabsRef.current.shift();
-          if (pendingTabPath) {
-            // 先同步更新 ref（SimpleTerminalTab 的消息处理器能立即读到）
-            terminalIdSyncRef.current[pendingTabPath] = serverTerminalId;
-            // 再异步更新 state（触发 React 渲染传递 prop）
-            setTerminalIdMap(prev => ({ ...prev, [pendingTabPath]: serverTerminalId }));
-          }
-        }
-      });
-      return unsub;
-    }, [addMessageHandler]);
+    // 终端消息路由已移至 SimpleTerminalTab 自行管理，无需 CodeEditor 中间路由
 
-    // 终端 tab 关闭时清理 terminalId 并销毁服务端终端
-    useEffect(() => {
-      const terminalTabPaths = new Set(tabs.filter(t => t.fileType === 'terminal').map(t => t.path));
-      // 同步清理 ref
-      for (const path of Object.keys(terminalIdSyncRef.current)) {
-        if (!terminalTabPaths.has(path)) {
-          const tid = terminalIdSyncRef.current[path];
-          if (tid && send) {
-            send({ type: 'terminal:destroy', payload: { terminalId: tid } });
-          }
-          delete terminalIdSyncRef.current[path];
-        }
-      }
-      // 异步清理 state
-      setTerminalIdMap(prev => {
-        const next = { ...prev };
-        let changed = false;
-        for (const path of Object.keys(next)) {
-          if (!terminalTabPaths.has(path)) {
-            delete next[path];
-            changed = true;
-          }
-        }
-        return changed ? next : prev;
-      });
-    }, [tabs, send]);
+    // 终端 tab 生命周期由 SimpleTerminalTab 自行管理（unmount 时自动 destroy）
 
     // ========================================================================
     // Monaco Editor 事件处理
@@ -1466,7 +1428,7 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
           <div className={styles.tabBar}>
             {tabs.map((tab, index) => (
               <div
-                key={tab.path}
+                key={tab.id}
                 className={`${styles.tab} ${index === activeTabIndex ? styles.active : ''}`}
                 onClick={() => setActiveTabIndex(index)}
               >
@@ -1691,15 +1653,12 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
             .filter(t => t.fileType === 'terminal')
             .map(tab => (
               <SimpleTerminalTab
-                key={tab.path}
+                key={tab.id}
                 send={send}
                 addMessageHandler={addMessageHandler}
                 connected={connected}
                 projectPath={projectPath}
                 active={currentTab?.path === tab.path}
-                terminalId={terminalIdMap[tab.path] ?? null}
-                terminalIdSyncRef={terminalIdSyncRef}
-                tabPath={tab.path}
               />
             ))
           }

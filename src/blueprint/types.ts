@@ -85,6 +85,28 @@ export interface Blueprint {
 
   // v10.0: 主 Agent 写的关键上下文简报（设计决策、用户偏好、技术选型理由）
   brief?: string;
+
+  // v10.1: 架构图（Mermaid 代码），持久化到蓝图实体，蓝图详情面板直接渲染
+  architectureDiagrams?: ArchitectureDiagram[];
+}
+
+/**
+ * 架构图
+ * AI 生成的 Mermaid 架构图，持久化存储在蓝图中
+ */
+export interface ArchitectureDiagram {
+  /** 图类型：数据流 / 模块关系 / 完整架构 */
+  type: 'dataflow' | 'modulerelation' | 'full';
+  /** 图标题 */
+  title: string;
+  /** 图描述 */
+  description?: string;
+  /** Mermaid 代码 */
+  mermaidCode: string;
+  /** 节点 ID → 文件路径映射，支持点击跳转 */
+  nodePathMap?: Record<string, { path: string; type: 'file' | 'folder'; line?: number }>;
+  /** 生成时间 */
+  generatedAt: string;
 }
 
 /**
