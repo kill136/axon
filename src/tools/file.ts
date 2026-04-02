@@ -248,15 +248,97 @@ function computeContentHash(content: string): string {
 }
 
 /**
- * 智能引号字符映射
+ * 智能引号常量
  * 对应官方 cli.js 中的 RI5, _I5, jI5, TI5 常量
  */
+const LEFT_SINGLE_CURLY_QUOTE = '\u2018';   // '
+const RIGHT_SINGLE_CURLY_QUOTE = '\u2019';  // '
+const LEFT_DOUBLE_CURLY_QUOTE = '\u201C';   // "
+const RIGHT_DOUBLE_CURLY_QUOTE = '\u201D';  // "
+
 const SMART_QUOTE_MAP: Record<string, string> = {
-  '\u2018': "'",  // 左单引号 '
-  '\u2019': "'",  // 右单引号 '
-  '\u201C': '"',  // 左双引号 "
-  '\u201D': '"',  // 右双引号 "
+  [LEFT_SINGLE_CURLY_QUOTE]: "'",
+  [RIGHT_SINGLE_CURLY_QUOTE]: "'",
+  [LEFT_DOUBLE_CURLY_QUOTE]: '"',
+  [RIGHT_DOUBLE_CURLY_QUOTE]: '"',
 };
+
+/**
+ * 判断字符是否处于"开引号"位置
+ * 对应官方 utils.ts 中的 isOpeningContext
+ */
+function isOpeningQuoteContext(chars: string[], index: number): boolean {
+  if (index === 0) return true;
+  const prev = chars[index - 1];
+  return (
+    prev === ' ' || prev === '\t' || prev === '\n' || prev === '\r' ||
+    prev === '(' || prev === '[' || prev === '{' ||
+    prev === '\u2014' || prev === '\u2013'
+  );
+}
+
+/**
+ * 将直双引号替换为弯双引号（根据上下文判断左/右）
+ */
+function applyCurlyDoubleQuotes(str: string): string {
+  const chars = [...str];
+  const result: string[] = [];
+  for (let i = 0; i < chars.length; i++) {
+    if (chars[i] === '"') {
+      result.push(isOpeningQuoteContext(chars, i) ? LEFT_DOUBLE_CURLY_QUOTE : RIGHT_DOUBLE_CURLY_QUOTE);
+    } else {
+      result.push(chars[i]!);
+    }
+  }
+  return result.join('');
+}
+
+/**
+ * 将直单引号替换为弯单引号（根据上下文判断左/右，保留缩写中的撇号）
+ */
+function applyCurlySingleQuotes(str: string): string {
+  const chars = [...str];
+  const result: string[] = [];
+  for (let i = 0; i < chars.length; i++) {
+    if (chars[i] === "'") {
+      const prev = i > 0 ? chars[i - 1] : undefined;
+      const next = i < chars.length - 1 ? chars[i + 1] : undefined;
+      const prevIsLetter = prev !== undefined && /\p{L}/u.test(prev);
+      const nextIsLetter = next !== undefined && /\p{L}/u.test(next);
+      if (prevIsLetter && nextIsLetter) {
+        result.push(RIGHT_SINGLE_CURLY_QUOTE);
+      } else {
+        result.push(isOpeningQuoteContext(chars, i) ? LEFT_SINGLE_CURLY_QUOTE : RIGHT_SINGLE_CURLY_QUOTE);
+      }
+    } else {
+      result.push(chars[i]!);
+    }
+  }
+  return result.join('');
+}
+
+/**
+ * 保留弯引号风格：当 old_string 通过引号标准化匹配时，
+ * 将 new_string 中的直引号也转换为文件中使用的弯引号。
+ * 对应官方 utils.ts 中的 preserveQuoteStyle
+ */
+function preserveQuoteStyle(oldString: string, actualOldString: string, newString: string): string {
+  if (oldString === actualOldString) return newString;
+
+  const hasDoubleQuotes =
+    actualOldString.includes(LEFT_DOUBLE_CURLY_QUOTE) ||
+    actualOldString.includes(RIGHT_DOUBLE_CURLY_QUOTE);
+  const hasSingleQuotes =
+    actualOldString.includes(LEFT_SINGLE_CURLY_QUOTE) ||
+    actualOldString.includes(RIGHT_SINGLE_CURLY_QUOTE);
+
+  if (!hasDoubleQuotes && !hasSingleQuotes) return newString;
+
+  let result = newString;
+  if (hasDoubleQuotes) result = applyCurlyDoubleQuotes(result);
+  if (hasSingleQuotes) result = applyCurlySingleQuotes(result);
+  return result;
+}
 
 /**
  * LLM 输出的畸形 XML token 映射表
@@ -472,8 +554,7 @@ Assume this tool is able to read all files on the machine. If the User provides 
 Usage:
 - The file_path parameter must be an absolute path, not a relative path
 - By default, it reads up to 2000 lines starting from the beginning of the file
-- You can optionally specify a line offset and limit (especially handy for long files), but it's recommended to read the whole file by not providing these parameters
-- Any lines longer than 2000 characters will be truncated
+- When you already know which part of the file you need, only read that part. This can be important for larger files.
 - Results are returned using cat -n format, with line numbers starting at 1
 - This tool allows Axon to read images (eg PNG, JPG, etc). When reading an image file the contents are presented visually as Axon is a multimodal LLM.
 - This tool can read PDF files (.pdf). For large PDFs (more than 10 pages), you MUST provide the pages parameter to read specific page ranges (e.g., pages: "1-5"). Reading a large PDF without the pages parameter will fail. Maximum 20 pages per request.
@@ -1301,8 +1382,8 @@ export class WriteTool extends BaseTool<FileWriteInput, FileResult> {
 Usage:
 - This tool will overwrite the existing file if there is one at the provided path.
 - If this is an existing file, you MUST use the Read tool first to read the file's contents. This tool will fail if you did not read the file first.
-- ALWAYS prefer editing existing files in the codebase. NEVER write new files unless explicitly required.
-- NEVER proactively create documentation files (*.md) or README files. Only create documentation files if explicitly requested by the User.
+- Prefer the Edit tool for modifying existing files — it only sends the diff. Only use this tool to create new files or for complete rewrites.
+- NEVER create documentation files (*.md) or README files unless explicitly requested by the User.
 - Only use emojis if the user explicitly requests it. Avoid writing emojis to files unless asked.`;
 
   getInputSchema(): ToolDefinition['inputSchema'] {
@@ -1311,7 +1392,7 @@ Usage:
       properties: {
         file_path: {
           type: 'string',
-          description: 'The absolute path to the file to write',
+          description: 'The absolute path to the file to write (must be absolute, not relative)',
         },
         content: {
           type: 'string',
@@ -1501,39 +1582,29 @@ Usage:
         },
         old_string: {
           type: 'string',
-          description: 'The text to replace. Required for single-edit mode.',
+          description: 'The text to replace',
         },
         new_string: {
           type: 'string',
-          description: 'The text to replace it with (must be different from old_string). Required for single-edit mode.',
+          description: 'The text to replace it with (must be different from old_string)',
         },
         replace_all: {
           type: 'boolean',
-          description: 'Replace all occurrences (default false)',
+          description: 'Replace all occurrences of old_string (default false)',
           default: false,
         },
         batch_edits: {
           type: 'array',
-          description: 'Array of edit operations to perform atomically. If any edit fails, all changes are rolled back. When using batch_edits, omit top-level old_string/new_string.',
           items: {
             type: 'object',
             properties: {
-              old_string: { type: 'string' },
-              new_string: { type: 'string' },
-              replace_all: { type: 'boolean', default: false },
+              old_string: { type: 'string', description: 'The text to replace' },
+              new_string: { type: 'string', description: 'The replacement text' },
+              replace_all: { type: 'boolean', description: 'Replace all occurrences', default: false },
             },
             required: ['old_string', 'new_string'],
           },
-        },
-        show_diff: {
-          type: 'boolean',
-          description: 'Show unified diff preview of changes (default true)',
-          default: true,
-        },
-        require_confirmation: {
-          type: 'boolean',
-          description: 'Require user confirmation before applying changes (default false)',
-          default: false,
+          description: 'Array of edits to apply atomically',
         },
       },
       required: ['file_path'],
@@ -1736,9 +1807,12 @@ Usage:
           }
         }
 
-        // 9.6 应用编辑
-        currentContent = replaceString(currentContent, matchedString, edit.new_string, edit.replace_all);
-        appliedEdits.push(edit.new_string);
+        // 9.6 保留弯引号风格（对齐官方 preserveQuoteStyle）
+        const actualNewString = preserveQuoteStyle(edit.old_string, matchedString, edit.new_string);
+
+        // 9.7 应用编辑
+        currentContent = replaceString(currentContent, matchedString, actualNewString, edit.replace_all);
+        appliedEdits.push(actualNewString);
       }
 
       // 10. 检查是否有实际变化
@@ -1767,7 +1841,24 @@ Usage:
       }
 
       // 13. 执行实际的文件写入
+      // 对齐官方 call() 中的二次过期检查：在写入前重新读取文件，
+      // 确认自验证阶段以来没有被外部修改（最小化异步间隙中的竞态窗口）
       try {
+        const preWriteContent = fs.readFileSync(file_path, 'utf-8').replaceAll('\r\n', '\n');
+        const preWriteMtime = fs.statSync(file_path).mtimeMs;
+        const lastRead = fileReadTracker.getRecord(file_path);
+        if (lastRead && preWriteMtime > lastRead.mtime) {
+          const isFullRead = lastRead.offset === undefined && lastRead.limit === undefined;
+          const contentUnchanged = isFullRead && preWriteContent === lastRead.content;
+          if (!contentUnchanged) {
+            return {
+              success: false,
+              error: t('file.modifiedSinceRead'),
+              errorCode: EditErrorCode.EXTERNALLY_MODIFIED,
+            };
+          }
+        }
+
         fs.writeFileSync(file_path, modifiedContent, 'utf-8');
 
         // v3.7: 写入成功后更新 FileReadTracker（对齐官网实现）

@@ -301,7 +301,7 @@ function SkillsTab({
                   >
                     <SvgEye />
                   </button>
-                  {skill.source !== 'plugin' && (
+                  {skill.source !== 'plugin' && skill.source !== 'builtin' && (
                     <button
                       className="plugins-skill-action-icon danger"
                       title={t('plugins.skills.actions.delete')}

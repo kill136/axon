@@ -226,6 +226,8 @@ function RootContent() {
         onSessionRename={(id, name) => sessionActionsRef.current.renameSession(id, name)}
         // 会话搜索
         onOpenSessionSearch={openSessionSearch}
+        // Git 面板
+        onOpenGitPanel={toggleGitPanel}
       />
       <div style={{ flex: 1, overflow: 'hidden', minHeight: 0, display: 'flex' }}>
         {/* 所有页面始终挂载，通过 display:none 隐藏非活跃页面，避免切换时丢失状态和 WebSocket 连接 */}

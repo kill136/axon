@@ -1,8 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import { MarkdownContent } from '../../components/MarkdownContent';
 import { useLanguage } from '../../i18n';
 import { useProject } from '../../contexts/ProjectContext';
 import styles from './DocsPanel.module.css';
+
+const VectorDBPanel = lazy(() => import('./VectorDBPanel'));
 
 interface NotebookInfo {
   tokens: number;
@@ -27,7 +29,7 @@ interface NotebookListResponse {
   };
 }
 
-type DocType = 'axonmd' | 'profile' | 'experience' | 'project' | 'identity' | 'tools-notes';
+type DocType = 'axonmd' | 'profile' | 'experience' | 'project' | 'identity' | 'tools-notes' | 'vectordb';
 
 interface DocItem {
   type: DocType;
@@ -37,7 +39,7 @@ interface DocItem {
   exists: boolean;
   tokens?: number;
   maxTokens?: number;
-  group: 'project' | 'memory' | 'persona';
+  group: 'project' | 'memory' | 'persona' | 'vectordb';
 }
 
 export default function DocsPanel() {
@@ -123,6 +125,14 @@ export default function DocsPanel() {
           tokens: notebooks['tools-notes'].tokens,
           maxTokens: notebooks['tools-notes'].maxTokens,
           group: 'persona',
+        },
+        {
+          type: 'vectordb',
+          icon: '🗄️',
+          nameKey: 'customize.aiProfile.vectordb',
+          descKey: 'customize.aiProfile.vectordbDesc',
+          exists: true,
+          group: 'vectordb',
         },
       ];
       setItems(docItems);
@@ -243,6 +253,9 @@ export default function DocsPanel() {
   const projectItems = items.filter(i => i.group === 'project');
   const memoryItems = items.filter(i => i.group === 'memory');
   const personaItems = items.filter(i => i.group === 'persona');
+  const vectordbItems = items.filter(i => i.group === 'vectordb');
+
+  const isVectorDBSelected = selected === 'vectordb';
 
   return (
     <div className={styles.docsPanel}>
@@ -318,12 +331,37 @@ export default function DocsPanel() {
               </div>
             </button>
           ))}
+
+          {/* 向量数据库 */}
+          <div className={styles.groupTitle}>Vector DB</div>
+          {vectordbItems.map(item => (
+            <button
+              key={item.type}
+              className={`${styles.fileCard} ${selected === item.type ? styles.active : ''}`}
+              onClick={() => { setSelected('vectordb'); setMode('preview'); }}
+            >
+              <div className={styles.fileCardIcon}>{item.icon}</div>
+              <div className={styles.fileCardInfo}>
+                <div className={styles.fileCardName}>{t(item.nameKey)}</div>
+                <div className={styles.fileCardMeta}>
+                  <span className={styles.fileCardStatus}>
+                    <span className={`${styles.statusDot} ${styles.exists}`} />
+                    {t(item.descKey)}
+                  </span>
+                </div>
+              </div>
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* 右侧：编辑器 */}
+      {/* 右侧：编辑器或向量数据库面板 */}
       <div className={styles.editorArea}>
-        {!selected ? (
+        {isVectorDBSelected ? (
+          <Suspense fallback={<div className={styles.editorPlaceholder}>Loading...</div>}>
+            <VectorDBPanel />
+          </Suspense>
+        ) : !selected ? (
           <div className={styles.editorPlaceholder}>
             {t('customize.aiProfileDesc')}
           </div>

@@ -600,14 +600,14 @@ describe('TodoWriteTool', () => {
     });
 
     it('should have usage guidelines in description', () => {
-      expect(todoTool.description).toContain('When to Use');
-      expect(todoTool.description).toContain('When NOT to Use');
+      expect(todoTool.description).toContain('proactively');
+      expect(todoTool.description).toContain('track progress');
     });
 
     it('should document task states in description', () => {
-      expect(todoTool.description).toContain('pending');
       expect(todoTool.description).toContain('in_progress');
-      expect(todoTool.description).toContain('completed');
+      expect(todoTool.description).toContain('content');
+      expect(todoTool.description).toContain('activeForm');
     });
   });
 });

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type MutableRefObject } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
@@ -35,19 +35,11 @@ interface SimpleTerminalTabProps {
   projectPath?: string;
   /** 是否为当前活跃 tab（控制 display 可见性） */
   active?: boolean;
-  /** 服务端分配的 terminalId（由父组件管理，解决多实例消息路由问题） */
-  terminalId?: string | null;
-  /** 同步 terminalId 映射 ref（解决 React 异步渲染导致的早期消息丢失） */
-  terminalIdSyncRef?: MutableRefObject<Record<string, string | null>>;
-  /** 当前 tab 的路径标识（配合 terminalIdSyncRef 使用） */
-  tabPath?: string;
 }
 
 /**
- * 简单终端 Tab - 仅显示 xterm 终端，无任何额外UI
- *
- * 多实例模式：当传入 terminalId 时，不自行创建终端，仅处理匹配 terminalId 的消息。
- * 单实例模式（向后兼容）：不传 terminalId 时，自行发送 terminal:create。
+ * 简单终端 Tab - 每个实例自行创建和管理自己的终端会话
+ * 不再依赖父组件路由 terminalId，彻底消除竞态问题
  */
 export function SimpleTerminalTab({
   send,
@@ -55,27 +47,24 @@ export function SimpleTerminalTab({
   connected,
   projectPath,
   active = true,
-  terminalId: externalTerminalId,
-  terminalIdSyncRef,
-  tabPath,
 }: SimpleTerminalTabProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
-  const terminalIdRef = useRef<string | null>(externalTerminalId ?? null);
+  const terminalIdRef = useRef<string | null>(null);
   const [terminalReady, setTerminalReady] = useState(false);
-  // 是否由父组件管理终端创建
-  const managedExternally = externalTerminalId !== undefined;
-
-  // 同步外部 terminalId
-  useEffect(() => {
-    if (managedExternally) {
-      terminalIdRef.current = externalTerminalId ?? null;
-      if (externalTerminalId) {
-        setTerminalReady(true);
-      }
-    }
-  }, [externalTerminalId, managedExternally]);
+  // 缓冲：在 xterm 初始化前到达的输出
+  const pendingOutputRef = useRef<string[]>([]);
+  // 防止重复创建
+  const createdRef = useRef(false);
+  // 用于关联 terminal:create 请求和 terminal:created 响应
+  const requestIdRef = useRef<string | null>(null);
+  // 保持 send 最新引用
+  const sendRef = useRef(send);
+  sendRef.current = send;
+  // 跟踪 active 状态，供 ResizeObserver 等闭包读取
+  const activeRef = useRef(active);
+  activeRef.current = active;
 
   // 初始化 xterm
   useEffect(() => {
@@ -97,27 +86,22 @@ export function SimpleTerminalTab({
     xtermRef.current = term;
     fitAddonRef.current = fitAddon;
 
-    // 尝试 fit
     const fitWithRetry = () => {
-      try {
-        fitAddon.fit();
-      } catch {
-        // ignore
-      }
+      if (!activeRef.current) return;
+      try { fitAddon.fit(); } catch { /* ignore */ }
     };
     requestAnimationFrame(() => fitWithRetry());
     const t1 = setTimeout(fitWithRetry, 100);
     const t2 = setTimeout(fitWithRetry, 300);
 
-    // 监听容器尺寸变化
+    // 监听容器尺寸变化 — 仅在 tab 可见时 fit，否则 display:none 下
+    // fitAddon.fit() 会计算出 0 尺寸，导致 PTY resize 为 0x0，
+    // Claude Code 等 TUI 程序收到 SIGWINCH 后按错误尺寸渲染，样式彻底错乱
     let resizeObserver: ResizeObserver | null = null;
     if (typeof ResizeObserver !== 'undefined' && containerRef.current) {
       resizeObserver = new ResizeObserver(() => {
-        try {
-          fitAddon.fit();
-        } catch {
-          // ignore
-        }
+        if (!activeRef.current) return;
+        try { fitAddon.fit(); } catch { /* ignore */ }
       });
       resizeObserver.observe(containerRef.current);
     }
@@ -126,126 +110,151 @@ export function SimpleTerminalTab({
     term.onData((data: string) => {
       const tid = terminalIdRef.current;
       if (tid) {
-        send({
+        sendRef.current({
           type: 'terminal:input',
           payload: { terminalId: tid, data },
         });
       }
     });
 
-    // 剪贴板图片粘贴：拦截 paste 事件，保存图片为临时文件，将路径写入终端
-    const container = containerRef.current;
-    const handlePaste = (e: ClipboardEvent) => {
-      if (!e.clipboardData) return;
-      const items = Array.from(e.clipboardData.items);
-      const imageItem = items.find(item => item.type.startsWith('image/'));
-      if (!imageItem) return; // 非图片粘贴，交给 xterm 默认处理
-
-      e.preventDefault();
-      e.stopPropagation();
-      const blob = imageItem.getAsFile();
-      if (!blob) return;
-
-      const tid = terminalIdRef.current;
-      if (!tid) return;
-
-      const reader = new FileReader();
-      reader.onload = () => {
-        const dataUrl = reader.result as string;
-        const base64 = dataUrl.split(',')[1];
-        send({
-          type: 'terminal:paste-image',
-          payload: {
-            terminalId: tid,
-            data: base64,
-            mimeType: imageItem.type,
-          },
-        });
-      };
-      reader.readAsDataURL(blob);
-    };
-    container?.addEventListener('paste', handlePaste);
+    // 阻止 xterm 将 Ctrl+V 作为 \x16 控制字符发送到 PTY
+    // 否则 Claude Code 等程序会收到 \x16 并尝试读取（不存在的）服务器系统剪贴板
+    term.attachCustomKeyEventHandler((event: KeyboardEvent) => {
+      if (event.type === 'keydown' && (event.ctrlKey || event.metaKey) && event.key === 'v') {
+        return false;
+      }
+      return true;
+    });
 
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
-      container?.removeEventListener('paste', handlePaste);
       resizeObserver?.disconnect();
       term.dispose();
       xtermRef.current = null;
       fitAddonRef.current = null;
     };
-  }, [send]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 单实例模式：自行创建终端会话
+  // 注册全局图片粘贴回调（供 index.html 中的 inline script 调用）
   useEffect(() => {
-    if (managedExternally) return;
-    if (!connected) return;
+    if (!active) return;
+    const handler = (base64: string, mimeType: string) => {
+      const tid = terminalIdRef.current;
+      console.log('[SimpleTerminal] paste callback, tid:', tid, 'sendRef:', typeof sendRef.current);
+      if (!tid) {
+        console.warn('[SimpleTerminal] no terminalId, cannot paste');
+        return;
+      }
+      // 直接通过 WebSocket 发送，绕过可能有问题的 send 封装
+      const msg = JSON.stringify({
+        type: 'terminal:paste-image',
+        payload: { terminalId: tid, data: base64, mimeType },
+      });
+      console.log('[SimpleTerminal] sending via WS, msg size:', msg.length);
+      try {
+        // 用全局 __wsSend（由 useWebSocket 注入），确保通过同一个 WebSocket 发送
+        const wsSend = (window as any).__wsSend;
+        if (wsSend) {
+          wsSend({ type: 'terminal:paste-image', payload: { terminalId: tid, data: base64, mimeType } });
+          console.log('[SimpleTerminal] sent via __wsSend');
+        } else {
+          sendRef.current({ type: 'terminal:paste-image', payload: { terminalId: tid, data: base64, mimeType } });
+          console.log('[SimpleTerminal] sent via sendRef (fallback)');
+        }
+      } catch (err) {
+        console.error('[SimpleTerminal] send failed:', err);
+      }
+    };
+    (window as any).__axonTerminalPasteImage = handler;
+    return () => {
+      if ((window as any).__axonTerminalPasteImage === handler) {
+        (window as any).__axonTerminalPasteImage = null;
+      }
+    };
+  }, [active]);
 
-    send({
-      type: 'terminal:create',
-      payload: { cwd: projectPath || undefined },
-    });
-  }, [connected, projectPath, send, managedExternally]);
+  // 创建终端会话（仅一次）
+  useEffect(() => {
+    if (!connected || createdRef.current) return;
+    createdRef.current = true;
+    const reqId = `st-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    requestIdRef.current = reqId;
+    send({ type: 'terminal:create', payload: { cwd: projectPath || undefined, requestId: reqId } });
+  }, [connected, projectPath, send]);
 
   // 监听 WebSocket 消息
   useEffect(() => {
-    // 获取当前实例的 terminalId（优先从同步 ref 读取，避免 React 渲染延迟导致丢消息）
-    const getMyTerminalId = (): string | null => {
-      if (terminalIdSyncRef && tabPath) {
-        return terminalIdSyncRef.current[tabPath] ?? null;
-      }
-      return terminalIdRef.current;
-    };
-
     const unsubscribe = addMessageHandler((msg: any) => {
       if (!msg.type?.startsWith('terminal:')) return;
       const payload = msg.payload as Record<string, unknown>;
 
       switch (msg.type) {
         case 'terminal:created': {
-          // 多实例模式下不处理 created（由父组件管理）
-          if (managedExternally) break;
-          terminalIdRef.current = payload.terminalId as string;
+          // 通过 requestId 精确匹配自己创建的终端，避免误领其他组件的 terminal
+          if (terminalIdRef.current) break;
+          const serverTerminalId = payload.terminalId as string;
+          if (!serverTerminalId) break;
+          // 如果有 requestId，必须匹配；如果服务端没有返回 requestId（兼容旧版），回退到首个认领
+          const respRequestId = payload.requestId as string | undefined;
+          if (requestIdRef.current && respRequestId && respRequestId !== requestIdRef.current) break;
+          terminalIdRef.current = serverTerminalId;
           setTerminalReady(true);
 
-          // fit + resize
+          // fit + resize + 刷入缓冲
           setTimeout(() => {
             if (fitAddonRef.current && xtermRef.current) {
               try {
-                fitAddonRef.current.fit();
-                send({
-                  type: 'terminal:resize',
-                  payload: {
-                    terminalId: terminalIdRef.current,
-                    cols: xtermRef.current.cols,
-                    rows: xtermRef.current.rows,
-                  },
-                });
-              } catch {
-                // ignore
-              }
+                // 仅在 active 时 fit，避免 display:none 下得到 0 尺寸
+                if (activeRef.current) {
+                  fitAddonRef.current.fit();
+                }
+                // 刷入缓冲的输出（无论是否 active 都要刷）
+                for (const chunk of pendingOutputRef.current) {
+                  xtermRef.current.write(chunk);
+                }
+                pendingOutputRef.current = [];
+                // 仅在有效尺寸时发送 resize
+                const { cols, rows } = xtermRef.current;
+                if (cols > 0 && rows > 0) {
+                  send({
+                    type: 'terminal:resize',
+                    payload: {
+                      terminalId: terminalIdRef.current,
+                      cols,
+                      rows,
+                    },
+                  });
+                }
+              } catch { /* ignore */ }
             }
-          }, 100);
+          }, 50);
           break;
         }
 
         case 'terminal:output': {
           const tid = payload.terminalId as string;
           const data = payload.data as string;
-          const myTid = getMyTerminalId();
-          // 只处理属于自己的终端输出
-          if (tid && tid === myTid && data && xtermRef.current) {
+          if (!tid || !data) break;
+          const myTid = terminalIdRef.current;
+          if (tid !== myTid) {
+            // 如果自己还没 terminalId，可能是早期消息，缓冲
+            if (!myTid) {
+              pendingOutputRef.current.push(data);
+            }
+            break;
+          }
+          if (xtermRef.current) {
             xtermRef.current.write(data);
+          } else {
+            pendingOutputRef.current.push(data);
           }
           break;
         }
 
         case 'terminal:exit': {
           const tid = payload.terminalId as string;
-          const myTid = getMyTerminalId();
-          // 只处理属于自己的终端退出
-          if (tid && tid === myTid && xtermRef.current) {
+          if (tid && tid === terminalIdRef.current && xtermRef.current) {
             const exitCode = payload.exitCode as number;
             xtermRef.current.write(
               `\r\n\x1b[90m[Process exited with code ${exitCode}]\x1b[0m\r\n`
@@ -258,18 +267,17 @@ export function SimpleTerminalTab({
 
     return () => {
       unsubscribe();
-      // 仅单实例模式下清理终端（多实例模式由父组件管理生命周期）
-      if (!managedExternally && terminalIdRef.current) {
-        send({
+      if (terminalIdRef.current) {
+        sendRef.current({
           type: 'terminal:destroy',
           payload: { terminalId: terminalIdRef.current },
         });
         terminalIdRef.current = null;
       }
     };
-  }, [addMessageHandler, send, managedExternally]);
+  }, [addMessageHandler, send]);
 
-  // 处理 fit 当容器可见时（包括 active 切换回来时）
+  // fit 当容器变为可见时
   useEffect(() => {
     if (terminalReady && active && fitAddonRef.current) {
       requestAnimationFrame(() => {
@@ -277,30 +285,34 @@ export function SimpleTerminalTab({
           try {
             fitAddonRef.current?.fit();
             if (xtermRef.current && terminalIdRef.current) {
-              send({
-                type: 'terminal:resize',
-                payload: {
-                  terminalId: terminalIdRef.current,
-                  cols: xtermRef.current.cols,
-                  rows: xtermRef.current.rows,
-                },
-              });
+              const { cols, rows } = xtermRef.current;
+              // 防止发送无效尺寸（理论上此时 active=true 不会出现，但做防御）
+              if (cols > 0 && rows > 0) {
+                sendRef.current({
+                  type: 'terminal:resize',
+                  payload: {
+                    terminalId: terminalIdRef.current,
+                    cols,
+                    rows,
+                  },
+                });
+              }
             }
-          } catch {
-            // ignore
-          }
+          } catch { /* ignore */ }
         });
       });
     }
-  }, [terminalReady, active, send]);
+  }, [terminalReady, active]);
 
   return (
     <div
       ref={containerRef}
       style={{
-        width: '100%',
-        height: '100%',
-        flex: 1,
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
         display: active ? 'block' : 'none',
       }}
     />

@@ -591,6 +591,8 @@ class RealTaskExecutor implements TaskExecutor {
   private sharedSystemPromptBase: string;
   /** v8.4: Coordinator 引用（用于 Worker 注册/广播） */
   private coordinator: RealtimeCoordinator | null = null;
+  /** 认证凭证（透传给 Worker，支持 OpenAI 等非 Anthropic 后端） */
+  private credentials: { apiKey?: string; authToken?: string; baseUrl?: string } = {};
 
   /**
    * v5.0: 获取精简的共享记忆文本
@@ -643,6 +645,13 @@ class RealTaskExecutor implements TaskExecutor {
       blueprint.techStack || { language: 'typescript', packageManager: 'npm' },
       blueprint.projectPath
     );
+  }
+
+  /**
+   * 设置认证凭证（透传给 Worker）
+   */
+  setCredentials(creds: { apiKey?: string; authToken?: string; baseUrl?: string }): void {
+    this.credentials = creds;
   }
 
   /**
@@ -997,6 +1006,10 @@ class RealTaskExecutor implements TaskExecutor {
           autoMerge: true,
           maxCost: 10,
           costWarningThreshold: 0.8,
+          // 认证透传（支持 OpenAI 等非 Anthropic 后端）
+          apiKey: this.credentials.apiKey,
+          authToken: this.credentials.authToken,
+          baseUrl: this.credentials.baseUrl,
         },
         constraints: this.blueprint.constraints,
         dependencyOutputs: dependencyOutputs.length > 0 ? dependencyOutputs : undefined,
@@ -1192,6 +1205,8 @@ class ExecutionManager {
   private clientConfig: { apiKey?: string; authToken?: string; baseUrl?: string } = {};
   // 实时凭证提供者（优先于缓存的 clientConfig，确保认证变更后立即生效）
   private credentialsProvider?: () => { apiKey?: string; authToken?: string; baseUrl?: string };
+  // runtime-aware 客户端工厂（由 ConversationManager 注入，支持 OpenAI 等非 Anthropic 后端）
+  private _clientFactory?: () => import('../runtime/types.js').ConversationClient;
 
   // v13.0: 执行队列 - 保证同一时刻只有一个 LeadAgent 在运行
   // 静态工具上下文（UpdateTaskPlanTool.context 等）是进程级全局变量，
@@ -1223,6 +1238,27 @@ class ExecutionManager {
    */
   setCredentialsProvider(provider: () => { apiKey?: string; authToken?: string; baseUrl?: string }): void {
     this.credentialsProvider = provider;
+  }
+
+  /**
+   * 设置 runtime-aware 客户端工厂（由 ConversationManager 注入）
+   * 返回的 ConversationClient 自动适配当前 runtimeBackend（Anthropic / OpenAI 等）
+   */
+  setClientFactory(factory: () => import('../runtime/types.js').ConversationClient): void {
+    this._clientFactory = factory;
+    // 同步设置 planner 的 client
+    try { this.planner.setClient(factory()); } catch { /* planner 可能还没准备好 */ }
+  }
+
+  /**
+   * 获取 runtime-aware 的 ConversationClient
+   * 优先使用注入的 factory，fallback 到 null
+   */
+  getConversationClient(): import('../runtime/types.js').ConversationClient | null {
+    if (this._clientFactory) {
+      return this._clientFactory();
+    }
+    return null;
   }
 
   /**
@@ -1364,6 +1400,7 @@ class ExecutionManager {
 
     // 设置真正的任务执行器（LeadAgent 模式下仍需作为 fallback）
     const executor = new RealTaskExecutor(blueprint);
+    executor.setCredentials(this.resolveCredentials());
     executor.setCoordinator(coordinator);
     coordinator.setTaskExecutor(executor);
 
@@ -1971,6 +2008,7 @@ class ExecutionManager {
       if (blueprint) {
         console.log(`[ExecutionManager] LeadAgent pause recovery: restarting execution in isResume mode`);
         const executor = new RealTaskExecutor(blueprint);
+        executor.setCredentials(this.resolveCredentials());
         executor.setCoordinator(session.coordinator);
         session.coordinator.setTaskExecutor(executor);
 
@@ -2009,6 +2047,7 @@ class ExecutionManager {
         const blueprint = blueprintStore.get(session.blueprintId);
         if (blueprint) {
           const executor = new RealTaskExecutor(blueprint);
+          executor.setCredentials(this.resolveCredentials());
           executor.setCoordinator(session.coordinator);
           session.coordinator.setTaskExecutor(executor);
           blueprint.status = 'executing';
@@ -2087,6 +2126,7 @@ class ExecutionManager {
     });
 
     const executor = new RealTaskExecutor(blueprint);
+    executor.setCredentials(this.resolveCredentials());
     executor.setCoordinator(coordinator);
     coordinator.setTaskExecutor(executor);
     coordinator.setBlueprint(blueprint);
@@ -2372,6 +2412,7 @@ class ExecutionManager {
 
         // 创建新的任务执行器
         const executor = new RealTaskExecutor(blueprint);
+        executor.setCredentials(this.resolveCredentials());
         executor.setCoordinator(session.coordinator);
         session.coordinator.setTaskExecutor(executor);
 
@@ -2458,6 +2499,7 @@ class ExecutionManager {
 
     // 设置任务执行器
     const executor = new RealTaskExecutor(blueprint);
+    executor.setCredentials(this.resolveCredentials());
     executor.setCoordinator(coordinator);  // v8.4: 设置 Coordinator 引用（用于广播）
     coordinator.setTaskExecutor(executor);
 
@@ -3079,9 +3121,11 @@ Generate Mermaid flowchart code. Requirements:
 Return JSON:
 {"title":"title","description":"description","mermaidCode":"flowchart TD\\n...","nodePathMap":{"NodeId":{"path":"src/xxx","type":"folder"}}}`;
 
-    // 调用 AI
-    const { getDefaultClient } = await import('../../../core/client.js');
-    const client = getDefaultClient();
+    // 调用 AI（通过 runtime-aware factory，支持 OpenAI 等后端）
+    const client = executionManager.getConversationClient();
+    if (!client) {
+      return res.status(500).json({ success: false, error: 'No AI client available. Please configure API credentials.' });
+    }
 
     const response = await client.createMessage([
       { role: 'user', content: prompt }
@@ -3091,7 +3135,7 @@ Return JSON:
     let result: any;
     try {
       // 从 response 中提取文本内容
-      const textBlock = response.content.find((block) => block.type === 'text') as { type: 'text'; text: string } | undefined;
+      const textBlock = response.content.find((block: any) => block.type === 'text') as { type: 'text'; text: string } | undefined;
       let jsonStr = textBlock?.text || '';
       const jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
       if (jsonMatch) jsonStr = jsonMatch[1];
@@ -6098,9 +6142,11 @@ router.post('/analyze-node', async (req: Request, res: Response) => {
 
     console.log(`[Analyze Node] Cache miss, calling AI analysis...`);
 
-    // 使用 getDefaultClient() 获取已认证的客户端
-    const { getDefaultClient } = await import('../../../core/client.js');
-    const client = getDefaultClient();
+    // 使用 runtime-aware factory 获取客户端（支持 OpenAI 等后端）
+    const client = executionManager.getConversationClient();
+    if (!client) {
+      return res.status(500).json({ success: false, error: 'No AI client available. Please configure API credentials.' });
+    }
 
     // 读取文件/目录内容
     let contentInfo = '';
@@ -6270,6 +6316,8 @@ router.post('/generate', async (req: Request, res: Response) => {
 
     // v2.0: 使用 SmartPlanner 创建蓝图
     const planner = createSmartPlanner();
+    const factoryClient = executionManager.getConversationClient();
+    if (factoryClient) planner.setClient(factoryClient);
 
     // 检查是否有足够的需求信息
     if (!name && requirements.length === 0) {
@@ -6359,254 +6407,10 @@ router.post('/generate', async (req: Request, res: Response) => {
 });
 
 // ============================================================================
-// 简化的文件操作 API（与原有 /file-operation/* 兼容）
+// 文件操作 API — 已拆分到 blueprint-file-ops-api.ts
 // ============================================================================
-
-/**
- * POST /file-operation/create
- * 创建文件
- */
-router.post('/file-operation/create', (req: Request, res: Response) => {
-  try {
-    const { path: filePath, content } = req.body;
-
-    if (!filePath) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing file path',
-      });
-    }
-
-    const cwd = process.cwd();
-    const fullPath = path.isAbsolute(filePath) ? filePath : path.join(cwd, filePath);
-
-    const dir = path.dirname(fullPath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-
-    if (fs.existsSync(fullPath)) {
-      return res.status(400).json({
-        success: false,
-        error: 'File already exists',
-      });
-    }
-
-    fs.writeFileSync(fullPath, content || '', 'utf-8');
-
-    res.json({
-      success: true,
-      data: { path: filePath },
-    });
-  } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-/**
- * POST /file-operation/mkdir
- * 创建目录
- */
-router.post('/file-operation/mkdir', (req: Request, res: Response) => {
-  try {
-    const { path: dirPath } = req.body;
-
-    if (!dirPath) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing directory path',
-      });
-    }
-
-    const cwd = process.cwd();
-    const fullPath = path.isAbsolute(dirPath) ? dirPath : path.join(cwd, dirPath);
-
-    if (fs.existsSync(fullPath)) {
-      return res.status(400).json({
-        success: false,
-        error: 'Directory already exists',
-      });
-    }
-
-    fs.mkdirSync(fullPath, { recursive: true });
-
-    res.json({
-      success: true,
-      data: { path: dirPath },
-    });
-  } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-/**
- * POST /file-operation/delete
- * 删除文件或目录
- */
-router.post('/file-operation/delete', (req: Request, res: Response) => {
-  try {
-    const { path: targetPath } = req.body;
-
-    if (!targetPath) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing path',
-      });
-    }
-
-    const cwd = process.cwd();
-    const fullPath = path.isAbsolute(targetPath) ? targetPath : path.join(cwd, targetPath);
-
-    if (!fs.existsSync(fullPath)) {
-      return res.status(404).json({
-        success: false,
-        error: 'File or directory does not exist',
-      });
-    }
-
-    const stats = fs.statSync(fullPath);
-    if (stats.isDirectory()) {
-      fs.rmSync(fullPath, { recursive: true });
-    } else {
-      fs.unlinkSync(fullPath);
-    }
-
-    res.json({
-      success: true,
-      data: { path: targetPath },
-    });
-  } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-/**
- * POST /file-operation/rename
- * 重命名文件或目录
- */
-router.post('/file-operation/rename', (req: Request, res: Response) => {
-  try {
-    const { oldPath, newPath } = req.body;
-
-    if (!oldPath || !newPath) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing path parameter',
-      });
-    }
-
-    const cwd = process.cwd();
-    const fullOldPath = path.isAbsolute(oldPath) ? oldPath : path.join(cwd, oldPath);
-    const fullNewPath = path.isAbsolute(newPath) ? newPath : path.join(cwd, newPath);
-
-    if (!fs.existsSync(fullOldPath)) {
-      return res.status(404).json({
-        success: false,
-        error: 'Source file or directory does not exist',
-      });
-    }
-
-    if (fs.existsSync(fullNewPath)) {
-      return res.status(400).json({
-        success: false,
-        error: 'Target already exists',
-      });
-    }
-
-    fs.renameSync(fullOldPath, fullNewPath);
-
-    res.json({
-      success: true,
-      data: { path: newPath },
-    });
-  } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-/**
- * POST /file-operation/copy
- * 复制文件或目录
- */
-router.post('/file-operation/copy', (req: Request, res: Response) => {
-  try {
-    const { sourcePath, destPath } = req.body;
-
-    if (!sourcePath || !destPath) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing path parameter',
-      });
-    }
-
-    const cwd = process.cwd();
-    const fullSourcePath = path.isAbsolute(sourcePath) ? sourcePath : path.join(cwd, sourcePath);
-    const fullDestPath = path.isAbsolute(destPath) ? destPath : path.join(cwd, destPath);
-
-    if (!fs.existsSync(fullSourcePath)) {
-      return res.status(404).json({
-        success: false,
-        error: 'Source file or directory does not exist',
-      });
-    }
-
-    const destDir = path.dirname(fullDestPath);
-    if (!fs.existsSync(destDir)) {
-      fs.mkdirSync(destDir, { recursive: true });
-    }
-
-    fs.cpSync(fullSourcePath, fullDestPath, { recursive: true });
-
-    res.json({
-      success: true,
-      data: { path: destPath },
-    });
-  } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-/**
- * POST /file-operation/move
- * 移动文件或目录
- */
-router.post('/file-operation/move', (req: Request, res: Response) => {
-  try {
-    const { sourcePath, destPath } = req.body;
-
-    if (!sourcePath || !destPath) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing path parameter',
-      });
-    }
-
-    const cwd = process.cwd();
-    const fullSourcePath = path.isAbsolute(sourcePath) ? sourcePath : path.join(cwd, sourcePath);
-    const fullDestPath = path.isAbsolute(destPath) ? destPath : path.join(cwd, destPath);
-
-    if (!fs.existsSync(fullSourcePath)) {
-      return res.status(404).json({
-        success: false,
-        error: 'Source file or directory does not exist',
-      });
-    }
-
-    const destDir = path.dirname(fullDestPath);
-    if (!fs.existsSync(destDir)) {
-      fs.mkdirSync(destDir, { recursive: true });
-    }
-
-    fs.renameSync(fullSourcePath, fullDestPath);
-
-    res.json({
-      success: true,
-      data: { path: destPath },
-    });
-  } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
+import blueprintFileOpsRouter from './blueprint-file-ops-api.js';
+router.use('/', blueprintFileOpsRouter);
 
 // ============================================================================
 // 🐝 冲突管理 API
@@ -6713,166 +6517,10 @@ router.post('/coordinator/conflicts/:conflictId/resolve', (req: Request, res: Re
 });
 
 // ============================================================================
-// v4.0: 执行日志 API（SQLite 存储）
+// v4.0: 执行日志 API — 已拆分到 blueprint-logs-api.ts
 // ============================================================================
-
-/**
- * GET /logs/task/:taskId
- * 获取指定任务的执行日志
- */
-router.get('/logs/task/:taskId', async (req: Request, res: Response) => {
-  try {
-    const { taskId } = req.params;
-    const { limit = '100', offset = '0', since, until } = req.query;
-
-    const logDB = await getSwarmLogDB();
-
-    // 获取任务执行历史
-    const history = logDB.getTaskHistory(taskId);
-
-    // 获取日志和流
-    const logs = logDB.getLogs({
-      taskId,
-      limit: parseInt(limit as string, 10),
-      offset: parseInt(offset as string, 10),
-      since: since as string,
-      until: until as string,
-    });
-
-    const streams = logDB.getStreams({
-      taskId,
-      limit: parseInt(limit as string, 10),
-      offset: parseInt(offset as string, 10),
-      since: since as string,
-      until: until as string,
-    });
-
-    res.json({
-      success: true,
-      data: {
-        taskId,
-        executions: history.executions,
-        logs,
-        streams,
-        totalLogs: history.totalLogs,
-        totalStreams: history.totalStreams,
-      },
-    });
-  } catch (error: any) {
-    console.error('[LogsAPI] Failed to get task logs:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-/**
- * GET /logs/blueprint/:blueprintId
- * 获取指定蓝图的所有执行日志
- */
-router.get('/logs/blueprint/:blueprintId', async (req: Request, res: Response) => {
-  try {
-    const { blueprintId } = req.params;
-    const { limit = '500', offset = '0' } = req.query;
-
-    const logDB = await getSwarmLogDB();
-
-    // 获取所有执行记录
-    const executions = logDB.getExecutions({
-      blueprintId,
-      limit: parseInt(limit as string, 10),
-      offset: parseInt(offset as string, 10),
-    });
-
-    // 获取日志
-    const logs = logDB.getLogs({
-      blueprintId,
-      limit: parseInt(limit as string, 10),
-      offset: parseInt(offset as string, 10),
-    });
-
-    res.json({
-      success: true,
-      data: {
-        blueprintId,
-        executions,
-        logs,
-        totalExecutions: executions.length,
-        totalLogs: logs.length,
-      },
-    });
-  } catch (error: any) {
-    console.error('[LogsAPI] Failed to get blueprint logs:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-/**
- * DELETE /logs/task/:taskId
- * 清空指定任务的日志（用于重试前）
- */
-router.delete('/logs/task/:taskId', async (req: Request, res: Response) => {
-  try {
-    const { taskId } = req.params;
-    const { keepLatest = 'false' } = req.query;
-
-    const logDB = await getSwarmLogDB();
-    const deletedCount = logDB.clearTaskLogs(taskId, keepLatest === 'true');
-
-    res.json({
-      success: true,
-      data: {
-        taskId,
-        deletedCount,
-      },
-    });
-  } catch (error: any) {
-    console.error('[LogsAPI] Failed to clear task logs:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-/**
- * GET /logs/stats
- * 获取日志数据库统计信息
- */
-router.get('/logs/stats', async (_req: Request, res: Response) => {
-  try {
-    const logDB = await getSwarmLogDB();
-    const stats = logDB.getStats();
-
-    res.json({
-      success: true,
-      data: {
-        ...stats,
-        dbSizeMB: (stats.dbSizeBytes / 1024 / 1024).toFixed(2),
-      },
-    });
-  } catch (error: any) {
-    console.error('[LogsAPI] Failed to get statistics:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-/**
- * POST /logs/cleanup
- * 手动触发日志清理
- */
-router.post('/logs/cleanup', async (_req: Request, res: Response) => {
-  try {
-    const logDB = await getSwarmLogDB();
-    const deletedCount = logDB.cleanupOldLogs();
-
-    res.json({
-      success: true,
-      data: {
-        deletedCount,
-        message: `Cleaned up ${deletedCount} expired log entries`,
-      },
-    });
-  } catch (error: any) {
-    console.error('[LogsAPI] Failed to cleanup logs:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
+import blueprintLogsRouter from './blueprint-logs-api.js';
+router.use('/', blueprintLogsRouter);
 
 // ============================================================================
 // 导出路由和共享实例

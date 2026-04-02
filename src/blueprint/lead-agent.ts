@@ -666,8 +666,8 @@ ${taskSummary}
 
     // 从 AGENT_TOOL_CONFIGS 获取 LeadAgent 的工具白名单，避免注入全量工具浪费 token
     const leadToolConfig = AGENT_TOOL_CONFIGS['lead-agent'];
-    const allowedTools = leadToolConfig?.allowedTools !== '*'
-      ? leadToolConfig?.allowedTools
+    const allowedTools = leadToolConfig?.allowedTools !== '*' && Array.isArray(leadToolConfig?.allowedTools)
+      ? leadToolConfig.allowedTools
       : undefined;
 
     this.loop = new ConversationLoop({
@@ -923,6 +923,19 @@ ${taskSummary}
     if (this.loop) {
       this.loop.abort();
       this.loop = null;
+    }
+  }
+
+  /**
+   * 获取当前实时成本（美元）
+   */
+  getCurrentCost(): number {
+    if (!this.loop) return 0;
+    try {
+      const costStr = this.loop.getSession().getStats().totalCost;
+      return parseFloat(costStr.replace('$', '')) || 0;
+    } catch {
+      return 0;
     }
   }
 

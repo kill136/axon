@@ -158,7 +158,7 @@ Usage:
         },
         head_limit: {
           type: 'number',
-          description: 'Limit output to first N lines/entries, equivalent to "| head -N". Works across all output modes: content (limits output lines), files_with_matches (limits file paths), count (limits count entries). Defaults to 0 (unlimited).',
+          description: 'Limit output to first N lines/entries, equivalent to "| head -N". Works across all output modes: content (limits output lines), files_with_matches (limits file paths), count (limits count entries). Defaults to 250 when unspecified. Pass 0 for unlimited (use sparingly — large result sets waste context).',
         },
         offset: {
           type: 'number',
@@ -182,7 +182,7 @@ Usage:
       '-n': showLineNumbers = true,
       '-i': ignoreCase,
       type: fileType,
-      head_limit,
+      head_limit = 250,
       offset = 0,
       multiline,
     } = input;

@@ -257,9 +257,7 @@ export function WelcomeScreen({ onBlueprintCreated: _onBlueprintCreated, onQuick
 
   return (
     <div className="welcome-screen">
-      <img src="/logo.png" alt="Axon" className="welcome-logo" />
-      <h2 className="welcome-title">Axon</h2>
-      <span className="welcome-version">v{__APP_VERSION__}</span>
+
 
       {!hasProject ? (
         <>

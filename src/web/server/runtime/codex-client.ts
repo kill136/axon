@@ -1180,6 +1180,19 @@ export class CodexConversationClient implements ConversationClient {
       }
     }
 
+    // reasoning_effort for ChatCompletions API (mirrors Responses API logic)
+    const resolvedModel = this.resolveModelName();
+    if (this.supportsReasoning(resolvedModel)) {
+      const reasoningEffort =
+        options?.enableThinking === false
+          ? 'none'
+          : options?.reasoningEffort || (options?.enableThinking ? 'medium' : undefined);
+
+      if (reasoningEffort && reasoningEffort !== 'none') {
+        body.reasoning_effort = reasoningEffort;
+      }
+    }
+
     return body;
   }
 

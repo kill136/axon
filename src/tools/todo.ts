@@ -149,32 +149,7 @@ export function generateTodoReminder(
 export class TodoWriteTool extends BaseTool<TodoWriteInput, ToolResult> {
   name = 'TodoWrite';
   shouldDefer = false;
-  description = `Create and manage a structured task list for your current coding session. Helps track progress and give the user visibility into your work.
-
-## When to Use
-- Complex multi-step tasks (3+ distinct steps)
-- User provides multiple tasks (numbered or comma-separated)
-- User explicitly requests a todo list
-- Non-trivial tasks requiring planning
-
-## When NOT to Use
-- Single, straightforward task
-- Trivial task completable in <3 steps
-- Purely conversational or informational request
-
-## Task States
-- pending: Not yet started
-- in_progress: Currently working on (limit to ONE at a time)
-- completed: Finished successfully
-
-## Rules
-- Each task needs both content (imperative: "Run tests") and activeForm (continuous: "Running tests")
-- Mark tasks complete IMMEDIATELY after finishing (don't batch)
-- Only ONE task can be in_progress at any time
-- ONLY mark completed when FULLY accomplished (not if tests failing, partial implementation, or unresolved errors)
-- When all tasks are completed, the list auto-clears
-- Remove tasks that are no longer relevant
-`;
+  description = `Update the todo list for the current session. To be used proactively and often to track progress and pending tasks. Make sure that at least one task is in_progress at all times. Always provide both content (imperative) and activeForm (present continuous) for each task.`;
 
   getInputSchema(): ToolDefinition['inputSchema'] {
     return {

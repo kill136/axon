@@ -202,6 +202,10 @@ const swarm = {
   'archGraph.selectType': '点击上方按钮选择图表类型',
   'archGraph.zoomIn': '放大',
   'archGraph.zoomOut': '缩小',
+
+  // 蓝图详情面板
+  'blueprintDetail.architectureDiagrams': '架构图',
 } as const;
 
+export type SwarmKeys = keyof typeof swarm;
 export default swarm;

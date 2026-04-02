@@ -877,6 +877,85 @@
 }
 
 /* 响应式调整 */
+/* 架构图 */
+.diagramCard {
+  background-color: #1a1a2e;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 12px;
+}
+
+.diagramHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.diagramTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e0e0e0;
+  margin: 0;
+}
+
+.diagramDesc {
+  font-size: 12px;
+  color: #888;
+  margin: 0 0 12px 0;
+  line-height: 1.4;
+}
+
+.diagramContainer {
+  position: relative;
+  overflow: hidden;
+  background-color: #0f0f23;
+  border-radius: 6px;
+  border: 1px solid #2a2a4a;
+  min-height: 200px;
+  max-height: 600px;
+  padding: 16px;
+}
+
+.diagramControls {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 4px;
+  z-index: 10;
+}
+
+.diagramControls button {
+  width: 28px;
+  height: 28px;
+  border: 1px solid #444;
+  background: #2d2d2d;
+  color: #ccc;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+
+.diagramControls button:hover {
+  background: #3d3d3d;
+  color: #fff;
+}
+
+.diagramError {
+  padding: 12px;
+  background: rgba(220, 38, 38, 0.1);
+  border: 1px solid rgba(220, 38, 38, 0.3);
+  border-radius: 6px;
+  color: #f87171;
+  font-size: 12px;
+}
+
 @media (max-width: 768px) {
   .panel {
     width: 100%;

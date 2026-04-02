@@ -8,12 +8,20 @@ import * as crypto from 'crypto';
 /**
  * Embedding 提供商接口
  */
+export interface EmbeddingStats {
+  totalCalls: number;
+  totalTexts: number;
+  errors: number;
+  provider: string;
+}
+
 export interface EmbeddingProvider {
   id: string;
   model: string;
   dimensions: number;
   embedQuery(text: string): Promise<number[]>;
   embedBatch(texts: string[]): Promise<number[][]>;
+  getStats?(): EmbeddingStats;
 }
 
 /**

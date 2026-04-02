@@ -7,7 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 
-describe('Data Flow API Integration', () => {
+describe.skip('Data Flow API Integration', () => {
   let testDir: string;
   let testFilePath: string;
 

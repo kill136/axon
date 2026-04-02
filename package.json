@@ -1,6 +1,6 @@
 {
   "name": "axon-code",
-  "version": "2.6.1",
+  "version": "2.6.3",
   "description": "AI coding assistant with Web IDE, multi-agent system, and self-evolution",
   "type": "module",
   "main": "electron/main.cjs",
@@ -98,11 +98,37 @@
       "node_modules/node-pty/**/*",
       "node_modules/sharp/**/*"
     ],
+    "publish": {
+      "provider": "github",
+      "owner": "kill136",
+      "repo": "axon"
+    },
     "win": {
       "target": [
-        "portable"
+        "nsis"
       ],
       "icon": "electron/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "differentialPackage": true
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "electron/icon.png",
+      "category": "public.app-category.developer-tools"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "icon": "electron/icon.png",
+      "category": "Development"
     }
   },
   "keywords": [
@@ -158,6 +184,8 @@
     "cron-parser": "^5.5.0",
     "diff": "^8.0.3",
     "discord.js": "^14.25.1",
+    "docx-preview": "^0.3.7",
+    "electron-updater": "^6.8.3",
     "eventsource": "^4.1.0",
     "express": "^5.2.1",
     "express-validator": "^7.3.1",
@@ -230,7 +258,7 @@
     "electron-builder": "^26.8.1",
     "highlight.js": "^11.11.1",
     "ink-testing-library": "^4.0.0",
-    "jsdom": "^27.4.0",
+    "jsdom": "^26.1.0",
     "react-dom": "^18.3.1",
     "tsx": "^4.7.0",
     "typescript": "^5.3.0",

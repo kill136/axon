@@ -14,12 +14,6 @@ export {
   LSPServer,
   LSPServerManager,
 
-  // 类型
-  LSPServerConfig,
-  LSPServerState,
-  LSPDiagnostic,
-  InitializeLSPOptions,
-
   // 配置
   defaultLSPConfigs,
 
@@ -32,4 +26,11 @@ export {
   installLSPServer,
   getKnownLSPServers,
   getLSPServerStatus,
+} from './manager.js';
+
+export type {
+  LSPServerConfig,
+  LSPServerState,
+  LSPDiagnostic,
+  InitializeLSPOptions,
 } from './manager.js';

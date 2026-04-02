@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { estimateBlockTokens, estimateContentBlocksTokens, validateTokenCounting } from '../token-estimator';
+import { estimateBlockTokens, estimateContentBlocksTokens, validateTokenCounting } from '../token-estimator.js';
 import type { ContentBlock, ThinkingBlock, ToolUseBlock, TextBlock } from '../../types/index.js';
 
 describe('Token Estimator', () => {

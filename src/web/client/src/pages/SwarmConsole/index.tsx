@@ -7,6 +7,7 @@ import type { SelectedTask } from '../../components/swarm/WorkerPanel';
 import { FadeIn } from '../../components/swarm/common';
 import { ConflictPanel } from './components/ConflictPanel';
 import { AskUserDialog } from './components/AskUserDialog';
+import { ExecutionHistory } from './components/ExecutionHistory';
 import { useSwarmState } from './hooks/useSwarmState';
 import { coordinatorApi, blueprintApi } from '../../api/blueprint';
 import { useProject } from '../../contexts/ProjectContext';
@@ -393,6 +394,14 @@ export default function SwarmConsole({ initialBlueprintId }: SwarmConsoleProps) 
                 </span>
               </div>
             )}
+            {/* 成本追踪 */}
+            {state.costEstimate && (state.costEstimate.currentSpent > 0 || state.costEstimate.totalEstimated > 0) && (
+              <div className={styles.costEstimate}>
+                <span title="Current / Estimated">
+                  ${state.costEstimate.currentSpent.toFixed(3)} / ${state.costEstimate.totalEstimated.toFixed(3)}
+                </span>
+              </div>
+            )}
             {/* 探针按钮 */}
             <button
               className={styles.probeButton}
@@ -417,6 +426,10 @@ export default function SwarmConsole({ initialBlueprintId }: SwarmConsoleProps) 
                 {isDeletingBlueprint ? t('swarm.deleting') : t('swarm.deleteBlueprint')}
               </button>
             </div>
+          )}
+          {/* 执行历史 */}
+          {selectedBlueprintId && (
+            <ExecutionHistory blueprintId={selectedBlueprintId} />
           )}
           <div className={styles.panelContent}>
             {/* LeadAgent 入口 — 点击可切到 LeadAgent 对话 */}

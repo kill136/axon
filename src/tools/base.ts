@@ -5,6 +5,9 @@
 
 import type { ToolDefinition, ToolResult } from '../types/index.js';
 import { t } from '../i18n/index.js';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 import {
   withRetry,
   withTimeout,
@@ -243,8 +246,58 @@ export class PluginToolWrapper extends BaseTool {
   }
 }
 
+/**
+ * 单个工具的配置覆盖
+ */
+export interface ToolConfigOverride {
+  /** 是否启用（false = 从工具列表中移除） */
+  enabled?: boolean;
+  /** 覆盖工具描述 */
+  description?: string;
+  /** 覆盖是否延迟加载 */
+  shouldDefer?: boolean;
+  /** 覆盖 searchHint */
+  searchHint?: string;
+}
+
+/**
+ * 工具配置文件格式 (~/.axon/tool-config.json)
+ */
+export type ToolConfigMap = Record<string, ToolConfigOverride>;
+
+/**
+ * 获取工具配置文件路径
+ */
+function getToolConfigPath(): string {
+  const configDir = process.env.AXON_CONFIG_DIR || path.join(os.homedir(), '.axon');
+  return path.join(configDir, 'tool-config.json');
+}
+
+/**
+ * 加载工具配置覆盖
+ */
+function loadToolConfig(): ToolConfigMap {
+  const configPath = getToolConfigPath();
+  try {
+    if (fs.existsSync(configPath)) {
+      const raw = fs.readFileSync(configPath, 'utf-8');
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.warn(`[ToolRegistry] Failed to load tool config from ${configPath}:`, err instanceof Error ? err.message : err);
+  }
+  return {};
+}
+
 export class ToolRegistry {
   private tools: Map<string, BaseTool> = new Map();
+  /** 工具配置覆盖缓存 */
+  private _toolConfig: ToolConfigMap | null = null;
+  /** 配置文件最后修改时间（用于自动刷新） */
+  private _toolConfigMtime: number = 0;
 
   register(tool: BaseTool): void {
     this.tools.set(tool.name, tool);
@@ -258,12 +311,81 @@ export class ToolRegistry {
     return this.tools.get(name);
   }
 
+  /**
+   * 获取工具配置覆盖（带文件变更自动刷新）
+   */
+  getToolConfig(): ToolConfigMap {
+    const configPath = getToolConfigPath();
+    try {
+      const stat = fs.statSync(configPath);
+      const mtime = stat.mtimeMs;
+      if (this._toolConfig && mtime === this._toolConfigMtime) {
+        return this._toolConfig;
+      }
+      this._toolConfig = loadToolConfig();
+      this._toolConfigMtime = mtime;
+    } catch {
+      // 文件不存在或不可读
+      if (this._toolConfig === null) {
+        this._toolConfig = {};
+      }
+    }
+    return this._toolConfig;
+  }
+
+  /**
+   * 强制重新加载工具配置
+   */
+  reloadToolConfig(): void {
+    this._toolConfig = null;
+    this._toolConfigMtime = 0;
+  }
+
   getAll(): BaseTool[] {
-    return Array.from(this.tools.values());
+    const config = this.getToolConfig();
+    return Array.from(this.tools.values()).filter(tool => {
+      const override = config[tool.name];
+      return !override || override.enabled !== false;
+    });
   }
 
   getDefinitions(): ToolDefinition[] {
-    return this.getAll().map(tool => tool.getDefinition());
+    const config = this.getToolConfig();
+    return Array.from(this.tools.values())
+      .filter(tool => {
+        const override = config[tool.name];
+        return !override || override.enabled !== false;
+      })
+      .map(tool => {
+        const def = tool.getDefinition();
+        const override = config[tool.name];
+        if (!override) return def;
+
+        // 应用配置覆盖
+        return {
+          ...def,
+          ...(override.description !== undefined && { description: override.description }),
+          ...(override.shouldDefer !== undefined && { shouldDefer: override.shouldDefer }),
+          ...(override.searchHint !== undefined && { searchHint: override.searchHint }),
+        };
+      });
+  }
+
+  /**
+   * 获取立即加载的工具定义（非 deferred）
+   * 对齐官方：启动时发送完整 schema 给 API 的工具
+   */
+  getImmediateDefinitions(): ToolDefinition[] {
+    return this.getDefinitions().filter(def => !def.shouldDefer && !def.isMcp);
+  }
+
+  /**
+   * 获取延迟加载的工具定义（deferred）
+   * 对齐官方：只在 <available-deferred-tools> 列表中出现名称，
+   * 完整 schema 通过 ToolSearch 按需获取
+   */
+  getDeferredDefinitions(): ToolDefinition[] {
+    return this.getDefinitions().filter(def => def.shouldDefer === true || def.isMcp === true);
   }
 
   /**

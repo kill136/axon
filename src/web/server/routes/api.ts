@@ -14,11 +14,13 @@ import blueprintApiRouter from './blueprint-api.js';
 import agentApiRouter from './agent-api.js';
 import fileApiRouter from './file-api.js';
 import notebookApiRouter from './notebook-api.js';
+import vectordbApiRouter from './vectordb-api.js';
 import mcpCliApiRouter from './mcp-cli-api.js';
 import tunnelApiRouter from './tunnel-api.js';
 import appApiRouter from './app-api.js';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 import { fileURLToPath } from 'url';
 import { VERSION } from '../../../version.js';
 import { buildCurrentRuntimeModelListResponse } from '../runtime/runtime-model-list.js';
@@ -51,6 +53,10 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
   // ============ Notebook API ============
   // AI 可定制属性管理（profile/experience/project notebooks + AXON.md）
   app.use('/api/notebook', notebookApiRouter);
+
+  // ============ Vector DB API ============
+  // 向量数据库内容管理（统计、文件列表、搜索测试、同步等）
+  app.use('/api/vectordb', vectordbApiRouter);
 
   // ============ MCP CLI API ============
   // HTTP bridge for mcp-cli command (progressive MCP tool loading)
@@ -97,6 +103,7 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
       const builtinTools = toolRegistry.getAll().map(tool => ({
         name: tool.name,
         description: tool.description.split('\n')[0].slice(0, 120), // 首行摘要
+        fullDescription: tool.description, // 完整描述，供编辑面板使用
         source: 'builtin' as const,
         status: 'active' as const,
         deferred: tool.shouldDefer || false,
@@ -155,6 +162,83 @@ export function setupApiRoutes(app: Express, conversationManager: ConversationMa
       });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ============ 工具配置覆盖 API ============
+  // 读写 ~/.axon/tool-config.json
+
+  const getToolConfigPath = () => {
+    const configDir = process.env.AXON_CONFIG_DIR || path.join(os.homedir(), '.axon');
+    return path.join(configDir, 'tool-config.json');
+  };
+
+  // 获取工具配置覆盖
+  app.get('/api/tool-config', (req: Request, res: Response) => {
+    try {
+      const configPath = getToolConfigPath();
+      let config: Record<string, any> = {};
+      if (fs.existsSync(configPath)) {
+        config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      }
+      res.json({ success: true, config, path: configPath });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  // 更新单个工具的配置覆盖
+  app.put('/api/tool-config/:toolName', (req: Request, res: Response) => {
+    try {
+      const { toolName } = req.params;
+      const override = req.body;
+
+      const configPath = getToolConfigPath();
+      let config: Record<string, any> = {};
+      if (fs.existsSync(configPath)) {
+        config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      }
+
+      // 如果所有字段都是 undefined/删除，移除整个条目
+      const hasValues = Object.values(override).some(v => v !== undefined && v !== null);
+      if (hasValues) {
+        config[toolName] = { ...config[toolName], ...override };
+      } else {
+        delete config[toolName];
+      }
+
+      const dir = path.dirname(configPath);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
+
+      // 通知 ToolRegistry 刷新配置
+      toolRegistry.reloadToolConfig();
+
+      res.json({ success: true, config });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  // 删除单个工具的配置覆盖（恢复默认）
+  app.delete('/api/tool-config/:toolName', (req: Request, res: Response) => {
+    try {
+      const { toolName } = req.params;
+      const configPath = getToolConfigPath();
+
+      if (!fs.existsSync(configPath)) {
+        res.json({ success: true, config: {} });
+        return;
+      }
+
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      delete config[toolName];
+      fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
+      toolRegistry.reloadToolConfig();
+
+      res.json({ success: true, config });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
     }
   });
 

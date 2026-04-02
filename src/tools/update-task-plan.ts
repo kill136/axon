@@ -224,7 +224,7 @@ When to call: After exploring codebase and discovering additional tasks needed
       default:
         return {
           success: false,
-          output: t('blueprint.unknownAction', { action }),
+          output: `Unknown action: ${action}`,
         };
     }
   }

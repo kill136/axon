@@ -4,7 +4,7 @@
  *
  * 工具分为两类：
  * 1. 核心工具 (registerCoreTools) - 对齐官方 Axon v2.1.34，CLI/Web 都加载
- * 2. 蓝图工具 (registerBlueprintTools) - Blueprint 多 Agent 系统专用，仅 Web 模式按需加载
+ * 2. 蓝图工具 (registerBlueprintTools) - Web 模式按需加载（GenerateBlueprint + LeadAgent 等）
  */
 
 // 核心工具类型导出
@@ -33,6 +33,9 @@ export * from './eye.js';
 export * from './ear.js';
 export * from './goal.js';
 export * from './network-agent.js';
+export * from './lsp.js';
+export * from './repl.js';
+export * from './tool-search.js';
 
 // 蓝图工具不通过此处 re-export
 // 蓝图模块直接 import 各自需要的工具文件 (如 ../tools/dispatch-worker.js)
@@ -66,14 +69,17 @@ import { EarTool } from './ear.js';
 // McpManageTool removed: merged into MCPSearchTool (Mcp) via action parameter
 import { GoalManageTool } from './goal.js';
 import { NetworkTool } from './network-agent.js';
+import { LSPTool } from './lsp.js';
+import { ReplTool } from './repl.js';
+import { ToolSearchTool } from './tool-search.js';
 
 // ============ 蓝图工具 imports (lazy) ============
-import { BlueprintTool } from './blueprint.js';
 import { GenerateBlueprintTool } from './generate-blueprint.js';
 import { StartLeadAgentTool } from './start-lead-agent.js';
 import { UpdateTaskPlanTool } from './update-task-plan.js';
 import { DispatchWorkerTool } from './dispatch-worker.js';
 import { ImageGenTool } from './generate-design.js';
+import { TriggerE2ETestTool } from './trigger-e2e-test.js';
 
 // ============ 幂等保护标志 ============
 let coreToolsRegistered = false;
@@ -96,6 +102,10 @@ export function registerCoreTools(): void {
   } catch {
     // 清理失败不影响启动
   }
+
+  // 0. ToolSearch 延迟工具发现（对齐官方 ToolSearchTool）
+  // ToolSearch 自身永远不 defer，模型需要它来加载其他 deferred 工具
+  toolRegistry.register(new ToolSearchTool());
 
   // 1. Bash 工具 (1个) - KillShell(TaskStop) 已合并到 TaskOutput action=stop
   toolRegistry.register(new BashTool());
@@ -180,7 +190,13 @@ export function registerCoreTools(): void {
   // 24. AgentNetwork Agent 间通信协作工具
   toolRegistry.register(new NetworkTool());
 
-  // 25. 加载外挂自定义工具 (~/.axon/custom-tools/*.js)
+  // 25. LSP 代码智能工具
+  toolRegistry.register(new LSPTool());
+
+  // 26. REPL 交互式代码执行工具（Python / Node.js）
+  toolRegistry.register(new ReplTool());
+
+  // 27. 加载外挂自定义工具 (~/.axon/custom-tools/*.js)
   loadCustomTools().catch(err => {
     console.warn('[Tools] Failed to load custom tools:', err);
   });
@@ -191,21 +207,21 @@ export function registerCoreTools(): void {
  * 仅在 Web 模式下由 ConversationManager.initialize() 调用
  *
  * 各 Agent 类型使用的蓝图工具：
- * - Chat Tab Agent: BlueprintTool, GenerateBlueprintTool, StartLeadAgentTool, ImageGenTool
+ * - Chat Tab Agent: GenerateBlueprintTool, StartLeadAgentTool, ImageGenTool
  */
 export function registerBlueprintTools(): void {
   if (blueprintToolsRegistered) return;
   blueprintToolsRegistered = true;
 
-  // Chat Tab Agent 专用 (4个)
-  toolRegistry.register(new BlueprintTool());
+  // Chat Tab Agent 专用 (3个)
   toolRegistry.register(new GenerateBlueprintTool());
   toolRegistry.register(new StartLeadAgentTool());
   toolRegistry.register(new ImageGenTool());
 
-  // LeadAgent 专用 (2个) - 任务计划管理、Worker 派发
+  // LeadAgent 专用 (3个) - 任务计划管理、Worker 派发、E2E 测试触发
   toolRegistry.register(new UpdateTaskPlanTool());
   toolRegistry.register(new DispatchWorkerTool());
+  toolRegistry.register(new TriggerE2ETestTool());
 }
 
 /**

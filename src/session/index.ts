@@ -225,6 +225,8 @@ export interface SessionData {
   messages: Message[];
   systemPrompt?: string;
   context?: Record<string, unknown>;
+  /** 会话模式：coordinator 或 normal，用于恢复时对齐 */
+  sessionMode?: 'coordinator' | 'normal';
 }
 
 /**

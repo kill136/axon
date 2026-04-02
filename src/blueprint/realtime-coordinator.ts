@@ -538,11 +538,13 @@ export class RealtimeCoordinator extends EventEmitter {
           if (task) {
             task.status = 'completed';
             task.completedAt = new Date();
+            this.updateCostFromLeadAgent();
             this.emit('task:status_changed', {
               blueprintId: this.currentBlueprint?.id,
               taskId,
               updates: { status: 'completed', completedAt: task.completedAt.toISOString(), summary: update.summary },
             });
+            this.checkCostLimits();
           }
           break;
         }
@@ -551,6 +553,7 @@ export class RealtimeCoordinator extends EventEmitter {
           if (task) {
             task.status = 'failed';
             task.completedAt = new Date();
+            this.updateCostFromLeadAgent();
             this.emit('task:status_changed', {
               blueprintId: this.currentBlueprint?.id,
               taskId,
@@ -650,6 +653,9 @@ export class RealtimeCoordinator extends EventEmitter {
         }
       }
 
+      // 最终更新成本
+      this.currentCost = result.estimatedCost;
+
       // 转换 LeadAgent 结果为 ExecutionResult
       const executionResult: ExecutionResult = {
         success: result.success,
@@ -657,7 +663,7 @@ export class RealtimeCoordinator extends EventEmitter {
         blueprintId: plan.blueprintId,
         taskResults: this.taskResults,
         totalDuration: result.durationMs,
-        totalCost: result.estimatedCost,
+        totalCost: this.currentCost,
         completedCount: result.completedTasks.length,
         failedCount: result.failedTasks.length,
         skippedCount: 0,
@@ -1018,6 +1024,42 @@ export class RealtimeCoordinator extends EventEmitter {
       this.saveExecutionState();
     }
     return false;
+  }
+
+  /**
+   * 从 LeadAgent 获取实时成本并更新
+   */
+  private updateCostFromLeadAgent(): void {
+    if (this.currentLeadAgent) {
+      this.currentCost = this.currentLeadAgent.getCurrentCost();
+    }
+  }
+
+  /**
+   * 检查成本是否超限，超限则暂停执行
+   */
+  private checkCostLimits(): void {
+    const { maxCost, costWarningThreshold } = this.config;
+
+    if (this.currentCost >= maxCost) {
+      console.warn(`[RealtimeCoordinator] Cost limit reached: $${this.currentCost.toFixed(4)} >= $${maxCost}. Pausing execution.`);
+      this.emitEvent('plan:cost_limit' as any, {
+        currentCost: this.currentCost,
+        maxCost,
+        message: `Cost limit reached ($${this.currentCost.toFixed(2)}/$${maxCost}). Execution paused.`,
+      });
+      this.pause();
+      return;
+    }
+
+    if (this.currentCost >= maxCost * costWarningThreshold) {
+      this.emitEvent('plan:cost_warning' as any, {
+        currentCost: this.currentCost,
+        maxCost,
+        threshold: costWarningThreshold,
+        message: `Cost warning: $${this.currentCost.toFixed(2)} (${Math.round(this.currentCost / maxCost * 100)}% of $${maxCost} limit)`,
+      });
+    }
   }
 
   /**

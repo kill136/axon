@@ -4,6 +4,7 @@ import ConnectorsPanel from './ConnectorsPanel';
 import SkillsPanel from './SkillsPanel';
 import McpServerPanel from './McpServerPanel';
 import CapabilitiesPanel from './CapabilitiesPanel';
+import AgentsPanel from './AgentsPanel';
 import SchedulePage from '../SchedulePage';
 import ChannelsPanel from '../../components/ChannelsPanel';
 import PerceptionPanel from '../../components/PerceptionPanel';
@@ -13,7 +14,7 @@ import NetworkPanel from './NetworkPanel';
 import TunnelPanel from './TunnelPanel';
 import styles from './CustomizePage.module.css';
 
-type ActiveSection = 'capabilities' | 'skills' | 'mcp' | 'connectors' | 'channels' | 'schedule' | 'perception' | 'proxy' | 'network' | 'tunnel' | 'aiprofile';
+type ActiveSection = 'capabilities' | 'agents' | 'skills' | 'mcp' | 'connectors' | 'channels' | 'schedule' | 'perception' | 'proxy' | 'network' | 'tunnel' | 'aiprofile';
 
 interface CustomizePageProps {
   onNavigateBack?: () => void;
@@ -26,6 +27,15 @@ interface CustomizePageProps {
 const BackIcon = () => (
   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
     <path d="M10 12L6 8l4-4" />
+  </svg>
+);
+
+const AgentsIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="8" cy="4" r="2.5" />
+    <circle cx="4" cy="12" r="2" />
+    <circle cx="12" cy="12" r="2" />
+    <path d="M6.5 6l-1.5 4M9.5 6l1.5 4" />
   </svg>
 );
 
@@ -166,6 +176,16 @@ export default function CustomizePage({
           </button>
 
           <button
+            className={`${styles.navItem} ${activeSection === 'agents' ? styles.active : ''}`}
+            onClick={() => setActiveSection('agents')}
+          >
+            <span className={styles.navIcon}>
+              <AgentsIcon />
+            </span>
+            <span className={styles.navLabel}>Agents</span>
+          </button>
+
+          <button
             className={`${styles.navItem} ${activeSection === 'skills' ? styles.active : ''}`}
             onClick={() => setActiveSection('skills')}
           >
@@ -271,6 +291,9 @@ export default function CustomizePage({
       <div className={styles.contentArea}>
         {activeSection === 'capabilities' && (
           <CapabilitiesPanel />
+        )}
+        {activeSection === 'agents' && (
+          <AgentsPanel />
         )}
         {activeSection === 'skills' && (
           <SkillsPanel

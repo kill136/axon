@@ -7,6 +7,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { scanSkillContent } from '../security/skill-scanner.js';
+import { normalizeSkillManifest, loadSkillManifest } from './manifest.js';
+import { SkillInstaller, readSkillInstallState, type SkillInstallStatus } from './installer.js';
 
 /**
  * Skill Hub 条目
@@ -34,6 +36,7 @@ export interface SkillInfo {
   path: string;
   version?: string;
   author?: string;
+  installStatus?: SkillInstallStatus;
 }
 
 /**
@@ -200,7 +203,48 @@ export async function installSkill(skillId: string): Promise<void> {
     'utf-8'
   );
 
-  console.log(`✅ Skill "${skill.name}" installed successfully!`);
+  // 尝试下载 skill.json manifest
+  let manifest = null;
+  const manifestUrl = skill.url.replace(/SKILL\.md$/, 'skill.json');
+  try {
+    const manifestResponse = await fetch(manifestUrl, {
+      headers: { 'User-Agent': 'Claude-Code-Open/2.1.33' },
+    });
+    if (manifestResponse.ok) {
+      const manifestRaw = await manifestResponse.text();
+      const manifestParsed = JSON.parse(manifestRaw);
+      manifest = normalizeSkillManifest(manifestParsed);
+      // 保存 skill.json 到本地
+      fs.writeFileSync(path.join(skillsDir, 'skill.json'), manifestRaw, 'utf-8');
+      console.log(`📦 Found skill manifest, installing dependencies...`);
+    }
+  } catch {
+    // manifest 不存在或解析失败，按 legacy 模式处理
+  }
+
+  // 调用 installer 安装依赖并写入 install-state.json
+  const installer = new SkillInstaller();
+  const installState = await installer.install({
+    skillName: skillId,
+    skillDir: skillsDir,
+    manifest,
+  });
+
+  if (installState.status === 'installed') {
+    console.log(`✅ Skill "${skill.name}" installed successfully!`);
+  } else if (installState.status === 'installed_no_manifest') {
+    console.log(`✅ Skill "${skill.name}" installed (legacy mode, no dependency manifest).`);
+  } else if (installState.status === 'degraded') {
+    console.log(`⚠️  Skill "${skill.name}" installed with warnings: some dependencies are missing.`);
+    for (const err of installState.errors) {
+      console.warn(`   - ${err}`);
+    }
+  } else {
+    console.error(`❌ Skill "${skill.name}" installation failed.`);
+    for (const err of installState.errors) {
+      console.error(`   - ${err}`);
+    }
+  }
 }
 
 /**
@@ -324,6 +368,10 @@ export function listInstalledSkills(): SkillInfo[] {
       if (descMatch) description = descMatch[1].trim();
     }
 
+    // 读取安装状态
+    const installState = readSkillInstallState(skillPath);
+    const installStatus = installState?.status;
+
     skills.push({
       id: dir,
       name,
@@ -332,6 +380,7 @@ export function listInstalledSkills(): SkillInfo[] {
       path: skillPath,
       version,
       author,
+      installStatus,
     });
   }
 

@@ -39,7 +39,13 @@ export default defineConfig({
       'tests/integration/tool-chain.test.ts', // integration test env setup issues
       'tests/web/permission-destination-selector.test.tsx', // missing @testing-library/react
       'tests/unit/ui/ClaudeMdImportDialog.test.tsx', // missing @testing-library/react
+      'tests/data-flow-analyzer.test.ts', // source file data-flow-analyzer.ts was removed
     ],
+    server: {
+      deps: {
+        inline: ['@exodus/bytes', 'html-encoding-sniffer'],
+      },
+    },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

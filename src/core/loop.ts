@@ -90,6 +90,12 @@ import type {
 import { estimateTokens } from '../utils/token-estimate.js';
 import { loadActiveGoals } from '../goals/index.js';
 import {
+  isCoordinatorMode,
+  getCoordinatorTools,
+  getCoordinatorSystemPrompt,
+  getCoordinatorUserContext,
+} from '../coordinator/index.js';
+import {
   isSessionMemoryEnabled as checkSessionMemoryEnabled,
   SESSION_MEMORY_TEMPLATE,
   isEmptyTemplate,
@@ -2361,7 +2367,7 @@ export class ConversationLoop {
     let tools = toolRegistry.getDefinitions();
 
     // 应用工具过滤
-    if (options.allowedTools && options.allowedTools.length > 0) {
+    if (options.allowedTools && Array.isArray(options.allowedTools) && options.allowedTools.length > 0) {
       const allowed = new Set(options.allowedTools.flatMap(t => t.split(',')).map(t => t.trim()));
 
       // 如果包含通配符 '*'，允许所有工具
@@ -2385,6 +2391,13 @@ export class ConversationLoop {
         'Read', 'Glob', 'Grep',  // 基础读取工具仍然可用
       ]);
       tools = tools.filter(t => DELEGATE_MODE_TOOLS.has(t.name));
+    }
+
+    // Coordinator 模式：主 agent 只使用管控类工具（Task/TaskOutput）
+    if (isCoordinatorMode() && !options.isSubAgent) {
+      const coordinatorTools = getCoordinatorTools();
+      const coordinatorToolNames = new Set(coordinatorTools.map(t => t.name));
+      tools = tools.filter(t => coordinatorToolNames.has(t.name));
     }
 
     // v2.1.30: 合并 SDK 提供的 MCP 工具
@@ -2521,8 +2534,16 @@ export class ConversationLoop {
       }
     }
 
-    // 重新创建客户端
-    this.client = new ClaudeClient(clientConfig);
+    // 重新创建客户端（保持原 provider 类型）
+    if (this.options.conversationClientConfig) {
+      this.client = createConversationClient({
+        ...this.options.conversationClientConfig,
+        apiKey: clientConfig.apiKey,
+        authToken: clientConfig.authToken,
+      });
+    } else {
+      this.client = new ClaudeClient(clientConfig);
+    }
     console.log('[Loop] Client reinitialized with new credentials');
     return true;
   }
@@ -2615,15 +2636,23 @@ export class ConversationLoop {
       if (apiKey) {
         // 重新创建客户端使用新的 API Key
         const resolvedModel = modelConfig.resolveAlias(this.options.model || 'sonnet');
-        this.client = new ClaudeClient({
-          model: resolvedModel,
-          maxTokens: this.options.maxTokens,
-          fallbackModel: this.options.fallbackModel,
-          thinking: this.options.thinking,
-          debug: this.options.debug,
-          timeout: 300000,  // 5分钟 API 请求超时
-          apiKey: apiKey,
-        });
+        if (this.options.conversationClientConfig) {
+          this.client = createConversationClient({
+            ...this.options.conversationClientConfig,
+            apiKey: apiKey,
+            model: this.options.conversationClientConfig.model || resolvedModel,
+          });
+        } else {
+          this.client = new ClaudeClient({
+            model: resolvedModel,
+            maxTokens: this.options.maxTokens,
+            fallbackModel: this.options.fallbackModel,
+            thinking: this.options.thinking,
+            debug: this.options.debug,
+            timeout: 300000,
+            apiKey: apiKey,
+          });
+        }
         return true;
       }
       return false;
@@ -2956,6 +2985,15 @@ export class ConversationLoop {
     if (this.options.systemPrompt) {
       // 如果提供了自定义系统提示词，直接使用
       systemPrompt = this.options.systemPrompt;
+    } else if (isCoordinatorMode() && !this.options.isSubAgent) {
+      // Coordinator 模式：使用专用系统提示词
+      const coordinatorPrompt = getCoordinatorSystemPrompt();
+      const userContext = getCoordinatorUserContext();
+      // 将 worker 工具上下文附加到系统提示词
+      const contextSuffix = userContext.workerToolsContext
+        ? `\n\n## Worker Tool Context\n\n${userContext.workerToolsContext}`
+        : '';
+      systemPrompt = coordinatorPrompt + contextSuffix;
     } else {
       // 使用动态构建器生成
       try {
@@ -3486,6 +3524,13 @@ Guidelines:
       let promptBlocks: Array<{ text: string; cacheScope: 'global' | 'org' | null }> | undefined;
       if (this.options.systemPrompt) {
         systemPrompt = this.options.systemPrompt;
+      } else if (isCoordinatorMode() && !this.options.isSubAgent) {
+        const coordinatorPrompt = getCoordinatorSystemPrompt();
+        const userContext = getCoordinatorUserContext();
+        const contextSuffix = userContext.workerToolsContext
+          ? `\n\n## Worker Tool Context\n\n${userContext.workerToolsContext}`
+          : '';
+        systemPrompt = coordinatorPrompt + contextSuffix;
       } else {
         try {
           const buildResult = await this.promptBuilder.build(this.promptContext);

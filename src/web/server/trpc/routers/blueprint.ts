@@ -165,6 +165,10 @@ export const blueprintRouter = router({
 
       // 否则开始对话流程
       const planner = createSmartPlanner();
+      // 注入 runtime-aware client（支持 OpenAI 等后端）
+      const { executionManager } = await import('../../routes/blueprint-api.js');
+      const factoryClient = executionManager.getConversationClient();
+      if (factoryClient) planner.setClient(factoryClient);
       const dialogState = await planner.startDialog(input.projectPath);
 
       return {

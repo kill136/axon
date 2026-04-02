@@ -11,7 +11,7 @@ import { MemorySyncEngine } from './memory-sync.js';
 import type { MemorySource, MemorySearchResult } from './types.js';
 import { NotebookManager, type NotebookType } from './notebook.js';
 import { getSessionMemoryProjectDir } from '../context/session-memory.js';
-import { createOpenAIEmbeddingProvider, type EmbeddingProvider } from './embedding-provider.js';
+import { createOpenAIEmbeddingProvider, type EmbeddingProvider, type EmbeddingStats } from './embedding-provider.js';
 import { EmbeddingCache } from './embedding-cache.js';
 import { mergeHybridResults } from './hybrid-search.js';
 import { applyMMRToResults, type MMRConfig } from './mmr.js';
@@ -39,6 +39,7 @@ export interface MemoryStoreStatus {
   dirty: boolean;
   hasEmbeddings?: boolean;
   chunksWithoutEmbedding?: number;
+  embeddingStats?: EmbeddingStats;
 }
 
 /**
@@ -71,6 +72,11 @@ const AXON_BUILTIN_EMBEDDING: EmbeddingConfig = {
   baseUrl: 'https://auth-proxy-production-cee3.up.railway.app/v1',
   model: 'embeddinggemma:300m',
   dimensions: 768,
+  hybrid: {
+    enabled: true,
+    vectorWeight: 0.6,
+    textWeight: 0.4,
+  },
 };
 
 /**
@@ -143,26 +149,60 @@ export class MemorySearchManager {
           model: opts.embeddingConfig.model,
         });
 
-        const disableEmbedding = (error: unknown): never => {
+        // 尝试检测本地 Ollama 作为备用 provider
+        const ollamaProvider = await createOllamaFallbackProvider();
+
+        const stats: EmbeddingStats = {
+          totalCalls: 0,
+          totalTexts: 0,
+          errors: 0,
+          provider: `${rawProvider.id}/${rawProvider.model}`,
+        };
+
+        let activeProvider = rawProvider;
+        let fallbackAttempted = false;
+
+        const tryFallback = (): boolean => {
+          if (!fallbackAttempted && ollamaProvider) {
+            fallbackAttempted = true;
+            activeProvider = ollamaProvider;
+            stats.provider = `${ollamaProvider.id}/${ollamaProvider.model} (fallback)`;
+            console.warn('[MemorySearch] Primary embedding failed, switched to Ollama fallback');
+            return true;
+          }
+          // 所有 provider 都失败，禁用 embedding
           manager.embeddingProvider = null;
           manager.embeddingCache = null;
-          throw error;
+          return false;
         };
 
         manager.embeddingProvider = {
           ...rawProvider,
+          getStats() { return { ...stats }; },
           async embedQuery(text: string): Promise<number[]> {
+            stats.totalCalls++;
+            stats.totalTexts++;
             try {
-              return await rawProvider.embedQuery(text);
+              return await activeProvider.embedQuery(text);
             } catch (error) {
-              return disableEmbedding(error);
+              stats.errors++;
+              if (tryFallback()) {
+                return await activeProvider.embedQuery(text);
+              }
+              throw error;
             }
           },
           async embedBatch(texts: string[]): Promise<number[][]> {
+            stats.totalCalls++;
+            stats.totalTexts += texts.length;
             try {
-              return await rawProvider.embedBatch(texts);
+              return await activeProvider.embedBatch(texts);
             } catch (error) {
-              return disableEmbedding(error);
+              stats.errors++;
+              if (tryFallback()) {
+                return await activeProvider.embedBatch(texts);
+              }
+              throw error;
             }
           },
         };
@@ -431,6 +471,17 @@ export class MemorySearchManager {
   }
 
   /**
+   * 手动触发 embedding 补齐（返回补齐数量）
+   */
+  async reindexEmbeddings(): Promise<number> {
+    if (!this.embeddingProvider) return 0;
+    return this.syncEngine.backfillEmbeddings(
+      this.embeddingProvider,
+      this.embeddingCache,
+    );
+  }
+
+  /**
    * 获取状态
    */
   status(): MemoryStoreStatus {
@@ -440,6 +491,7 @@ export class MemorySearchManager {
       dirty: this.dirty,
       hasEmbeddings: this.store.hasEmbeddings(),
       chunksWithoutEmbedding: this.store.countChunksWithoutEmbedding(),
+      embeddingStats: this.embeddingProvider?.getStats?.() ?? undefined,
     };
   }
 
@@ -449,6 +501,55 @@ export class MemorySearchManager {
   close(): void {
     this.store.close();
     // 不关闭 embeddingCache — 它自己管理生命周期
+  }
+}
+
+// ============================================================================
+// Ollama 回退 Provider
+// ============================================================================
+
+const OLLAMA_DEFAULT_URL = 'http://localhost:11434';
+const OLLAMA_FALLBACK_MODEL = 'embeddinggemma:300m';
+const OLLAMA_HEALTH_TIMEOUT_MS = 2000;
+
+/**
+ * 检测本地 Ollama 是否可用，可用则返回 EmbeddingProvider，否则返回 null
+ */
+async function createOllamaFallbackProvider(): Promise<EmbeddingProvider | null> {
+  const ollamaUrl = (process.env.OLLAMA_HOST || OLLAMA_DEFAULT_URL).replace(/\/$/, '');
+  try {
+    const resp = await fetch(`${ollamaUrl}/api/tags`, {
+      signal: AbortSignal.timeout(OLLAMA_HEALTH_TIMEOUT_MS),
+    });
+    if (!resp.ok) return null;
+
+    const data = await resp.json() as { models?: Array<{ name: string }> };
+    const models = data.models ?? [];
+    const modelNames = models.map(m => m.name.split(':')[0]);
+
+    // 按偏好顺序找可用的 embedding 模型
+    const preferred = ['embeddinggemma', 'nomic-embed-text', 'mxbai-embed-large', 'all-minilm', 'snowflake-arctic-embed'];
+    let selectedModel = OLLAMA_FALLBACK_MODEL;
+    for (const pref of preferred) {
+      const found = models.find(m => m.name.startsWith(pref));
+      if (found) {
+        selectedModel = found.name;
+        break;
+      }
+    }
+
+    // 如果没找到任何 embedding 模型，Ollama 不可用于 embedding
+    if (!preferred.some(p => modelNames.includes(p))) {
+      return null;
+    }
+
+    return createOpenAIEmbeddingProvider({
+      apiKey: 'ollama',
+      baseUrl: `${ollamaUrl}/v1`,
+      model: selectedModel,
+    });
+  } catch {
+    return null;
   }
 }
 
@@ -469,7 +570,20 @@ export function resolveEmbeddingConfig(userConfig?: EmbeddingConfig): EmbeddingC
   if (process.env.AXON_DISABLE_BUILTIN_EMBEDDING === '1') {
     return userConfig as any; // undefined, 降级到纯 FTS5
   }
-  return AXON_BUILTIN_EMBEDDING;
+
+  const config = { ...AXON_BUILTIN_EMBEDDING };
+
+  // 环境变量覆盖搜索权重
+  const envVectorWeight = parseFloat(process.env.AXON_VECTOR_WEIGHT || '');
+  if (!isNaN(envVectorWeight) && envVectorWeight >= 0 && envVectorWeight <= 1) {
+    config.hybrid = {
+      ...config.hybrid!,
+      vectorWeight: envVectorWeight,
+      textWeight: 1 - envVectorWeight,
+    };
+  }
+
+  return config;
 }
 
 /**

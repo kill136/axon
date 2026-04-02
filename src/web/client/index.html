@@ -25,6 +25,62 @@
 </head>
 <body>
   <div id="root"></div>
+
+  <!-- 全局终端图片粘贴拦截（在所有 React 组件之前注册） -->
+  <script>
+  (function() {
+    console.log('[AXON] Global paste handler registered');
+    document.addEventListener('paste', function(e) {
+      console.log('[AXON] Paste event captured, items:', e.clipboardData ? e.clipboardData.items.length : 0);
+      if (!e.clipboardData) return;
+      var items = Array.from(e.clipboardData.items);
+      var imageItem = items.find(function(item) { return item.type.indexOf('image/') === 0; });
+      if (!imageItem) {
+        console.log('[AXON] No image item found');
+        return;
+      }
+      console.log('[AXON] Image found:', imageItem.type);
+
+      // 检查焦点是否在终端区域（xterm 的 textarea）
+      var target = document.activeElement;
+      console.log('[AXON] Active element:', target ? target.tagName + '.' + target.className : 'null');
+      var inTerminal = target && (
+        target.closest('.xterm') ||
+        target.closest('.terminal-instance') ||
+        target.closest('[class*="terminal"]') ||
+        (target.tagName === 'TEXTAREA' && target.closest('.xterm'))
+      );
+      console.log('[AXON] inTerminal:', !!inTerminal);
+      if (!inTerminal) return;
+
+      e.preventDefault();
+      e.stopImmediatePropagation();
+
+      var blob = imageItem.getAsFile();
+      console.log('[AXON] blob:', blob ? blob.size + ' bytes' : 'null');
+      if (!blob) return;
+
+      var reader = new FileReader();
+      reader.onload = function() {
+        var dataUrl = reader.result;
+        var base64 = dataUrl.split(',')[1];
+        console.log('[AXON] base64 length:', base64 ? base64.length : 0);
+        console.log('[AXON] __axonTerminalPasteImage registered:', !!window.__axonTerminalPasteImage);
+        if (window.__axonTerminalPasteImage) {
+          window.__axonTerminalPasteImage(base64, imageItem.type);
+          console.log('[AXON] Image sent to terminal handler');
+        } else {
+          console.warn('[AXON] No terminal paste handler registered');
+        }
+      };
+      reader.onerror = function() {
+        console.error('[AXON] FileReader error:', reader.error);
+      };
+      reader.readAsDataURL(blob);
+    }, true);
+  })();
+  </script>
+
   <script type="module" src="/src/main.tsx"></script>
 </body>
 </html>

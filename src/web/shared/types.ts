@@ -472,7 +472,7 @@ export type ServerMessage =
   | { type: 'swarm:debug_agent_response'; payload: AgentDebugPayload }
   | { type: 'swarm:debug_agent_list_response'; payload: { blueprintId: string; agents: Array<{ agentType: string; id: string; label: string; taskId?: string }> } }
   // 终端消息
-  | { type: 'terminal:created'; payload: { terminalId: string } }
+  | { type: 'terminal:created'; payload: { terminalId: string; requestId?: string } }
   | { type: 'terminal:output'; payload: { terminalId: string; data: string } }
   | { type: 'terminal:exit'; payload: { terminalId: string; exitCode: number } }
   // 日志消息

@@ -98,8 +98,7 @@ export function setPlanMode(active: boolean, planFile?: string, planId?: string)
 
 export class EnterPlanModeTool extends BaseTool<Record<string, unknown>, ToolResult> {
   name = 'EnterPlanMode';
-  shouldDefer = true;
-  searchHint = 'plan implementation, design approach, think before coding, architecture decision';
+  shouldDefer = false;
   description = `Use this tool when you encounter a complex task that requires careful planning and exploration before implementation.
 
 Use when ANY of these apply:
@@ -274,8 +273,7 @@ Focus on understanding the problem before proposing solutions.`,
 
 export class ExitPlanModeTool extends BaseTool<ExitPlanModeInput, ToolResult> {
   name = 'ExitPlanMode';
-  shouldDefer = true;
-  searchHint = 'finish planning, submit plan, ready to implement';
+  shouldDefer = false;
   description = `Signal that your plan is complete and ready for user review. Call after writing your plan to the plan file.
 
 - Reads the plan from the file you wrote (does NOT take plan content as parameter)

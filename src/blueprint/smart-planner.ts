@@ -46,7 +46,7 @@ import type {
   APIEndpoint,
   APIContract,
 } from './types.js';
-import { ClaudeClient, getDefaultClient } from '../core/client.js';
+import type { ConversationClient } from '../web/server/runtime/types.js';
 import { ConversationLoop } from '../core/loop.js';
 import { PlannerSession, type SessionStreamEvent } from './planner-session.js';
 
@@ -152,7 +152,7 @@ const DIALOG_PROMPTS: Record<DialogPhase, string> = {
 
 export class SmartPlanner extends EventEmitter {
   private config: SmartPlannerConfig;
-  private client: ClaudeClient | null = null;
+  private client: ConversationClient | null = null;
   private sessions: Map<string, DialogState> = new Map();
   private projectPath: string | null = null;
   /** Multi-turn AI 会话（替代分散的 extractWithAI 调用） */
@@ -1283,13 +1283,20 @@ export class SmartPlanner extends EventEmitter {
   // --------------------------------------------------------------------------
 
   /**
-   * 获取 Claude 客户端
+   * 获取 AI 客户端
    */
-  private getClient(): ClaudeClient {
+  private getClient(): ConversationClient {
     if (!this.client) {
-      this.client = getDefaultClient();
+      throw new Error('[SmartPlanner] No client set. Call setClient() before using the planner.');
     }
     return this.client;
+  }
+
+  /**
+   * 设置 AI 客户端（支持 Anthropic / OpenAI 等任意 runtime）
+   */
+  setClient(client: ConversationClient): void {
+    this.client = client;
   }
 
   /**
@@ -1361,6 +1368,16 @@ export class SmartPlanner extends EventEmitter {
           toolInputJson += event.input;
           // 每收到增量就打印（但不打印换行，避免日志过多）
           process.stdout.write(event.input);
+        } else if (event.type === 'tool_use_complete' && event.input) {
+          // OpenAI 流式会发送完整的 tool input，优先使用
+          hasToolUse = true;
+          try {
+            const completeInput = typeof event.input === 'string' ? event.input : JSON.stringify(event.input);
+            if (completeInput.length > toolInputJson.length) {
+              toolInputJson = completeInput;
+            }
+          } catch { /* 保持 delta 拼接结果 */ }
+          console.log('\n[SmartPlanner][Stream] Tool call completed');
         } else if (event.type === 'stop') {
           console.log('\n[SmartPlanner][Stream] Stream ended, reason:', event.stopReason);
         } else if (event.type === 'error') {
@@ -2494,12 +2511,12 @@ export interface StreamingEvent {
  */
 export class StreamingBlueprintGenerator extends EventEmitter {
   private planner: SmartPlanner;
-  private client: ClaudeClient;
+  private client: ConversationClient;
 
-  constructor(planner: SmartPlanner) {
+  constructor(planner: SmartPlanner, client: ConversationClient) {
     super();
     this.planner = planner;
-    this.client = getDefaultClient();
+    this.client = client;
   }
 
   /**

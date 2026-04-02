@@ -4,7 +4,7 @@
 
 ## Project Overview
 
-This is an educational reverse-engineering project that recreates @anthropic-ai/claude-code v2.1.85. It's a TypeScript-based terminal application that provides an AI assistant with 25+ tools for file operations, code analysis, web access, and system commands.
+Axon originated as a reverse-engineering study of @anthropic-ai/claude-code, but has since evolved into an independent AI coding platform (v2.6.1). It is a TypeScript-based application offering a Terminal CLI, Web IDE, Desktop App (Electron), and Proxy Server, with 45+ tools for file operations, code analysis, multi-agent orchestration, browser automation, web access, and system commands.
 
 ## 铁律（每条都是硬性约束，没有例外）
 
@@ -54,9 +54,9 @@ This is an educational reverse-engineering project that recreates @anthropic-ai/
 - 违反此条 = 被动的批处理思维，而不是主动的交互式 Agent。
 
 ## 项目性质
-- 这是一个**复刻还原项目**，目标是还原 @anthropic-ai/claude-code v2.1.4。
-- 唯一准则：**保持和官方一致**。不要"改进"，不要"优化"，不要"我觉得这样更好"。
-- 官方源码路径：`node_modules/@anthropic-ai/claude-code`（高度压缩混淆）。
+- 本项目**起源于对 @anthropic-ai/claude-code 的复刻研究**，但已大幅扩展为独立产品。
+- 核心工具行为仍**参考官方实现**以保持兼容性，官方源码路径：`node_modules/@anthropic-ai/claude-code`（高度压缩混淆）。
+- Web IDE、多智能体系统、桌面应用、感知系统等为 Axon 独有功能。
 - 遇到解决不了的难题，直接 copy 官方实现的源码，第一性原理解决问题。
 - 永远不要增加降级方案，遇到问题直接报错，不掩盖问题。
 - docs/ 文档统一保存路径，tests/ 测试用例统一保存路径。
@@ -110,53 +110,87 @@ node dist/cli.js --resume               # Resume last session
 
 ## Architecture Overview
 
-### Core Three-Layer Design
+### Entry Points (4 CLIs)
 
-1. **Entry Layer** (`src/cli.ts`, `src/index.ts`)
-   - CLI argument parsing with Commander.js
-   - Main export barrel file
+| Command | Source | Description |
+|---|---|---|
+| `axon` | `src/cli.ts` | Terminal interactive mode (React + Ink) |
+| `axon-web` | `src/web-cli.ts` | Web IDE server (Express + React SPA) |
+| `axon-proxy` | `src/proxy-cli.ts` | API proxy server for LAN sharing |
+| `mcp-cli` | `src/mcp-cli.ts` | Standalone MCP server mode |
 
-2. **Core Engine** (`src/core/`)
-   - `client.ts` - Anthropic API wrapper with retry logic, token counting, cost calculation
-   - `session.ts` - Session state management, message history, cost tracking
-   - `loop.ts` - Main conversation orchestrator, handles tool filtering and multi-turn dialogues
+### Core Engine (`src/core/`)
 
-3. **Tool System** (`src/tools/`)
-   - All tools extend `BaseTool` and register in `ToolRegistry`
-   - 25+ tools: Bash, Read, Write, Edit, MultiEdit, Glob, Grep, WebFetch, WebSearch, TodoWrite, Task, NotebookEdit, MCP, Tmux, Skills, etc.
+- `client.ts` - Anthropic API wrapper with retry logic, token counting, cost calculation
+- `session.ts` - Session state management, message history, cost tracking
+- `loop.ts` - Main conversation orchestrator, handles tool filtering and multi-turn dialogues
+
+### Tool System (`src/tools/`, 45+ tools)
+
+All tools extend `BaseTool`, define input schema with Zod, implement `execute()`, and register in `ToolRegistry`.
+
+| Category | Tools |
+|---|---|
+| File ops | Read, Write, Edit, MultiEdit, Glob, Grep |
+| Execution | Bash, Cron (scheduled jobs), background tasks |
+| Web | WebFetch, WebSearch |
+| Code | NotebookEdit, NotebookWrite, LSP integration |
+| Browser | Playwright-based full browser automation |
+| Agents | Agent (sub-agents), Blueprint, LeadAgent, DispatchWorker |
+| Planning | PlanMode, Goal, Task, TodoWrite |
+| Memory | MemorySearch (embedding + BM25 hybrid) |
+| Perception | Eye (camera), Ear (microphone) |
+| Integration | MCP, Skills, CreateTool, SelfEvolve, Schedule |
+| Structured | StructuredOutput, SubmitReview |
 
 ### Key Data Flow
 
 ```
-CLI Input → ConversationLoop → ClaudeClient (Anthropic API)
-                ↓                      ↓
-           ToolRegistry           Session State
-                ↓                      ↓
-          Tool Execution    Session Persistence (~/.axon/sessions/)
+CLI / Web UI / Electron → ConversationLoop → ClaudeClient (Anthropic API)
+                               ↓                      ↓
+                          ToolRegistry           Session State
+                               ↓                      ↓
+                         Tool Execution    Session Persistence (~/.axon/sessions/)
 ```
+
+### Web IDE (`src/web/`)
+
+Full-stack web application:
+
+- **Server** (`src/web/server/`) - Express + WebSocket + tRPC, 25+ API route modules (file, agent, blueprint, LSP, MCP, notebook, tunnel, schedule, etc.)
+- **Client** (`src/web/client/`) - React SPA with Monaco Editor, file tree, multi-tab editing, checkpoint/rewind, blueprint console, activity dashboard
+- **Shared** (`src/web/shared/`) - Shared types and utilities
+
+### Multi-Agent System
+
+- **Blueprint** (`src/blueprint/`) - Task decomposition into execution graphs, planner, lead agent, autonomous workers
+- **Agents** (`src/agents/`) - Sub-agent types: Explore, Plan, Guide, Monitor, Parallel, Resume
+- **Teams** (`src/teams/`) - Team collaboration features
 
 ### Important Subsystems
 
 - **Session Management** (`src/session/`) - Persists conversations to `~/.axon/sessions/` with 30-day expiry
 - **Configuration** (`src/config/`) - Loads from `~/.axon/settings.json` and environment variables
 - **Context Management** (`src/context/`) - Token estimation, auto-summarization when hitting limits
+- **Memory** (`src/memory/`) - Long-term memory with embedding vectors, BM25, hybrid search
 - **Hooks System** (`src/hooks/`) - Pre/post tool execution hooks for customization
 - **Plugin System** (`src/plugins/`) - Extensible plugin architecture
+- **Permissions** (`src/permissions/`) - Fine-grained permission system with condition matching
+- **Security** (`src/security/`, `src/sandbox/`, `src/trust/`) - Sandbox, code signing, trust management
+- **Browser** (`src/browser/`) - Playwright controller, navigation guard, Chrome extension relay
+- **Checkpoint/Rewind** (`src/checkpoint/`, `src/rewind/`) - File snapshot and time-travel
 - **UI Components** (`src/ui/`) - React + Ink terminal UI framework
-- **Code Parser** (`src/parser/`) - Tree-sitter WASM for multi-language parsing
-- **Ripgrep** (`src/search/ripgrep.ts`) - Vendored ripgrep binary support
-- **Streaming I/O** (`src/streaming/`) - JSON message streaming for Claude API
-
-## Tool System Architecture
-
-Tools are the core of the application. Each tool:
-1. Extends `BaseTool` class
-2. Defines input schema with Zod
-3. Implements `execute()` method
-4. Registers in `ToolRegistry`
-5. Can be filtered via allow/disallow lists
-
-Tools communicate results back to the conversation loop, which feeds them to the Claude API for the next turn.
+- **Providers** (`src/providers/`, `src/models/`) - Multi-provider support (Anthropic, Bedrock, Vertex, OpenAI-compatible)
+- **Search** (`src/search/`) - Vendored ripgrep binary support
+- **Streaming** (`src/streaming/`) - JSON message streaming for Claude API
+- **Proxy** (`src/proxy/`) - API proxy server for LAN key sharing
+- **Remote/Daemon** (`src/remote/`, `src/daemon/`) - Remote agent execution, background daemon
+- **Desktop** (`electron/`) - Electron desktop app (Windows/macOS/Linux)
+- **Perception** (`src/eye/`, `src/ear/`) - Camera (Python) and microphone input
+- **i18n** (`src/i18n/`) - Internationalization (English/Chinese)
+- **LSP** (`src/lsp/`) - Language Server Protocol integration
+- **Automation** (`src/automation/`) - Automated workflows
+- **Diagnostics** (`src/diagnostics/`) - System diagnostics and debugging
 
 ## Configuration
 
@@ -167,20 +201,18 @@ Tools communicate results back to the conversation loop, which feeds them to the
 - **MCP Servers:** Defined in `settings.json`
 - **Skills:** `~/.axon/skills/` and `./.axon/commands/`
 - **Plugins:** `~/.axon/plugins/` and `./.axon/plugins/`
+- **Memory:** `~/.axon/memory/` (long-term memory store)
 
 ### Key Environment Variables
 
 - `ANTHROPIC_API_KEY` / `AXON_API_KEY` - API key for Claude
+- `ANTHROPIC_BASE_URL` - Custom API endpoint (for OpenRouter, proxy, etc.)
+- `CLAUDE_CODE_USE_BEDROCK` / `CLAUDE_CODE_USE_VERTEX` - AWS/Google provider flags
 - `USE_BUILTIN_RIPGREP` - Set to `1`/`true` to use system ripgrep instead of vendored
 - `BASH_MAX_OUTPUT_LENGTH` - Max Bash output length (default: 30000)
 - `AXON_MAX_OUTPUT_TOKENS` - Max output tokens (default: 32000)
-
-### Windows-Specific Notes
-
-- Bubblewrap sandbox: Linux-only (Windows needs WSL)
-- Tmux: Linux/macOS only (use Windows Terminal tabs/panes)
-- Hook scripts: Use `.bat` or `.ps1` instead of `.sh`
-- JSON paths: Use double backslashes (e.g., `"C:\\Users\\user\\projects"`)
+- `AXON_LANG` - UI language (`en`/`zh`, auto-detected)
+- `AXON_CONFIG_DIR` - Config/data directory override
 
 ## Key Design Patterns
 

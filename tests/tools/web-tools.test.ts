@@ -287,9 +287,9 @@ describe('WebFetchTool', () => {
         prompt: 'Test'
       });
 
-      expect(result.success).toBe(true);
-      expect(result.output).toContain('REDIRECT');
-      expect(result.output).toContain('other-domain.com');
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('REDIRECT');
+      expect(result.error).toContain('other-domain.com');
     });
 
     it('should handle 302 redirects', async () => {
@@ -325,10 +325,12 @@ describe('WebFetchTool', () => {
 
       vi.mocked(axios.get).mockRejectedValue(redirectError);
 
-      await expect(webFetchTool.execute({
+      const result = await webFetchTool.execute({
         url: 'https://example.com',
         prompt: 'Test'
-      })).rejects.toThrow('Too many redirects');
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Too many redirects');
     });
   });
 
@@ -386,13 +388,13 @@ describe('WebFetchTool', () => {
       });
 
       const stats = getWebCacheStats();
-      expect(stats.web.itemCount).toBeGreaterThan(0);
+      expect(stats.fetch.itemCount).toBeGreaterThan(0);
     });
 
     it('should have correct cache configuration', () => {
       const stats = getWebCacheStats();
-      expect(stats.web.maxSize).toBe(50 * 1024 * 1024);
-      expect(stats.web.ttl).toBe(15 * 60 * 1000);
+      expect(stats.fetch.maxSize).toBe(50 * 1024 * 1024);
+      expect(stats.fetch.ttl).toBe(15 * 60 * 1000);
     });
   });
 
@@ -460,10 +462,12 @@ describe('WebFetchTool', () => {
       (dnsError as any).code = 'ENOTFOUND';
       vi.mocked(axios.get).mockRejectedValue(dnsError);
 
-      await expect(webFetchTool.execute({
+      const result = await webFetchTool.execute({
         url: 'https://example.com',
         prompt: 'Test'
-      })).rejects.toThrow();
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('ENOTFOUND');
     });
 
     it('should handle missing redirect location', async () => {
@@ -474,10 +478,12 @@ describe('WebFetchTool', () => {
       };
       vi.mocked(axios.get).mockRejectedValue(redirectError);
 
-      await expect(webFetchTool.execute({
+      const result = await webFetchTool.execute({
         url: 'https://example.com',
         prompt: 'Test'
-      })).rejects.toThrow();
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Redirect detected but no location header provided');
     });
   });
 

@@ -460,7 +460,7 @@ export class AxonCloudService {
     userId: string,
     amount: number,
     paymentMethod: string,
-  ): Promise<string> {
+  ): Promise<{ url: string; params: Record<string, string> }> {
     const res = await fetch(`${this.NEWAPI_BASE}/api/user/pay`, {
       method: 'POST',
       headers: {
@@ -479,12 +479,20 @@ export class AxonCloudService {
       throw new Error(this.getResultMessage(result, 'Failed to create Epay checkout'));
     }
 
-    const checkoutUrl = typeof result?.url === 'string' ? result.url : undefined;
-    if (!checkoutUrl) {
+    const url = typeof result?.url === 'string' ? result.url : undefined;
+    if (!url) {
       throw new Error('Epay checkout URL missing from response');
     }
 
-    return checkoutUrl;
+    // NewAPI returns form params in `data` that must be POSTed to the EPay URL
+    const params: Record<string, string> = {};
+    if (result?.data && typeof result.data === 'object' && !Array.isArray(result.data)) {
+      for (const [k, v] of Object.entries(result.data)) {
+        if (v != null) params[k] = String(v);
+      }
+    }
+
+    return { url, params };
   }
 
   /**
