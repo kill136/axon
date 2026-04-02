@@ -156,7 +156,11 @@ export function resolveAgentModel(
   }
 
   // 如果代理类型有默认模型，使用代理默认模型
+  // 注意：'inherit' 不是真正的模型名，需要解析为父模型
   if (agentDefaultModel) {
+    if (agentDefaultModel === 'inherit') {
+      return parentModelContext || undefined;
+    }
     return agentDefaultModel;
   }
 

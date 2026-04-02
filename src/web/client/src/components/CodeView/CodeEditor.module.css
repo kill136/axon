@@ -306,6 +306,168 @@
 }
 
 /* ============================================================
+   Markdown 预览
+   ============================================================ */
+
+.mdPreviewToggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px;
+  margin: 4px 8px 4px auto;
+  background: rgba(139, 92, 246, 0.15);
+  color: #c4b5fd;
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.mdPreviewToggle:hover {
+  background: rgba(139, 92, 246, 0.25);
+  border-color: rgba(139, 92, 246, 0.5);
+}
+
+.markdownPreview {
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  padding: 32px 48px;
+  background: #1e1e2e;
+  color: #cdd6f4;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 15px;
+  line-height: 1.7;
+  box-sizing: border-box;
+}
+
+.markdownPreview h1,
+.markdownPreview h2,
+.markdownPreview h3,
+.markdownPreview h4,
+.markdownPreview h5,
+.markdownPreview h6 {
+  color: #cba6f7;
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.markdownPreview h1 {
+  font-size: 2em;
+  border-bottom: 1px solid #45475a;
+  padding-bottom: 0.3em;
+}
+
+.markdownPreview h2 {
+  font-size: 1.5em;
+  border-bottom: 1px solid #45475a;
+  padding-bottom: 0.3em;
+}
+
+.markdownPreview h3 { font-size: 1.25em; }
+
+.markdownPreview p {
+  margin: 0.8em 0;
+}
+
+.markdownPreview a {
+  color: #89b4fa;
+  text-decoration: none;
+}
+
+.markdownPreview a:hover {
+  text-decoration: underline;
+}
+
+.markdownPreview code {
+  background: #313244;
+  color: #f38ba8;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 0.9em;
+}
+
+.markdownPreview pre {
+  background: #181825;
+  border: 1px solid #45475a;
+  border-radius: 8px;
+  padding: 16px;
+  overflow-x: auto;
+  margin: 1em 0;
+}
+
+.markdownPreview pre code {
+  background: transparent;
+  color: #cdd6f4;
+  padding: 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.markdownPreview blockquote {
+  border-left: 4px solid #cba6f7;
+  margin: 1em 0;
+  padding: 0.5em 1em;
+  background: rgba(203, 166, 247, 0.05);
+  color: #bac2de;
+}
+
+.markdownPreview ul,
+.markdownPreview ol {
+  padding-left: 2em;
+  margin: 0.5em 0;
+}
+
+.markdownPreview li {
+  margin: 0.3em 0;
+}
+
+.markdownPreview table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+}
+
+.markdownPreview th,
+.markdownPreview td {
+  border: 1px solid #45475a;
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.markdownPreview th {
+  background: #313244;
+  color: #cba6f7;
+  font-weight: 600;
+}
+
+.markdownPreview tr:nth-child(even) {
+  background: rgba(49, 50, 68, 0.3);
+}
+
+.markdownPreview hr {
+  border: none;
+  border-top: 1px solid #45475a;
+  margin: 2em 0;
+}
+
+.markdownPreview img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 1em 0;
+}
+
+.markdownPreview input[type="checkbox"] {
+  margin-right: 6px;
+}
+
+/* ============================================================
    导游模式二栏布局
    ============================================================ */
 

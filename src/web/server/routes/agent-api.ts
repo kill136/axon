@@ -4,9 +4,11 @@
  */
 
 import express from 'express';
-import { BUILT_IN_AGENT_TYPES, getAllActiveAgents } from '../../../tools/agent.js';
+import { BUILT_IN_AGENT_TYPES, getAllActiveAgents, initializeCustomAgents } from '../../../tools/agent.js';
 import path from 'path';
 import fs from 'fs';
+
+const AGENTS_DIR = path.join(process.env.HOME || process.env.USERPROFILE || '', '.axon', 'agents');
 
 const router = express.Router();
 
@@ -22,6 +24,7 @@ interface AgentMetadata {
   forkContext: boolean;
   permissionMode?: string;
   defaultModel?: string;
+  source?: string;
   examples?: string[];
   thoroughnessLevels?: string[];
   features?: string[];
@@ -42,6 +45,7 @@ function getAgentMetadata(): AgentMetadata[] {
       forkContext: agent.forkContext || false,
       permissionMode: agent.permissionMode,
       defaultModel: agent.model,
+      source: agent.source || 'built-in',
     };
 
     // 针对特定 agent 类型添加额外信息
@@ -257,6 +261,156 @@ router.get('/:agentType/source', async (req, res) => {
       success: false,
       error: error.message || 'Failed to get agent source code',
     });
+  }
+});
+
+/**
+ * POST /api/agents
+ * 创建新的自定义 agent（写入 ~/.axon/agents/{name}.md）
+ */
+router.post('/', (req, res) => {
+  try {
+    const { name, description, model, tools, disallowedTools, skills, permissionMode, forkContext, maxTurns, color, memory, systemPrompt } = req.body;
+
+    if (!name || typeof name !== 'string') {
+      return res.status(400).json({ success: false, error: 'Missing required field: name' });
+    }
+    if (!description || typeof description !== 'string') {
+      return res.status(400).json({ success: false, error: 'Missing required field: description' });
+    }
+
+    // 检查是否与内置 agent 同名
+    const builtIn = BUILT_IN_AGENT_TYPES.find(a => a.agentType === name);
+    if (builtIn) {
+      return res.status(409).json({ success: false, error: `Cannot create agent with built-in name '${name}'` });
+    }
+
+    // 确保目录存在
+    fs.mkdirSync(AGENTS_DIR, { recursive: true });
+
+    // 检查文件是否已存在
+    const filePath = path.join(AGENTS_DIR, `${name}.md`);
+    if (fs.existsSync(filePath)) {
+      return res.status(409).json({ success: false, error: `Agent '${name}' already exists` });
+    }
+
+    // 构建 frontmatter
+    const frontmatterLines = [`name: ${name}`, `description: ${description}`];
+    if (model) frontmatterLines.push(`model: ${model}`);
+    if (tools) frontmatterLines.push(`tools: ${Array.isArray(tools) ? tools.join(', ') : tools}`);
+    if (disallowedTools) frontmatterLines.push(`disallowedTools: ${Array.isArray(disallowedTools) ? disallowedTools.join(', ') : disallowedTools}`);
+    if (skills) frontmatterLines.push(`skills: ${Array.isArray(skills) ? skills.join(', ') : skills}`);
+    if (permissionMode) frontmatterLines.push(`permissionMode: ${permissionMode}`);
+    if (forkContext !== undefined) frontmatterLines.push(`forkContext: ${forkContext}`);
+    if (maxTurns) frontmatterLines.push(`maxTurns: ${maxTurns}`);
+    if (color) frontmatterLines.push(`color: ${color}`);
+    if (memory) frontmatterLines.push(`memory: ${memory}`);
+
+    const content = `---\n${frontmatterLines.join('\n')}\n---\n\n${systemPrompt || ''}`;
+    fs.writeFileSync(filePath, content, 'utf-8');
+
+    // 重新加载自定义 agents
+    initializeCustomAgents();
+
+    res.json({ success: true, data: { name, filePath } });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message || 'Failed to create agent' });
+  }
+});
+
+/**
+ * PUT /api/agents/:agentType
+ * 更新自定义 agent
+ */
+router.put('/:agentType', (req, res) => {
+  try {
+    const { agentType } = req.params;
+
+    // 不允许编辑内置 agent
+    const builtIn = BUILT_IN_AGENT_TYPES.find(a => a.agentType === agentType);
+    if (builtIn) {
+      return res.status(403).json({ success: false, error: `Cannot edit built-in agent '${agentType}'` });
+    }
+
+    const filePath = path.join(AGENTS_DIR, `${agentType}.md`);
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ success: false, error: `Custom agent '${agentType}' not found` });
+    }
+
+    const { description, model, tools, disallowedTools, skills, permissionMode, forkContext, maxTurns, color, memory, systemPrompt } = req.body;
+
+    const name = agentType;
+    const frontmatterLines = [`name: ${name}`];
+    if (description) frontmatterLines.push(`description: ${description}`);
+    if (model) frontmatterLines.push(`model: ${model}`);
+    if (tools) frontmatterLines.push(`tools: ${Array.isArray(tools) ? tools.join(', ') : tools}`);
+    if (disallowedTools) frontmatterLines.push(`disallowedTools: ${Array.isArray(disallowedTools) ? disallowedTools.join(', ') : disallowedTools}`);
+    if (skills) frontmatterLines.push(`skills: ${Array.isArray(skills) ? skills.join(', ') : skills}`);
+    if (permissionMode) frontmatterLines.push(`permissionMode: ${permissionMode}`);
+    if (forkContext !== undefined) frontmatterLines.push(`forkContext: ${forkContext}`);
+    if (maxTurns) frontmatterLines.push(`maxTurns: ${maxTurns}`);
+    if (color) frontmatterLines.push(`color: ${color}`);
+    if (memory) frontmatterLines.push(`memory: ${memory}`);
+
+    const content = `---\n${frontmatterLines.join('\n')}\n---\n\n${systemPrompt || ''}`;
+    fs.writeFileSync(filePath, content, 'utf-8');
+
+    // 重新加载
+    initializeCustomAgents();
+
+    res.json({ success: true, data: { name, filePath } });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message || 'Failed to update agent' });
+  }
+});
+
+/**
+ * DELETE /api/agents/:agentType
+ * 删除自定义 agent
+ */
+router.delete('/:agentType', (req, res) => {
+  try {
+    const { agentType } = req.params;
+
+    // 不允许删除内置 agent
+    const builtIn = BUILT_IN_AGENT_TYPES.find(a => a.agentType === agentType);
+    if (builtIn) {
+      return res.status(403).json({ success: false, error: `Cannot delete built-in agent '${agentType}'` });
+    }
+
+    const filePath = path.join(AGENTS_DIR, `${agentType}.md`);
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ success: false, error: `Custom agent '${agentType}' not found` });
+    }
+
+    fs.unlinkSync(filePath);
+
+    // 重新加载
+    initializeCustomAgents();
+
+    res.json({ success: true, data: { deleted: agentType } });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message || 'Failed to delete agent' });
+  }
+});
+
+/**
+ * GET /api/agents/:agentType/raw
+ * 获取自定义 agent 的原始 .md 内容（用于编辑表单回填）
+ */
+router.get('/:agentType/raw', (req, res) => {
+  try {
+    const { agentType } = req.params;
+    const filePath = path.join(AGENTS_DIR, `${agentType}.md`);
+
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ success: false, error: `Custom agent '${agentType}' not found` });
+    }
+
+    const raw = fs.readFileSync(filePath, 'utf-8');
+    res.json({ success: true, data: { agentType, raw } });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message || 'Failed to read agent file' });
   }
 });
 

@@ -90,6 +90,12 @@ import type {
 import { estimateTokens } from '../utils/token-estimate.js';
 import { loadActiveGoals } from '../goals/index.js';
 import {
+  isCoordinatorMode,
+  getCoordinatorTools,
+  getCoordinatorSystemPrompt,
+  getCoordinatorUserContext,
+} from '../coordinator/index.js';
+import {
   isSessionMemoryEnabled as checkSessionMemoryEnabled,
   SESSION_MEMORY_TEMPLATE,
   isEmptyTemplate,
@@ -2387,6 +2393,13 @@ export class ConversationLoop {
       tools = tools.filter(t => DELEGATE_MODE_TOOLS.has(t.name));
     }
 
+    // Coordinator 模式：主 agent 只使用管控类工具（Task/TaskOutput）
+    if (isCoordinatorMode() && !options.isSubAgent) {
+      const coordinatorTools = getCoordinatorTools();
+      const coordinatorToolNames = new Set(coordinatorTools.map(t => t.name));
+      tools = tools.filter(t => coordinatorToolNames.has(t.name));
+    }
+
     // v2.1.30: 合并 SDK 提供的 MCP 工具
     if (options.mcpTools && options.mcpTools.length > 0) {
       const existingNames = new Set(tools.map(t => t.name));
@@ -2972,6 +2985,15 @@ export class ConversationLoop {
     if (this.options.systemPrompt) {
       // 如果提供了自定义系统提示词，直接使用
       systemPrompt = this.options.systemPrompt;
+    } else if (isCoordinatorMode() && !this.options.isSubAgent) {
+      // Coordinator 模式：使用专用系统提示词
+      const coordinatorPrompt = getCoordinatorSystemPrompt();
+      const userContext = getCoordinatorUserContext();
+      // 将 worker 工具上下文附加到系统提示词
+      const contextSuffix = userContext.workerToolsContext
+        ? `\n\n## Worker Tool Context\n\n${userContext.workerToolsContext}`
+        : '';
+      systemPrompt = coordinatorPrompt + contextSuffix;
     } else {
       // 使用动态构建器生成
       try {
@@ -3502,6 +3524,13 @@ Guidelines:
       let promptBlocks: Array<{ text: string; cacheScope: 'global' | 'org' | null }> | undefined;
       if (this.options.systemPrompt) {
         systemPrompt = this.options.systemPrompt;
+      } else if (isCoordinatorMode() && !this.options.isSubAgent) {
+        const coordinatorPrompt = getCoordinatorSystemPrompt();
+        const userContext = getCoordinatorUserContext();
+        const contextSuffix = userContext.workerToolsContext
+          ? `\n\n## Worker Tool Context\n\n${userContext.workerToolsContext}`
+          : '';
+        systemPrompt = coordinatorPrompt + contextSuffix;
       } else {
         try {
           const buildResult = await this.promptBuilder.build(this.promptContext);

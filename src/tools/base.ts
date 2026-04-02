@@ -372,6 +372,23 @@ export class ToolRegistry {
   }
 
   /**
+   * 获取立即加载的工具定义（非 deferred）
+   * 对齐官方：启动时发送完整 schema 给 API 的工具
+   */
+  getImmediateDefinitions(): ToolDefinition[] {
+    return this.getDefinitions().filter(def => !def.shouldDefer && !def.isMcp);
+  }
+
+  /**
+   * 获取延迟加载的工具定义（deferred）
+   * 对齐官方：只在 <available-deferred-tools> 列表中出现名称，
+   * 完整 schema 通过 ToolSearch 按需获取
+   */
+  getDeferredDefinitions(): ToolDefinition[] {
+    return this.getDefinitions().filter(def => def.shouldDefer === true || def.isMcp === true);
+  }
+
+  /**
    * 执行工具（带权限检查）
    * @param name 工具名称
    * @param input 工具输入参数

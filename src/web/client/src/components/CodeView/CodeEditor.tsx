@@ -25,6 +25,9 @@ import { aiHoverApi, TourStep } from '../../api/ai-editor';
 import { analyzeCodeStructure } from '../../utils/codeStructureAnalyzer';
 import SemanticMap from './SemanticMap';
 import { SimpleTerminalTab } from './SimpleTerminalTab';
+import { marked } from 'marked';
+import hljs from 'highlight.js';
+import { sanitizeHtml } from '../../utils/sanitize';
 
 /**
  * CodeEditor Props
@@ -161,6 +164,29 @@ const CloseIcon: React.FC = () => (
 );
 
 /**
+ * Markdown 预览面板
+ */
+const MarkdownPreviewPane: React.FC<{ content: string }> = React.memo(({ content }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!containerRef.current || !content) return;
+    const html = marked.parse(content, { gfm: true, breaks: false }) as string;
+    containerRef.current.innerHTML = sanitizeHtml(html);
+    containerRef.current.querySelectorAll('pre code').forEach((block) => {
+      hljs.highlightElement(block as HTMLElement);
+    });
+  }, [content]);
+
+  return (
+    <div
+      ref={containerRef}
+      className={styles.markdownPreview}
+    />
+  );
+});
+
+/**
  * CodeEditor 组件
  * Monaco Editor 包装器，支持多 Tab、文件打开/保存，集成 AI 增强功能
  */
@@ -198,6 +224,21 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
 
     // 同步 tabsRef，供 openFile 闭包使用（避免 stale closure）
     tabsRef.current = tabs;
+
+    // 追踪正在打开的文件路径，防止双击等场景下的竞态重复打开
+    const openingFilesRef = useRef<Set<string>>(new Set());
+
+    // Markdown 预览模式：记录哪些 tab 正在预览
+    const [markdownPreviewTabs, setMarkdownPreviewTabs] = useState<Set<number>>(new Set());
+
+    const toggleMarkdownPreview = useCallback((tabId: number) => {
+      setMarkdownPreviewTabs(prev => {
+        const next = new Set(prev);
+        if (next.has(tabId)) next.delete(tabId);
+        else next.add(tabId);
+        return next;
+      });
+    }, []);
 
     // AI 功能开关
     const [beginnerMode, setBeginnerMode] = useState(false);
@@ -600,6 +641,13 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
           return;
         }
 
+        // 防止双击等场景下的竞态重复打开
+        if (openingFilesRef.current.has(path)) {
+          return;
+        }
+        openingFilesRef.current.add(path);
+
+        try {
         const fileType = getFileType(path);
 
         // ============= 处理图片和 PDF：直接打开，不加载内容 =============
@@ -710,6 +758,9 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
         } catch (err) {
           console.error('[CodeEditor] 读取文件异常:', err);
           alert(t('codeEditor.readFileError', { error: err instanceof Error ? err.message : 'Unknown error' }));
+        }
+        } finally {
+          openingFilesRef.current.delete(path);
         }
       },
       getActiveFilePath: () => currentTab?.path || null,
@@ -1042,7 +1093,9 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
         <div className={showAnyPanel ? styles.editorWithPanel : styles.editorFull}>
           {/* 内容区域：根据文件类型渲染不同的预览器 */}
           <div className={styles.monacoContainer}>
-            {currentTab.fileType === 'code' ? (
+            {currentTab.fileType === 'code' && currentTab.language === 'markdown' && markdownPreviewTabs.has(currentTab.id) ? (
+              <MarkdownPreviewPane content={currentTab.content} />
+            ) : currentTab.fileType === 'code' ? (
               <Editor
                 height="100%"
                 language={currentTab.language}
@@ -1445,6 +1498,16 @@ export const CodeEditor = forwardRef<CodeEditorRef, CodeEditorProps>(
                 </button>
               </div>
             ))}
+            {/* Markdown 预览切换按钮 */}
+            {currentTab && currentTab.language === 'markdown' && currentTab.fileType === 'code' && (
+              <button
+                className={styles.mdPreviewToggle}
+                onClick={() => toggleMarkdownPreview(currentTab.id)}
+                title={markdownPreviewTabs.has(currentTab.id) ? '切换到源码' : '切换到预览'}
+              >
+                {markdownPreviewTabs.has(currentTab.id) ? '</>' : '👁 Preview'}
+              </button>
+            )}
           </div>
         )}
 

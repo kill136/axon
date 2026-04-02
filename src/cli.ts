@@ -42,6 +42,7 @@ import {
   forcePrefetchPenguinMode,
 } from './fast-mode/index.js';
 import { logger } from './utils/logger.js';
+import { runMigrations } from './migrations/index.js';
 
 // 初始化运行时日志系统（CLI 模式）
 logger.init({ interceptConsole: true, minLevel: 'info' });
@@ -3649,6 +3650,9 @@ async function main(): Promise<void> {
       return;
     }
   }
+
+  // 运行启动迁移（幂等，版本号未变时跳过）
+  runMigrations();
 
   // 运行主程序
   program.parse();

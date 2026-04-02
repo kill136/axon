@@ -486,33 +486,7 @@ export function InputArea({
                   <option key={level} value={level}>{t(`input.thinkingLevel.${level}`)}</option>
                 ))}
               </select>
-              <select
-                className={`permission-mode-selector mode-${permissionMode}`}
-                value={activePresetId}
-                onChange={(e) => onPresetChange(e.target.value)}
-                title={t('input.permissionMode')}
-                aria-label={t('input.permissionMode')}
-              >
-                {modePresets && modePresets.length > 0 ? (
-                  modePresets.map(p => (
-                    <option key={p.id} value={p.id}>{`${p.icon} ${p.name}`}</option>
-                  ))
-                ) : (
-                  <>
-                    <option value="default">{`🔒 ${t('input.permAsk')}`}</option>
-                    <option value="acceptEdits">{`📝 ${t('input.permAutoEdit')}`}</option>
-                    <option value="bypassPermissions">{'⚡ YOLO'}</option>
-                    <option value="plan">{`📋 ${t('input.permPlan')}`}</option>
-                    <option value="dontAsk">{`🚫 ${t('input.permDontAsk')}`}</option>
-                    <option value="delegate">{`🔗 ${t('input.permDelegate')}`}</option>
-                  </>
-                )}
-              </select>
-              {permissionMode === 'dontAsk' && (
-                <span className="permission-dontask-warning" title="All sensitive tool operations will be automatically rejected">
-                  ⚠️
-                </span>
-              )}
+              {/* 权限模式已隐藏，默认 yolo (bypassPermissions) */}
               {isVoiceSupported && onToggleConversationMode && (
                 <button
                   type="button"

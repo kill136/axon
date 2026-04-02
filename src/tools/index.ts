@@ -33,6 +33,9 @@ export * from './eye.js';
 export * from './ear.js';
 export * from './goal.js';
 export * from './network-agent.js';
+export * from './lsp.js';
+export * from './repl.js';
+export * from './tool-search.js';
 
 // 蓝图工具不通过此处 re-export
 // 蓝图模块直接 import 各自需要的工具文件 (如 ../tools/dispatch-worker.js)
@@ -66,6 +69,9 @@ import { EarTool } from './ear.js';
 // McpManageTool removed: merged into MCPSearchTool (Mcp) via action parameter
 import { GoalManageTool } from './goal.js';
 import { NetworkTool } from './network-agent.js';
+import { LSPTool } from './lsp.js';
+import { ReplTool } from './repl.js';
+import { ToolSearchTool } from './tool-search.js';
 
 // ============ 蓝图工具 imports (lazy) ============
 import { GenerateBlueprintTool } from './generate-blueprint.js';
@@ -96,6 +102,10 @@ export function registerCoreTools(): void {
   } catch {
     // 清理失败不影响启动
   }
+
+  // 0. ToolSearch 延迟工具发现（对齐官方 ToolSearchTool）
+  // ToolSearch 自身永远不 defer，模型需要它来加载其他 deferred 工具
+  toolRegistry.register(new ToolSearchTool());
 
   // 1. Bash 工具 (1个) - KillShell(TaskStop) 已合并到 TaskOutput action=stop
   toolRegistry.register(new BashTool());
@@ -180,7 +190,13 @@ export function registerCoreTools(): void {
   // 24. AgentNetwork Agent 间通信协作工具
   toolRegistry.register(new NetworkTool());
 
-  // 25. 加载外挂自定义工具 (~/.axon/custom-tools/*.js)
+  // 25. LSP 代码智能工具
+  toolRegistry.register(new LSPTool());
+
+  // 26. REPL 交互式代码执行工具（Python / Node.js）
+  toolRegistry.register(new ReplTool());
+
+  // 27. 加载外挂自定义工具 (~/.axon/custom-tools/*.js)
   loadCustomTools().catch(err => {
     console.warn('[Tools] Failed to load custom tools:', err);
   });
