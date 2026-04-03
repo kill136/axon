@@ -1,4 +1,4 @@
-# Persona-Agent 智能平台 — 技术方案 v3
+# Persona-Agent 智能平台 — 技术方案 v4
 
 ---
 
@@ -57,8 +57,8 @@
 系统能做到：
 - 从**记账数据**知道用户月预算还剩 4800 元
 - 从**日程数据**知道 5 月 1-5 日有空，5 月 3 日下午有一个不可移动的视频会议
-- 从**记忆层**知道用户上次聊天提过想去海边、不喜欢赶行程
-- 从**习惯数据**知道用户晚睡晚起，不要排早班飞机
+- 从**本体 core.known_facts**知道用户提过想去海边、不喜欢赶行程
+- 从**本体 cluster:daily_life** 的 accumulated_knowledge 知道用户晚睡晚起，不要排早班飞机
 - 生成的旅行规划应用中，预算模块直接读取记账数据，行程自动避开已有日程，消费自动写回记账
 
 **单个 App 永远做不到这种体验。这就是数据飞轮。**
@@ -145,13 +145,33 @@
 └─────────────┬────────────────┬──────────────────────────┘
               │                │
               ▼                ▼
+┌─────────────────────────────────────────────────────────┐
+│                   记忆与本体层                            │
+│                                                         │
+│  ┌────────────────────────────────────────────────────┐  │
+│  │  用户本体 (Ontology)                                │  │
+│  │  ├── core.json     用户画像 + 对话风格 + 使用分布    │  │
+│  │  ├── clusters/     主题聚类（按用户行为自然涌现）     │  │
+│  │  └── graph.json    聚类关联 + 路由提示               │  │
+│  └────────────────────────────────────────────────────┘  │
+│                                                         │
+│  ┌────────────────────────────────────────────────────┐  │
+│  │  记忆管线                                           │  │
+│  │  短期（会话历史）→ 中期（工作记忆）→ 长期（本体沉淀） │  │
+│  │  每次交互后异步：提取事实 → 更新本体 → 向量化存储     │  │
+│  └────────────────────────────────────────────────────┘  │
+│                                                         │
+│  pgvector 语义检索 · LLM 驱动本体更新 · 全 Agent 共享    │
+└─────────────────────────────────────────────────────────┘
+              │                │
+              ▼                ▼
 ┌─────────────────┐  ┌──────────────────────────────────┐
 │   数据基座层      │  │   资源池（算力密集型任务）          │
 │                  │  │                                  │
 │  PostgreSQL      │  │  任务队列 (Redis Queue)           │
 │  ├── 实体数据     │  │         │                        │
 │  ├── pgvector    │  │         ▼                        │
-│  │   (记忆向量)   │  │  ┌────────────┐ ┌────────────┐  │
+│  │  (本体+记忆)   │  │  ┌────────────┐ ┌────────────┐  │
 │  ├── Agent 配置   │  │  │浏览器Worker│ │ 计算Worker  │  │
 │  └── 应用代码     │  │  │Playwright  │ │ 图片/数据   │  │
 │                  │  │  │× N (弹性)  │ │ × N (弹性)  │  │
@@ -186,8 +206,11 @@ const GATEWAY_SYSTEM_PROMPT = `
 当前用户的 Agent 列表：
 {agents_summary}
 
-当前用户的记忆摘要：
-{memory_summary}
+用户画像（从本体 core.json 加载）：
+{ontology_core}
+
+路由提示（从本体 graph.json 加载）：
+{routing_hints}
 
 当前时间：{current_time}
 `;
@@ -229,11 +252,10 @@ const GATEWAY_TOOLS = [
     }
   },
   {
-    name: "recall_memory",
-    description: "检索用户记忆",
+    name: "load_cluster",
+    description: "加载用户本体中的指定主题聚类，获取该领域的深度认知",
     parameters: {
-      query: { type: "string" },
-      limit: { type: "number", default: 5 }
+      cluster_id: { type: "string", description: "聚类 ID，从 core.cluster_index 中选取" },
     }
   },
   {
@@ -407,10 +429,12 @@ interface AppSDK {
   };
 
   // ==========================================
-  // 记忆层（只读，Agent 写入）
+  // 记忆层（只读，应用可检索用户本体中的知识）
   // ==========================================
   memory: {
-    recall(query: string): Promise<MemoryItem[]>;
+    recall(query: string): Promise<MemoryItem[]>;         // 语义检索用户记忆
+    getKnownFacts(): Promise<string[]>;                   // 获取用户散点事实
+    getActiveContext(): Promise<ActiveContextItem[]>;      // 获取进行中事项
   };
 
   // ==========================================
@@ -538,47 +562,322 @@ const EntitySchemas = {
 
 **演进路径：当单一实体类型超过 100 万条时，按 type 分表。初期不需要提前做。**
 
-### 3.7 记忆层设计
+### 3.7 记忆与本体系统
+
+#### 3.7.1 三层记忆架构
+
+```
+短期记忆（会话级）          中期记忆（工作记忆）         长期记忆（用户本体）
+┌──────────────────┐   ┌──────────────────┐   ┌──────────────────┐
+│ 当前对话上下文     │   │ 跨会话工作状态     │   │ 用户知识本体       │
+│ · 最近 N 轮消息   │──▶│ · 进行中的事项     │──▶│ · core.json      │
+│ · 当前 Agent ID   │   │ · 临时偏好/意图    │   │ · clusters/      │
+│ · 当前应用状态     │   │ · 上次会话摘要     │   │ · graph.json     │
+│                  │   │ · 待确认的推断     │   │                  │
+│ 生命周期：单次会话  │   │ 生命周期：7-14 天  │   │ 生命周期：永久     │
+│ 存储：Redis       │   │ 存储：PostgreSQL   │   │ 存储：PostgreSQL  │
+└──────────────────┘   └──────────────────┘   └──────────────────┘
+         │                      │                      │
+         └──────────────────────┴──────────────────────┘
+                    全部注入到 Agent 上下文中
+```
+
+**核心原则：记忆不是附加功能，是 Agent 智能的基础设施。** 每次 Agent 被调用，都带着完整的用户认知（本体 + 工作记忆 + 会话上下文）。
+
+#### 3.7.2 用户知识本体（Ontology）
+
+本体是对用户的结构化认知，不是对话日志，不是用户档案。**每个字段都要回答一个问题："AI 在下一次对话中需要这个信息吗？"**
+
+```
+ontology/
+├── core.json          # 用户画像（~500 tokens，每次必加载）
+├── clusters/          # 主题聚类（按需加载，每个 200-600 tokens）
+│   ├── finance.json
+│   ├── travel.json
+│   └── ...
+└── graph.json         # 聚类关联 + 路由提示
+```
+
+##### core.json — 用户画像
 
 ```typescript
-interface MemoryStore {
-  memories: {
-    id: string;
-    user_id: string;
-    type: "preference" | "behavior" | "fact" | "association";
-    content: string;              // 自然语言描述
-    embedding: Float32Array;      // 向量（pgvector）
-    confidence: number;           // 置信度 0-1
-    source_agent_id: string;      // 哪个 Agent 写入的
-    created_at: datetime;
-    updated_at: datetime;
-  }[];
+interface OntologyCore {
+  version: string;
+  user_id: string;
+  last_updated: datetime;
 
-  // 写入（Agent 交互后自动总结）
-  write(memory: NewMemory): Promise<void>;
+  // 用户是谁（只记录影响对话的信息）
+  who: {
+    name_used: string | null;           // 用户自称
+    name_inferred: string | null;       // 从账号推断
+    name_source: string;                // 推断依据
+    language: string;                   // 主要语言
+    second_language: string | null;     // 第二语言+使用场景
+    location: string | null;            // 用户明确提及的地点
+  };
 
-  // 语义检索
-  recall(query: string, options?: {
-    type?: MemoryType;
-    limit?: number;
-  }): Promise<Memory[]>;
+  // 用户怎么说话（决定 Agent 怎么回复）
+  how_they_talk: {
+    register: "casual" | "formal" | "mixed";
+    examples: string[];                 // 3-5 条用户原文
+    patterns: string[];                 // 提问/表达模式
+    response_preference: string;        // 用户期望的回答风格
+  };
 
-  // 删除（用户说"忘了这个"）
-  forget(id: string): Promise<void>;
+  // 用户在平台上做什么（决定路由权重）
+  what_they_do_here: {
+    total_interactions: number;
+    period: string;
+    distribution: Record<string, { share: string; cluster: string }>;
+  };
+
+  // 当前进行中的事项（最多 5 条）
+  active_context: Array<{
+    topic: string;
+    since: datetime | null;
+    last_mentioned: datetime | null;
+    cluster: string;
+    note: string | null;
+  }>;
+
+  // 散点事实（不属于任何聚类，但对话中可能用到，最多 15 条）
+  known_facts: string[];
+
+  // 聚类索引（用于按需加载）
+  cluster_index: Record<string, {
+    path: string;
+    tokens_est: number;
+    last_active: datetime;
+    activity_level: "daily" | "weekly" | "sporadic" | "paused" | "dormant";
+  }>;
 }
 ```
 
-**Phase 1 只做写入、检索、删除。衰减/合并/强化等机制推迟到 Phase 3。**
+##### cluster/{id}.json — 主题聚类
 
-记忆示例：
-```json
-[
-  { "type": "preference", "content": "用户对咖啡过敏，只喝茶饮", "confidence": 0.95 },
-  { "type": "behavior", "content": "用户通常晚上 10-11 点记账，周末容易忘记", "confidence": 0.7 },
-  { "type": "association", "content": "用户的'省钱'目标和'旅行基金'记账分类高度关联", "confidence": 0.85 },
-  { "type": "fact", "content": "用户在杭州工作，养了一只猫叫橘子", "confidence": 0.9 }
-]
+聚类不是人为分类，而是从用户行为中**自然涌现**的主题。判断标准：
+1. **频次** ≥ 3 次
+2. **积累性**：后一次交互依赖前一次上下文（不是每次从零开始）
+3. **可复用**：未来大概率还会出现
+
+```typescript
+interface OntologyCluster {
+  cluster_meta: {
+    id: string;                         // 小写英文+下划线，如 "daily_finance"
+    label: string;                      // 人类可读标签
+    created: datetime;
+    last_active: datetime;
+    interaction_count: number;
+    activity_level: string;
+    sensitivity: null | "high";         // 高敏感内容不主动提起
+  };
+
+  // 核心：如果用户明天再来聊这个话题，Agent 需要记住什么？
+  accumulated_knowledge: Record<string, any>;
+  // 自由结构，按知识类型组织（偏好、事实、工具、人物...）
+  // 不按时间排列，每个键名自解释，值用短句或结构化数据
+
+  // 高敏感聚类的交互规则
+  interaction_guidelines?: {
+    do: string[];
+    do_not: string[];
+  };
+
+  // 进行中的具体事项
+  open_threads: Array<{
+    topic: string;
+    status: "in_progress" | "blocked" | "waiting";
+    last_update: datetime;
+    next_step: string | null;
+  }>;
+}
 ```
+
+##### graph.json — 聚类关联与路由
+
+```typescript
+interface OntologyGraph {
+  // 聚类间关系
+  edges: Array<{
+    from: string;                       // cluster_id
+    to: string;
+    relation: string;                   // 关系描述
+    strength: "strong" | "moderate" | "weak";
+    stated_by_user: boolean;            // 用户说过 vs 系统推断
+    note: string | null;
+  }>;
+
+  // 路由提示（Gateway Agent 用于快速匹配聚类）
+  routing_hints: Array<{
+    signal: string;                     // 用户输入特征关键词
+    target_cluster: string | null;      // 路由目标
+    confidence: "high" | "medium" | "low";
+  }>;
+}
+```
+
+#### 3.7.3 本体运行时读取协议
+
+**Token 预算管理是核心工程问题。** 不是把所有记忆塞进 context，而是分层按需加载：
+
+```
+每次对话开始：
+
+1. 加载 core.json（~500 tokens）
+   → Agent 知道用户是谁、怎么说话、最近在做什么
+
+2. 读用户第一条消息 → 匹配 graph.routing_hints
+
+3a. 命中某个 cluster → 加载该 cluster（200-600 tokens）
+3b. 未命中 → 仅用 core 回应，不加载任何 cluster
+
+4. 对话中出现新信息：
+   → 属于已有 cluster → 标记待更新
+   → 不属于任何 cluster → 评估是否记入 known_facts
+   → 同一新主题第 3 次出现 → 标记为候选新 cluster
+
+Token 预算：
+  闲聊：          core only             → ~500 tokens
+  单主题：        core + 1 cluster      → ~800-1100 tokens
+  跨主题：        core + 2 clusters     → ~1500-2000 tokens
+  极限（不超过）:  core + 3 clusters     → ~2500 tokens
+```
+
+#### 3.7.4 本体生成与更新
+
+本体不是一次性生成的，而是随交互持续演进。**生成和更新都由 LLM 驱动**，不用规则引擎。
+
+```typescript
+// 每次 Agent 交互后，异步执行
+async function updateOntology(userId: string, interaction: Interaction): Promise<void> {
+  const ontology = await loadOntology(userId);
+
+  // 用 LLM 判断：这次交互是否产生了新的认知？
+  const analysis = await llm.chat({
+    model: "claude-haiku-4-5-20251001",  // 低成本模型做分析
+    system: ONTOLOGY_UPDATE_PROMPT,
+    messages: [{
+      role: "user",
+      content: JSON.stringify({
+        interaction,                     // 本次交互内容
+        current_core: ontology.core,     // 当前本体状态
+        relevant_cluster: ontology.activeCluster,
+      })
+    }]
+  });
+
+  // LLM 返回结构化更新指令
+  const updates: OntologyUpdate[] = JSON.parse(analysis.content);
+
+  for (const update of updates) {
+    switch (update.type) {
+      case "add_known_fact":
+        // 新散点事实 → core.known_facts
+        await addKnownFact(userId, update.fact);
+        break;
+      case "update_cluster":
+        // 更新已有聚类的 accumulated_knowledge
+        await updateCluster(userId, update.clusterId, update.knowledge);
+        break;
+      case "create_cluster_candidate":
+        // 候选新聚类（第 3 次出现时正式创建）
+        await markClusterCandidate(userId, update.topic);
+        break;
+      case "update_active_context":
+        // 更新进行中事项
+        await updateActiveContext(userId, update.context);
+        break;
+      case "update_open_thread":
+        // 更新聚类中的进行中线程
+        await updateOpenThread(userId, update.clusterId, update.thread);
+        break;
+      // 不需要 case: 本次交互没有产生新认知 → 不更新
+    }
+  }
+}
+
+// 定期全量重建（每周一次 or 交互满 200 条）
+async function rebuildOntology(userId: string): Promise<void> {
+  const allInteractions = await loadAllInteractions(userId);
+
+  // 全量扫描 → 主题聚类 → 提取对话模式 → 计算分布 → 识别进行中事项 → 建立关联
+  const newOntology = await llm.chat({
+    model: "claude-sonnet-4-6-20250514",  // 全量重建用更强模型
+    system: ONTOLOGY_REBUILD_PROMPT,
+    messages: [{ role: "user", content: JSON.stringify(allInteractions) }]
+  });
+
+  await saveOntology(userId, JSON.parse(newOntology.content));
+}
+```
+
+**更新协议：**
+
+| 更新类型 | 触发条件 | 操作 |
+|---------|---------|------|
+| 事实新增 | 用户说了新事实 | → `known_facts` 追加 |
+| 偏好修正 | 用户对输出不满 | → 对应 cluster 更新 `accumulated_knowledge` |
+| 聚类新增 | 某话题第 3 次出现且有积累性 | → 新建 cluster + 更新 core 索引 |
+| 活跃度变化 | 某 cluster 14 天无活动 | → `activity_level` 改为 `dormant` |
+| 上下文轮转 | `active_context` 超过 5 条 | → 按 `last_mentioned` 排序截断 |
+| 全量重建 | 每周 or 累计 200 次交互 | → LLM 全量扫描重建 |
+
+#### 3.7.5 记忆核心原则
+
+1. **纯实然，不推测需求**
+   - 只记录用户**明确说过的**和**反复做过的**
+   - 推测性关联可记录在 graph 但必须标 `stated_by_user: false`，不主动使用
+
+2. **结构服从使用，不服从分类学**
+   - 不按"工作/生活/兴趣"预设分类
+   - 聚类从用户行为中自然涌现
+
+3. **轻量化**
+   - core 目标 < 800 tokens，单 cluster < 600 tokens，全量 < 4000 tokens
+   - 超过 2 句话的描述要问：这在对话中真的会用到吗？
+
+4. **高敏感内容保护**
+   - `sensitivity: "high"` 的聚类：Agent 不主动提起，仅用户明确提及时激活
+
+#### 3.7.6 存储方案
+
+```sql
+-- 本体存储（PostgreSQL JSONB）
+CREATE TABLE user_ontology (
+  user_id    UUID NOT NULL,
+  part       TEXT NOT NULL,            -- 'core' | 'graph' | 'cluster:{id}'
+  data       JSONB NOT NULL,
+  version    INTEGER DEFAULT 1,
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (user_id, part)
+);
+
+-- 向量索引（用于语义检索 known_facts + cluster 内容）
+CREATE TABLE ontology_embeddings (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    UUID NOT NULL,
+  source     TEXT NOT NULL,            -- 'known_fact' | 'cluster:{id}'
+  content    TEXT NOT NULL,
+  embedding  vector(1536),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_ontology_embeddings ON ontology_embeddings
+  USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+
+-- 中期工作记忆
+CREATE TABLE working_memory (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    UUID NOT NULL,
+  type       TEXT NOT NULL,            -- 'session_summary' | 'pending_inference' | 'temp_preference'
+  content    TEXT NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,     -- 7-14 天后过期
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+**Phase 1 交付：** core + clusters + graph 的生成/存储/加载 + 每次交互后增量更新 + 语义检索。
+**Phase 3 再做：** 全量重建调度、聚类自动归档、跨用户模式发现。
 
 ### 3.8 资源池：算力密集型任务
 
@@ -667,8 +966,12 @@ interface GatewayContext {
   // ③ 用户的 Agent 注册表（注入到 system prompt）
   agents: AgentSummary[];            // 所有 Agent 的名称+描述+领域
 
-  // ④ 记忆摘要（预检索 top-5，注入到 system prompt）
-  memory_hints: MemoryItem[];
+  // ④ 用户本体（core 始终加载，cluster 按需加载）
+  ontology: {
+    core: OntologyCore;                  // 用户画像，~500 tokens
+    active_cluster?: OntologyCluster;    // 命中的主题聚类，200-600 tokens
+    routing_hints: RoutingHint[];        // 路由提示
+  };
 
   // ⑤ 时间上下文
   time: {
@@ -816,12 +1119,16 @@ async function invokeAgent(agent: Agent, message: string): Promise<AgentResponse
   // 1. 从数据库加载 Agent 配置（缓存在 Redis 中）
   const config = await loadAgentConfig(agent.id);
   
-  // 2. 从记忆层检索相关记忆
-  const memories = await memoryStore.recall(message, { limit: 5 });
+  // 2. 加载用户本体
+  const core = await loadOntologyCore(agent.user_id);
+  const cluster = await matchAndLoadCluster(agent.user_id, message, core);
+  const workingMemory = await loadWorkingMemory(agent.user_id);
   
-  // 3. 构造完整的 system prompt
+  // 3. 构造完整的 system prompt（分层注入上下文）
   const systemPrompt = config.system_prompt
-    + `\n\n用户相关记忆：\n${memories.map(m => m.content).join('\n')}`;
+    + `\n\n## 用户画像\n${formatCore(core)}`
+    + (cluster ? `\n\n## 当前主题认知\n${formatCluster(cluster)}` : '')
+    + (workingMemory.length ? `\n\n## 工作记忆\n${workingMemory.map(m => m.content).join('\n')}` : '');
   
   // 4. 从数据库加载最近对话历史
   const history = await loadConversationHistory(agent.id, agent.user_id, { limit: 20 });
@@ -845,8 +1152,9 @@ async function invokeAgent(agent: Agent, message: string): Promise<AgentResponse
     });
   }
   
-  // 7. Agent 交互后，异步沉淀记忆
-  backgroundTask(() => extractAndSaveMemories(agent, message, result));
+  // 7. Agent 交互后，异步更新本体 + 工作记忆
+  backgroundTask(() => updateOntology(agent.user_id, { agent, message, result }));
+  backgroundTask(() => updateWorkingMemory(agent.user_id, { message, result }));
   
   // 8. 保存对话历史
   await saveConversationHistory(agent.id, agent.user_id, message, result);
@@ -907,7 +1215,7 @@ const DOMAIN_PROMPTS: Record<string, string> = {
 记录时自动推断分类（"奶茶" → 饮品），金额不明确时追问。
 
 用户的消费偏好和习惯：
-{user_memory_summary}
+{ontology_core + active_cluster}
 `,
 
   schedule: `
@@ -917,7 +1225,7 @@ const DOMAIN_PROMPTS: Record<string, string> = {
 - 建议最优安排
 
 用户的作息习惯和偏好：
-{user_memory_summary}
+{ontology_core + active_cluster}
 `,
 
   // 不在预定义领域中的需求（如"宠物疫苗管理"）
@@ -974,7 +1282,7 @@ sdk.data.query / create / update / delete / subscribe
 sdk.agent.ask(message) → 让 Agent 处理复杂逻辑
 sdk.scheduler.register / cancel / list
 sdk.webhook.register / remove / list
-sdk.memory.recall(query) → 检索用户记忆
+sdk.memory.recall(query) / getKnownFacts() / getActiveContext() → 检索用户本体知识
 sdk.host.toast / openChat / navigate
 ```
 
@@ -1076,7 +1384,7 @@ function InventoryApp() {
 ```
 
 **不做 Agent 合并/拆分（远期再考虑）。**
-**不做 system prompt 自动优化（通过记忆层注入上下文更可靠）。**
+**不做 system prompt 自动优化（通过本体层注入结构化用户认知更可靠）。**
 
 ---
 
@@ -1250,7 +1558,7 @@ LLM API 占成本 85%+，服务器成本是零头
          │
          ▼
   记账 Agent（LLM）：
-  → recall_memory("用户记账习惯") → 得知按自然月统计
+  → 从本体 cluster:daily_finance 加载用户记账偏好 → 得知按自然月统计
   → data_query("transaction", { direction: "expense", after: "2026-04-01" })
   → LLM 汇总计算
   → reply("这个月花了 3,247 元", cards: [消费饼图])
@@ -1269,7 +1577,7 @@ LLM API 占成本 85%+，服务器成本是零头
          │
          ▼
   库存 Agent（LLM）：
-  → recall_memory("用户业务信息") → 了解用户经营什么
+  → 从本体 core.known_facts 加载用户业务信息 → 了解用户经营什么
   → 生成 React 代码（含 sdk.data CRUD + sdk.agent.ask 分析 + sdk.scheduler 定时预警）
   → reply("做好了！", app: { code: "...", ... })
          │
@@ -1342,15 +1650,20 @@ LLM API 占成本 85%+，服务器成本是零头
 Phase 1 (MVP, 8 周):
   ✅ Gateway Agent + 专属 Agent 创建/路由
   ✅ 数据层（统一实体存储，CRUD API）
-  ✅ 记忆层（写入 + 语义检索 + 删除）
+  ✅ 用户本体 v1（core + clusters + graph 生成/存储/加载）
+  ✅ 本体运行时读取协议（core 始终加载 + cluster 按需加载）
+  ✅ 每次交互后增量本体更新（Haiku 驱动）
+  ✅ 语义检索（pgvector + known_facts + cluster 内容）
   ✅ 动态应用生成（LLM 生成 React 代码）
-  ✅ iframe 沙箱 + AppSDK（data + agent.ask + host）
+  ✅ iframe 沙箱 + AppSDK（data + agent.ask + memory + host）
   ✅ 应用版本快照 + 回退
   ✅ 基础安全（用户隔离、权限校验、SDK 限流）
 
 Phase 2 (增强, 6 周):
   ✅ sdk.scheduler（定时任务 + 平台调度器）
   ✅ sdk.webhook（外部事件接收 + Agent 处理）
+  ✅ 中期工作记忆（跨会话状态、临时偏好、待确认推断）
+  ✅ 本体路由提示集成 Gateway Agent 决策
   ✅ 应用迭代（对话修改已有应用）
   ✅ 跨应用数据共享完整体验
   ✅ 资源池（浏览器 Worker + 计算 Worker）
@@ -1358,7 +1671,9 @@ Phase 2 (增强, 6 周):
   ✅ 多端适配（Web + 移动端 WebView）
 
 Phase 3 (进化, 6 周):
-  ✅ 记忆层增强（衰减、合并、强化）
+  ✅ 本体全量重建调度（每周 or 200 次交互）
+  ✅ 聚类自动归档（dormant cluster 压缩）
+  ✅ 本体版本历史（用户可回溯 Agent 对自己的认知变化）
   ✅ Agent 休眠/唤醒/归档
   ✅ 应用间数据实时订阅同步
   ✅ 通知系统（定时任务/Webhook 结果推送）
@@ -1368,6 +1683,7 @@ Phase 4 (生态, 持续):
   ✅ MCP 能力市场
   ✅ 多端数据同步
   ✅ 团队/家庭数据共享
+  ✅ 跨用户模式发现（匿名化，用于改进本体生成质量）
   ✅ Agent 合并/拆分（远期，需足够数据）
 ```
 
@@ -1387,3 +1703,10 @@ Phase 4 (生态, 持续):
 | v2→v3 | 新增安全与隔离章节 | 多用户共享服务器的数据隔离和安全防护 |
 | v2→v3 | 新增资源估算与扩容章节 | 明确 100 用户的硬件成本和扩容路径 |
 | v2→v3 | 新增完整数据流示例 | 覆盖所有场景：对话、路由、建应用、应用内操作、后台任务、Webhook |
+| v3→v4 | 新增记忆与本体层为独立架构层 | 记忆不是 pgvector 的附属品，是 Agent 智能的基础设施 |
+| v3→v4 | 引入用户知识本体（Ontology） | core/clusters/graph 三层结构，结构化用户认知 |
+| v3→v4 | 设计三层记忆架构（短期→中期→长期） | 覆盖会话级、跨会话、永久级记忆需求 |
+| v3→v4 | 本体运行时读取协议 + Token 预算管理 | 按需加载，闲聊 500 tokens，复杂场景不超过 2500 tokens |
+| v3→v4 | LLM 驱动本体增量更新 + 全量重建 | 每次交互 Haiku 增量更新，定期 Sonnet 全量重建 |
+| v3→v4 | Gateway Agent 集成本体路由提示 | 用 graph.routing_hints 辅助意图匹配 |
+| v3→v4 | Agent 调用流程集成本体上下文注入 | 替代原始的 flat memory recall，分层注入画像+聚类+工作记忆 |
