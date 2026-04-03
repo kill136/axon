@@ -157,7 +157,7 @@
 │                                                         │
 │  ┌────────────────────────────────────────────────────┐  │
 │  │  记忆管线                                           │  │
-│  │  短期（会话历史）→ 中期（工作记忆）→ 长期（本体沉淀） │  │
+│  │  短期（会话历史）──────────────▶ 长期（本体沉淀）     │  │
 │  │  每次交互后异步：提取事实 → 更新本体 → 向量化存储     │  │
 │  └────────────────────────────────────────────────────┘  │
 │                                                         │
@@ -564,29 +564,37 @@ const EntitySchemas = {
 
 ### 3.7 记忆与本体系统
 
-#### 3.7.1 三层记忆架构
+#### 3.7.1 两层记忆架构
 
 ```
-短期记忆（会话级）          中期记忆（工作记忆）         长期记忆（用户本体）
-┌──────────────────┐   ┌──────────────────┐   ┌──────────────────┐
-│ 当前对话上下文     │   │ 跨会话工作状态     │   │ 用户知识本体       │
-│ · 最近 N 轮消息   │──▶│ · 进行中的事项     │──▶│ · core.json      │
-│ · 当前 Agent ID   │   │ · 临时偏好/意图    │   │ · clusters/      │
-│ · 当前应用状态     │   │ · 上次会话摘要     │   │ · graph.json     │
-│                  │   │ · 待确认的推断     │   │                  │
-│ 生命周期：单次会话  │   │ 生命周期：7-14 天  │   │ 生命周期：永久     │
-│ 存储：Redis       │   │ 存储：PostgreSQL   │   │ 存储：PostgreSQL  │
-└──────────────────┘   └──────────────────┘   └──────────────────┘
-         │                      │                      │
-         └──────────────────────┴──────────────────────┘
-                    全部注入到 Agent 上下文中
+短期记忆（会话级）                          长期记忆（用户本体）
+┌──────────────────┐                  ┌──────────────────┐
+│ 当前对话上下文     │                  │ 用户知识本体       │
+│ · 最近 N 轮消息   │                  │ · core.json      │
+│ · 当前 Agent ID   │─────────────────▶│ · clusters/      │
+│ · 当前应用状态     │  交互后异步沉淀    │ · graph.json     │
+│                  │                  │                  │
+│ 生命周期：单次会话  │                  │ 生命周期：永久     │
+│ 存储：Redis       │                  │ 存储：PostgreSQL  │
+└──────────────────┘                  └──────────────────┘
+         │                                    │
+         └────────────────────────────────────┘
+                  两层都注入到 Agent 上下文中
 ```
 
-**核心原则：记忆不是附加功能，是 Agent 智能的基础设施。** 每次 Agent 被调用，都带着完整的用户认知（本体 + 工作记忆 + 会话上下文）。
+**核心原则：记忆不是附加功能，是 Agent 智能的基础设施。** 每次 Agent 被调用，都带着完整的用户认知（本体 + 会话上下文）。
+
+> **为什么不做中期记忆？** 初版考虑过"跨会话工作记忆"（临时偏好、待确认推断、上次会话摘要），但想不清楚它和本体 `active_context` + `open_threads` 的边界。本体已经有进行中事项和聚类级的工作线程，再加一层"中期"会造成数据重复和更新冲突。**Phase 1 不做，观察用户使用后再决定是否需要。**
 
 #### 3.7.2 用户知识本体（Ontology）
 
 本体是对用户的结构化认知，不是对话日志，不是用户档案。**每个字段都要回答一个问题："AI 在下一次对话中需要这个信息吗？"**
+
+**本体 vs 数据层的边界：**
+- **数据层** = 用户创建的结构化数据（500 条交易记录、30 个日程、100 个联系人）
+- **本体** = 从数据和交互中提取的**使用模式和偏好**（"用户按自然月统计"、"不喜欢早班飞机"）
+- 本体是**指向数据的指针和元认知**，不是数据的摘要。Agent 需要具体数据时查数据层，需要理解用户时看本体
+- 当两者冲突时（如本体说"用户预算 5000"但数据层显示本月已花 8000），**数据层是事实源，本体是理解层**
 
 ```
 ontology/
@@ -766,48 +774,99 @@ async function updateOntology(userId: string, interaction: Interaction): Promise
     }]
   });
 
-  // LLM 返回结构化更新指令
+  // LLM 返回结构化更新指令，每条带置信度
   const updates: OntologyUpdate[] = JSON.parse(analysis.content);
 
   for (const update of updates) {
+    // 置信度门槛：Haiku 不确定的更新暂存 pending，等全量重建时由 Sonnet 确认
+    if (update.confidence < 0.7) {
+      await savePendingUpdate(userId, update);  // 暂存，不立即写入本体
+      continue;
+    }
+
     switch (update.type) {
       case "add_known_fact":
-        // 新散点事实 → core.known_facts
-        await addKnownFact(userId, update.fact);
+        // known_facts 上限 15 条，满了则淘汰
+        await addKnownFactWithEviction(userId, update.fact);
         break;
       case "update_cluster":
-        // 更新已有聚类的 accumulated_knowledge
         await updateCluster(userId, update.clusterId, update.knowledge);
         break;
       case "create_cluster_candidate":
-        // 候选新聚类（第 3 次出现时正式创建）
         await markClusterCandidate(userId, update.topic);
         break;
       case "update_active_context":
-        // 更新进行中事项
         await updateActiveContext(userId, update.context);
         break;
       case "update_open_thread":
-        // 更新聚类中的进行中线程
         await updateOpenThread(userId, update.clusterId, update.thread);
         break;
-      // 不需要 case: 本次交互没有产生新认知 → 不更新
     }
   }
 }
 
-// 定期全量重建（每周一次 or 交互满 200 条）
-async function rebuildOntology(userId: string): Promise<void> {
-  const allInteractions = await loadAllInteractions(userId);
+// known_facts 淘汰策略
+async function addKnownFactWithEviction(userId: string, newFact: string): Promise<void> {
+  const core = await loadOntologyCore(userId);
+  
+  if (core.known_facts.length < 15) {
+    core.known_facts.push(newFact);
+  } else {
+    // 淘汰规则：不用 LLM 判断（成本太高），用简单规则
+    // 1. 如果新事实和已有事实语义重复 → 替换旧的（用 embedding 余弦相似度 > 0.85）
+    // 2. 如果不重复 → 淘汰最久未被 Agent 引用的事实（通过 last_referenced_at 追踪）
+    const duplicate = await findSemanticDuplicate(userId, newFact, 0.85);
+    if (duplicate) {
+      core.known_facts[duplicate.index] = newFact;  // 替换（信息更新）
+    } else {
+      const lruIndex = findLeastRecentlyReferenced(core.known_facts);
+      core.known_facts[lruIndex] = newFact;
+    }
+  }
+  
+  await saveOntologyCore(userId, core);
+}
 
-  // 全量扫描 → 主题聚类 → 提取对话模式 → 计算分布 → 识别进行中事项 → 建立关联
+// 定期全量重建（每周一次 or 交互满 200 条）
+// 问题：活跃用户 3 个月可能有 3000+ 次交互，单次 LLM 调用放不下
+// 方案：分阶段重建，每阶段处理一个子任务
+async function rebuildOntology(userId: string): Promise<void> {
+  
+  // Stage 1: 摘要压缩（Map）
+  // 将全量交互按时间窗口分片（每片 ~100 条），每片用 Haiku 提取摘要
+  const interactions = await loadAllInteractions(userId);
+  const chunks = chunkByTimeWindow(interactions, 100);
+  const summaries = await Promise.all(
+    chunks.map(chunk => llm.chat({
+      model: "claude-haiku-4-5-20251001",
+      system: "提取这批交互中的：用户事实、偏好、行为模式、主题分布。只输出结构化 JSON。",
+      messages: [{ role: "user", content: JSON.stringify(chunk) }]
+    }))
+  );
+  // 每片 ~100 条 → 摘要 ~200 tokens，3000 条 → 30 片 → ~6000 tokens 摘要
+
+  // Stage 2: 聚合重建（Reduce）
+  // 用 Sonnet 从所有摘要中重建完整本体
   const newOntology = await llm.chat({
-    model: "claude-sonnet-4-6-20250514",  // 全量重建用更强模型
+    model: "claude-sonnet-4-6-20250514",
     system: ONTOLOGY_REBUILD_PROMPT,
-    messages: [{ role: "user", content: JSON.stringify(allInteractions) }]
+    messages: [{
+      role: "user",
+      content: JSON.stringify({
+        summaries,                         // Stage 1 的摘要（~6000 tokens）
+        current_ontology: await loadOntology(userId),  // 当前本体作为参考
+        pending_updates: await loadPendingUpdates(userId),  // Haiku 不确定的待确认更新
+      })
+    }]
   });
 
-  await saveOntology(userId, JSON.parse(newOntology.content));
+  // Stage 3: 验证 + 写入
+  const rebuilt = JSON.parse(newOntology.content);
+  // 校验：token 预算是否超标（core < 800, 单 cluster < 600, 全量 < 4000）
+  validateTokenBudget(rebuilt);
+  await saveOntology(userId, rebuilt);
+  // 清空已确认的 pending updates
+  await clearPendingUpdates(userId);
 }
 ```
 
@@ -838,8 +897,78 @@ async function rebuildOntology(userId: string): Promise<void> {
 
 4. **高敏感内容保护**
    - `sensitivity: "high"` 的聚类：Agent 不主动提起，仅用户明确提及时激活
+   - sensitivity 检测不完全依赖 LLM 判断，增加关键词规则兜底：涉及亲密关系、健康、财务困境、用户明确说"别提这个"的内容自动标 high
+   - 误标 high 的代价（少用一个聚类）远小于漏标的代价（冒犯用户），**宁可误标**
 
-#### 3.7.6 存储方案
+#### 3.7.6 冷启动策略
+
+新用户的本体是空壳——没有 `routing_hints`、没有 `how_they_talk`、没有 `distribution`。如果不处理，前 N 次交互 Gateway Agent 退化成普通 chatbot。
+
+```
+用户生命周期        本体状态           策略
+─────────────────────────────────────────────────────────
+注册              空本体             创建骨架 core（who 从注册信息填充）
+第 1 次交互       几乎空             激进提取：从第 1 条消息就提取 language、
+                                   register、response_preference
+第 2-5 次交互     骨架 core          每次交互后都触发增量更新（不等第 3 次）
+                                   同时收集 how_they_talk.examples
+第 5 次交互后     core 基本可用       触发一次 mini-rebuild：用 Sonnet 从前 5 次
+                                   交互生成完整 core + 评估是否有候选聚类
+第 10 次交互后    首批聚类可能出现     回到正常节奏：Haiku 增量 + 每周全量重建
+```
+
+```typescript
+async function onUserFirstInteraction(userId: string, message: string): Promise<void> {
+  // 第 1 次交互：激进提取 core 骨架
+  const coreBootstrap = await llm.chat({
+    model: "claude-sonnet-4-6-20250514",  // 首次用 Sonnet，确保质量
+    system: `从用户的第一条消息中提取尽可能多的信息：
+- language: 用户使用什么语言
+- register: casual/formal/mixed
+- response_preference: 从措辞推断用户期望的回复风格
+- 任何明确的事实（地点、职业、需求）
+输出 JSON，不确定的字段设为 null。`,
+    messages: [{ role: "user", content: message }]
+  });
+  
+  await initializeCore(userId, JSON.parse(coreBootstrap.content));
+}
+
+async function onInteractionCount(userId: string, count: number): Promise<void> {
+  // 第 5 次交互：mini-rebuild，从积累的交互中生成完整 core
+  if (count === 5) {
+    const recentInteractions = await loadRecentInteractions(userId, 5);
+    await miniRebuild(userId, recentInteractions);  // 用 Sonnet 生成完整 core
+  }
+}
+```
+
+**关键：冷启动期间不能省钱。** 前 5 次用 Sonnet 做提取（共 ~5 次调用，成本约 ¥0.5），换来的是用户从第 2 次交互开始就能感受到"这个 AI 记住了我"。
+
+#### 3.7.7 本体初始化服务
+
+对于已有历史数据的用户（如从其他平台迁移），提供一次性全量本体生成服务，实现 PM 规范中的完整 7 步流程：
+
+```
+Step 1: 全量扫描 → 读取用户全部交互记录
+Step 2: 主题聚类 → 按主题相似性分组，评估频次/积累性/可复用性
+Step 3: 提取对话模式 → 分析用户提问句式、期望回答风格、语言习惯
+Step 4: 计算使用分布 → 各聚类交互占比 + 活跃度
+Step 5: 识别进行中事项 → 最近 14 天活跃 + 未完结事项
+Step 6: 建立聚类间关联 → 知识共享 + 时间相关性 → graph.edges
+Step 7: 组装输出 → core + clusters + graph
+```
+
+复用全量重建的 Map-Reduce 架构（3.7.4），但增加两个差异：
+- **Step 3 更精细**：取用户前 50 条发言做句式分析，取不满/追问记录推断回答偏好
+- **routing_hints 由 Sonnet 生成**：不依赖 Haiku 增量累积，一次性从全量数据中提取高质量路由提示
+
+**触发场景：**
+- 新用户注册 + 导入历史数据
+- 管理员为已有用户手动触发
+- 全量重建的内部实现（rebuildOntology 本质上就是调用这个服务）
+
+#### 3.7.8 存储方案
 
 ```sql
 -- 本体存储（PostgreSQL JSONB）
@@ -865,19 +994,29 @@ CREATE TABLE ontology_embeddings (
 CREATE INDEX idx_ontology_embeddings ON ontology_embeddings
   USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
 
--- 中期工作记忆
-CREATE TABLE working_memory (
+-- 增量更新暂存（Haiku 不确定的更新，等全量重建时由 Sonnet 确认）
+CREATE TABLE ontology_pending_updates (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id    UUID NOT NULL,
-  type       TEXT NOT NULL,            -- 'session_summary' | 'pending_inference' | 'temp_preference'
-  content    TEXT NOT NULL,
-  expires_at TIMESTAMPTZ NOT NULL,     -- 7-14 天后过期
+  update_type TEXT NOT NULL,           -- 'add_known_fact' | 'update_cluster' | ...
+  data       JSONB NOT NULL,
+  confidence FLOAT NOT NULL,           -- Haiku 给出的置信度
   created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- known_facts 引用追踪（用于 LRU 淘汰）
+CREATE TABLE known_fact_references (
+  user_id         UUID NOT NULL,
+  fact_index      INTEGER NOT NULL,
+  last_referenced TIMESTAMPTZ DEFAULT NOW(),
+  reference_count INTEGER DEFAULT 0,
+  PRIMARY KEY (user_id, fact_index)
 );
 ```
 
-**Phase 1 交付：** core + clusters + graph 的生成/存储/加载 + 每次交互后增量更新 + 语义检索。
-**Phase 3 再做：** 全量重建调度、聚类自动归档、跨用户模式发现。
+**Phase 1 交付：** core + clusters + graph 的生成/存储/加载 + 冷启动策略 + 增量更新（含置信度门槛）+ 语义检索 + known_facts 淘汰。
+**Phase 2 再做：** 全量重建调度（Map-Reduce）、本体初始化服务（Step 1-7）。
+**Phase 3 再做：** 聚类自动归档、本体版本历史、跨用户模式发现。
 
 ### 3.8 资源池：算力密集型任务
 
@@ -1122,13 +1261,11 @@ async function invokeAgent(agent: Agent, message: string): Promise<AgentResponse
   // 2. 加载用户本体
   const core = await loadOntologyCore(agent.user_id);
   const cluster = await matchAndLoadCluster(agent.user_id, message, core);
-  const workingMemory = await loadWorkingMemory(agent.user_id);
   
   // 3. 构造完整的 system prompt（分层注入上下文）
   const systemPrompt = config.system_prompt
     + `\n\n## 用户画像\n${formatCore(core)}`
-    + (cluster ? `\n\n## 当前主题认知\n${formatCluster(cluster)}` : '')
-    + (workingMemory.length ? `\n\n## 工作记忆\n${workingMemory.map(m => m.content).join('\n')}` : '');
+    + (cluster ? `\n\n## 当前主题认知\n${formatCluster(cluster)}` : '');
   
   // 4. 从数据库加载最近对话历史
   const history = await loadConversationHistory(agent.id, agent.user_id, { limit: 20 });
@@ -1152,9 +1289,8 @@ async function invokeAgent(agent: Agent, message: string): Promise<AgentResponse
     });
   }
   
-  // 7. Agent 交互后，异步更新本体 + 工作记忆
+  // 7. Agent 交互后，异步更新本体
   backgroundTask(() => updateOntology(agent.user_id, { agent, message, result }));
-  backgroundTask(() => updateWorkingMemory(agent.user_id, { message, result }));
   
   // 8. 保存对话历史
   await saveConversationHistory(agent.id, agent.user_id, message, result);
@@ -1662,7 +1798,8 @@ Phase 1 (MVP, 8 周):
 Phase 2 (增强, 6 周):
   ✅ sdk.scheduler（定时任务 + 平台调度器）
   ✅ sdk.webhook（外部事件接收 + Agent 处理）
-  ✅ 中期工作记忆（跨会话状态、临时偏好、待确认推断）
+  ✅ 全量重建调度（Map-Reduce 分阶段重建）
+  ✅ 本体初始化服务（PM 规范 Step 1-7，支持历史数据导入）
   ✅ 本体路由提示集成 Gateway Agent 决策
   ✅ 应用迭代（对话修改已有应用）
   ✅ 跨应用数据共享完整体验
@@ -1709,4 +1846,11 @@ Phase 4 (生态, 持续):
 | v3→v4 | 本体运行时读取协议 + Token 预算管理 | 按需加载，闲聊 500 tokens，复杂场景不超过 2500 tokens |
 | v3→v4 | LLM 驱动本体增量更新 + 全量重建 | 每次交互 Haiku 增量更新，定期 Sonnet 全量重建 |
 | v3→v4 | Gateway Agent 集成本体路由提示 | 用 graph.routing_hints 辅助意图匹配 |
-| v3→v4 | Agent 调用流程集成本体上下文注入 | 替代原始的 flat memory recall，分层注入画像+聚类+工作记忆 |
+| v3→v4 | Agent 调用流程集成本体上下文注入 | 替代原始的 flat memory recall，分层注入画像+聚类 |
+| v3→v4 | 新增冷启动策略 | 前 5 次交互用 Sonnet 激进提取，第 5 次触发 mini-rebuild |
+| v3→v4 | 增量更新加入置信度门槛 | Haiku 不确定的更新暂存 pending，全量重建时由 Sonnet 确认 |
+| v3→v4 | known_facts 淘汰策略 | 满 15 条后按语义去重 + LRU 淘汰 |
+| v3→v4 | 全量重建改为 Map-Reduce | 分片摘要(Haiku) → 聚合重建(Sonnet)，解决超长上下文问题 |
+| v3→v4 | 新增本体初始化服务 | 实现 PM 规范 Step 1-7，支持历史数据导入 |
+| v3→v4 | 砍掉中期工作记忆 | 和本体 active_context + open_threads 职责重叠，Phase 1 不做 |
+| v3→v4 | 明确本体 vs 数据层边界 | 本体是元认知（偏好/模式），数据层是事实源，冲突时听数据层 |
